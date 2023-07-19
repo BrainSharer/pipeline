@@ -17,7 +17,7 @@ def load_com():
     structureController = StructureCOMController(animal)
     # Pn looks like one mass in Allen    
     structures = {
-        'SC': (373, 10, 227.68),
+        'SC': (373, 72, 227.68),
         'IC': (416.1, 93.29, 227.68),
         'AP': (506.13, 200.42, 227.69),
         'SNR_L': (337.62106378683893, 206.69036132418248, 170),
