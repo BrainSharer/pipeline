@@ -34,7 +34,7 @@ def volume_origin_creation():
         brainManager.fixed_brain = BrainStructureManager('Allen')
         brainManager.fixed_brain.annotator_id = 1
         brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, annotator_id=annotator_id)
-
+    return
     for structure in brainMerger.volumes_to_merge:
         volumes = brainMerger.volumes_to_merge[structure]
         origins = brainMerger.volumes_to_merge[structure]
