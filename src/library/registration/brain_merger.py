@@ -77,10 +77,13 @@ class BrainMerger():
 
 
         for structure in self.volumes.keys():
-            x, y, z = origins[structure]
-            volume = self.volumes[structure]
             com = center_of_mass(volume)
-            origin_array = np.array(list(origins.values())) - com
+            volume = self.volumes[structure]
+            x, y, z = origins[structure]
+            x -= com[0]
+            y -= com[1]
+            z -= com[2]
+            origin_array = np.array(list(origins.values()))
             centered_origin = (x, y, z) - origin_array.mean(0)
             aligned_structure = volume_to_polygon(
                 volume=volume, origin=centered_origin, times_to_simplify=3)
