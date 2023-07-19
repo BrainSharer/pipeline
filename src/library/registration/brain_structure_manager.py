@@ -181,7 +181,6 @@ class BrainStructureManager():
             self.volume_path, f'{structure}.npy')
         mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
         np.savetxt(origin_filepath, origin)
-        print(f'Saving origin to {origin_filepath}')
         np.save(volume_filepath, volume)
         save_mesh(aligned_structure, mesh_filepath)
 
