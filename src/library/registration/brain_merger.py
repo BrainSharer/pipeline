@@ -72,8 +72,8 @@ class BrainMerger():
         os.makedirs(self.volume_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
 
-        average_origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
-        origins = self.transform_origins(average_origins)
+        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        #origins = self.transform_origins(average_origins)
 
 
         for structure in self.volumes.keys():

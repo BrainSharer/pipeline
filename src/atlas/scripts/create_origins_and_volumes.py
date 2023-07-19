@@ -43,7 +43,6 @@ def volume_origin_creation():
         volume = brainMerger.get_merged_landmark_probability(structure, volumes)
         brainMerger.volumes[structure]= volume
     print('Finished filling up volumes and origins')
-    return
     brainMerger.save_atlas_origins_and_volumes_and_meshes()
 
 """

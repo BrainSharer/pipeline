@@ -8,7 +8,7 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 from library.registration.utilities_registration import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
-from library.image_manipulation.filelocation_manager import data_path
+from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.utilities.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.registration.volume_registration import VolumeRegistration
@@ -23,6 +23,7 @@ class BrainStructureManager():
         
         self.fixed_brain = None
         self.sqlController = SqlController(animal)
+        self.fileLocationManager = FileLocationManager(animal)
         to_um = self.DOWNSAMPLE_FACTOR * self.sqlController.scan_run.resolution
         self.pixel_to_um = np.array([to_um, to_um, 20])
         self.um_to_pixel = 1 / self.pixel_to_um
@@ -30,7 +31,7 @@ class BrainStructureManager():
         self.volume_path = os.path.join(self.data_path, animal, 'structure')
         self.origin_path = os.path.join(self.data_path, animal, 'origin')
         self.mesh_path = os.path.join(self.data_path, animal, 'mesh')
-        self.point_path = os.path.join(self.data_path, animal, 'point')
+        self.point_path = os.path.join(self.fileLocationManager.prep, 'points')
         self.aligned_contours = {}
         self.annotator_id = 2
         self.volumeRegistration = VolumeRegistration(animal=animal)
@@ -126,8 +127,7 @@ class BrainStructureManager():
 
             if structure.id not in (666,33):
                 continue
-            polygons = defaultdict(list)
-            
+            points = []
             for _, row in df.iterrows():
                 x = row['coordinate'][0] 
                 y = row['coordinate'][1] 
@@ -138,21 +138,16 @@ class BrainStructureManager():
                 x /= allen_um
                 y /= allen_um
                 z /= allen_um
+                #xy = (x, y)
+                points.append((x,y,z))
 
-                (xt, yt, zt) = self.transformix_points((x,y,z))
-                print(x,y,z, end="\t")
-                print(xt,yt,zt)
-                continue
-
-                xy = (x, y)
-                section = int(np.round(z))
-                polygons[section].append(xy)
+            transformed_polygons = self.transformix_points(points)
 
             color = 1 # on/off
-            origin, section_size = self.get_origin_and_section_size(polygons)
+            origin, section_size = self.get_origin_and_section_size(transformed_polygons)
 
             volume = []
-            for _, contour_points in polygons.items():
+            for _, contour_points in transformed_polygons.items():
                 vertices = np.array(contour_points)
                 # subtract origin so the array starts drawing in the upper top left
                 vertices = np.array(contour_points) - origin[:2]
@@ -189,28 +184,33 @@ class BrainStructureManager():
         np.save(volume_filepath, volume)
         save_mesh(aligned_structure, mesh_filepath)
 
-    def transformix_points(self, point):
+    def transformix_points(self, points):
+        polygons = defaultdict(list)
+
         write_filepath = os.path.join(self.point_path, 'point.pts')
         transformixImageFilter = self.volumeRegistration.setup_transformix(
             self.volumeRegistration.reverse_elastix_output)
 
+        # First, write all data to a pts file
         with open(write_filepath, 'w') as f:
             f.write('point\n')
-            f.write('1\n')
-            x = point[0]
-            y = point[1]
-            z = point[2]
-            f.write(f'{x} {y} {z}')
-            f.write('\n')
+            f.write(f'{len(points)}\n')
+            for point in points:
+                x = point[0]
+                y = point[1]
+                z = point[2]
+                f.write(f'{x} {y} {z}')
+                f.write('\n')
 
+        # done writing, now transform
         transformixImageFilter.SetFixedPointSetFileName(write_filepath)
         transformixImageFilter.Execute()
-
+        # done transforming, now read
         read_filepath = self.volumeRegistration.registered_point_file
         with open(read_filepath, "r") as f:
             lines = f.readlines()
             f.close()
-
+        # done reading, now stuff into dictionary and return
         point_or_index = 'OutputPoint'
         for i in range(len(lines)):
             lx = lines[i].split()[lines[i].split().index(
@@ -219,5 +219,9 @@ class BrainStructureManager():
             x = lf[0]
             y = lf[1]
             z = lf[2]
+
+            xy = (x, y)
             section = int(np.round(z))
-        return (x, y, section)
+            polygons[section].append(xy)
+
+        return polygons
