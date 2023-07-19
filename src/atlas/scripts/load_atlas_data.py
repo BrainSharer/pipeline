@@ -4,7 +4,7 @@ from pathlib import Path
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from brain_structure_manager import BrainStructureManager
+from library.registration.brain_structure_manager import BrainStructureManager
 from library.controller.structure_com_controller import StructureCOMController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.database_model.annotation_points import PolygonSequence, AnnotationType, StructureCOM
