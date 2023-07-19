@@ -125,8 +125,8 @@ class BrainStructureManager():
             if df.empty:
                 continue;
 
-            if structure.id not in (666,33):
-                continue
+            #if structure.id not in (666,33):
+            #    continue
             points = []
             for _, row in df.iterrows():
                 x = row['coordinate'][0] 
