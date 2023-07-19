@@ -140,7 +140,7 @@ class BrainStructureManager():
                 z /= allen_um
 
                 (xt, yt, zt) = self.transformix_points((x,y,z))
-                print(x,y,z,"\t")
+                print(x,y,z, end="\t")
                 print(xt,yt,zt)
                 continue
 
