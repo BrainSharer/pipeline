@@ -95,21 +95,20 @@ class NumpyToNeuroglancer():
         tq.execute()
 
 class AtlasCreator:
-    def __init__(self, atlas_name, debug):
-        self.atlas_name = atlas_name
+    def __init__(self, animal, debug):
+        self.animal = animal
         self.debug = debug
         self.DATA_PATH = '/net/birdstore/Active_Atlas_Data/data_root'
         self.fixed_brain = 'Allen'
-        self.ATLAS_PATH = os.path.join(self.DATA_PATH, 'atlas_data', atlas_name)
-        self.OUTPUT_DIR = f'/home/httpd/html/data/{atlas_name}'
+        self.ATLAS_PATH = os.path.join(self.DATA_PATH, 'atlas_data', animal)
+        self.OUTPUT_DIR = f'/home/httpd/html/data/{animal}'
         if os.path.exists(self.OUTPUT_DIR):
             shutil.rmtree(self.OUTPUT_DIR)
         os.makedirs(self.OUTPUT_DIR, exist_ok=True)
-        if 'atlas' in atlas_name:
-            atlas_name = 'MD589'
 
         self.sqlController = SqlController(self.fixed_brain)
-        self.xy_resolution = 25
+        self.xy_resolution = self.sqlController.scan_run.resolution
+        self.zresolution = self.sqlController.scan_run.zresolution
 
     def get_allen_id(self, color, structure):
         try:
@@ -122,8 +121,8 @@ class AtlasCreator:
     def create_atlas(self, save, ng):
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um coo
-        width = (self.sqlController.scan_run.width) + 100
-        height = (self.sqlController.scan_run.height) + 100
+        width = (self.sqlController.scan_run.width) 
+        height = (self.sqlController.scan_run.height) 
         z_length = self.sqlController.scan_run.number_of_slides
         atlas_volume = np.zeros(( int(width), int(height), z_length), dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
@@ -138,7 +137,8 @@ class AtlasCreator:
         x_length = int(width)
         atlas_box_size=(x_length, y_length, z_length)
         print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
-        atlas_box_scales=[25000, 25000, 25000]
+        xy_resolution = self.xy_resolution * 1000
+        atlas_box_scales=[xy_resolution, xy_resolution, self.zresolution*1000]
         atlas_box_scales = np.array(atlas_box_scales)
         atlas_box_size = np.array(atlas_box_size)
         atlas_box_center = atlas_box_size / 2
@@ -223,7 +223,7 @@ class AtlasCreator:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')
-    parser.add_argument('--atlas', required=False, default='atlasV8')
+    parser.add_argument('--animal', required=False, default='atlasV8')
     parser.add_argument('--debug', required=False, default='true', type=str)
     parser.add_argument('--save', required=False, default='false', type=str)
     parser.add_argument('--ng', required=False, default='false', type=str)
@@ -231,6 +231,6 @@ if __name__ == '__main__':
     debug = bool({'true': True, 'false': False}[args.debug.lower()])    
     save = bool({'true': True, 'false': False}[args.save.lower()])    
     ng = bool({'true': True, 'false': False}[args.ng.lower()])    
-    atlas = args.atlas
-    atlasCreator = AtlasCreator(atlas, debug)
+    animal = args.animal
+    atlasCreator = AtlasCreator(animal, debug)
     atlasCreator.create_atlas(save, ng)
