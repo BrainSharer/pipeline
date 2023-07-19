@@ -3,6 +3,7 @@ import numpy as np
 from collections import defaultdict
 import cv2
 import json
+from scipy.ndimage import center_of_mass
 
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.registration.utilities_registration import SCALING_FACTOR
@@ -31,6 +32,7 @@ class BrainStructureManager():
         self.volume_path = os.path.join(self.data_path, animal, 'structure')
         self.origin_path = os.path.join(self.data_path, animal, 'origin')
         self.mesh_path = os.path.join(self.data_path, animal, 'mesh')
+        self.com_path = os.path.join(self.data_path, animal, 'com')
         self.point_path = os.path.join(self.fileLocationManager.prep, 'points')
         self.aligned_contours = {}
         self.annotator_id = 2
@@ -115,11 +117,11 @@ class BrainStructureManager():
         structures = controller.get_structures()
         # get transformation at um 
         allen_um = 25
-        """
+        
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
-        """
+        
         for structure in structures:
             df = polygon.get_volume(animal, annotator_id, structure.id)
             if df.empty:
@@ -127,27 +129,32 @@ class BrainStructureManager():
 
             #if structure.id not in (666,33):
             #    continue
-            points = []
+            #####TRANSFORMIX points = []
+            polygons = defaultdict(list)
+
             for _, row in df.iterrows():
                 x = row['coordinate'][0] 
                 y = row['coordinate'][1] 
                 z = row['coordinate'][2]
                 # transform points to fixed brain um with rigid transform
-                #x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+
                 # scale transformed points to 25um
                 x /= allen_um
                 y /= allen_um
                 z /= allen_um
-                #xy = (x, y)
-                points.append((x,y,z))
+                #####TRANSFORMIX points.append((x,y,z))
+                xy = (x, y)
+                section = int(np.round(z))
+                polygons[section].append(xy)
 
-            transformed_polygons = self.transformix_points(points)
+            #####TRANSFORMIX transformed_polygons = self.transformix_points(points)
 
             color = 1 # on/off
-            origin, section_size = self.get_origin_and_section_size(transformed_polygons)
+            origin, section_size = self.get_origin_and_section_size(polygons)
 
             volume = []
-            for _, contour_points in transformed_polygons.items():
+            for _, contour_points in polygons.items():
                 vertices = np.array(contour_points)
                 # subtract origin so the array starts drawing in the upper top left
                 vertices = np.array(contour_points) - origin[:2]
@@ -158,20 +165,24 @@ class BrainStructureManager():
                 volume.append(volume_slice)
             volume = np.array(volume).astype(np.bool8)
             volume = np.swapaxes(volume,0,2)
+            com = center_of_mass(volume)
+            com += origin
             ids, counts = np.unique(volume, return_counts=True)
             print(annotator_id, animal, structure.abbreviation, origin, section_size, end="\t")
             print(volume.dtype, volume.shape, end="\t")
             print(ids, counts)
             brainMerger.volumes_to_merge[structure.abbreviation].append(volume)
             brainMerger.origins_to_merge[structure.abbreviation].append(origin)
-            self.save_brain_origins_and_volumes_and_meshes(structure.abbreviation, origin, volume)
+            brainMerger.coms_to_merge[structure.abbreviation].append(com)
+            self.save_brain_origins_and_volumes_and_meshes(structure.abbreviation, origin, volume, com)
 
-    def save_brain_origins_and_volumes_and_meshes(self, structure ,origin, volume):
+    def save_brain_origins_and_volumes_and_meshes(self, structure ,origin, volume, com):
         """Saves everything to disk
         """
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.com_path, exist_ok=True)
 
         aligned_structure = volume_to_polygon(
             volume=volume, origin=origin, times_to_simplify=3)
@@ -180,9 +191,12 @@ class BrainStructureManager():
         volume_filepath = os.path.join(
             self.volume_path, f'{structure}.npy')
         mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+        com_filepath = os.path.join(self.com_path, f'{structure}.txt')
         np.savetxt(origin_filepath, origin)
         np.save(volume_filepath, volume)
         save_mesh(aligned_structure, mesh_filepath)
+        np.savetxt(com_filepath, com)
+        
 
     def transformix_points(self, points):
         polygons = defaultdict(list)

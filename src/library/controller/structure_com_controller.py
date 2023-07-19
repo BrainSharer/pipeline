@@ -107,6 +107,15 @@ class StructureCOMController(SqlController):
             .order_by(AnnotationSession.FK_prep_id).all()
         return sessions
 
+    def get_active_animal_sessions(self, FK_prep_id):
+        sessions = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.FK_prep_id==FK_prep_id)\
+            .filter(AnnotationSession.active==True)\
+            .filter(AnnotationSession.annotation_type==AnnotationType.STRUCTURE_COM)\
+            .order_by(AnnotationSession.FK_prep_id).all()
+        return sessions
+
+
     def structure_abbreviation_to_id(self, abbreviation):
         try:
             structure = self.get_structure(str(abbreviation).strip())

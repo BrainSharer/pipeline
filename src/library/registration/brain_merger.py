@@ -16,6 +16,9 @@ from library.utilities.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
 from library.registration.brain_structure_manager import BrainStructureManager
+from library.controller.structure_com_controller import StructureCOMController
+from library.controller.annotation_session_controller import AnnotationSessionController
+from library.database_model.annotation_points import AnnotationType, StructureCOM
 
 
 class BrainMerger():
@@ -24,12 +27,14 @@ class BrainMerger():
         self.symmetry_list = singular_structures
         self.volumes_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
+        self.coms_to_merge = defaultdict(list)
         atlas = 'atlasV8'
         self.data_path = os.path.join(data_path, 'atlas_data', atlas)
         self.volume_path = os.path.join(self.data_path, 'structure')
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
         self.volumes = {}
+        self.com_path = os.path.join(self.data_path, 'com')
         self.margin = 50
         self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
@@ -71,13 +76,16 @@ class BrainMerger():
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.com_path, exist_ok=True)
 
         origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        coms = {structure: np.mean(com, axis=0) for structure, com in self.coms_to_merge.items()}
         #origins = self.transform_origins(average_origins)
 
 
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
+            com = coms[structure]
             x, y, z = origins[structure]
             origin_array = np.array(list(origins.values()))
             centered_origin = (x, y, z) - origin_array.mean(0)
@@ -88,6 +96,8 @@ class BrainMerger():
             volume_filepath = os.path.join(
                 self.volume_path, f'{structure}.npy')
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+            com_filepath = os.path.join(
+                self.com_path, f'{structure}.txt')
             if 'SC' in structure:
                 print(origin_filepath)
                 print(volume_filepath)
@@ -95,6 +105,35 @@ class BrainMerger():
             np.savetxt(origin_filepath, (x, y, z))
             np.save(volume_filepath, volume)
             save_mesh(aligned_structure, mesh_filepath)
+            np.savetxt(com_filepath, com)
+
+
+    def save_coms_to_db(self):
+        """Saves COMs to DB
+        """
+        animal = 'Atlas'
+        brainManager = BrainStructureManager(animal)
+        source = 'MANUAL'
+        structureController = StructureCOMController(animal)
+        annotationSessionController = AnnotationSessionController(animal)
+        sc_sessions = structureController.get_active_animal_sessions(animal)
+        for sc_session in sc_sessions:
+            sc_session.active=False
+            structureController.update_row(sc_session)
+
+        coms = {structure: np.mean(com, axis=0) for structure, com in self.coms_to_merge.items()}
+
+
+        for abbreviation in coms.keys():
+            points = coms[abbreviation]
+            FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
+            FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
+                                                                                    FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
+            x,y,z = (p*25 for p in points)
+            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
+            brainManager.sqlController.add_row(com)
+
+
 
     def calculate_distance(self, com1, com2):
         return (np.linalg.norm(com1 - com2))

@@ -22,7 +22,7 @@ def volume_origin_creation():
 
     
     animal_users = list(animal_users)
-    animal_users = [['MD585', 3]]
+    # animal_users = [['MD585', 3]]
     brainMerger = BrainMerger()
     for animal_user in sorted(animal_users):
         animal = animal_user[0]
@@ -34,7 +34,7 @@ def volume_origin_creation():
         brainManager.fixed_brain = BrainStructureManager('Allen')
         brainManager.fixed_brain.annotator_id = 1
         brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, annotator_id=annotator_id)
-    return
+    
     for structure in brainMerger.volumes_to_merge:
         volumes = brainMerger.volumes_to_merge[structure]
         origins = brainMerger.volumes_to_merge[structure]
@@ -42,8 +42,13 @@ def volume_origin_creation():
         
         volume = brainMerger.get_merged_landmark_probability(structure, volumes)
         brainMerger.volumes[structure]= volume
-    print('Finished filling up volumes and origins')
-    brainMerger.save_atlas_origins_and_volumes_and_meshes()
+
+    if len(brainMerger.origins_to_merge) > 0:
+        print('Finished filling up volumes and origins')
+        brainMerger.save_atlas_origins_and_volumes_and_meshes()
+        brainMerger.save_coms_to_db()
+    else:
+        print('No data to save')
 
 """
 def evaluate_registration(self):
