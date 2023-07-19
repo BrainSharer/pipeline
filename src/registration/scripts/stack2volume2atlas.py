@@ -127,7 +127,7 @@ class VolumeRegistration:
     """This class takes a downsampled image stack and registers it to the Allen volume    
     """
 
-    def __init__(self, animal, channel, um, atlas, orientation, debug):
+    def __init__(self, animal, channel=1, um=25, atlas='allen', orientation='sagittal', debug=False):
         self.animal = animal
         self.debug = debug
         self.atlas = atlas
