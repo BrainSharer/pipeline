@@ -72,14 +72,15 @@ class BrainMerger():
         os.makedirs(self.volume_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
 
-        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
-        #origins = self.transform_origins(average_origins)
+        average_origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        origins = self.transform_origins(average_origins)
 
 
         for structure in self.volumes.keys():
             x, y, z = origins[structure]
             volume = self.volumes[structure]
-            origin_array = np.array(list(origins.values()))
+            com = center_of_mass(volume)
+            origin_array = np.array(list(origins.values())) - com
             centered_origin = (x, y, z) - origin_array.mean(0)
             aligned_structure = volume_to_polygon(
                 volume=volume, origin=centered_origin, times_to_simplify=3)
