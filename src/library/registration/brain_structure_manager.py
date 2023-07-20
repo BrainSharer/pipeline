@@ -18,16 +18,12 @@ from library.registration.volume_registration import VolumeRegistration
 
 class BrainStructureManager():
 
-    def __init__(self, animal = 'MD589', atlas = 'atlasV8', downsample_factor = SCALING_FACTOR):
-        self.DOWNSAMPLE_FACTOR = downsample_factor
+    def __init__(self, animal = 'MD589', atlas = 'atlasV8', debug=False):
+
         self.animal = animal
-        
         self.fixed_brain = None
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        to_um = self.DOWNSAMPLE_FACTOR * self.sqlController.scan_run.resolution
-        self.pixel_to_um = np.array([to_um, to_um, 20])
-        self.um_to_pixel = 1 / self.pixel_to_um
         self.data_path = os.path.join(data_path, 'atlas_data')
         self.volume_path = os.path.join(self.data_path, animal, 'structure')
         self.origin_path = os.path.join(self.data_path, animal, 'origin')
@@ -37,6 +33,7 @@ class BrainStructureManager():
         self.aligned_contours = {}
         self.annotator_id = 2
         self.volumeRegistration = VolumeRegistration(animal=animal)
+        self.debug = debug
 
         os.makedirs(self.point_path, exist_ok=True)
 
@@ -70,9 +67,11 @@ class BrainStructureManager():
 
         moving_coms = brain.get_coms()
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.annotator_id)
-        
-        common_keys = fixed_coms.keys() & moving_coms.keys()
+        midbrain_keys = {'SC','IC','PBG_L','PBG_R','3N_L','3N_R','4N_L','4N_R','SNR_L','SNR_R','VLL_L','VLL_R'}
+        common_keys = fixed_coms.keys() & moving_coms.keys() & midbrain_keys
         brain_regions = sorted(moving_coms.keys())
+        print('brain animal=', brain.animal)
+        print(common_keys)
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
         moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
@@ -171,6 +170,8 @@ class BrainStructureManager():
             print(annotator_id, animal, structure.abbreviation, origin, section_size, end="\t")
             print(volume.dtype, volume.shape, end="\t")
             print(ids, counts)
+            if self.debug:
+                continue
             brainMerger.volumes_to_merge[structure.abbreviation].append(volume)
             brainMerger.origins_to_merge[structure.abbreviation].append(origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(com)

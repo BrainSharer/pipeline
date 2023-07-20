@@ -23,7 +23,7 @@ from library.database_model.annotation_points import AnnotationType, StructureCO
 
 class BrainMerger():
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.symmetry_list = singular_structures
         self.volumes_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)

@@ -26,7 +26,6 @@ def umeyama(src, dst, with_scaling=True):
     # deal with reflection
     e = np.ones(m)
     if np.linalg.det(u) * np.linalg.det(vh) < 0:
-        print("reflection detected")
         e[-1] = -1
 
     r = u @ np.diag(e) @ vh
@@ -37,6 +36,10 @@ def umeyama(src, dst, with_scaling=True):
         r *= c
 
     t = dst_mean - r @ src_mean
+    if np.linalg.det(u) * np.linalg.det(vh) < 0:
+        print(r,t)
+        import sys
+        sys.exit()
 
     return r, t
 

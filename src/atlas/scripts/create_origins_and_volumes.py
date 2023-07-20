@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from library.registration.brain_merger import BrainMerger
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.structure_com_controller import StructureCOMController
 
-def volume_origin_creation():
+def volume_origin_creation(debug=False):
     structureController = StructureCOMController('MD589')
     polygonController = PolygonSequenceController('MD589')
     sc_sessions = structureController.get_active_sessions()
@@ -22,18 +23,24 @@ def volume_origin_creation():
 
     
     animal_users = list(animal_users)
-    # animal_users = [['MD585', 3]]
-    brainMerger = BrainMerger()
+    brainMerger = BrainMerger(debug)
+    #animal_users = [['MD585',3]]
     for animal_user in sorted(animal_users):
         animal = animal_user[0]
         annotator_id = animal_user[1]
-        if 'test' in animal or 'Atlas' in animal or annotator_id in (6663, 66634, 66637):
+        if 'test' in animal or 'Atlas' in animal:
             continue
-        brainManager = BrainStructureManager(animal)
+        if animal not in ['MD585', 'MD589', 'MD594']:
+            continue
+        print(animal_user)
+        brainManager = BrainStructureManager(animal, debug)
         brainManager.annotator_id = annotator_id
-        brainManager.fixed_brain = BrainStructureManager('Allen')
+        brainManager.fixed_brain = BrainStructureManager('Allen', debug)
         brainManager.fixed_brain.annotator_id = 1
         brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, annotator_id=annotator_id)
+    
+    if debug:
+        return
     
     for structure in brainMerger.volumes_to_merge:
         volumes = brainMerger.volumes_to_merge[structure]
@@ -76,5 +83,9 @@ def evaluate_registration(self):
 """
 
 if __name__ == '__main__':
-    animals = ['MD585', 'MD589', 'MD594']
-    volume_origin_creation()
+    parser = argparse.ArgumentParser(description='Work on Atlas')
+    parser.add_argument('--animal', required=False, default='atlasV8')
+    parser.add_argument('--debug', required=False, default='true', type=str)
+    args = parser.parse_args()
+    debug = bool({'true': True, 'false': False}[args.debug.lower()])    
+    volume_origin_creation(debug)
