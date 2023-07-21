@@ -116,13 +116,16 @@ class AtlasCreator:
         except KeyError:
             allen_color = color
 
+        if type(allen_color) == list:
+            allen_color = allen_color[0]
+        
         return allen_color
     
     def create_atlas(self, save, ng):
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um coo
-        width = (self.sqlController.scan_run.width) 
-        height = (self.sqlController.scan_run.height) 
+        width = (self.sqlController.scan_run.width) + 200
+        height = (self.sqlController.scan_run.height) + 100
         z_length = self.sqlController.scan_run.number_of_slides
         atlas_volume = np.zeros(( int(width), int(height), z_length), dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
@@ -169,14 +172,6 @@ class AtlasCreator:
             volume[volume > 0] = allen_color
             ids[structure] = allen_color
             x, y, z = origin
-            """
-            x_start = int(round(x + x_length/2))
-            y_start = int(round(y + y_length/2))
-            z_start = int(z) // 2 + atlas_box_size[2] // 2
-            x_end = x_start + volume.shape[0]
-            y_end = y_start + volume.shape[1]
-            z_end = z_start + (volume.shape[2] + 1) // 2
-            """
             x_start = int(round(x))
             y_start = int(round(y))
             z_start = int(round(z))

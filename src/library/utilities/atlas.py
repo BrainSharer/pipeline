@@ -222,8 +222,8 @@ def simplify_polydata(polydata, num_simplify_iter=0, smooth=False):
 
 
 allen_structures = {
-    'SC': 842,
-    'IC': 811,
+    'SC': [294,302],
+    'IC': [4,811,820,828],
     'AP': 207,
     'RtTg': 146,
     'SNR_L': 381,

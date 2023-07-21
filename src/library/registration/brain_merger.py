@@ -78,9 +78,9 @@ class BrainMerger():
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.com_path, exist_ok=True)
 
-        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        average_origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
         coms = {structure: np.mean(com, axis=0) for structure, com in self.coms_to_merge.items()}
-        #origins = self.transform_origins(average_origins)
+        origins = self.transform_origins(average_origins)
 
 
         for structure in self.volumes.keys():
@@ -140,7 +140,7 @@ class BrainMerger():
 
     def transform_origins(self, moving_origins):
         """moving origins VS fixed COMs
-        fixed_coms have to be adjusted to subtract half the volume size
+        fixed_coms have to be adjusted to subtract the COM
         so they become origins
         """
         fixed_brain = BrainStructureManager('Allen')
@@ -154,8 +154,14 @@ class BrainMerger():
         fixed_volume_dict = {}
         for structure in brain_regions:
             if structure in common_keys:
-                #fixed_points_list.append(fixed_coms[structure])
                 volume_com = center_of_mass(self.volumes[structure])
+                sum_ = np.isnan(np.sum(volume_com))
+                if sum_:
+                    v = self.volumes[structure]
+                    print(f'{structure} has no COM {v.shape} {v.dtype} min={np.min(v)} max={np.max(v)}')
+                    ids, counts = np.unique(v, return_counts=True)
+                    print(ids, counts)
+                    volume_com = np.array([0,0,0])
                 fixed_volume_list.append(volume_com)
                 fixed_volume_dict[structure] = volume_com
 
@@ -170,11 +176,11 @@ class BrainMerger():
         assert len(fixed_points.shape) == 2, f'Dimensions are wrong fixed shape={fixed_points.shape} commonkeys={common_keys}'
         assert fixed_points.shape[0] > 2, 'Not enough points'
 
-        transformed_coms = {}
+        transformed_origins = {}
         R, t = umeyama(moving_points.T, fixed_points.T)
         for structure, origin in moving_origins.items():
             point = brain_to_atlas_transform(origin, R, t)
-            transformed_coms[structure] = point
+            transformed_origins[structure] = point
 
 
         distances = []
@@ -192,4 +198,4 @@ class BrainMerger():
         
         print(f'length={len(distances)} mean={round(np.mean(distances))} min={round(min(distances))} max={round(max(distances))}')
 
-        return transformed_coms
+        return transformed_origins

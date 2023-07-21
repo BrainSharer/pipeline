@@ -13,6 +13,7 @@ from library.image_manipulation.filelocation_manager import data_path, FileLocat
 from library.utilities.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.registration.volume_registration import VolumeRegistration
+from library.controller.annotation_session_controller import AnnotationSessionController
 
 
 
@@ -67,11 +68,9 @@ class BrainStructureManager():
 
         moving_coms = brain.get_coms()
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.annotator_id)
-        midbrain_keys = {'SC','IC','PBG_L','PBG_R','3N_L','3N_R','4N_L','4N_R','SNR_L','SNR_R','VLL_L','VLL_R'}
+        midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
         common_keys = fixed_coms.keys() & moving_coms.keys() & midbrain_keys
         brain_regions = sorted(moving_coms.keys())
-        print('brain animal=', brain.animal)
-        print(common_keys)
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
         moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
@@ -166,6 +165,7 @@ class BrainStructureManager():
             volume = np.swapaxes(volume,0,2)
             com = center_of_mass(volume)
             com += origin
+            #self.update_com(com, structure.id)
             ids, counts = np.unique(volume, return_counts=True)
             print(annotator_id, animal, structure.abbreviation, origin, section_size, end="\t")
             print(volume.dtype, volume.shape, end="\t")
@@ -176,6 +176,16 @@ class BrainStructureManager():
             brainMerger.origins_to_merge[structure.abbreviation].append(origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(com)
             self.save_brain_origins_and_volumes_and_meshes(structure.abbreviation, origin, volume, com)
+
+    def update_com(self, com, structure_id):
+        source = "MANUAL"
+        controller = AnnotationSessionController(self.animal)
+        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2)
+        x = com[0] * 25
+        y = com[1] * 25
+        z = com[2] * 25
+        entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
+        controller.upsert_structure_com(entry)
 
     def save_brain_origins_and_volumes_and_meshes(self, structure ,origin, volume, com):
         """Saves everything to disk

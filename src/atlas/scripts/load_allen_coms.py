@@ -27,9 +27,14 @@ def load_com():
     structureController = StructureCOMController(animal)
     # Pn looks like one mass in Allen
     for abbreviation, structure_id in allen_structures.items():
-        structure_mask = rsp.make_structure_mask([structure_id], direct_only=False)
-        FK_session_id = 0
+        if type(structure_id) == list:
+            sid = structure_id
+        else:
+            sid = [structure_id]
+        structure_mask = rsp.make_structure_mask(sid, direct_only=False)
         FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
+        FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
+                                                                                FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
         if abbreviation in singular_structures:
             x,y,z = center_of_mass(structure_mask)
             x *= 25
@@ -56,6 +61,8 @@ def load_com():
                 print(f'We should not be here abbreviation={abbreviation}')
 
         print(f'{abbreviation} {FK_brain_region_id} {x} {y} {z}')
+        com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
+        brainManager.sqlController.add_row(com)
 
 
 

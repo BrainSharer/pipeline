@@ -34,15 +34,15 @@ class AnnotationSessionController(SqlController):
         annotation_session = self.session.query(AnnotationSession).filter(AnnotationSession.active==True)\
             .filter(AnnotationSession.annotation_type==AnnotationType.STRUCTURE_COM)\
             .filter(AnnotationSession.FK_prep_id==prep_id)\
-            .filter(AnnotationSession.FK_structure_id==brain_region_id)\
-            .filter(AnnotationSession.FK_annotator_id==annotator_id)\
+            .filter(AnnotationSession.FK_brain_region_id==brain_region_id)\
+            .filter(AnnotationSession.FK_user_id==annotator_id)\
             .order_by(AnnotationSession.created.desc()).first()
 
         if annotation_session is None:
             annotation_session = AnnotationSession(
                 FK_prep_id=prep_id,
-                FK_annotator_id=annotator_id,
-                FK_structure_id=brain_region_id,
+                FK_user_id=annotator_id,
+                FK_brain_region_id_id=brain_region_id,
                 annotation_type=AnnotationType.STRUCTURE_COM,
                 active=True,
                 created=datetime.datetime.now())

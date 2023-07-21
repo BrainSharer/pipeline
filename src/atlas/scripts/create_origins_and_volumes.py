@@ -30,9 +30,8 @@ def volume_origin_creation(debug=False):
         annotator_id = animal_user[1]
         if 'test' in animal or 'Atlas' in animal:
             continue
-        if animal not in ['MD585', 'MD589', 'MD594']:
+        if animal not in ['MD585', 'MD589','MD594']:
             continue
-        print(animal_user)
         brainManager = BrainStructureManager(animal, debug)
         brainManager.annotator_id = annotator_id
         brainManager.fixed_brain = BrainStructureManager('Allen', debug)
