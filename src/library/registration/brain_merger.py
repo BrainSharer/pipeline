@@ -122,13 +122,13 @@ class BrainMerger():
 
         for abbreviation in self.coms.keys():
             point = self.coms[abbreviation]
-            origin = self.origins[abbreviation]
+            #origin = self.origins[abbreviation]
             FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
             FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
                                                                                     FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
             x,y,z = (p*25 for p in point)
-            minx, miny, minz = (p for p in origin)
-            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id, minx=minx, miny=miny, minz=minz)
+            #minx, miny, minz = (p for p in origin)
+            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
             brainManager.sqlController.add_row(com)
 
 
