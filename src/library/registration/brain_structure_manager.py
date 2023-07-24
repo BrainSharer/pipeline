@@ -192,6 +192,14 @@ class BrainStructureManager():
             print(ids, counts)
 
 
+    def inactivate_coms(self, animal):
+        structureController = StructureCOMController(animal)
+        sessions = structureController.get_active_animal_sessions(animal)
+        for sc_session in sessions:
+            sc_session.active=False
+            structureController.update_row(sc_session)
+
+
     def update_com(self, com, structure_id):
         source = "MANUAL"
         controller = AnnotationSessionController(self.animal)

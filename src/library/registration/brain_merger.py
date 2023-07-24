@@ -116,15 +116,13 @@ class BrainMerger():
         animal = 'Atlas'
         brainManager = BrainStructureManager(animal)
         source = 'MANUAL'
+        brainManager.inactivate_coms(animal)
         structureController = StructureCOMController(animal)
         annotationSessionController = AnnotationSessionController(animal)
-        sc_sessions = structureController.get_active_animal_sessions(animal)
-        for sc_session in sc_sessions:
-            sc_session.active=False
-            structureController.update_row(sc_session)
 
-        for abbreviation in self.coms.keys():
-            point = self.coms[abbreviation]
+
+        for abbreviation in coms.keys():
+            point = coms[abbreviation]
             origin = self.origins[abbreviation]
             FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
             FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
