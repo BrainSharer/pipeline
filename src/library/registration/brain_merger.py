@@ -120,9 +120,8 @@ class BrainMerger():
         structureController = StructureCOMController(animal)
         annotationSessionController = AnnotationSessionController(animal)
 
-
-        for abbreviation in coms.keys():
-            point = coms[abbreviation]
+        for abbreviation in self.coms.keys():
+            point = self.coms[abbreviation]
             origin = self.origins[abbreviation]
             FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
             FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
