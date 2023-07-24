@@ -24,6 +24,7 @@ class AnnotationSession(Base):
     annotator = relationship('User', lazy=True)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
+    updated = Column(DateTime)
 
 class CellSources(enum.Enum):
     NULL = 'NULL'
@@ -53,6 +54,9 @@ class StructureCOM(Base):
     x = Column(Float, nullable=False)
     y = Column(Float, nullable=False)
     z = Column(Float, nullable=False)
+    minx = Column(Float, nullable=False)
+    miny = Column(Float, nullable=False)
+    minz = Column(Float, nullable=False)
     source = Column(Enum(COMSources))    
     FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
     session = relationship('AnnotationSession', lazy=True)

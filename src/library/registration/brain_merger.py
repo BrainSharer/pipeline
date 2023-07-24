@@ -5,6 +5,7 @@ to the image brain. It first aligns the point brain data to the atlas, then that
 to the image brain. It prints out the data by default and also will insert
 into the database if given a layer name.
 """
+import math
 import os
 import numpy as np
 from collections import defaultdict
@@ -12,7 +13,7 @@ from skimage.filters import gaussian
 from scipy.ndimage import center_of_mass
 
 from library.image_manipulation.filelocation_manager import data_path
-from library.utilities.algorithm import brain_to_atlas_transform, umeyama
+from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
 from library.registration.brain_structure_manager import BrainStructureManager
@@ -34,10 +35,18 @@ class BrainMerger():
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
         self.volumes = {}
+        self.coms = {}
+        self.origins = {}
         self.com_path = os.path.join(self.data_path, 'com')
         self.margin = 50
         self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
+
+        os.makedirs(self.origin_path, exist_ok=True)
+        os.makedirs(self.volume_path, exist_ok=True)
+        os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.com_path, exist_ok=True)
+
 
     def pad_volume(self, size, volume):
         size_difference = size - volume.shape
@@ -73,36 +82,29 @@ class BrainMerger():
     def save_atlas_origins_and_volumes_and_meshes(self):
         """Saves everything to disk
         """
-        os.makedirs(self.origin_path, exist_ok=True)
-        os.makedirs(self.volume_path, exist_ok=True)
-        os.makedirs(self.mesh_path, exist_ok=True)
-        os.makedirs(self.com_path, exist_ok=True)
 
-        average_origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
         coms = {structure: np.mean(com, axis=0) for structure, com in self.coms_to_merge.items()}
-        origins = self.transform_origins(average_origins)
-
+        #origins = self.transform_origins(origins)
 
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
+            origin = origins[structure]
             com = coms[structure]
-            x, y, z = origins[structure]
-            origin_array = np.array(list(origins.values()))
-            centered_origin = (x, y, z) - origin_array.mean(0)
-            aligned_structure = volume_to_polygon(
-                volume=volume, origin=centered_origin, times_to_simplify=3)
-            origin_filepath = os.path.join(
-                self.origin_path, f'{structure}.txt')
-            volume_filepath = os.path.join(
-                self.volume_path, f'{structure}.npy')
+            # stuff self.coms and self.origins to save to DB later.
+            self.coms[structure] = com
+            self.origins[structure] = origin
+            # mesh needs a center in the middle for all the STL files
+            origins_array = np.array(list(origins.values()))
+            mesh_origin = origin - origins_array.mean(0)
+            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
+            
+            origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
+            volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
-            com_filepath = os.path.join(
-                self.com_path, f'{structure}.txt')
-            if 'SC' in structure:
-                print(origin_filepath)
-                print(volume_filepath)
-                print(mesh_filepath)
-            np.savetxt(origin_filepath, (x, y, z))
+            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
+
+            np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
             save_mesh(aligned_structure, mesh_filepath)
             np.savetxt(com_filepath, com)
@@ -121,22 +123,21 @@ class BrainMerger():
             sc_session.active=False
             structureController.update_row(sc_session)
 
-        coms = {structure: np.mean(com, axis=0) for structure, com in self.coms_to_merge.items()}
-
-
-        for abbreviation in coms.keys():
-            points = coms[abbreviation]
+        for abbreviation in self.coms.keys():
+            point = self.coms[abbreviation]
+            origin = self.origins[abbreviation]
             FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
             FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
                                                                                     FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
-            x,y,z = (p*25 for p in points)
-            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
+            x,y,z = (p*25 for p in point)
+            minx, miny, minz = (p for p in origin)
+            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id, minx=minx, miny=miny, minz=minz)
             brainManager.sqlController.add_row(com)
-
 
 
     def calculate_distance(self, com1, com2):
         return (np.linalg.norm(com1 - com2))
+
 
     def transform_origins(self, moving_origins):
         """moving origins VS fixed COMs
@@ -149,6 +150,7 @@ class BrainMerger():
         common_keys = fixed_coms.keys() & moving_origins.keys()
         brain_regions = sorted(moving_origins.keys())
 
+        """
         #fixed_points_list = []
         fixed_volume_list = []
         fixed_volume_dict = {}
@@ -162,12 +164,10 @@ class BrainMerger():
                     ids, counts = np.unique(v, return_counts=True)
                     print(ids, counts)
                     volume_com = np.array([0,0,0])
-                fixed_volume_list.append(volume_com)
                 fixed_volume_dict[structure] = volume_com
-
-        fixed_volume_arr = np.array(fixed_volume_list)
+        """
         
-        fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys]) / 25 - fixed_volume_arr
+        fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys]) / 25
         moving_points = np.array([moving_origins[s] for s in brain_regions if s in common_keys])
         fixed_point_dict = {s:fixed_coms[s] for s in brain_regions if s in common_keys}
         moving_point_dict = {s:moving_origins[s] for s in brain_regions if s in common_keys}
@@ -186,9 +186,6 @@ class BrainMerger():
         distances = []
         for structure in common_keys:
             (x,y,z) = fixed_point_dict[structure]
-            x = (x/25 - fixed_volume_dict[structure][0])
-            y = (x/25 - fixed_volume_dict[structure][1])
-            z = (x/25 - fixed_volume_dict[structure][2])
             fixed_point = np.array([x,y,z])    
             moving_point = np.array(moving_point_dict[structure])
             reg_point = brain_to_atlas_transform(moving_point, R, t)
@@ -199,3 +196,70 @@ class BrainMerger():
         print(f'length={len(distances)} mean={round(np.mean(distances))} min={round(min(distances))} max={round(max(distances))}')
 
         return transformed_origins
+
+    def evaluate(self):
+        animal = 'Atlas'
+        brain = BrainStructureManager(animal)
+        brain.fixed_brain = BrainStructureManager('Allen')
+        atlas_coms = brain.get_coms(annotator_id=1)
+        allen_coms = brain.fixed_brain.get_coms(annotator_id=1)
+        common_keys = allen_coms.keys() & atlas_coms.keys()
+        brain_regions = sorted(atlas_coms.keys())
+        allen_point_dict = {s:allen_coms[s] for s in brain_regions if s in common_keys}
+        atlas_point_dict = {s:atlas_coms[s] for s in brain_regions if s in common_keys}
+
+        distances = []
+        for structure in common_keys:
+            (x,y,z) = allen_point_dict[structure]
+            allen_point = np.array([x,y,z])    
+            atlas_point = np.array(atlas_point_dict[structure])
+            #print(atlas_point, allen_point)
+            d = self.calculate_distance(allen_point, atlas_point)
+            distances.append(d)
+            atlas_point = np.round(atlas_point/25)
+            print(f'{structure} distance from Allen={round(d,2)} micrometers')
+        print(f'n={len(distances)}, min={min(distances)} max={max(distances)}, mean={np.mean(distances)}')
+
+    def fetch_allen_origins(self):
+        structures = {
+            '3N_L': (354.00, 147.00, 216.00),
+            '3N_R': (354.00, 147.00, 444.00),
+            '4N_L': (381.00, 147.00, 214.00),
+            '4N_R': (381.00, 147.00, 442.00),
+            '5N_L': (393.00, 195.00, 153.00),
+            '5N_R': (393.00, 195.00, 381.00),
+            '6N_L': (425.00, 204.00, 204.00),
+            '6N_R': (425.00, 204.00, 432.00),
+            '7N_L': (415.00, 256.00, 153.00),
+            '7N_R': (415.00, 256.00, 381.00),
+            '7n_L': (407.00, 199.00, 157.00),
+            '7n_R': (407.00, 199.00, 385.00),
+            'AP': (495.00, 193.00, 217.00),
+            'Amb_L': (454.00, 258.00, 167.00),
+            'Amb_R': (454.00, 258.00, 395.00),
+            'DC_L': (424.00, 177.00, 114.00),
+            'DC_R': (424.00, 177.00, 342.00),
+            'IC': (369.00, 44.00, 141.00),
+            'LC_L': (424.00, 161.00, 185.00),
+            'LC_R': (424.00, 161.00, 413.00),
+            'LRt_L': (464.00, 262.00, 150.00),
+            'LRt_R': (464.00, 262.00, 378.00),
+            'PBG_L': (365.00, 141.00, 138.00),
+            'PBG_R': (365.00, 141.00, 366.00),
+            'Pn_L': (342.00, 139.00, 119.00),
+            'Pn_R': (342.00, 139.00, 347.00),
+            'RtTg': (353.00, 185.00, 161.00),
+            'SC': (329.00, 41.00, 161.00),
+            'SNC_L': (313.00, 182.00, 148.00),
+            'SNC_R': (313.00, 182.00, 376.00),
+            'SNR_L': (310.00, 175.00, 137.00),
+            'SNR_R': (310.00, 175.00, 365.00),
+            'Sp5C_L': (495.00, 202.00, 136.00),
+            'Sp5I_L': (465.00, 202.00, 127.00),
+            'Sp5I_R': (465.00, 202.00, 355.00),
+            'Sp5O_L': (426.00, 207.00, 137.00),
+            'Sp5O_R': (426.00, 207.00, 365.00),
+            'VLL_L': (361.00, 149.00, 137.00),
+            'VLL_R': (361.00, 149.00, 365.00),
+        }
+        return structures

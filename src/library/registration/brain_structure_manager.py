@@ -5,13 +5,13 @@ import cv2
 import json
 from scipy.ndimage import center_of_mass
 
+
 from library.controller.polygon_sequence_controller import PolygonSequenceController
-from library.registration.utilities_registration import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
-from library.utilities.algorithm import brain_to_atlas_transform, umeyama
-from library.utilities.atlas import volume_to_polygon, save_mesh
+from library.registration.algorithm import brain_to_atlas_transform, umeyama
+from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
 from library.registration.volume_registration import VolumeRegistration
 from library.controller.annotation_session_controller import AnnotationSessionController
 
@@ -24,19 +24,32 @@ class BrainStructureManager():
         self.animal = animal
         self.fixed_brain = None
         self.sqlController = SqlController(animal)
-        self.fileLocationManager = FileLocationManager(animal)
+        self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, 'atlas_data')
-        self.volume_path = os.path.join(self.data_path, animal, 'structure')
-        self.origin_path = os.path.join(self.data_path, animal, 'origin')
-        self.mesh_path = os.path.join(self.data_path, animal, 'mesh')
-        self.com_path = os.path.join(self.data_path, animal, 'com')
+        self.volume_path = os.path.join(self.data_path, self.animal, 'structure')
+        self.origin_path = os.path.join(self.data_path, self.animal, 'origin')
+        self.mesh_path = os.path.join(self.data_path, self.animal, 'mesh')
+        self.com_path = os.path.join(self.data_path, self.animal, 'com')
         self.point_path = os.path.join(self.fileLocationManager.prep, 'points')
         self.aligned_contours = {}
         self.annotator_id = 2
-        self.volumeRegistration = VolumeRegistration(animal=animal)
+        self.volumeRegistration = VolumeRegistration(animal=self.animal)
         self.debug = debug
+        #self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
+        #self.midbrain_keys = {'IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R'}
+        self.midbrain_keys = allen_structures.keys()
+        self.allen_um = 25 # size in um of allen atlas
+        
+        self.com = None
+        self.origin = None
+        self.volume = None
+        self.abbreviation = None
 
+        os.makedirs(self.com_path, exist_ok=True)
+        os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.point_path, exist_ok=True)
+        os.makedirs(self.volume_path, exist_ok=True)
 
 
     def load_aligned_contours(self):
@@ -68,12 +81,14 @@ class BrainStructureManager():
 
         moving_coms = brain.get_coms()
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.annotator_id)
-        midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
-        common_keys = fixed_coms.keys() & moving_coms.keys() & midbrain_keys
+        common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
         brain_regions = sorted(moving_coms.keys())
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
         moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
+
+        fixed_points /= 25
+        moving_points /= 25
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
             print(brain.animal, fixed_points.shape, moving_points.shape, common_keys)
@@ -87,7 +102,6 @@ class BrainStructureManager():
         """Gets the origin and section size
         Set the pad to make sure we get all the volume
         """
-        pad = 0
         section_mins = []
         section_maxs = []
         for _, contour_points in structure_contours.items():
@@ -98,9 +112,6 @@ class BrainStructureManager():
         min_x, min_y = np.min(section_mins, axis=0)
         max_x, max_y = np.max(section_maxs, axis=0)
 
-        max_x += pad
-        max_y += pad
-
         xspan = max_x - min_x
         yspan = max_y - min_y
         origin = np.array([min_x, min_y, min_z])
@@ -109,24 +120,29 @@ class BrainStructureManager():
 
 
     def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, annotator_id):
-        animal = brainManager.animal
-        polygon = PolygonSequenceController(animal=animal)
-        controller = StructureCOMController(animal)
+        self.animal = brainManager.animal
+        polygon = PolygonSequenceController(animal=self.animal)
+        controller = StructureCOMController(self.animal)
         structures = controller.get_structures()
         # get transformation at um 
-        allen_um = 25
         
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
         
+        # loop through structure objects
         for structure in structures:
-            df = polygon.get_volume(animal, annotator_id, structure.id)
+            structure.abbreviation
+            if structure.abbreviation not in self.midbrain_keys:
+                continue
+
+            if structure.abbreviation in ['Pn_L', 'Pn_R']:
+                continue
+
+            df = polygon.get_volume(self.animal, annotator_id, structure.id)
             if df.empty:
                 continue;
 
-            #if structure.id not in (666,33):
-            #    continue
             #####TRANSFORMIX points = []
             polygons = defaultdict(list)
 
@@ -135,22 +151,19 @@ class BrainStructureManager():
                 y = row['coordinate'][1] 
                 z = row['coordinate'][2]
                 # transform points to fixed brain um with rigid transform
-                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
 
                 # scale transformed points to 25um
-                x /= allen_um
-                y /= allen_um
-                z /= allen_um
+                x /= self.allen_um
+                y /= self.allen_um
+                z /= self.allen_um
+                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
                 #####TRANSFORMIX points.append((x,y,z))
                 xy = (x, y)
                 section = int(np.round(z))
                 polygons[section].append(xy)
 
-            #####TRANSFORMIX transformed_polygons = self.transformix_points(points)
-
             color = 1 # on/off
             origin, section_size = self.get_origin_and_section_size(polygons)
-
             volume = []
             for _, contour_points in polygons.items():
                 vertices = np.array(contour_points)
@@ -163,19 +176,21 @@ class BrainStructureManager():
                 volume.append(volume_slice)
             volume = np.array(volume).astype(np.bool8)
             volume = np.swapaxes(volume,0,2)
-            com = center_of_mass(volume)
-            com += origin
-            #self.update_com(com, structure.id)
+            # set structure object values
+            self.abbreviation = structure.abbreviation
+            self.origin = origin
+            self.volume = volume
+            # Add origin and com
+            self.com = np.array(self.get_center_of_mass()) + np.array(self.origin)
+            brainMerger.volumes_to_merge[structure.abbreviation].append(self.volume)
+            brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
+            brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
+            # debug info
             ids, counts = np.unique(volume, return_counts=True)
-            print(annotator_id, animal, structure.abbreviation, origin, section_size, end="\t")
+            print(annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
             print(volume.dtype, volume.shape, end="\t")
             print(ids, counts)
-            if self.debug:
-                continue
-            brainMerger.volumes_to_merge[structure.abbreviation].append(volume)
-            brainMerger.origins_to_merge[structure.abbreviation].append(origin)
-            brainMerger.coms_to_merge[structure.abbreviation].append(com)
-            self.save_brain_origins_and_volumes_and_meshes(structure.abbreviation, origin, volume, com)
+
 
     def update_com(self, com, structure_id):
         source = "MANUAL"
@@ -187,26 +202,21 @@ class BrainStructureManager():
         entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
         controller.upsert_structure_com(entry)
 
-    def save_brain_origins_and_volumes_and_meshes(self, structure ,origin, volume, com):
-        """Saves everything to disk
+    def save_brain_origins_and_volumes_and_meshes(self):
+        """Saves everything to disk, Except for the mesh, no calculations, only saving!
         """
-        os.makedirs(self.origin_path, exist_ok=True)
-        os.makedirs(self.volume_path, exist_ok=True)
-        os.makedirs(self.mesh_path, exist_ok=True)
-        os.makedirs(self.com_path, exist_ok=True)
 
-        aligned_structure = volume_to_polygon(
-            volume=volume, origin=origin, times_to_simplify=3)
-        origin_filepath = os.path.join(
-            self.origin_path, f'{structure}.txt')
-        volume_filepath = os.path.join(
-            self.volume_path, f'{structure}.npy')
-        mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
-        com_filepath = os.path.join(self.com_path, f'{structure}.txt')
-        np.savetxt(origin_filepath, origin)
-        np.save(volume_filepath, volume)
+        aligned_structure = volume_to_polygon(volume=self.volume, origin=self.origin, times_to_simplify=3)
+
+        origin_filepath = os.path.join(self.origin_path, f'{self.abbreviation}.txt')
+        volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
+        mesh_filepath = os.path.join(self.mesh_path, f'{self.abbreviation}.stl')
+        com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
+        
+        np.savetxt(origin_filepath, self.origin)
+        np.save(volume_filepath, self.volume)
         save_mesh(aligned_structure, mesh_filepath)
-        np.savetxt(com_filepath, com)
+        np.savetxt(com_filepath, self.com)
         
 
     def transformix_points(self, points):
@@ -250,3 +260,14 @@ class BrainStructureManager():
             polygons[section].append(xy)
 
         return polygons
+
+
+    def get_center_of_mass(self):
+        com = center_of_mass(self.volume)
+        sum_ = np.isnan(np.sum(com))
+        if sum_:
+            print(f'{self.animal} {self.abbreviation} has no COM {self.volume.shape} {self.volume.dtype} min={np.min(self.volume)} max={np.max(self.volume)}')
+            ids, counts = np.unique(self.volume, return_counts=True)
+            print(ids, counts)
+            com = np.array([0,0,0])
+        return com

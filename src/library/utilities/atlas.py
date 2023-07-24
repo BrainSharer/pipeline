@@ -102,6 +102,17 @@ def find_merged_bounding_box(bounding_box=None):
     bbox = xmin, xmax, ymin, ymax, zmin, zmax
     return bbox
 
+def bbox(img):
+    r = np.any(img, axis=(1, 2))
+    c = np.any(img, axis=(0, 2))
+    z = np.any(img, axis=(0, 1))
+
+    rmin, rmax = np.where(r)[0][[0, -1]]
+    cmin, cmax = np.where(c)[0][[0, -1]]
+    zmin, zmax = np.where(z)[0][[0, -1]]
+    #return img[rmin:rmax, cmin:cmax, zmin:zmax]
+    return rmin, cmin, zmin
+
 def crop_and_pad_volume(volumes, bounding_box, merged_bounding_box):
     """
     Crop and pad an volume.
@@ -220,9 +231,11 @@ def simplify_polydata(polydata, num_simplify_iter=0, smooth=False):
 
     return polydata
 
+#    'Pn_L': 771,
+#    'Pn_R': 771,
 
 allen_structures = {
-    'SC': [294,302],
+    'SC': [302],
     'IC': [4,811,820,828],
     'AP': 207,
     'RtTg': 146,
@@ -236,8 +249,6 @@ allen_structures = {
     '4N_R': 115,
     'SNC_L': 374,
     'SNC_R': 374,
-    'Pn_L': 771,
-    'Pn_R': 771,
     'VLL_L': 612,
     'VLL_R': 612,
     '5N_L': 621,

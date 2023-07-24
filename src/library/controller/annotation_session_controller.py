@@ -50,7 +50,10 @@ class AnnotationSessionController(SqlController):
             self.session.add(annotation_session)
             self.session.commit()
             self.session.refresh(annotation_session)
-            
+        else:
+            annotation_session.updated=datetime.datetime.now()
+            self.session.refresh(annotation_session)
+
         return annotation_session
 
     def upsert_structure_com(self, entry):
@@ -58,6 +61,8 @@ class AnnotationSessionController(SqlController):
         it does insert otherwise it updates.
         """
         FK_session_id = entry['FK_session_id']
+        annotation_session = self.session.query(AnnotationSession).get(FK_session_id)
+        annotation_session.updated = datetime.datetime.now()
         structure_com = self.session.query(StructureCOM).filter(StructureCOM.FK_session_id==FK_session_id).first()
         if structure_com is None:
             data = StructureCOM(

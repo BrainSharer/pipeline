@@ -10,6 +10,8 @@ from library.registration.brain_merger import BrainMerger
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.structure_com_controller import StructureCOMController
 
+
+
 def volume_origin_creation(debug=False):
     structureController = StructureCOMController('MD589')
     polygonController = PolygonSequenceController('MD589')
@@ -24,28 +26,24 @@ def volume_origin_creation(debug=False):
     
     animal_users = list(animal_users)
     brainMerger = BrainMerger(debug)
-    #animal_users = [['MD585',3]]
+    animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
     for animal_user in sorted(animal_users):
         animal = animal_user[0]
         annotator_id = animal_user[1]
         if 'test' in animal or 'Atlas' in animal:
-            continue
-        if animal not in ['MD585', 'MD589','MD594']:
             continue
         brainManager = BrainStructureManager(animal, debug)
         brainManager.annotator_id = annotator_id
         brainManager.fixed_brain = BrainStructureManager('Allen', debug)
         brainManager.fixed_brain.annotator_id = 1
         brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, annotator_id=annotator_id)
-    
+        brainManager.save_brain_origins_and_volumes_and_meshes()
+
     if debug:
         return
     
     for structure in brainMerger.volumes_to_merge:
         volumes = brainMerger.volumes_to_merge[structure]
-        origins = brainMerger.volumes_to_merge[structure]
-        print(f'{structure} has {len(volumes)} volumes and {len(origins)} origins.')
-        
         volume = brainMerger.get_merged_landmark_probability(structure, volumes)
         brainMerger.volumes[structure]= volume
 
@@ -53,6 +51,8 @@ def volume_origin_creation(debug=False):
         print('Finished filling up volumes and origins')
         brainMerger.save_atlas_origins_and_volumes_and_meshes()
         brainMerger.save_coms_to_db()
+        brainMerger.evaluate()
+        print('Finished saving data to disk and to DB.')
     else:
         print('No data to save')
 
