@@ -36,8 +36,8 @@ class BrainStructureManager():
         self.volumeRegistration = VolumeRegistration(animal=self.animal)
         self.debug = debug
         #self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
-        #self.midbrain_keys = {'IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R'}
-        self.midbrain_keys = allen_structures.keys()
+        self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R'}
+        #self.midbrain_keys = allen_structures.keys()
         self.allen_um = 25 # size in um of allen atlas
         
         self.com = None

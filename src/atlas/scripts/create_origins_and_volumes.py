@@ -84,7 +84,7 @@ def evaluate_registration(self):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')
     parser.add_argument('--animal', required=False, default='atlasV8')
-    parser.add_argument('--debug', required=False, default='true', type=str)
+    parser.add_argument('--debug', required=False, default='false', type=str)
     args = parser.parse_args()
     debug = bool({'true': True, 'false': False}[args.debug.lower()])    
     volume_origin_creation(debug)
