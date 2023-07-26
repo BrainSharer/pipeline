@@ -32,14 +32,15 @@ class BrainStructureManager():
         self.com_path = os.path.join(self.data_path, self.animal, 'com')
         self.point_path = os.path.join(self.fileLocationManager.prep, 'points')
         self.aligned_contours = {}
-        self.annotator_id = 2
+        self.com_annotator_id = 2
+        self.polygon_annotator_id = 0
         self.volumeRegistration = VolumeRegistration(animal=self.animal)
         self.debug = debug
         #self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
-        self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R'}
+        self.midbrain_keys = {'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         #self.midbrain_keys = allen_structures.keys()
         self.allen_um = 25 # size in um of allen atlas
-        
+
         self.com = None
         self.origin = None
         self.volume = None
@@ -62,7 +63,7 @@ class BrainStructureManager():
 
 
 
-    def get_coms(self, annotator_id=2):
+    def get_coms(self, annotator_id):
         """Get the center of mass values for this brain as an array
 
         Returns:
@@ -79,19 +80,21 @@ class BrainStructureManager():
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
 
-        moving_coms = brain.get_coms()
-        fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.annotator_id)
-        common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
+        moving_coms = brain.get_coms(brain.com_annotator_id)
+        fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
+        #common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
+        common_keys = fixed_coms.keys() & moving_coms.keys()
         brain_regions = sorted(moving_coms.keys())
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
         moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
 
-        fixed_points /= 25
-        moving_points /= 25
+        #fixed_points /= 25
+        #moving_points /= 25
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
-            print(brain.animal, fixed_points.shape, moving_points.shape, common_keys)
+            print(f'Error calculation transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
+            print(f'# fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
             return None, None
 
         R, t = umeyama(moving_points.T, fixed_points.T)
@@ -119,7 +122,7 @@ class BrainStructureManager():
         return origin, section_size
 
 
-    def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, annotator_id):
+    def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, polygon_annotator_id):
         self.animal = brainManager.animal
         polygon = PolygonSequenceController(animal=self.animal)
         controller = StructureCOMController(self.animal)
@@ -133,13 +136,14 @@ class BrainStructureManager():
         # loop through structure objects
         for structure in structures:
             structure.abbreviation
-            if structure.abbreviation not in self.midbrain_keys:
-                continue
+            #if structure.abbreviation not in self.midbrain_keys:
+            #    continue
 
+            
             if structure.abbreviation in ['Pn_L', 'Pn_R']:
                 continue
-
-            df = polygon.get_volume(self.animal, annotator_id, structure.id)
+            
+            df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
             if df.empty:
                 continue;
 
@@ -153,10 +157,10 @@ class BrainStructureManager():
                 # transform points to fixed brain um with rigid transform
 
                 # scale transformed points to 25um
+                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
                 x /= self.allen_um
                 y /= self.allen_um
                 z /= self.allen_um
-                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
                 #####TRANSFORMIX points.append((x,y,z))
                 xy = (x, y)
                 section = int(np.round(z))
@@ -187,7 +191,7 @@ class BrainStructureManager():
             brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
             # debug info
             ids, counts = np.unique(volume, return_counts=True)
-            print(annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
+            print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
             print(volume.dtype, volume.shape, end="\t")
             print(ids, counts)
 

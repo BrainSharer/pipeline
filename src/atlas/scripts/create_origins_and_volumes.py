@@ -29,14 +29,16 @@ def volume_origin_creation(debug=False):
     animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
     for animal_user in sorted(animal_users):
         animal = animal_user[0]
-        annotator_id = animal_user[1]
+        polygon_annotator_id = animal_user[1]
         if 'test' in animal or 'Atlas' in animal:
             continue
         brainManager = BrainStructureManager(animal, debug)
-        brainManager.annotator_id = annotator_id
+        brainManager.polygon_annotator_id = polygon_annotator_id
         brainManager.fixed_brain = BrainStructureManager('Allen', debug)
-        brainManager.fixed_brain.annotator_id = 1
-        brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, annotator_id=annotator_id)
+        brainManager.fixed_brain.com_annotator_id = 1
+        brainManager.com_annotator_id = 2
+        brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, 
+                                                                    polygon_annotator_id=polygon_annotator_id)
         brainManager.save_brain_origins_and_volumes_and_meshes()
 
     if debug:

@@ -195,27 +195,40 @@ class BrainMerger():
         return transformed_origins
 
     def evaluate(self):
+        annotator_id = 1 # Edward created all the COMs for the DK atlas and the Allen
         animal = 'Atlas'
-        brain = BrainStructureManager(animal)
-        brain.fixed_brain = BrainStructureManager('Allen')
-        atlas_coms = brain.get_coms(annotator_id=1)
-        allen_coms = brain.fixed_brain.get_coms(annotator_id=1)
+        brainManager = BrainStructureManager(animal)
+        brainManager.com_annotator_id = annotator_id
+        brainManager.fixed_brain = BrainStructureManager('Allen')
+        brainManager.fixed_brain.com_annotator_id = annotator_id
+
+        R, t = brainManager.get_transform_to_align_brain(brainManager)
+
+        atlas_coms = brainManager.get_coms(annotator_id=annotator_id)
+        allen_coms = brainManager.fixed_brain.get_coms(annotator_id=annotator_id)
         common_keys = allen_coms.keys() & atlas_coms.keys()
         brain_regions = sorted(atlas_coms.keys())
         allen_point_dict = {s:allen_coms[s] for s in brain_regions if s in common_keys}
         atlas_point_dict = {s:atlas_coms[s] for s in brain_regions if s in common_keys}
 
         distances = []
+        sortme = {}
         for structure in common_keys:
-            (x,y,z) = allen_point_dict[structure]
-            allen_point = np.array([x,y,z])    
-            atlas_point = np.array(atlas_point_dict[structure])
-            #print(atlas_point, allen_point)
-            d = self.calculate_distance(allen_point, atlas_point)
+            (xallen, yallen, zallen) = allen_point_dict[structure]
+            (xatlas, yatlas, zatlas) = atlas_point_dict[structure]
+            (xreg, yreg, zreg) = brain_to_atlas_transform((xatlas, yatlas, zatlas), R, t)
+            allen_point = np.array([xallen, yallen, zallen])
+            reg_point = np.array([xreg, yreg, zreg])
+            d = self.calculate_distance(allen_point, reg_point)
             distances.append(d)
-            atlas_point = np.round(atlas_point/25)
-            print(f'{structure} distance from Allen={round(d,2)} micrometers')
+            sortme[structure] = d
+
         print(f'n={len(distances)}, min={min(distances)} max={max(distances)}, mean={np.mean(distances)}')
+
+        ds = {k: v for k, v in sorted(sortme.items(), key=lambda item: item[1])}
+        for structure, d in ds.items():
+            print(f'{structure} distance from Allen={round(d,2)} micrometers')
+            
 
     def fetch_allen_origins(self):
         structures = {
