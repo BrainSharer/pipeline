@@ -127,7 +127,7 @@ class BrainStructureManager():
         controller = StructureCOMController(self.animal)
         structures = controller.get_structures()
         # get transformation at um 
-        
+        brainstem_keys = set(self.allen_structures_keys) - self.midbrain_keys         
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
@@ -136,8 +136,8 @@ class BrainStructureManager():
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            #if structure.abbreviation not in self.midbrain_keys:
-            #    continue
+            if structure.abbreviation not in brainstem_keys:
+                continue
 
             # These structures are not left or right in the Allen
             if self.abbreviation in ['Pn_L', 'Pn_R']:

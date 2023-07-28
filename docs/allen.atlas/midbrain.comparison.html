@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Brainsharer</title>
+    <base href="/">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <style>
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            margin: 20;
+            font-family: Roboto, Helvetica Neue, sans-serif
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Allen and DK Atlas midbrain registration</h2>
+
+    <div style="padding:10px;">
+    <a style="padding:10px;"  href="brainstem.comparison.html">Comparision using only the brainstem regions</a>
+    </div>
+
+    <h4>{'3N_L',
+        '3N_R',
+        '4N_L',
+        '4N_R',
+        'IC',
+        'PBG_L',
+        'PBG_R',
+        'SC',
+        'SNR_L',
+        'SNR_R'}</h4>
+
+
+    <p>n=10, min=108.21, max=179.89, mean=150.55</p>
+
+    <table>
+        <tr>
+            <th style="padding:10px;">Brain region</th>
+            <th style="padding:10px;">Distance</th>
+        </tr>
+
+        <tr>
+            <td>IC</td>
+            <td>108.21</td>
+        </tr>
+        <tr>
+            <td>PBG_R</td>
+            <td>109.86 </td>
+        </tr>
+        <tr>
+            <td>SC</td>
+            <td>126.8 </td>
+        </tr>
+        <tr>
+            <td>SNR_R</td>
+            <td>143.11 </td>
+        </tr>
+        <tr>
+            <td>4N_L</td>
+            <td>154.72 </td>
+        </tr>
+        <tr>
+            <td>3N_L</td>
+            <td>159.21 </td>
+        </tr>
+        <tr>
+            <td>3N_R</td>
+            <td>171.58 </td>
+        </tr>
+        <tr>
+            <td>4N_R</td>
+            <td>175.97 </td>
+        </tr>
+        <tr>
+            <td>PBG_L</td>
+            <td>176.24 </td>
+        </tr>
+        <tr>
+            <td>SNR_L</td>
+            <td>179.89 </td>
+        </tr>
+
+    </table>
+
+    <p>The graph belows is a scatter plot of X,Y coordinates between the Allen and DK atlas.</p>
+    <p>Note, you can't see all the Allen points as they overlap in the X,Y space. (The left and right have the same X,Y coordinates)</p>
+    <img src="https://www.brainsharer.org/images/atlas.allen.x.y.midbrain.png"></img>
+
+    <p>The graph belows is a scatter plot of X,Z coordinates between the Allen and DK atlas.</p>
+    <img src="https://www.brainsharer.org/images/atlas.allen.x.z.midbrain.png"></img>
+
+
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+# data files
+*.npy
+*.pdf
+*.tfm
+
+# Python files
+.ipynb_checkpoints/
+*.pyc
