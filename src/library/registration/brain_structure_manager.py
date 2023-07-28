@@ -36,9 +36,8 @@ class BrainStructureManager():
         self.polygon_annotator_id = 0
         self.volumeRegistration = VolumeRegistration(animal=self.animal)
         self.debug = debug
-        #self.midbrain_keys = {'SC','IC','4N_L', '3N_L', 'PBG_L', '3N_R', 'PBG_R', '4N_R', 'SNR_L', 'SNR_R', 'Pn_L', 'Pn_R'}
         self.midbrain_keys = {'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
-        #self.midbrain_keys = allen_structures.keys()
+        self.allen_structures_keys = allen_structures.keys()
         self.allen_um = 25 # size in um of allen atlas
 
         self.com = None
@@ -135,12 +134,13 @@ class BrainStructureManager():
         
         # loop through structure objects
         for structure in structures:
-            structure.abbreviation
+            self.abbreviation = structure.abbreviation
+
             #if structure.abbreviation not in self.midbrain_keys:
             #    continue
 
-            
-            if structure.abbreviation in ['Pn_L', 'Pn_R']:
+            # These structures are not left or right in the Allen
+            if self.abbreviation in ['Pn_L', 'Pn_R']:
                 continue
             
             df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
