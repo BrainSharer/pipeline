@@ -82,7 +82,7 @@ class BrainStructureManager():
         moving_coms = brain.get_coms(brain.com_annotator_id)
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
         #common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
-        common_keys = fixed_coms.keys() & moving_coms.keys()
+        common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
         brain_regions = sorted(moving_coms.keys())
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
@@ -136,7 +136,7 @@ class BrainStructureManager():
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            if structure.abbreviation not in brainstem_keys:
+            if structure.abbreviation not in self.midbrain_keys:
                 continue
 
             # These structures are not left or right in the Allen
