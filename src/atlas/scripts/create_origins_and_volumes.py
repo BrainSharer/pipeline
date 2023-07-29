@@ -23,6 +23,7 @@ def volume_origin_creation(debug=False):
     for session in pg_sessions:
         animal_users.add((session.FK_prep_id, session.FK_user_id))
 
+    midbrain = False
     
     animal_users = list(animal_users)
     brainMerger = BrainMerger(debug)
@@ -32,13 +33,13 @@ def volume_origin_creation(debug=False):
         polygon_annotator_id = animal_user[1]
         if 'test' in animal or 'Atlas' in animal:
             continue
-        brainManager = BrainStructureManager(animal, debug)
+        brainManager = BrainStructureManager(animal, midbrain, debug)
         brainManager.polygon_annotator_id = polygon_annotator_id
         brainManager.fixed_brain = BrainStructureManager('Allen', debug)
         brainManager.fixed_brain.com_annotator_id = 1
         brainManager.com_annotator_id = 2
         brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, 
-                                                                    polygon_annotator_id=polygon_annotator_id)
+                                                                    polygon_annotator_id)
         brainManager.save_brain_origins_and_volumes_and_meshes()
 
     if debug:
@@ -54,6 +55,7 @@ def volume_origin_creation(debug=False):
         brainMerger.save_atlas_origins_and_volumes_and_meshes()
         brainMerger.save_coms_to_db()
         brainMerger.evaluate()
+        brainMerger.save_brain_area_data()
         print('Finished saving data to disk and to DB.')
     else:
         print('No data to save')

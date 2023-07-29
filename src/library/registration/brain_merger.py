@@ -5,12 +5,11 @@ to the image brain. It first aligns the point brain data to the atlas, then that
 to the image brain. It prints out the data by default and also will insert
 into the database if given a layer name.
 """
-import math
 import os
 import numpy as np
 from collections import defaultdict
 from skimage.filters import gaussian
-from scipy.ndimage import center_of_mass
+import pandas as pd
 
 from library.image_manipulation.filelocation_manager import data_path
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
@@ -34,6 +33,7 @@ class BrainMerger():
         self.volume_path = os.path.join(self.data_path, 'structure')
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
+        self.csv_path = os.path.join(self.data_path, 'csv')
         self.volumes = {}
         self.coms = {}
         self.origins = {}
@@ -46,6 +46,7 @@ class BrainMerger():
         os.makedirs(self.volume_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.com_path, exist_ok=True)
+        os.makedirs(self.csv_path, exist_ok=True)
 
 
     def pad_volume(self, size, volume):
@@ -132,8 +133,18 @@ class BrainMerger():
             brainManager.sqlController.add_row(com)
 
 
+    # should be static
     def calculate_distance(self, com1, com2):
         return (np.linalg.norm(com1 - com2))
+
+    # should be static
+    def label_left_right(self, row):
+        val = 'Singular'
+        if str(row['Structure']).endswith('L'):
+            val = 'Left'
+        if str(row['Structure']).endswith('R'):
+            val = 'Right'
+        return val        
 
 
     def transform_origins(self, moving_origins):
@@ -229,6 +240,61 @@ class BrainMerger():
         for structure, d in ds.items():
             print(f'{structure} distance from Allen={round(d,2)} micrometers')
             
+
+    def save_brain_area_data(self):
+        animal = 'Atlas'
+        brain = BrainStructureManager(animal)
+        brain.fixed_brain = BrainStructureManager('Allen')
+        if brain.midbrain:
+            csvfile = "midbrain"
+            area_keys = brain.midbrain_keys
+        else:
+            csvfile = "brainstem"
+            area_keys = set(brain.allen_structures_keys) - brain.midbrain_keys 
+        moving_coms = brain.get_coms(annotator_id=1)
+        allen_coms = brain.fixed_brain.get_coms(annotator_id=1)
+        common_keys = allen_coms.keys() & moving_coms.keys() & area_keys
+        brain_regions = sorted(moving_coms.keys())
+        allen_points = np.array([allen_coms[s] for s in brain_regions if s in common_keys])
+        moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
+        allen_point_dict = {s:allen_coms[s] for s in brain_regions if s in common_keys}
+        moving_point_dict = {s:moving_coms[s] for s in brain_regions if s in common_keys}
+        assert len(moving_point_dict) > 0, 'Not enough moving points.'
+
+        R, t = umeyama(moving_points.T, allen_points.T)
+        reg_points = R @ moving_points.T + t
+        reg_point_dict = {s:reg_points.T[i] for i,s in enumerate(brain_regions) if s in common_keys}
+        distances = []
+        sortme = {}
+        for structure in common_keys:
+            (x,y,z) = allen_point_dict[structure]
+            allen_point = np.array([x,y,z])    
+            moving_point = np.array(moving_point_dict[structure])
+            reg_point = brain_to_atlas_transform(moving_point, R, t)
+            d = self.calculate_distance(allen_point, reg_point)
+            distances.append(d)
+            sortme[structure] = d
+
+        ds = {k: v for k, v in sorted(sortme.items(), key=lambda item: item[1])}
+        # 1st dataframe = distances
+        df_distance = pd.DataFrame(ds.items(), columns=['Structure', 'distance'])
+        csvfilename = os.path.join(self.csv_path, f'{csvfile}_distance.csv')
+        df_distance.to_csv(csvfilename, index = False)
+
+        # 2nd dataframe = allen
+        df_allen = pd.DataFrame(allen_point_dict.items(), columns=['Structure', 'xyz'])
+        df_allen['S'] = df_allen.apply (lambda row: self.label_left_right(row), axis=1)
+        df_allen[['X', 'Y', 'Z']] = pd.DataFrame(df_allen['xyz'].tolist(), index=df_allen.index)
+        csvfilename = os.path.join(self.csv_path, f'{csvfile}_allen.csv')
+        df_allen.to_csv(os.path.join(csvfilename), index = False)
+
+        # save 3rd dataframe = atlas
+        df_atlas = pd.DataFrame(reg_point_dict.items(), columns=['Structure', 'xyz'])
+        df_atlas['S'] = df_atlas.apply (lambda row: self.label_left_right(row), axis=1)
+        df_atlas[['X', 'Y', 'Z']] = pd.DataFrame(df_atlas['xyz'].tolist(), index=df_atlas.index)
+        csvfilename = os.path.join(self.csv_path, f'{csvfile}_atlas.csv')
+        df_atlas.to_csv(csvfilename, index = False)
+
 
     def fetch_allen_origins(self):
         structures = {

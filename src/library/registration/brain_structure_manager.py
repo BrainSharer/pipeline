@@ -19,7 +19,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 
 class BrainStructureManager():
 
-    def __init__(self, animal = 'MD589', atlas = 'atlasV8', debug=False):
+    def __init__(self, animal = 'MD589', atlas = 'atlasV8', midbrain=False, debug=False):
 
         self.animal = animal
         self.fixed_brain = None
@@ -38,6 +38,7 @@ class BrainStructureManager():
         self.debug = debug
         self.midbrain_keys = {'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
+        self.midbrain = midbrain
         self.allen_um = 25 # size in um of allen atlas
 
         self.com = None
@@ -78,11 +79,16 @@ class BrainStructureManager():
         """
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
+        
+        if self.midbrain:
+            area_keys = self.midbrain_keys
+        else:
+            area_keys = set(self.allen_structures_keys) - self.midbrain_keys 
+
 
         moving_coms = brain.get_coms(brain.com_annotator_id)
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
-        #common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
-        common_keys = fixed_coms.keys() & moving_coms.keys() & self.midbrain_keys
+        common_keys = fixed_coms.keys() & moving_coms.keys() & area_keys
         brain_regions = sorted(moving_coms.keys())
 
         fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
@@ -92,7 +98,7 @@ class BrainStructureManager():
         #moving_points /= 25
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
-            print(f'Error calculation transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
+            print(f'Error calculating transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
             print(f'# fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
             return None, None
 
@@ -127,16 +133,22 @@ class BrainStructureManager():
         controller = StructureCOMController(self.animal)
         structures = controller.get_structures()
         # get transformation at um 
-        brainstem_keys = set(self.allen_structures_keys) - self.midbrain_keys         
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
-        
+
+        if self.midbrain:
+            area_keys = self.midbrain_keys
+        else:
+            area_keys = set(self.allen_structures_keys) - self.midbrain_keys 
+
+
+
         # loop through structure objects
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            if structure.abbreviation not in self.midbrain_keys:
+            if structure.abbreviation not in area_keys:
                 continue
 
             # These structures are not left or right in the Allen
