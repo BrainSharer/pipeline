@@ -55,7 +55,7 @@ class BrainMerger():
         xl, yl, zl = size_difference - np.array([xr, yr, zr])
         return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
 
-    def get_merged_landmark_probability(self, structure, volumes):
+    def merge_volumes(self, structure, volumes):
         lvolumes = len(volumes)
         if lvolumes == 1:
             print(f'{structure} has only one volume')

@@ -47,7 +47,7 @@ def volume_origin_creation(debug=False):
     
     for structure in brainMerger.volumes_to_merge:
         volumes = brainMerger.volumes_to_merge[structure]
-        volume = brainMerger.get_merged_landmark_probability(structure, volumes)
+        volume = brainMerger.merge_volumes(structure, volumes)
         brainMerger.volumes[structure]= volume
 
     if len(brainMerger.origins_to_merge) > 0:

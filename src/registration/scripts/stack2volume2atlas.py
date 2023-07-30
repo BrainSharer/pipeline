@@ -68,7 +68,8 @@ if __name__ == '__main__':
                         'check_registration': volumeRegistration.check_registration,
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
-                        'polygons': volumeRegistration.transformix_polygons
+                        'polygons': volumeRegistration.transformix_polygons,
+                        'point_based_registration': volumeRegistration.point_based_registration
     }
 
     if task in function_mapping:

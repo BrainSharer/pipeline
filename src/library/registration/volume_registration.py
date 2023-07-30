@@ -556,6 +556,7 @@ class VolumeRegistration:
         for ffile in tqdm(files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+            farr[farr == 255] = 0
             #farr = farr[200:-200,200:-200]
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
@@ -639,3 +640,53 @@ class VolumeRegistration:
         else:
             print(f'Nothing has been run to register {self.animal} to {self.atlas} with channel {self.channel}.')
 
+
+    def point_based_registration(self):
+
+        os.makedirs(self.registered_output, exist_ok=True)
+
+
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32) 
+        elastixImageFilter = sitk.ElastixImageFilter()
+        
+        transParameterMap = sitk.GetDefaultParameterMap('translation')
+        rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
+
+        affineParameterMap = sitk.GetDefaultParameterMap('affine')
+        affineParameterMap["UseDirectionCosines"] = ["true"]
+        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
+        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        affineParameterMap["NumberOfResolutions"]= ["4"]
+        affineParameterMap["WriteResultImage"] = ["false"]
+        affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+        affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
+        affineParameterMap["Metric0Weight"] = ["0.0"]
+
+        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+
+        elastixImageFilter.SetParameterMap(transParameterMap)
+        elastixImageFilter.AddParameterMap(rigidParameterMap)
+        elastixImageFilter.AddParameterMap(affineParameterMap)
+        elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations" , "6000")
+        #elastixImageFilter.PrintParameterMap()
+
+        elastixImageFilter.SetFixedImage(fixed_image)
+        elastixImageFilter.SetMovingImage(moving_image)
+        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, 'fixed_points.pts')
+        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_moving_points.pts')
+        elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
+        elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
+        elastixImageFilter.LogToConsoleOff()
+        elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.SetOutputDirectory(self.registered_output)
+        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
+        elastixImageFilter.SetLogFileName('elastix.log')
+        resultImage = elastixImageFilter.Execute() 
+
+        img = sitk.GetArrayFromImage(resultImage)
+
+        savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_sagittal.tif')
+        io.imsave(savepath, img)
