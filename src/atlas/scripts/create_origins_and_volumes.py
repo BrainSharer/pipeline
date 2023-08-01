@@ -11,54 +11,6 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 from library.controller.structure_com_controller import StructureCOMController
 
 
-
-def volume_origin_creation(region, debug=False):
-    structureController = StructureCOMController('MD589')
-    polygonController = PolygonSequenceController('MD589')
-    sc_sessions = structureController.get_active_sessions()
-    pg_sessions = polygonController.get_available_volumes_sessions()
-    animal_users = set()
-    for session in sc_sessions:
-        animal_users.add((session.FK_prep_id, session.FK_user_id))
-    for session in pg_sessions:
-        animal_users.add((session.FK_prep_id, session.FK_user_id))
-
-    
-    animal_users = list(animal_users)
-    brainMerger = BrainMerger(debug)
-    animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
-    for animal_user in sorted(animal_users):
-        animal = animal_user[0]
-        polygon_annotator_id = animal_user[1]
-        if 'test' in animal or 'Atlas' in animal:
-            continue
-        brainManager = BrainStructureManager(animal, region, debug)
-        brainManager.polygon_annotator_id = polygon_annotator_id
-        brainManager.fixed_brain = BrainStructureManager('Allen', debug)
-        brainManager.fixed_brain.com_annotator_id = 1
-        brainManager.com_annotator_id = 2
-        brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, 
-                                                                    polygon_annotator_id)
-        brainManager.save_brain_origins_and_volumes_and_meshes()
-
-    if debug:
-        return
-    
-    for structure in brainMerger.volumes_to_merge:
-        volumes = brainMerger.volumes_to_merge[structure]
-        volume = brainMerger.merge_volumes(structure, volumes)
-        brainMerger.volumes[structure]= volume
-
-    if len(brainMerger.origins_to_merge) > 0:
-        print('Finished filling up volumes and origins')
-        brainMerger.save_atlas_origins_and_volumes_and_meshes()
-        brainMerger.save_coms_to_db()
-        brainMerger.evaluate(region)
-        brainMerger.save_brain_area_data(region)
-        print('Finished saving data to disk and to DB.')
-    else:
-        print('No data to save')
-
 """
 def evaluate_registration(self):
     mcc = MouseConnectivityCache(resolution=25)
@@ -83,6 +35,55 @@ def evaluate_registration(self):
         dice_coefficient = dice(structure_mask_padded, atlasImage)
         print(f'Structure: {structure} dice coefficient={dice_coefficient}')
 """
+# get average brain the same scale as atlas
+# put the dk atlas on the average brain
+
+def volume_origin_creation(region, debug=False):
+    structureController = StructureCOMController('MD589')
+    polygonController = PolygonSequenceController('MD589')
+    sc_sessions = structureController.get_active_sessions()
+    pg_sessions = polygonController.get_available_volumes_sessions()
+    animal_users = set()
+    for session in sc_sessions:
+        animal_users.add((session.FK_prep_id, session.FK_user_id))
+    for session in pg_sessions:
+        animal_users.add((session.FK_prep_id, session.FK_user_id))
+
+    
+    animal_users = list(animal_users)
+    brainMerger = BrainMerger(debug)
+    animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
+    for animal_user in sorted(animal_users):
+        animal = animal_user[0]
+        polygon_annotator_id = animal_user[1]
+        if 'test' in animal or 'Atlas' in animal:
+            continue
+        brainManager = BrainStructureManager(animal, region, debug)
+        brainManager.polygon_annotator_id = polygon_annotator_id
+        brainManager.fixed_brain = BrainStructureManager('MD589', debug)
+        brainManager.fixed_brain.com_annotator_id = 2
+        brainManager.com_annotator_id = 2
+        brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, 
+                                                                    polygon_annotator_id)
+        brainManager.save_brain_origins_and_volumes_and_meshes()
+
+    if debug:
+        return
+    
+    for structure in brainMerger.volumes_to_merge:
+        volumes = brainMerger.volumes_to_merge[structure]
+        volume = brainMerger.merge_volumes(structure, volumes)
+        brainMerger.volumes[structure]= volume
+
+    if len(brainMerger.origins_to_merge) > 0:
+        print('Finished filling up volumes and origins')
+        brainMerger.save_atlas_origins_and_volumes_and_meshes()
+        brainMerger.save_coms_to_db()
+        brainMerger.evaluate(region)
+        brainMerger.save_brain_area_data(region)
+        print('Finished saving data to disk and to DB.')
+    else:
+        print('No data to save')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')

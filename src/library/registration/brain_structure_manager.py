@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from collections import defaultdict
 import cv2
@@ -100,7 +101,7 @@ class BrainStructureManager():
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
             print(f'Error calculating transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
             print(f'Length fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
-            return None, None
+            sys.exit()
         print(f'In get transform and using moving shape={moving_points.shape} fixed shape={fixed_points.shape}')
         R, t = umeyama(moving_points.T, fixed_points.T)
         return R, t
