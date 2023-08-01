@@ -19,7 +19,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 
 class BrainStructureManager():
 
-    def __init__(self, animal = 'MD589', atlas = 'atlasV8', midbrain=False, debug=False):
+    def __init__(self, animal, region='all', debug=False):
 
         self.animal = animal
         self.fixed_brain = None
@@ -38,7 +38,7 @@ class BrainStructureManager():
         self.debug = debug
         self.midbrain_keys = {'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
-        self.midbrain = midbrain
+        self.region = region
         self.allen_um = 25 # size in um of allen atlas
 
         self.com = None
@@ -80,28 +80,28 @@ class BrainStructureManager():
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
         
-        if self.midbrain:
+        if 'midbrain' in brain.region:
             area_keys = self.midbrain_keys
+        elif 'brainstem' in brain.region:
+            area_keys = set(self.allen_structures_keys) - set(self.midbrain_keys)
         else:
-            area_keys = set(self.allen_structures_keys) - self.midbrain_keys 
+            area_keys = self.allen_structures_keys
 
 
         moving_coms = brain.get_coms(brain.com_annotator_id)
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
-        common_keys = fixed_coms.keys() & moving_coms.keys() & area_keys
-        brain_regions = sorted(moving_coms.keys())
-
-        fixed_points = np.array([fixed_coms[s] for s in brain_regions if s in common_keys])
-        moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
+        common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & area_keys)
+        fixed_points = np.array([fixed_coms[s] for s in common_keys])
+        moving_points = np.array([moving_coms[s] for s in common_keys])
 
         #fixed_points /= 25
         #moving_points /= 25
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
             print(f'Error calculating transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
-            print(f'# fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
+            print(f'Length fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
             return None, None
-
+        print(f'In get transform and using moving shape={moving_points.shape} fixed shape={fixed_points.shape}')
         R, t = umeyama(moving_points.T, fixed_points.T)
         return R, t
 
@@ -136,30 +136,20 @@ class BrainStructureManager():
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
-
-        if self.midbrain:
-            area_keys = self.midbrain_keys
-        else:
-            area_keys = set(self.allen_structures_keys) - self.midbrain_keys 
-
-
-
+        
+        
         # loop through structure objects
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            if structure.abbreviation not in area_keys:
-                continue
-
-            # These structures are not left or right in the Allen
-            if self.abbreviation in ['Pn_L', 'Pn_R']:
+            if structure.abbreviation not in self.allen_structures_keys:
                 continue
             
             df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
             if df.empty:
                 continue;
 
-            #####TRANSFORMIX points = []
+            #####TRANSFORMED point dictionary
             polygons = defaultdict(list)
 
             for _, row in df.iterrows():
@@ -167,13 +157,11 @@ class BrainStructureManager():
                 y = row['coordinate'][1] 
                 z = row['coordinate'][2]
                 # transform points to fixed brain um with rigid transform
-
-                # scale transformed points to 25um
                 x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+                # scale transformed points to 25um
                 x /= self.allen_um
                 y /= self.allen_um
                 z /= self.allen_um
-                #####TRANSFORMIX points.append((x,y,z))
                 xy = (x, y)
                 section = int(np.round(z))
                 polygons[section].append(xy)
@@ -202,10 +190,10 @@ class BrainStructureManager():
             brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
             # debug info
-            ids, counts = np.unique(volume, return_counts=True)
-            print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
-            print(volume.dtype, volume.shape, end="\t")
-            print(ids, counts)
+            #ids, counts = np.unique(volume, return_counts=True)
+            #print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
+            #print(volume.dtype, volume.shape, end="\t")
+            #print(ids, counts)
 
 
     def inactivate_coms(self, animal):

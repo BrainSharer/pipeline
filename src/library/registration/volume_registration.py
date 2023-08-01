@@ -29,6 +29,7 @@ import os
 import sys
 import numpy as np
 from skimage import io
+from skimage.exposure import rescale_intensity
 from tqdm import tqdm
 import SimpleITK as sitk
 from taskqueue import LocalTaskQueue
@@ -36,30 +37,15 @@ import igneous.task_creation as tc
 import pandas as pd
 import cv2
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
-from scipy.interpolate import splprep, splev
 
 
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager, data_path
-from library.utilities.utilities_mask import normalize16, normalize8
+from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
 from library.utilities.utilities_process import read_image
 from library.controller.annotation_session_controller import AnnotationSessionController
-
-
-def interpolate(points, new_len):
-    pu = points.astype(int)
-    indexes = np.unique(pu, axis=0, return_index=True)[1]
-    points = np.array([points[index] for index in sorted(indexes)])
-    addme = points[0].reshape(1,2)
-    points = np.concatenate((points,addme), axis=0)
-
-    tck, u = splprep(points.T, u=None, s=3, per=1)
-    u_new = np.linspace(u.min(), u.max(), new_len)
-    x_array, y_array = splev(u_new, tck, der=0)
-    return np.concatenate([x_array[:,None],y_array[:,None]], axis=1)
-
 
 
 def sort_from_center(polygon:list) -> list:
@@ -78,14 +64,6 @@ def sort_from_center(polygon:list) -> list:
     sorted_coords = coords[np.argsort(angles)]
     return list(map(tuple, sorted_coords))
 
-
-def compute_dice_coefficient(source_image: sitk.Image, target_image: sitk.Image) -> float:
-    """Compute the dice coefficient to compare volume overlap between two label regions"""
-    dice_filter = sitk.LabelOverlapMeasuresImageFilter[type(source_image)].New()
-    dice_filter.SetInput(source_image)
-    dice_filter.SetTargetImage(target_image)
-    dice_filter.Update()
-    return dice_filter.GetDiceCoefficient()
 
 def dice(im1, im2):
     """
@@ -122,19 +100,19 @@ class VolumeRegistration:
     """This class takes a downsampled image stack and registers it to the Allen volume    
     """
 
-    def __init__(self, animal, channel=1, um=25, atlas='allen', orientation='sagittal', debug=False):
+    def __init__(self, animal, channel=1, um=25, fixed='allen', orientation='sagittal', debug=False):
         self.animal = animal
         self.debug = debug
-        self.atlas = atlas
+        self.fixed = fixed
         self.um = um
         self.mask_color = 254
         self.channel = f'CH{channel}'
-        self.output_dir = f'{self.atlas}{um}um'
+        self.output_dir = f'{self.fixed}{um}um'
         self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
         self.fileLocationManager = FileLocationManager(animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.fileLocationManager.prep, self.channel, 'moving_volume.tif')
-        self.fixed_volume_path = os.path.join(self.fileLocationManager.registration_info, f'{atlas}_{um}um_{orientation}.tif')
+        self.fixed_volume_path = os.path.join(self.fileLocationManager.registration_info, f'{fixed}_{um}um_{orientation}.tif')
         self.elastix_output = os.path.join(self.fileLocationManager.prep, 'elastix_output', self.output_dir)
         self.reverse_elastix_output = os.path.join(self.fileLocationManager.prep, 'reverse_elastix_output', self.output_dir)
         self.registered_output = os.path.join(self.fileLocationManager.prep, self.channel,  'registered', self.output_dir)
@@ -142,8 +120,8 @@ class VolumeRegistration:
         self.unregistered_pickle_file = os.path.join(self.fileLocationManager.prep, 'points.pkl')
         self.unregistered_point_file = os.path.join(self.fileLocationManager.prep, 'points.pts')
         self.init_transformpath = os.path.join(self.elastix_output, 'init_transform.tfm')
-        self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.atlas}{um}um')
-        self.atlas_path = os.path.join(data_path, 'brains_info', 'registration')
+        self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
+        self.fixed_path = os.path.join(data_path, 'brains_info', 'registration')
         self.number_of_sampling_attempts = "10"
         if self.debug:
             iterations = "35"
@@ -545,18 +523,32 @@ class VolumeRegistration:
         volume_size = (rows, columns, len(files))
         return files, volume_size, midfile.dtype
 
+
     def create_volume(self):
         """Create a 3D volume of the image stack
         """
-        
+        #from skimage.filters import gaussian        
+        from skimage.exposure import rescale_intensity
         files, volume_size, dtype = self.get_file_information()
         image_stack = np.zeros(volume_size)
-        
         file_list = []
+        clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
         for ffile in tqdm(files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+            #blur = cv2.GaussianBlur(farr, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
+            #farr = rescale_intensity(blur, in_range=(127.5,255), out_range=(0,255))
+            #farr = normalize8(farr)
+            #print(farr.dtype)
+            #farr = clahe.apply(farr)
             farr[farr == 255] = 0
+            farr = smooth_image(farr)
+
+
+            #blur = cv2.blur(farr,(9,9))
+            #blur2 = cv2.GaussianBlur(farr,(3,3),0)
+            #farr = cv2.equalizeHist(cv2.absdiff(blur2,blur))
+            #farr = cv2.GaussianBlur(farr,(3,3),0)
             #farr = farr[200:-200,200:-200]
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
@@ -638,13 +630,12 @@ class VolumeRegistration:
             print("These are the processes that have run:")
             print("\n".join(status))
         else:
-            print(f'Nothing has been run to register {self.animal} to {self.atlas} with channel {self.channel}.')
+            print(f'Nothing has been run to register {self.animal} to {self.fixed} with channel {self.channel}.')
 
 
     def point_based_registration(self):
 
         os.makedirs(self.registered_output, exist_ok=True)
-
 
         fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
         moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32) 
@@ -675,8 +666,8 @@ class VolumeRegistration:
 
         elastixImageFilter.SetFixedImage(fixed_image)
         elastixImageFilter.SetMovingImage(moving_image)
-        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, 'fixed_points.pts')
-        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_moving_points.pts')
+        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.fixed}_points.pts')
+        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
         elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
         elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
         elastixImageFilter.LogToConsoleOff()
@@ -688,5 +679,5 @@ class VolumeRegistration:
 
         img = sitk.GetArrayFromImage(resultImage)
 
-        savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_sagittal.tif')
+        savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_{self.fixed}.tif')
         io.imsave(savepath, img)

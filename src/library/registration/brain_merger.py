@@ -205,10 +205,10 @@ class BrainMerger():
 
         return transformed_origins
 
-    def evaluate(self):
+    def evaluate(self, region):
         annotator_id = 1 # Edward created all the COMs for the DK atlas and the Allen
         animal = 'Atlas'
-        brainManager = BrainStructureManager(animal)
+        brainManager = BrainStructureManager(animal, region)
         brainManager.com_annotator_id = annotator_id
         brainManager.fixed_brain = BrainStructureManager('Allen')
         brainManager.fixed_brain.com_annotator_id = annotator_id
@@ -217,10 +217,9 @@ class BrainMerger():
 
         atlas_coms = brainManager.get_coms(annotator_id=annotator_id)
         allen_coms = brainManager.fixed_brain.get_coms(annotator_id=annotator_id)
-        common_keys = allen_coms.keys() & atlas_coms.keys()
-        brain_regions = sorted(atlas_coms.keys())
-        allen_point_dict = {s:allen_coms[s] for s in brain_regions if s in common_keys}
-        atlas_point_dict = {s:atlas_coms[s] for s in brain_regions if s in common_keys}
+        common_keys = sorted(allen_coms.keys() & atlas_coms.keys())
+        allen_point_dict = {s:allen_coms[s] for s in common_keys}
+        atlas_point_dict = {s:atlas_coms[s] for s in common_keys}
 
         distances = []
         sortme = {}
@@ -241,29 +240,33 @@ class BrainMerger():
             print(f'{structure} distance from Allen={round(d,2)} micrometers')
             
 
-    def save_brain_area_data(self):
+    def save_brain_area_data(self, region):
         animal = 'Atlas'
-        brain = BrainStructureManager(animal)
-        brain.fixed_brain = BrainStructureManager('Allen')
-        if brain.midbrain:
-            csvfile = "midbrain"
-            area_keys = brain.midbrain_keys
-        else:
-            csvfile = "brainstem"
-            area_keys = set(brain.allen_structures_keys) - brain.midbrain_keys 
-        moving_coms = brain.get_coms(annotator_id=1)
-        allen_coms = brain.fixed_brain.get_coms(annotator_id=1)
-        common_keys = allen_coms.keys() & moving_coms.keys() & area_keys
-        brain_regions = sorted(moving_coms.keys())
-        allen_points = np.array([allen_coms[s] for s in brain_regions if s in common_keys])
-        moving_points = np.array([moving_coms[s] for s in brain_regions if s in common_keys])
-        allen_point_dict = {s:allen_coms[s] for s in brain_regions if s in common_keys}
-        moving_point_dict = {s:moving_coms[s] for s in brain_regions if s in common_keys}
-        assert len(moving_point_dict) > 0, 'Not enough moving points.'
+        brainManager = BrainStructureManager(animal, region=region)
+        brainManager.fixed_brain = BrainStructureManager('Allen')
+        brainManager.com_annotator_id = 1
+        brainManager.fixed_brain.com_annotator_id = 1
 
-        R, t = umeyama(moving_points.T, allen_points.T)
+
+        csvfile = f"using_{region}"
+
+        area_keys = brainManager.allen_structures_keys
+
+        moving_coms = brainManager.get_coms(annotator_id=1)
+        allen_coms = brainManager.fixed_brain.get_coms(annotator_id=1)
+        common_keys = sorted(allen_coms.keys() & moving_coms.keys() & area_keys)
+        moving_points = np.array([moving_coms[s] for s in common_keys])
+        allen_point_dict = {s:allen_coms[s] for s in common_keys}
+        moving_point_dict = {s:moving_coms[s] for s in common_keys}
+        assert len(moving_point_dict) > 0, 'Not enough moving points.'
+        assert len(allen_point_dict) == len(moving_point_dict), \
+            f'Length of datasets do not match. Fixed={len(allen_point_dict)} moving={len(moving_point_dict)}'
+
+        R, t = brainManager.get_transform_to_align_brain(brainManager)
+        print('Got R and t from get transform')
         reg_points = R @ moving_points.T + t
-        reg_point_dict = {s:reg_points.T[i] for i,s in enumerate(brain_regions) if s in common_keys}
+        reg_point_dict = {s:reg_points.T[i] for i,s in enumerate(common_keys)}
+
         distances = []
         sortme = {}
         for structure in common_keys:

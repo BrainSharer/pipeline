@@ -299,3 +299,32 @@ def combine_dims(a):
     else:
         a3 = np.zeros([a.shape[1], a.shape[2]]) + 255
     return a3
+
+def smooth_image(gray):
+    # threshold
+    thresh = cv2.threshold(gray, 32, 255, cv2.THRESH_BINARY)[1]
+    # blur threshold image
+    blur = cv2.GaussianBlur(thresh, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
+    # stretch so that 255 -> 255 and 127.5 -> 0
+    stretch = rescale_intensity(blur, in_range=(127.5,255), out_range=(0,255)).astype(np.uint8)
+    # threshold again
+    thresh2 = cv2.threshold(stretch, 0, 255, cv2.THRESH_BINARY)[1]
+    # get external contour
+    contours = cv2.findContours(thresh2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = contours[0] if len(contours) == 2 else contours[1]
+    big_contour = max(contours, key=cv2.contourArea)
+    # draw white filled contour on black background as mas
+    contour = np.zeros_like(gray)
+    cv2.drawContours(contour, [big_contour], 0, 255, -1)
+    # dilate mask for dark border
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (12,12))
+    dilate = cv2.morphologyEx(contour, cv2.MORPH_CLOSE, kernel)
+    # apply morphology erode
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2,2))
+    dilate = cv2.morphologyEx(dilate, cv2.MORPH_ERODE, kernel)
+    # blur dilate image
+    blur2 = cv2.GaussianBlur(dilate, (3,3), sigmaX=0, sigmaY=0, borderType = cv2.BORDER_DEFAULT)
+    # stretch so that 255 -> 255 and 127.5 -> 0
+    mask = rescale_intensity(blur2, in_range=(127.5,255), out_range=(0,255))
+    #return cv2.bitwise_and(gray, gray, mask=mask.astype(np.uint8))
+    return cv2.bitwise_and(gray, mask.astype(np.uint8), mask=None)

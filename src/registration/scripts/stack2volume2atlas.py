@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('--animal', help='Enter the animal', required=True)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument('--um', help="size of atlas in micrometers", required=False, default=25, type=int)
-    parser.add_argument('--atlas', help='Enter the atlas: allen|princeton', required=False, default='allen')
+    parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='allen')
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
     parser.add_argument("--task", 
@@ -52,11 +52,11 @@ if __name__ == '__main__':
     animal = args.animal
     channel = args.channel
     um = args.um
-    atlas = args.atlas
+    fixed = args.fixed
     orientation = args.orientation
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
-    volumeRegistration = VolumeRegistration(animal, channel, um, atlas, orientation, debug)
+    volumeRegistration = VolumeRegistration(animal, channel, um, fixed, orientation, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,
