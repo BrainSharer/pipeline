@@ -133,7 +133,11 @@ class NgPrecomputedMaker:
         )
         tq.insert(tasks)
         tq.execute()
-
+        
+        # If there aren't enough sections, it really can't downsample
+        if self.downsample and self.section_count < 100:
+            return
+        
         for mip in mips:
             cv = CloudVolume(outpath, mip)
             chunks = calculate_chunks(self.downsample, mip)
