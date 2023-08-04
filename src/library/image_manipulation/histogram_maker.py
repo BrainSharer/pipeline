@@ -29,9 +29,7 @@ class HistogramMaker:
             INPUT = self.fileLocationManager.get_thumbnail(self.channel)
             MASK_INPUT = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
             files = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
-            test_dir(
-                self.animal, INPUT, self.section_count, downsample=True, same_size=False
-            )
+            test_dir(self.animal, INPUT, self.section_count, downsample=True, same_size=False)
             if len(files) == 0:
                 print(" No sections in the database")
             OUTPUT = self.fileLocationManager.get_histogram(self.channel)

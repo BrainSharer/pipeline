@@ -17,7 +17,7 @@ from collections import defaultdict
 from library.utilities.utilities_process import get_cpus, read_image
 
 
-def calculate_chunks(downsample, mip, section_count=100):
+def calculate_chunks(downsample, mip):
     """Function returns chunk sizes for different 'precomputed cloud volume' image 
     stack resolutions.
     Image stack will be created from full-resolution images but must be chunked for 
@@ -57,10 +57,6 @@ def calculate_chunks(downsample, mip, section_count=100):
     except:
         result = [64,64,64]
 
-    if downsample and section_count < 100:
-        result = [32,32,2]
-    
-    print(f'downsample chunk is {result}')
     return result
 
 
