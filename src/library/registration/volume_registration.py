@@ -643,16 +643,18 @@ class VolumeRegistration:
         
         transParameterMap = sitk.GetDefaultParameterMap('translation')
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
+        rigidParameterMap["NumberOfResolutions"] = ["6"] # Takes lots of RAM
+        rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         #affineParameterMap["UseDirectionCosines"] = ["true"]
-        #affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
+        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        #affineParameterMap["NumberOfResolutions"]= ["6"]
-        #affineParameterMap["WriteResultImage"] = ["false"]
-        #affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-        #affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-        #affineParameterMap["Metric0Weight"] = ["0.0"]
+        affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+        affineParameterMap["WriteResultImage"] = ["false"]
+        affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+        affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
+        affineParameterMap["Metric0Weight"] = ["0.0"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
@@ -660,11 +662,11 @@ class VolumeRegistration:
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
-        elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
-        elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
-        elastixImageFilter.SetParameter("Metric", ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-        elastixImageFilter.SetParameter("Metric0Weight", "0.0")
+        #elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "16000")
+        #elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
+        #elastixImageFilter.SetParameter("Metric", ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+        #elastixImageFilter.SetParameter("Metric0Weight", "0.0")
         #elastixImageFilter.PrintParameterMap()
 
         elastixImageFilter.SetFixedImage(fixed_image)
@@ -673,14 +675,15 @@ class VolumeRegistration:
         moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
         elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
         elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-        elastixImageFilter.LogToConsoleOff()
-        elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.SetOutputDirectory(self.registered_output)
-        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
+        elastixImageFilter.LogToConsoleOn()
+        elastixImageFilter.SetLogToFile(False)
+        #elastixImageFilter.SetOutputDirectory(self.registered_output)
+        elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
         elastixImageFilter.SetLogFileName('elastix.log')
         resultImage = elastixImageFilter.Execute() 
 
         img = sitk.GetArrayFromImage(resultImage)
 
         savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_{self.fixed}.tif')
+        print(f'Saving img to {savepath}')
         io.imsave(savepath, img)
