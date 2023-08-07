@@ -657,9 +657,9 @@ class VolumeRegistration:
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
 
-        #elastixImageFilter.SetParameterMap(transParameterMap)
-        #elastixImageFilter.AddParameterMap(rigidParameterMap)
-        elastixImageFilter.SetParameterMap(affineParameterMap)
+        elastixImageFilter.SetParameterMap(transParameterMap)
+        elastixImageFilter.AddParameterMap(rigidParameterMap)
+        elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
         elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
