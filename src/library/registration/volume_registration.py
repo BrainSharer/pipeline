@@ -648,13 +648,10 @@ class VolumeRegistration:
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         #affineParameterMap["UseDirectionCosines"] = ["true"]
-        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
+        #affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-        affineParameterMap["WriteResultImage"] = ["false"]
-        affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-        affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-        affineParameterMap["Metric0Weight"] = ["0.0"]
+        #affineParameterMap["WriteResultImage"] = ["false"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
@@ -663,11 +660,16 @@ class VolumeRegistration:
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         #elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "16000")
-        #elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
-        #elastixImageFilter.SetParameter("Metric", ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-        #elastixImageFilter.SetParameter("Metric0Weight", "0.0")
-        #elastixImageFilter.PrintParameterMap()
+        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "4500")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "6000")
+        elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
+        #elastixImageFilter.SetParameter("Metric", ["AdvancedMattesMutualInformation", "NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+        elastixImageFilter.SetParameter("Metric", ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+        elastixImageFilter.SetParameter("Metric0Weight", "0.5") # the weight of 1st metric
+        elastixImageFilter.SetParameter("Metric1Weight", "0.5") # the weight of 2nd metric
+        #elastixImageFilter.SetParameter("Metric2Weight", "0.34") # the weight of 3rd metric
+        
+        elastixImageFilter.PrintParameterMap()
 
         elastixImageFilter.SetFixedImage(fixed_image)
         elastixImageFilter.SetMovingImage(moving_image)

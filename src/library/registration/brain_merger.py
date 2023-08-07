@@ -215,9 +215,15 @@ class BrainMerger():
 
         R, t = brainManager.get_transform_to_align_brain(brainManager)
 
+        #area_keys = brainManager.midbrain_keys
+        #area_keys = set(brainManager.allen_structures_keys) - set(brainManager.midbrain_keys)
+        area_keys = brainManager.allen_structures_keys
+
+
+
         atlas_coms = brainManager.get_coms(annotator_id=annotator_id)
         allen_coms = brainManager.fixed_brain.get_coms(annotator_id=annotator_id)
-        common_keys = sorted(allen_coms.keys() & atlas_coms.keys())
+        common_keys = sorted(allen_coms.keys() & atlas_coms.keys() & area_keys)
         allen_point_dict = {s:allen_coms[s] for s in common_keys}
         atlas_point_dict = {s:atlas_coms[s] for s in common_keys}
 
