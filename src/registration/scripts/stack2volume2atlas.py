@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument("--task", 
                         help="Enter the task you want to perform: \
                           create_volume|register_volume|reverse_register_volume|transformix_volume|tranformix_points|create_precomputed|insert_points", 
-                        required=False, default="check_registration", type=str)
+                        required=False, default="check_status", type=str)
     
     args = parser.parse_args()
     animal = args.animal
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                         'transformix_volume': volumeRegistration.transformix_volume,
                         'transformix_points': volumeRegistration.transformix_points,
                         'create_precomputed': volumeRegistration.create_precomputed,
-                        'check_registration': volumeRegistration.check_registration,
+                        'check_status': volumeRegistration.check_registration,
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
                         'polygons': volumeRegistration.transformix_polygons,

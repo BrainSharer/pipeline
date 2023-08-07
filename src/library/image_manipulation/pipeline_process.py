@@ -116,9 +116,9 @@ class Pipeline(
 
     def mask(self):
         print(self.TASK_MASK)
-        self.update_scanrun()
-        self.apply_QC()
-        self.create_normalized_image()
+        #self.update_scanrun()
+        #self.apply_QC()
+        #self.create_normalized_image()
         self.create_mask()
     
     def clean(self):
@@ -129,7 +129,6 @@ class Pipeline(
     
     def histogram(self):
         print(self.TASK_HISTOGRAM)
-        self.check_dir_filecount('masks/CH1/thumbnail_masked')
         self.make_histogram()
         self.make_combined_histogram()
 
@@ -178,14 +177,6 @@ class Pipeline(
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
-
-
-    def check_dir_filecount(self, dir):
-        prep = self.fileLocationManager.prep
-        checkthisdir = os.path.join(prep, dir)
-        nfiles = len(os.listdir(checkthisdir))
-        section_count = self.section_count
-        assert nfiles == section_count, f'The number of files in {checkthisdir} is not equal to sections={section_count}'
 
 
     def check_status(self):

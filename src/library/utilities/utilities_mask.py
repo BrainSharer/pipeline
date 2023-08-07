@@ -320,7 +320,7 @@ def smooth_image(gray):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (12,12))
     dilate = cv2.morphologyEx(contour, cv2.MORPH_CLOSE, kernel)
     # apply morphology erode
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2,2))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8,8))
     dilate = cv2.morphologyEx(dilate, cv2.MORPH_ERODE, kernel)
     # blur dilate image
     blur2 = cv2.GaussianBlur(dilate, (3,3), sigmaX=0, sigmaY=0, borderType = cv2.BORDER_DEFAULT)

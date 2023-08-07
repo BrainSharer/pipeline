@@ -528,11 +528,11 @@ class VolumeRegistration:
         """Create a 3D volume of the image stack
         """
         #from skimage.filters import gaussian        
-        from skimage.exposure import rescale_intensity
+        #from skimage.exposure import rescale_intensity
         files, volume_size, dtype = self.get_file_information()
         image_stack = np.zeros(volume_size)
         file_list = []
-        clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
+        #clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
         for ffile in tqdm(files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
@@ -661,7 +661,7 @@ class VolumeRegistration:
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations" , "6000")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations" , self.rigidIterations)
         #elastixImageFilter.PrintParameterMap()
 
         elastixImageFilter.SetFixedImage(fixed_image)
