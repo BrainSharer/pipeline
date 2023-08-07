@@ -137,8 +137,7 @@ class BrainStructureManager():
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             return
-        
-        
+
         # loop through structure objects
         for structure in structures:
             self.abbreviation = structure.abbreviation

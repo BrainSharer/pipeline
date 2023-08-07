@@ -651,7 +651,7 @@ class VolumeRegistration:
         #affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-        #affineParameterMap["WriteResultImage"] = ["false"]
+        affineParameterMap["WriteResultImage"] = ["false"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
@@ -659,7 +659,7 @@ class VolumeRegistration:
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
-        #elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "4500")
         elastixImageFilter.SetParameter("MaximumNumberOfIterations", "6000")
         elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
@@ -677,9 +677,9 @@ class VolumeRegistration:
         moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
         elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
         elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-        elastixImageFilter.LogToConsoleOn()
-        elastixImageFilter.SetLogToFile(False)
-        #elastixImageFilter.SetOutputDirectory(self.registered_output)
+        elastixImageFilter.LogToConsoleOff()
+        elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.SetOutputDirectory(self.registered_output)
         elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
         elastixImageFilter.SetLogFileName('elastix.log')
         resultImage = elastixImageFilter.Execute() 
