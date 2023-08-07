@@ -572,7 +572,7 @@ class VolumeRegistration:
         num_channels = 1
         volume_size = volume.shape
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
-        volume = normalize16(volume)
+        #volume = normalize16(volume)
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
 
         ng = NumpyToNeuroglancer(
@@ -645,23 +645,26 @@ class VolumeRegistration:
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        affineParameterMap["UseDirectionCosines"] = ["true"]
-        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= ["6"]
-        affineParameterMap["WriteResultImage"] = ["false"]
-        affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-        affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-        affineParameterMap["Metric0Weight"] = ["0.0"]
+        #affineParameterMap["UseDirectionCosines"] = ["true"]
+        #affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
+        #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        #affineParameterMap["NumberOfResolutions"]= ["6"]
+        #affineParameterMap["WriteResultImage"] = ["false"]
+        #affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+        #affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
+        #affineParameterMap["Metric0Weight"] = ["0.0"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+        #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
 
-        elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.AddParameterMap(rigidParameterMap)
-        elastixImageFilter.AddParameterMap(affineParameterMap)
+        #elastixImageFilter.SetParameterMap(transParameterMap)
+        #elastixImageFilter.AddParameterMap(rigidParameterMap)
+        elastixImageFilter.SetParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
+        elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
+        elastixImageFilter.SetParameter("Metric", ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+        elastixImageFilter.SetParameter("Metric0Weight", "0.0")
         #elastixImageFilter.PrintParameterMap()
 
         elastixImageFilter.SetFixedImage(fixed_image)
