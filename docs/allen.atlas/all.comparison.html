@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Brainsharer</title>
+    <base href="/">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <style>
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            margin: 20;
+            font-family: Roboto, Helvetica Neue, sans-serif
+        }
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Allen and DK Atlas registration using all structures</h2>
+
+    <div style="padding:10px;">
+        <a style="padding:10px;"  href="https://www.brainsharer.org/docs/all.comparison.html">All regions</a>
+        <a style="padding:10px;"  href="https://www.brainsharer.org/docs/brainstem.comparison.html">Brain stem regions</a>
+        <a style="padding:10px;"  href="https://www.brainsharer.org/docs/brainstem.comparison.html">Midbrain regions</a>
+        <a style="padding:10px;"  href="https://www.brainsharer.org/docs/boxplot.html">Boxplot comparison</a>
+    </div>
+
+
+    <table>
+        <tr>
+            <th style="padding:10px;">Brain region</th>
+            <th style="padding:10px;">Distance</th>
+        </tr>
+
+        <tr><td>Sp5O_L</td> <td>56.42</td></tr>
+        <tr><td>DC_L</td> <td>89.33</td></tr>
+        <tr><td>PBG_R</td> <td>90.13</td></tr>
+        <tr><td>6N_L</td> <td>108.67</td></tr>
+        <tr><td>5N_L</td> <td>136.76</td></tr>
+        <tr><td>Sp5O_R</td> <td>152.19</td></tr>
+        <tr><td>6N_R</td> <td>165.75</td></tr>
+        <tr><td>SC</td> <td>174.34</td></tr>
+        <tr><td>LRt_L</td> <td>183.37</td></tr>
+        <tr><td>5N_R</td> <td>191.97</td></tr>
+        <tr><td>7n_R</td> <td>202.02</td></tr>
+        <tr><td>3N_L</td> <td>216.77</td></tr>
+        <tr><td>PBG_L</td> <td>220.09</td></tr>
+        <tr><td>3N_R</td> <td>225.06</td></tr>
+        <tr><td>SNR_R</td> <td>248.86</td></tr>
+        <tr><td>4N_L</td> <td>252.76</td></tr>
+        <tr><td>VLL_R</td> <td>261.6</td></tr>
+        <tr><td>7n_L</td> <td>281.11</td></tr>
+        <tr><td>4N_R</td> <td>291.58</td></tr>
+        <tr><td>SNC_L</td> <td>299.35</td></tr>
+        <tr><td>DC_R</td> <td>300.35</td></tr>
+        <tr><td>Amb_L</td> <td>307.78</td></tr>
+        <tr><td>IC</td> <td>311.16</td></tr>
+        <tr><td>LRt_R</td> <td>316.5</td></tr>
+        <tr><td>SNR_L</td> <td>327.82</td></tr>
+        <tr><td>7N_L</td> <td>334.35</td></tr>
+        <tr><td>Sp5I_R</td> <td>341.48</td></tr>
+        <tr><td>LC_R</td> <td>359.94</td></tr>
+        <tr><td>LC_L</td> <td>360.81</td></tr>
+        <tr><td>Sp5I_L</td> <td>371.23</td></tr>
+        <tr><td>VLL_L</td> <td>377.03</td></tr>
+        <tr><td>SNC_R</td> <td>397.09</td></tr>
+        <tr><td>Amb_R</td> <td>433.63</td></tr>
+        <tr><td>RtTg</td> <td>467.89</td></tr>
+        <tr><td>Sp5C_L</td> <td>532.54</td></tr>
+        <tr><td>7N_R</td> <td>542.9</td></tr>
+        <tr><td>AP</td> <td>545.88</td></tr>        
+
+
+
+    </table>
+
+    <p>The graph below is a scatter plot of X,Y coordinates between the Allen and DK atlas.</p>
+    <p>Note, you can't see all the Allen points as they overlap in the X,Y space. (The left and right have the same X,Y coordinates)</p>
+    <p>Also, The Y axis is inverted to mimic the behaviour in Neuroglancer</p>
+    <img src="https://www.brainsharer.org/images/atlas.allen.x.y.all.png"></img>
+
+    <p>The graph belows is a scatter plot of X,Z coordinates between the Allen and DK atlas.</p>
+    <img src="https://www.brainsharer.org/images/atlas.allen.x.z.all.png"></img>
+
+    <p>The graph belows is a scatter plot of Y,Z coordinates between the Allen and DK atlas.</p>
+    <p>Note, The Y axis is inverted to mimic the behaviour in Neuroglancer</p>
+    <p>Also, The Y axis is inverted to mimic the behaviour in Neuroglancer</p>
+    <img src="https://www.brainsharer.org/images/atlas.allen.y.z.all.png"></img>
+
+
+
+</body>
+</html>

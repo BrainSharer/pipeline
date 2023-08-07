@@ -648,20 +648,20 @@ class VolumeRegistration:
         affineParameterMap["UseDirectionCosines"] = ["true"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= ["4"]
+        affineParameterMap["NumberOfResolutions"]= ["6"]
         affineParameterMap["WriteResultImage"] = ["false"]
         affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
         affineParameterMap["Metric"] = ["NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
         affineParameterMap["Metric0Weight"] = ["0.0"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
 
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "6000")
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations" , self.rigidIterations)
         #elastixImageFilter.PrintParameterMap()
 
         elastixImageFilter.SetFixedImage(fixed_image)
