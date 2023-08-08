@@ -69,7 +69,8 @@ if __name__ == '__main__':
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
                         'polygons': volumeRegistration.transformix_polygons,
-                        'point_based_registration': volumeRegistration.point_based_registration
+                        'point_based_registration': volumeRegistration.point_based_registration,
+                        'create_average_volume': volumeRegistration.create_average_volume
     }
 
     if task in function_mapping:

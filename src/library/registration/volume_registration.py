@@ -689,7 +689,27 @@ class VolumeRegistration:
         resultImage = elastixImageFilter.Execute() 
 
         img = sitk.GetArrayFromImage(resultImage)
-
+        img = normalize8(img)
         savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_{self.fixed}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, img)
+
+    def create_average_volume(self):
+        brains = ['MD589_25um_sagittal.tif', 'MD585_MD589.tif', 'MD594_MD589.tif']
+        volumes = []
+        for brain in brains:
+            brainpath = os.path.join(self.fixed_path, brain)
+            if not os.path.exists(brainpath):
+                print(f'{brainpath} does not exist, exiting.')
+                sys.exit()
+            brainimg = read_image(brainpath)
+            if brainimg.dtype == np.uint8:
+                brainimg = brainimg.astype(np.float32)
+            volumes.append(brainimg)
+
+        merged_volume = np.sum(volumes, axis=0)
+        average_volume = merged_volume / float(len(volumes))
+        average_volume = normalize8(average_volume)
+        savepath = os.path.join(self.fixed_path, 'MDXXX_average_brain.tif')
+        print(f'Saving img to {savepath}')
+        io.imsave(savepath, average_volume)
