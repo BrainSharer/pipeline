@@ -46,7 +46,7 @@ from library.image_manipulation.filelocation_manager import FileLocationManager,
 from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
 from library.utilities.utilities_process import read_image
 from library.controller.annotation_session_controller import AnnotationSessionController
-
+from library.controller.structure_com_controller import StructureCOMController
 
 def sort_from_center(polygon:list) -> list:
     """Get the center of the unique points in a polygon and then use math.atan2 to get
@@ -405,6 +405,30 @@ class VolumeRegistration:
         io.imsave(outpath, resultImage)
         print(f'Saved a 3D volume {outpath} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
+
+    def transformix_coms(self):
+        com_annotator_id = 2
+        controller = StructureCOMController(self.animal)
+        coms = controller.get_COM(self.animal, annotator_id=com_annotator_id)
+
+        
+        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registered_output,"transformix_input_points.txt")        
+        with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
+            f.write("point\n")
+            f.write(f"{len(coms)}\n")
+
+            for idx, (structure, (x,y,z)) in enumerate(coms.items()):
+                x /= self.um
+                y /= self.um
+                z /= self.um
+                print(idx, structure, x,y,z)
+                f.write(f"{x} {y} {z}\n")
+                
+        transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
+        transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
+        transformixImageFilter.ExecuteInverse()
+
+
     def fill_contours(self):
         sqlController = SqlController(self.animal)
         # vars
@@ -683,7 +707,7 @@ class VolumeRegistration:
         elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
         elastixImageFilter.LogToConsoleOff()
         elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.SetOutputDirectory(self.registered_output)
+        elastixImageFilter.SetOutputDirectory(self.elastix_output)
         elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
         elastixImageFilter.SetLogFileName('elastix.log')
         resultImage = elastixImageFilter.Execute() 

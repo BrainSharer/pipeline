@@ -64,6 +64,7 @@ if __name__ == '__main__':
                         'reverse_register_volume': volumeRegistration.reverse_register_volume,
                         'transformix_volume': volumeRegistration.transformix_volume,
                         'transformix_points': volumeRegistration.transformix_points,
+                        'transformix_coms': volumeRegistration.transformix_coms,
                         'create_precomputed': volumeRegistration.create_precomputed,
                         'check_status': volumeRegistration.check_registration,
                         'insert_points': volumeRegistration.insert_points,
