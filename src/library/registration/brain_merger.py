@@ -153,7 +153,6 @@ class BrainMerger():
             val = 'midbrain'
         else:
             val = 'brainstem'
-        print(val)
         return val        
 
 
