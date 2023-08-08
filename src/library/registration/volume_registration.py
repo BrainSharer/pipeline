@@ -647,21 +647,27 @@ class VolumeRegistration:
         rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        #affineParameterMap["UseDirectionCosines"] = ["true"]
-        #affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        affineParameterMap["UseDirectionCosines"] = ["true"]
+        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
+        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+        bsplineParameterMap["WriteResultImage"] = ["false"]
+        bsplineParameterMap["UseDirectionCosines"] = ["true"]
+        bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        bsplineParameterMap["NumberOfResolutions"]= ["6"]
+        bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+        del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
         elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "4500")
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "6000")
         elastixImageFilter.SetParameter("Registration", "MultiMetricMultiResolutionRegistration")
         #elastixImageFilter.SetParameter("Metric", ["AdvancedMattesMutualInformation", "NormalizedMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
         elastixImageFilter.SetParameter("Metric", ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
