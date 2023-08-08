@@ -145,6 +145,16 @@ class BrainMerger():
         if str(row['Structure']).endswith('R'):
             val = 'Right'
         return val        
+    
+    # should be static
+    def label_area(self, row, midbrain_keys):
+        val = 'midbrain'
+        if row['Structure'] in midbrain_keys:
+            val = 'midbrain'
+        else:
+            val = 'brainstem'
+        print(val)
+        return val        
 
 
     def transform_origins(self, moving_origins):
@@ -215,15 +225,9 @@ class BrainMerger():
 
         R, t = brainManager.get_transform_to_align_brain(brainManager)
 
-        #area_keys = brainManager.midbrain_keys
-        #area_keys = set(brainManager.allen_structures_keys) - set(brainManager.midbrain_keys)
-        area_keys = brainManager.allen_structures_keys
-
-
-
         atlas_coms = brainManager.get_coms(annotator_id=annotator_id)
         allen_coms = brainManager.fixed_brain.get_coms(annotator_id=annotator_id)
-        common_keys = sorted(allen_coms.keys() & atlas_coms.keys() & area_keys)
+        common_keys = sorted(allen_coms.keys() & atlas_coms.keys())
         allen_point_dict = {s:allen_coms[s] for s in common_keys}
         atlas_point_dict = {s:atlas_coms[s] for s in common_keys}
 
@@ -243,7 +247,13 @@ class BrainMerger():
 
         ds = {k: v for k, v in sorted(sortme.items(), key=lambda item: item[1])}
         for structure, d in ds.items():
+            if structure in brainManager.midbrain_keys:
+                print('Midbrain structure=', end="")
+            else:
+                print('Brainstem structure=', end="")
+
             print(f'{structure} distance from Allen={round(d,2)} micrometers')
+
             
 
     def save_brain_area_data(self, region):
@@ -293,6 +303,7 @@ class BrainMerger():
         # 2nd dataframe = allen
         df_allen = pd.DataFrame(allen_point_dict.items(), columns=['Structure', 'xyz'])
         df_allen['S'] = df_allen.apply (lambda row: self.label_left_right(row), axis=1)
+        df_allen['area'] = df_allen.apply (lambda row: self.label_area(row, brainManager.midbrain_keys), axis=1)
         df_allen[['X', 'Y', 'Z']] = pd.DataFrame(df_allen['xyz'].tolist(), index=df_allen.index)
         csvfilename = os.path.join(self.csv_path, f'{csvfile}_allen.csv')
         df_allen.to_csv(os.path.join(csvfilename), index = False)
@@ -300,6 +311,7 @@ class BrainMerger():
         # save 3rd dataframe = atlas
         df_atlas = pd.DataFrame(reg_point_dict.items(), columns=['Structure', 'xyz'])
         df_atlas['S'] = df_atlas.apply (lambda row: self.label_left_right(row), axis=1)
+        df_atlas['area'] = df_atlas.apply (lambda row: self.label_area(row, brainManager.midbrain_keys), axis=1)
         df_atlas[['X', 'Y', 'Z']] = pd.DataFrame(df_atlas['xyz'].tolist(), index=df_atlas.index)
         csvfilename = os.path.join(self.csv_path, f'{csvfile}_atlas.csv')
         df_atlas.to_csv(csvfilename, index = False)
