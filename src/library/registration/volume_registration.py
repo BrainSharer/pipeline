@@ -164,75 +164,6 @@ class VolumeRegistration:
         elastixImageFilter = self.setup_registration(self.moving_volume_path, self.fixed_volume_path, self.reverse_elastix_output)
         elastixImageFilter.Execute()
 
-    def setup_registration(self, imagepath1, imagepath2, outputpath):
-        if not os.path.exists(imagepath1):
-            print(f'{imagepath1} does not exist')
-            return
-        if not os.path.exists(imagepath2):
-            print(f'{imagepath2} does not exist')
-            return
-        fixedImage = sitk.ReadImage(imagepath1, sitk.sitkFloat32)
-        movingImage = sitk.ReadImage(imagepath2, sitk.sitkFloat32)
-        """
-        init_transform = sitk.CenteredTransformInitializer(fixedImage, 
-                                                      movingImage, 
-                                                      sitk.Euler3DTransform(), 
-                                                      sitk.CenteredTransformInitializerFilter.GEOMETRY)
-
-        movingImage = sitk.Resample(movingImage, fixedImage, init_transform, sitk.sitkLinear, 0.0, movingImage.GetPixelID())    
-        sitk.WriteTransform(init_transform, self.init_transformpath)
-        """
-        elastixImageFilter = sitk.ElastixImageFilter()
-        elastixImageFilter.SetFixedImage(fixedImage)
-        elastixImageFilter.SetMovingImage(movingImage)
-        
-        transParameterMap = sitk.GetDefaultParameterMap('translation')
-        rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
-        rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] # 250 works ok
-        rigidParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        rigidParameterMap["UseDirectionCosines"] = ["true"]
-        rigidParameterMap["NumberOfResolutions"]= ["6"]
-        rigidParameterMap["NumberOfSpatialSamples"] = ["4000"]
-        rigidParameterMap["WriteResultImage"] = ["false"]
-
-        affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        affineParameterMap["UseDirectionCosines"] = ["true"]
-        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= ["4"]
-        affineParameterMap["NumberOfSpatialSamples"] = ["4000"]
-        affineParameterMap["WriteResultImage"] = ["false"]
-
-        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 150 works ok
-        bsplineParameterMap["WriteResultImage"] = ["true"]
-        bsplineParameterMap["UseDirectionCosines"] = ["true"]
-        bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        bsplineParameterMap["NumberOfResolutions"]= ["6"]
-        bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-        bsplineParameterMap["NumberOfSpatialSamples"] = ["4000"]
-        del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
-
-        elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.AddParameterMap(rigidParameterMap)
-        elastixImageFilter.AddParameterMap(affineParameterMap)
-        elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.SetOutputDirectory(outputpath)
-        elastixImageFilter.LogToConsoleOff()
-        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
-        elastixImageFilter.SetLogFileName('elastix.log')
-        if self.debug:
-            elastixImageFilter.PrintParameterMap(transParameterMap)    
-            elastixImageFilter.PrintParameterMap(rigidParameterMap)    
-            elastixImageFilter.PrintParameterMap(affineParameterMap)
-            elastixImageFilter.PrintParameterMap(bsplineParameterMap)
-            elastixImageFilter.LogToConsoleOn()
-
-        return elastixImageFilter
-
-        
 
     def setup_transformix(self, outputpath):
         """Method used to transform volumes and points
@@ -658,13 +589,34 @@ class VolumeRegistration:
 
 
     def point_based_registration(self):
-
+        os.makedirs(self.elastix_output, exist_ok=True)
         os.makedirs(self.registered_output, exist_ok=True)
 
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
-        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32) 
-        elastixImageFilter = sitk.ElastixImageFilter()
+        elastixImageFilter = self.setup_registration(self.fixed_volume_path, self.moving_volume_path, self.elastix_output)
+        resultImage = elastixImageFilter.Execute()         
+        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
+        savepath = os.path.join(self.registered_output, 'result.tif')
+        sitk.WriteImage(resultImage, savepath)
+        print(f'Saved img to {savepath}')
+
+
+    def setup_pointbased_registration(self, fixed_path, moving_path):
+        if not os.path.exists(fixed_path):
+            print(f'{fixed_path} does not exist')
+            return
+        if not os.path.exists(moving_path):
+            print(f'{moving_path} does not exist')
+            return
+        # set point paths
+        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.fixed}_points.pts')
+        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
         
+        fixedImage = sitk.ReadImage(fixed_path), sitk.sitkFloat32)
+        movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+        elastixImageFilter = sitk.ElastixImageFilter()
+        elastixImageFilter.SetFixedImage(fixedImage)
+        elastixImageFilter.SetMovingImage(movingImage)
+
         transParameterMap = sitk.GetDefaultParameterMap('translation')
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
         rigidParameterMap["NumberOfResolutions"] = ["6"] # Takes lots of RAM
@@ -676,10 +628,11 @@ class VolumeRegistration:
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
-        affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-        affineParameterMap["Metric"] = ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-        affineParameterMap["Metric0Weight"] = ["0.25"] # the weight of 1st metric
-        affineParameterMap["Metric1Weight"] = ["0.75"] # the weight of 2nd metric
+        if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
+            affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+            affineParameterMap["Metric"] = ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
+            affineParameterMap["Metric0Weight"] = ["0.25"] # the weight of 1st metric
+            affineParameterMap["Metric1Weight"] = ["0.75"] # the weight of 2nd metric
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
@@ -695,28 +648,20 @@ class VolumeRegistration:
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetParameter("NumberOfSpatialSamples" , "4500")
-        
-        elastixImageFilter.PrintParameterMap()
 
-        elastixImageFilter.SetFixedImage(fixed_image)
-        elastixImageFilter.SetMovingImage(moving_image)
-        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.fixed}_points.pts')
-        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
-        elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
-        elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-        elastixImageFilter.LogToConsoleOff()
+        if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
+            elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
+            elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
+
+
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
-        elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
+        elastixImageFilter.LogToConsoleOff()
+        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
-        resultImage = elastixImageFilter.Execute() 
 
-        img = sitk.GetArrayFromImage(resultImage)
-        img = normalize8(img)
-        savepath = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_{self.fixed}.tif')
-        print(f'Saving img to {savepath}')
-        io.imsave(savepath, img)
+        return elastixImageFilter
+
 
     def create_average_volume(self):
         brains = ['MD589_25um_sagittal.tif', 'MD585_MD589.tif', 'MD594_MD589.tif']
