@@ -116,9 +116,9 @@ class Pipeline(
 
     def mask(self):
         print(self.TASK_MASK)
-        #self.update_scanrun()
-        #self.apply_QC()
-        #self.create_normalized_image()
+        self.update_scanrun()
+        self.apply_QC()
+        self.create_normalized_image()
         self.create_mask()
     
     def clean(self):

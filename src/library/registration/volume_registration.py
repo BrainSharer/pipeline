@@ -611,7 +611,7 @@ class VolumeRegistration:
         fixed_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.fixed}_points.pts')
         moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
         
-        fixedImage = sitk.ReadImage(fixed_path), sitk.sitkFloat32)
+        fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
         movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
         elastixImageFilter = sitk.ElastixImageFilter()
         elastixImageFilter.SetFixedImage(fixedImage)

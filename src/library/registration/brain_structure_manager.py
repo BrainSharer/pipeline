@@ -37,7 +37,7 @@ class BrainStructureManager():
         self.polygon_annotator_id = 0
         self.volumeRegistration = VolumeRegistration(animal=self.animal)
         self.debug = debug
-        self.midbrain_keys = {'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
+        self.midbrain_keys = {'SNC_L', 'SNC_R', 'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
         self.region = region
         self.allen_um = 25 # size in um of allen atlas
@@ -81,15 +81,16 @@ class BrainStructureManager():
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
         
+        moving_coms = brain.get_coms(brain.com_annotator_id)
+        
         if 'midbrain' in brain.region:
             area_keys = self.midbrain_keys
         elif 'brainstem' in brain.region:
             area_keys = set(self.allen_structures_keys) - set(self.midbrain_keys)
         else:
-            area_keys = self.allen_structures_keys
+            area_keys = moving_coms.keys()
 
 
-        moving_coms = brain.get_coms(brain.com_annotator_id)
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
         common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & area_keys)
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
@@ -142,8 +143,8 @@ class BrainStructureManager():
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            if structure.abbreviation not in self.allen_structures_keys:
-                continue
+            #if structure.abbreviation not in self.allen_structures_keys:
+            #    continue
             
             df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
             if df.empty:
@@ -190,10 +191,10 @@ class BrainStructureManager():
             brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
             # debug info
-            #ids, counts = np.unique(volume, return_counts=True)
-            #print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
-            #print(volume.dtype, volume.shape, end="\t")
-            #print(ids, counts)
+            ids, counts = np.unique(volume, return_counts=True)
+            print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
+            print(volume.dtype, volume.shape, end="\t")
+            print(ids, counts)
 
 
     def inactivate_coms(self, animal):
