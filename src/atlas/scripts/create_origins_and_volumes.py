@@ -58,7 +58,7 @@ def volume_origin_creation(region, debug=False):
         polygon_annotator_id = animal_user[1]
         if 'test' in animal or 'Atlas' in animal:
             continue
-        brainManager = BrainStructureManager(animal, region, debug)
+        brainManager = BrainStructureManager(animal, 'all', debug)
         brainManager.polygon_annotator_id = polygon_annotator_id
         brainManager.fixed_brain = BrainStructureManager('MD589', debug)
         brainManager.fixed_brain.com_annotator_id = 2
