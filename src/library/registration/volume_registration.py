@@ -43,7 +43,7 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager, data_path
-from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
+from library.utilities.utilities_mask import normalize8, smooth_image
 from library.utilities.utilities_process import read_image
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.controller.structure_com_controller import StructureCOMController
@@ -97,38 +97,49 @@ def dice(im1, im2):
     return 2. * intersection.sum() / (im1.sum() + im2.sum())
 
 class VolumeRegistration:
-    """This class takes a downsampled image stack and registers it to the Allen volume    
+    """This class takes a downsampled image stack and registers it to the Allen volume
+    Data resides in /net/birdstore/Active_Atlas_Data/data_root/brains_info/registration
+    Volumes have the following naming convention:
+        1. image stack = {animal}_{um}um_{orientation}.tif -> MD589_25um_sagittal.tif
+        2. registered volume = {moving}_{fixed}_{um}um_{orientation}.tif -> MD585_MD589_25um_sagittal.tif
+        3. point file = {animal}_{um}um_{orientation}.pts -> MD589_25um_sagittal.pts
+        
     """
 
-    def __init__(self, animal, channel=1, um=25, fixed='allen', orientation='sagittal', debug=False):
-        self.animal = animal
+    def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', debug=False):
+        DATA = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        self.data = DATA
+        self.moving = moving
+        self.animal = moving
         self.debug = debug
         self.fixed = fixed
         self.um = um
         self.mask_color = 254
         self.channel = f'CH{channel}'
-        self.output_dir = f'{self.fixed}{um}um'
+        self.orientation = orientation
+        self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
         self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
-        self.fileLocationManager = FileLocationManager(animal)
+        self.fileLocationManager = FileLocationManager(self.moving)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
-        self.moving_volume_path = os.path.join(self.fileLocationManager.prep, self.channel, 'moving_volume.tif')
-        self.fixed_volume_path = os.path.join(self.fileLocationManager.registration_info, f'{fixed}_{um}um_{orientation}.tif')
-        self.elastix_output = os.path.join(self.fileLocationManager.prep, 'elastix_output', self.output_dir)
-        self.reverse_elastix_output = os.path.join(self.fileLocationManager.prep, 'reverse_elastix_output', self.output_dir)
-        self.registered_output = os.path.join(self.fileLocationManager.prep, self.channel,  'registered', self.output_dir)
-        self.registered_point_file = os.path.join(self.registered_output, 'outputpoints.txt')
-        self.unregistered_pickle_file = os.path.join(self.fileLocationManager.prep, 'points.pkl')
-        self.unregistered_point_file = os.path.join(self.fileLocationManager.prep, 'points.pts')
-        self.init_transformpath = os.path.join(self.elastix_output, 'init_transform.tfm')
+        self.moving_volume_path = os.path.join(self.data, f'{self.moving}_{um}um_{orientation}.tif' )
+        self.fixed_volume_path = os.path.join(self.data, f'{self.fixed}_{um}um_{orientation}.tif' )
+        
+        self.registration_output = os.path.join(self.data, self.output_dir)
+        self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
+        self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
+        
+        self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
+        self.unregistered_point_file = os.path.join(self.data, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
-        self.fixed_path = os.path.join(data_path, 'brains_info', 'registration')
         self.number_of_sampling_attempts = "10"
         if self.debug:
-            iterations = "35"
+            iterations = "100"
+            self.number_of_resolutions = "4"
             self.rigidIterations = iterations
             self.affineIterations = iterations
             self.bsplineIterations = iterations
         else:
+            self.number_of_resolutions = "6"
             self.rigidIterations = "1000"
             self.affineIterations = "2500"
             self.bsplineIterations = "15000"
@@ -138,51 +149,25 @@ class VolumeRegistration:
             sys.exit()        
  
 
-    def register_volume(self):
-        """This will perform the elastix registration of the volume to the atlas.
-        It first does an affine registration, then a bspline registration.
-        """
-        
-        os.makedirs(self.elastix_output, exist_ok=True)
-        os.makedirs(self.registered_output, exist_ok=True)
-
-        elastixImageFilter = self.setup_registration(self.fixed_volume_path, self.moving_volume_path, self.elastix_output)
-        resultImage = elastixImageFilter.Execute()         
-        # simg1 = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
-        sitk.WriteImage(resultImage, os.path.join(self.registered_output, 'result.tif'))
-
-
-    def reverse_register_volume(self):
-        """This method also uses an affine and a bspline registration process, but it does 
-        it in reverse. The fixed and moving images get switched so we can get the transformation
-        for the points to get registered to the atlas. 
-        """
-
-        os.makedirs(self.reverse_elastix_output, exist_ok=True)
-
-        # switch moving and fixed
-        elastixImageFilter = self.setup_registration(self.moving_volume_path, self.fixed_volume_path, self.reverse_elastix_output)
-        elastixImageFilter.Execute()
-
 
     def setup_transformix(self, outputpath):
         """Method used to transform volumes and points
         """
         
-        os.makedirs(self.registered_output, exist_ok=True)
+        os.makedirs(self.registration_output, exist_ok=True)
 
         transformixImageFilter = sitk.TransformixImageFilter()
         parameterMap0 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.0.txt'))
         parameterMap1 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.1.txt'))
         parameterMap2 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.2.txt'))
-        parameterMap3 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.3.txt'))
+        #parameterMap3 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.3.txt'))
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
         transformixImageFilter.AddTransformParameterMap(parameterMap1)
         transformixImageFilter.AddTransformParameterMap(parameterMap2)
-        transformixImageFilter.AddTransformParameterMap(parameterMap3)
+        #transformixImageFilter.AddTransformParameterMap(parameterMap3)
         transformixImageFilter.LogToFileOn()
         transformixImageFilter.LogToConsoleOff()
-        transformixImageFilter.SetOutputDirectory(self.registered_output)
+        transformixImageFilter.SetOutputDirectory(self.registration_output)
         movingImage = sitk.ReadImage(self.moving_volume_path)
         transformixImageFilter.SetMovingImage(movingImage)
         return transformixImageFilter
@@ -194,7 +179,7 @@ class VolumeRegistration:
         transformixImageFilter = self.setup_transformix(self.elastix_output)
         transformixImageFilter.Execute()
         transformed = transformixImageFilter.GetResultImage()
-        sitk.WriteImage(transformed, os.path.join(self.registered_output, 'result.tif'))
+        sitk.WriteImage(transformed, os.path.join(self.registration_output, 'result.tif'))
 
     def transformix_com(self):
         """Helper method when you want to rerun the transform on a set of points.
@@ -229,7 +214,7 @@ class VolumeRegistration:
         transformixImageFilter.Execute()
 
 
-    def transformix_polygons(self):
+    def transformix_points(self):
         """Helper method when you want to rerun the transform on a set of points.
         Get the pickle file and transform it. It is in full resolution pixel size.
         The points in the pickle file need to be translated from full res pixel to
@@ -252,24 +237,24 @@ class VolumeRegistration:
  
         """      
         resultImage = (resultImage * 254).astype(np.uint8)
-        outpath = os.path.join(self.registered_output,'facialmask.tif')
+        outpath = os.path.join(self.registration_output,'facialmask.tif')
         imwrite(outpath, resultImage)
 
         structure_mask = (structure_mask * 100).astype(np.uint8)
-        outpath = os.path.join(self.registered_output,'structure_mask.tif')
+        outpath = os.path.join(self.registration_output,'structure_mask.tif')
         imwrite(outpath, structure_mask)
         """
 
 
-    def transformix_points(self):
-        sqlController = SqlController(self.animal)
-        polygon = PolygonSequenceController(animal=self.animal)        
+    def transformix_polygons(self):
+        sqlController = SqlController(self.moving)
+        polygon = PolygonSequenceController(animal=self.moving)        
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
         #input_points = itk.PointSet[itk.F, 3].New()
         input_points = None
-        df_L = polygon.get_volume(self.animal, 38, 12)
-        df_R = polygon.get_volume(self.animal, 38, 13)
+        df_L = polygon.get_volume(self.moving, 38, 12)
+        df_R = polygon.get_volume(self.moving, 38, 13)
         frames = [df_L, df_R]
         df = pd.concat(frames)
         len_L = df_L.shape[0]
@@ -277,8 +262,8 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registered_output,"transformix_input_points.txt")        
-        #df = polygon.get_volume(self.animal, 3, 33)
+        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
+        #df = polygon.get_volume(self.moving, 3, 33)
 
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['coordinate'][0]/scale_xy/self.scaling_factor
@@ -301,7 +286,7 @@ class VolumeRegistration:
         transformixImageFilter.Execute()
         
         polygons = defaultdict(list)
-        with open(self.registered_point_file, "r") as f:                
+        with open(self.registration_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
@@ -314,7 +299,7 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
-        resultImage = io.imread(os.path.join(self.registered_output, 'result.tif'))
+        resultImage = io.imread(os.path.join(self.registration_output, 'result.tif'))
         resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
@@ -332,18 +317,18 @@ class VolumeRegistration:
         #    if i == section:
         #        print(x,y,section)
         #        cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
-        outpath = os.path.join(self.registered_output, 'annotated.tif')
+        outpath = os.path.join(self.registration_output, 'annotated.tif')
         io.imsave(outpath, resultImage)
         print(f'Saved a 3D volume {outpath} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
 
     def transformix_coms(self):
         com_annotator_id = 2
-        controller = StructureCOMController(self.animal)
-        coms = controller.get_COM(self.animal, annotator_id=com_annotator_id)
+        controller = StructureCOMController(self.moving)
+        coms = controller.get_COM(self.moving, annotator_id=com_annotator_id)
 
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registered_output,"transformix_input_points.txt")        
+        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
         with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
             f.write("point\n")
             f.write(f"{len(coms)}\n")
@@ -361,19 +346,19 @@ class VolumeRegistration:
 
 
     def fill_contours(self):
-        sqlController = SqlController(self.animal)
+        sqlController = SqlController(self.moving)
         # vars
-        INPUT = os.path.join(self.fileLocationManager.prep, 'CH1', 'thumbnail_aligned')
-        OUTPUT = os.path.join(self.fileLocationManager.prep, 'CH1', 'thumbnail_merged')
+        INPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_aligned')
+        OUTPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_merged')
         os.makedirs(OUTPUT, exist_ok=True)
-        polygon = PolygonSequenceController(animal=self.animal)        
+        polygon = PolygonSequenceController(animal=self.moving)        
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
         polygons = defaultdict(list)
         color = 0 # set it below the threshold set in mask class
         """
-        df_L = polygon.get_volume(self.animal, 3, 12)
-        df_R = polygon.get_volume(self.animal, 3, 13)
+        df_L = polygon.get_volume(self.moving, 3, 12)
+        df_R = polygon.get_volume(self.moving, 3, 13)
         frames = [df_L, df_R]
         df = pd.concat(frames)
         len_L = df_L.shape[0]
@@ -381,7 +366,7 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         """
-        df = polygon.get_volume(self.animal, 3, 33)
+        df = polygon.get_volume(self.moving, 3, 33)
 
         for _, row in df.iterrows():
             x = row['coordinate'][0]
@@ -424,22 +409,22 @@ class VolumeRegistration:
         if not os.path.exists(self.unregistered_pickle_file):
             print(f'{self.unregistered_pickle_file} does not exist, exiting.')
             sys.exit()
-        if not os.path.exists(self.registered_point_file):
-            print(f'{self.registered_point_file} does not exist, exiting.')
+        if not os.path.exists(self.registration_point_file):
+            print(f'{self.registration_point_file} does not exist, exiting.')
             sys.exit()
 
         point_or_index = 'OutputPoint'
         source='COMPUTER'
         d = pd.read_pickle(self.unregistered_pickle_file)
         point_dict = dict(sorted(d.items()))
-        controller = AnnotationSessionController(self.animal)
+        controller = AnnotationSessionController(self.moving)
 
-        with open(self.registered_point_file, "r") as f:                
+        with open(self.registration_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
         if len(lines) != len(point_dict):
-            print(f'Length {os.path.basename(self.registered_point_file)}: {len(lines)} does not match {os.path.basename(self.unregistered_pickle_file)}: {len(point_dict)}')
+            print(f'Length {os.path.basename(self.registration_point_file)}: {len(lines)} does not match {os.path.basename(self.unregistered_pickle_file)}: {len(point_dict)}')
             sys.exit()
         print("\n\n{} points detected\n\n".format(len(lines)))
         for structure, i in zip(point_dict.keys(), range(len(lines))):        
@@ -450,7 +435,7 @@ class VolumeRegistration:
             z = lf[2] * self.um
             brain_region = controller.get_brain_region(structure)
             if brain_region is not None:
-                annotation_session = controller.get_annotation_session(self.animal, brain_region.id, 1)
+                annotation_session = controller.get_annotation_session(self.moving, brain_region.id, 1)
                 entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
                 controller.upsert_structure_com(entry)
             else:
@@ -458,7 +443,7 @@ class VolumeRegistration:
 
             if self.debug and brain_region is not None:
                 #lf = [round(l) for l in lf]
-                print(annotation_session.id, self.animal, brain_region.id, source, 
+                print(annotation_session.id, self.moving, brain_region.id, source, 
                       structure, lf, x, int(y), int(z), lx)
 
 
@@ -513,7 +498,7 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        volumepath = os.path.join(self.registered_output, 'result.tif')
+        volumepath = os.path.join(self.registration_output, 'result.tif')
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
@@ -531,7 +516,7 @@ class VolumeRegistration:
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
 
         ng = NumpyToNeuroglancer(
-            self.animal,
+            self.moving,
             None,
             scales,
             "image",
@@ -549,58 +534,40 @@ class VolumeRegistration:
         tq.insert(tasks)
         tq.execute()
 
-    def check_registration(self):
-        """Starter method to check for existing directories and files
+
+    def register_volume(self):
+        """This will perform the elastix registration of the volume to the atlas.
+        It first does an affine registration, then a bspline registration.
         """
-        status = []
-        
-        if os.path.exists(self.fixed_volume_path):
-            status.append(f'\tFixed volume at {self.fixed_volume_path}')
 
-        if os.path.exists(self.moving_volume_path):
-            status.append(f'\tMoving volume at {self.moving_volume_path}')
-
-        result_path = os.path.join(self.registered_output, 'result.tif')
-        if os.path.exists(result_path):
-            status.append(f'\tRegistered volume at {result_path}')
-
-        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
-        if os.path.exists(reverse_transformation_pfile):
-            status.append(f'\tTransformParameters file to register points at: {reverse_transformation_pfile}')
-
-        if os.path.exists(self.neuroglancer_data_path):
-            status.append(f'\tPrecomputed data at: {self.neuroglancer_data_path}')
-
-        if os.path.exists(self.unregistered_pickle_file):
-            status.append(f'\tCOM pickle data at: {self.unregistered_pickle_file}')
-
-        if os.path.exists(self.unregistered_point_file):
-            status.append(f'\tUnnregisted points at: {self.unregistered_point_file}')
-
-        if os.path.exists(self.registered_point_file):
-            status.append(f'\tRegisted points at: {self.registered_point_file}')
-
-
-        if len(status) > 0:
-            print("These are the processes that have run:")
-            print("\n".join(status))
-        else:
-            print(f'Nothing has been run to register {self.animal} to {self.fixed} with channel {self.channel}.')
-
-
-    def point_based_registration(self):
         os.makedirs(self.elastix_output, exist_ok=True)
-        os.makedirs(self.registered_output, exist_ok=True)
 
-        elastixImageFilter = self.setup_registration(self.fixed_volume_path, self.moving_volume_path, self.elastix_output)
+        elastixImageFilter = self.setup_registration(self.fixed, self.moving)
+        elastixImageFilter.SetOutputDirectory(self.elastix_output)
         resultImage = elastixImageFilter.Execute()         
-        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
-        savepath = os.path.join(self.registered_output, 'result.tif')
+        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
+        savepath = os.path.join(self.elastix_output, 'result.tif')
         sitk.WriteImage(resultImage, savepath)
         print(f'Saved img to {savepath}')
 
+    def reverse_register_volume(self):
+        """This method also uses an affine and a bspline registration process, but it does 
+        it in reverse. The fixed and moving images get switched so we can get the transformation
+        for the points to get registered to the atlas. 
+        """
+       
+        os.makedirs(self.reverse_elastix_output, exist_ok=True)
 
-    def setup_pointbased_registration(self, fixed_path, moving_path):
+        elastixImageFilter = self.setup_registration(self.moving, self.fixed)
+        elastixImageFilter.SetOutputDirectory(self.reverse_elastix_output)
+        elastixImageFilter.Execute()
+        print(f'Done performing inverse')
+
+    def setup_registration(self, fixed, moving):
+        
+        fixed_path = os.path.join(self.data, f'{fixed}_{self.um}um_{self.orientation}.tif' )
+        moving_path = os.path.join(self.data, f'{moving}_{self.um}um_{self.orientation}.tif' )
+
         if not os.path.exists(fixed_path):
             print(f'{fixed_path} does not exist')
             return
@@ -608,8 +575,12 @@ class VolumeRegistration:
             print(f'{moving_path} does not exist')
             return
         # set point paths
-        fixed_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.fixed}_points.pts')
-        moving_point_path = os.path.join(self.fileLocationManager.registration_info, f'{self.animal}_points.pts')
+        fixed_point_path = os.path.join(self.data, f'{fixed}_{self.um}um_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.data, f'{moving}_{self.um}um_{self.orientation}.pts')
+        print(f'moving volume path={moving_path}')
+        print(f'fixed volume path={fixed_path}')
+        print(f'moving point path={moving_point_path}')
+        print(f'fixed point path={fixed_point_path}')
         
         fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
         movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
@@ -626,36 +597,38 @@ class VolumeRegistration:
         affineParameterMap["UseDirectionCosines"] = ["true"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+        affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
+            with open(fixed_point_path, 'r') as fp:
+                fixed_count = len(fp.readlines())
+            with open(moving_point_path, 'r') as fp:
+                moving_count = len(fp.readlines())
+            assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
             affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
             affineParameterMap["Metric"] = ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
             affineParameterMap["Metric0Weight"] = ["0.25"] # the weight of 1st metric
             affineParameterMap["Metric1Weight"] = ["0.75"] # the weight of 2nd metric
+            elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
+            elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
-        bsplineParameterMap["WriteResultImage"] = ["false"]
-        bsplineParameterMap["UseDirectionCosines"] = ["true"]
-        bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        bsplineParameterMap["NumberOfResolutions"]= ["6"]
-        bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-        del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
+        if not self.debug:
+            bsplineParameterMap["WriteResultImage"] = ["false"]
+            bsplineParameterMap["UseDirectionCosines"] = ["true"]
+            bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+            bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+            del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-
-
         elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.SetOutputDirectory(self.elastix_output)
         elastixImageFilter.LogToConsoleOff()
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
@@ -679,6 +652,52 @@ class VolumeRegistration:
         merged_volume = np.sum(volumes, axis=0)
         average_volume = merged_volume / float(len(volumes))
         average_volume = normalize8(average_volume)
-        savepath = os.path.join(self.fixed_path, 'MDXXX_average_brain.tif')
+        savepath = os.path.join(self.fixed_path, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, average_volume)
+
+
+    def check_registration(self):
+        """Starter method to check for existing directories and files
+        """
+        status = []
+        
+        if os.path.exists(self.fixed_volume_path):
+            status.append(f'\tFixed volume at {self.fixed_volume_path}')
+
+        if os.path.exists(self.moving_volume_path):
+            status.append(f'\tMoving volume at {self.moving_volume_path}')
+
+        result_path = os.path.join(self.registration_output, 'result.tif')
+        if os.path.exists(result_path):
+            status.append(f'\tRegistered volume at {result_path}')
+
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
+        if os.path.exists(reverse_transformation_pfile):
+            status.append(f'\tTransformParameters file to register points at: {reverse_transformation_pfile}')
+
+        if os.path.exists(self.neuroglancer_data_path):
+            status.append(f'\tPrecomputed data at: {self.neuroglancer_data_path}')
+
+        if os.path.exists(self.unregistered_point_file):
+            status.append(f'\tUnnregisted points at: {self.unregistered_point_file}')
+
+
+        fixed_point_path = os.path.join(self.data, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.data, f'{self.moving}_{self.um}um_{self.orientation}.pts')
+
+        if os.path.exists(fixed_point_path):
+            status.append(f'\tFixed points at: {fixed_point_path}')
+        if os.path.exists(moving_point_path):
+            status.append(f'\tMoving points at: {moving_point_path}')
+        if os.path.exists(self.unregistered_point_file):
+            status.append(f'\tUnregistered moving points at: {self.unregistered_point_file}')
+
+
+
+
+        if len(status) > 0:
+            print("These are the processes that have run:")
+            print("\n".join(status))
+        else:
+            print(f'Nothing has been run to register {self.moving} to {self.fixed} with channel {self.channel}.')

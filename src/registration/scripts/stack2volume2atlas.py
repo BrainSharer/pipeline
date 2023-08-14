@@ -37,10 +37,10 @@ from library.registration.volume_registration import VolumeRegistration
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--animal', help='Enter the animal', required=True)
+    parser.add_argument('--moving', help='Enter the animal (moving)', required=True)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument('--um', help="size of atlas in micrometers", required=False, default=25, type=int)
-    parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='allen')
+    parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='Allen')
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
     parser.add_argument("--task", 
@@ -49,14 +49,14 @@ if __name__ == '__main__':
                         required=False, default="check_status", type=str)
     
     args = parser.parse_args()
-    animal = args.animal
+    moving = args.moving
     channel = args.channel
     um = args.um
     fixed = args.fixed
     orientation = args.orientation
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
-    volumeRegistration = VolumeRegistration(animal, channel, um, fixed, orientation, debug)
+    volumeRegistration = VolumeRegistration(moving, channel, um, fixed, orientation, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,
@@ -70,7 +70,6 @@ if __name__ == '__main__':
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
                         'polygons': volumeRegistration.transformix_polygons,
-                        'point_based_registration': volumeRegistration.point_based_registration,
                         'create_average_volume': volumeRegistration.create_average_volume
     }
 
