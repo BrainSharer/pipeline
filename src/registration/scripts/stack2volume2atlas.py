@@ -66,7 +66,7 @@ if __name__ == '__main__':
                         'transformix_points': volumeRegistration.transformix_points,
                         'transformix_coms': volumeRegistration.transformix_coms,
                         'create_precomputed': volumeRegistration.create_precomputed,
-                        'check_status': volumeRegistration.check_registration,
+                        'status': volumeRegistration.check_registration,
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
                         'polygons': volumeRegistration.transformix_polygons,

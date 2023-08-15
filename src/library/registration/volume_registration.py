@@ -234,16 +234,55 @@ class VolumeRegistration:
         transformixImageFilter.SetFixedPointSetFileName(self.unregistered_point_file)
         transformixImageFilter.Execute()
 
- 
-        """      
-        resultImage = (resultImage * 254).astype(np.uint8)
-        outpath = os.path.join(self.registration_output,'facialmask.tif')
-        imwrite(outpath, resultImage)
 
-        structure_mask = (structure_mask * 100).astype(np.uint8)
-        outpath = os.path.join(self.registration_output,'structure_mask.tif')
-        imwrite(outpath, structure_mask)
+    def insert_points(self):
+        """This method will take the pickle file of COMs and insert them.
+        The COMs in the pickle files are in pixel coordinates.
+        For typical COMs, the full scaled xy version gets multiplied by 0.325 then inserted
+        Upon retrieval, xy gets: divided by 0.325. Here we scale by our downsampling factor when we created the volume,
+        then multiple by the scan run resolution which is hard coded below.
         """
+
+        if not os.path.exists(self.registered_point_file):
+            print(f'{self.registered_point_file} does not exist, exiting.')
+            sys.exit()
+
+        com_annotator_id = 2
+        structureController = StructureCOMController(self.moving)
+        coms = structureController.get_coms(self.moving, annotator_id=com_annotator_id)
+
+        point_or_index = 'OutputPoint'
+        source='COMPUTER'
+        self.moving = 'Atlas'
+        sessionController = AnnotationSessionController(self.moving)
+
+        with open(self.registered_point_file, "r") as f:                
+            lines=f.readlines()
+            f.close()
+
+        assert len(lines) == len(coms), f'Length of {self.registered_point_file}={len(lines)} != length of coms={len(coms)}'
+
+        point_or_index = 'OutputPoint'
+        for i in range(len(lines)):        
+            lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
+            lf = [float(f) for f in lx]
+            x = lf[0] * self.um
+            y = lf[1] * self.um
+            z = lf[2] * self.um
+            com = coms[i]
+            structure = com.session.brain_region.abbreviation
+           
+            brain_region = sessionController.get_brain_region(structure)
+            if brain_region is not None:
+                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, 1)
+                entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
+                sessionController.upsert_structure_com(entry)
+            else:
+                print(f'No brain region found for {structure}')
+
+            if self.debug and brain_region is not None:
+                #lf = [round(l) for l in lf]
+                print(annotation_session.id, self.moving, brain_region.id, source, structure,  int(x), int(y), int(z))
 
 
     def transformix_polygons(self):
@@ -398,55 +437,6 @@ class VolumeRegistration:
                 cv2.imwrite(outpath, img)
 
 
-    def insert_points(self):
-        """This method will take the pickle file of COMs and insert them.
-        The COMs in the pickle files are in pixel coordinates.
-        For typical COMs, the full scaled xy version gets multiplied by 0.325 then inserted
-        Upon retrieval, xy gets: divided by 0.325. Here we scale by our downsampling factor when we created the volume,
-        then multiple by the scan run resolution which is hard coded below.
-        """
-
-        if not os.path.exists(self.unregistered_pickle_file):
-            print(f'{self.unregistered_pickle_file} does not exist, exiting.')
-            sys.exit()
-        if not os.path.exists(self.registration_point_file):
-            print(f'{self.registration_point_file} does not exist, exiting.')
-            sys.exit()
-
-        point_or_index = 'OutputPoint'
-        source='COMPUTER'
-        d = pd.read_pickle(self.unregistered_pickle_file)
-        point_dict = dict(sorted(d.items()))
-        controller = AnnotationSessionController(self.moving)
-
-        with open(self.registration_point_file, "r") as f:                
-            lines=f.readlines()
-            f.close()
-
-        if len(lines) != len(point_dict):
-            print(f'Length {os.path.basename(self.registration_point_file)}: {len(lines)} does not match {os.path.basename(self.unregistered_pickle_file)}: {len(point_dict)}')
-            sys.exit()
-        print("\n\n{} points detected\n\n".format(len(lines)))
-        for structure, i in zip(point_dict.keys(), range(len(lines))):        
-            lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
-            lf = [float(x) for x in lx]
-            x = lf[0] * self.um
-            y = lf[1] * self.um
-            z = lf[2] * self.um
-            brain_region = controller.get_brain_region(structure)
-            if brain_region is not None:
-                annotation_session = controller.get_annotation_session(self.moving, brain_region.id, 1)
-                entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
-                controller.upsert_structure_com(entry)
-            else:
-                print(f'No brain region found for {structure}')
-
-            if self.debug and brain_region is not None:
-                #lf = [round(l) for l in lf]
-                print(annotation_session.id, self.moving, brain_region.id, source, 
-                      structure, lf, x, int(y), int(z), lx)
-
-
     def get_file_information(self):
         """Get information about the mid file in the image stack
 
@@ -544,6 +534,7 @@ class VolumeRegistration:
 
         elastixImageFilter = self.setup_registration(self.fixed, self.moving)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
+        elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
         savepath = os.path.join(self.elastix_output, 'result.tif')
@@ -599,18 +590,6 @@ class VolumeRegistration:
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
-        if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
-            with open(fixed_point_path, 'r') as fp:
-                fixed_count = len(fp.readlines())
-            with open(moving_point_path, 'r') as fp:
-                moving_count = len(fp.readlines())
-            assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-            affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-            affineParameterMap["Metric"] = ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-            affineParameterMap["Metric0Weight"] = ["0.25"] # the weight of 1st metric
-            affineParameterMap["Metric1Weight"] = ["0.75"] # the weight of 2nd metric
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
 
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
@@ -627,9 +606,26 @@ class VolumeRegistration:
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
-
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
+
+        if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
+            with open(fixed_point_path, 'r') as fp:
+                fixed_count = len(fp.readlines())
+            with open(moving_point_path, 'r') as fp:
+                moving_count = len(fp.readlines())
+            assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
+
+            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+            elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
+
+            elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
+            elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
+
+
+
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
 
@@ -692,6 +688,8 @@ class VolumeRegistration:
             status.append(f'\tMoving points at: {moving_point_path}')
         if os.path.exists(self.unregistered_point_file):
             status.append(f'\tUnregistered moving points at: {self.unregistered_point_file}')
+        if os.path.exists(self.registered_point_file):
+            status.append(f'\tRegistered moving points at: {self.registered_point_file}')
 
 
 

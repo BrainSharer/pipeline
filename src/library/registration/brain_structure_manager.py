@@ -35,7 +35,7 @@ class BrainStructureManager():
         self.aligned_contours = {}
         self.com_annotator_id = 2
         self.polygon_annotator_id = 0
-        self.volumeRegistration = VolumeRegistration(animal=self.animal)
+        self.volumeRegistration = VolumeRegistration(moving=self.animal)
         self.debug = debug
         self.midbrain_keys = {'SNC_L', 'SNC_R', 'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         self.allen_structures_keys = allen_structures.keys()

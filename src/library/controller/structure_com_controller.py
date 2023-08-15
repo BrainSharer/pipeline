@@ -52,6 +52,25 @@ class StructureCOMController(SqlController):
             row_dict[abbreviation] = [row.x, row.y, row.z]
         return row_dict
 
+    def get_coms(self, prep_id, annotator_id=2):
+        """returns the Center Of Mass of structures for a Animal ID and annotator combination
+
+        Args:
+            prep_id (str): Animal ID
+            annotator_id (int): Annotator Id
+
+        Returns:
+            list: a list of coms in order by abbreviation
+        """
+
+        sessions = self.get_available_sessions(prep_id, annotator_id)
+        coms = []
+        for session in sessions:
+            com = self.session.query(StructureCOM).join(AnnotationSession).join(BrainRegion)\
+                .filter(StructureCOM.FK_session_id == session.id).order_by(BrainRegion.abbreviation).first()
+            coms.append(com)
+        return coms
+
     def get_COM(self, prep_id, annotator_id=2):
         """returns the Center Of Mass of structures for a Animal ID and annotator combination
 
@@ -70,8 +89,7 @@ class StructureCOMController(SqlController):
                 .filter(StructureCOM.FK_session_id == session.id).first()
             coms.append(com)
         coordinate = [[i.x, i.y, i.z] for i in coms if i is not None]
-        structure = [
-            i.session.brain_region.abbreviation for i in coms if i is not None]
+        structure = [i.session.brain_region.abbreviation for i in coms if i is not None]
         return dict(zip(structure, coordinate))
 
     def get_all_manual_COM(self):
@@ -97,7 +115,8 @@ class StructureCOMController(SqlController):
             .filter(AnnotationSession.annotation_type==AnnotationType.STRUCTURE_COM)\
             .filter(AnnotationSession.FK_prep_id==prep_id)\
             .filter(AnnotationSession.FK_user_id==annotator_id)\
-            .order_by(AnnotationSession.created).all()
+            .join(BrainRegion)\
+            .order_by(BrainRegion.abbreviation).all()
         return sessions
     
     def get_active_sessions(self):

@@ -54,9 +54,11 @@ class StructureCOM(Base):
     x = Column(Float, nullable=False)
     y = Column(Float, nullable=False)
     z = Column(Float, nullable=False)
-    source = Column(Enum(COMSources))    
-    FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
-    session = relationship('AnnotationSession', lazy=True)
+    source = Column(Enum(COMSources)) 
+    FK_session_id = Column(Integer, ForeignKey(AnnotationSession.id))
+    session = relationship("AnnotationSession")    
+
+
 
 class PolygonSources(enum.Enum):
     NA = 'NA'
