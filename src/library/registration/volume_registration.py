@@ -534,6 +534,7 @@ class VolumeRegistration:
 
         elastixImageFilter = self.setup_registration(self.fixed, self.moving)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
+        elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
         savepath = os.path.join(self.elastix_output, 'result.tif')
@@ -619,6 +620,10 @@ class VolumeRegistration:
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
         elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        elastixImageFilter.SetParameter("NumberOfSpatialSamples", "16000")
+        elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
+        elastixImageFilter.SetParameter("SampleRegionSize", "150")
+        elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
 
