@@ -534,7 +534,6 @@ class VolumeRegistration:
 
         elastixImageFilter = self.setup_registration(self.fixed, self.moving)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
-        elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
         savepath = os.path.join(self.elastix_output, 'result.tif')
@@ -605,10 +604,6 @@ class VolumeRegistration:
         elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.AddParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
-        elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.LogToConsoleOff()
-
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
@@ -623,7 +618,9 @@ class VolumeRegistration:
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-
+        elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.LogToConsoleOff()
 
 
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
