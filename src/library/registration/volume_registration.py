@@ -29,24 +29,24 @@ import os
 import sys
 import numpy as np
 from skimage import io
-from skimage.exposure import rescale_intensity
+#from skimage.filters import gaussian        
+#from skimage.exposure import rescale_intensity
+#from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
 import SimpleITK as sitk
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
-#from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
-
 
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.filelocation_manager import FileLocationManager, data_path
-from library.utilities.utilities_mask import normalize8, smooth_image
-from library.utilities.utilities_process import read_image
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.controller.structure_com_controller import StructureCOMController
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.utilities.utilities_mask import normalize8, smooth_image
+from library.utilities.utilities_process import read_image
 
 def sort_from_center(polygon:list) -> list:
     """Get the center of the unique points in a polygon and then use math.atan2 to get
@@ -123,6 +123,7 @@ class VolumeRegistration:
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.data, f'{self.moving}_{um}um_{orientation}.tif' )
         self.fixed_volume_path = os.path.join(self.data, f'{self.fixed}_{um}um_{orientation}.tif' )
+        self.registered_volume = os.path.join(self.data, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         
         self.registration_output = os.path.join(self.data, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
@@ -457,29 +458,14 @@ class VolumeRegistration:
     def create_volume(self):
         """Create a 3D volume of the image stack
         """
-        #from skimage.filters import gaussian        
-        #from skimage.exposure import rescale_intensity
         files, volume_size, dtype = self.get_file_information()
         image_stack = np.zeros(volume_size)
         file_list = []
-        #clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
         for ffile in tqdm(files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
-            #blur = cv2.GaussianBlur(farr, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
-            #farr = rescale_intensity(blur, in_range=(127.5,255), out_range=(0,255))
-            #farr = normalize8(farr)
-            #print(farr.dtype)
-            #farr = clahe.apply(farr)
-            farr[farr == 255] = 0
+            farr[farr > 250] = 0
             farr = smooth_image(farr)
-
-
-            #blur = cv2.blur(farr,(9,9))
-            #blur2 = cv2.GaussianBlur(farr,(3,3),0)
-            #farr = cv2.equalizeHist(cv2.absdiff(blur2,blur))
-            #farr = cv2.GaussianBlur(farr,(3,3),0)
-            #farr = farr[200:-200,200:-200]
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
         io.imsave(self.moving_volume_path, image_stack.astype(dtype))
@@ -537,9 +523,9 @@ class VolumeRegistration:
         elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
-        savepath = os.path.join(self.elastix_output, 'result.tif')
-        sitk.WriteImage(resultImage, savepath)
-        print(f'Saved img to {savepath}')
+
+        sitk.WriteImage(resultImage, self.registered_volume)
+        print(f'Saved img to {self.registered_volume}')
 
     def reverse_register_volume(self):
         """This method also uses an affine and a bspline registration process, but it does 
@@ -635,10 +621,14 @@ class VolumeRegistration:
 
 
     def create_average_volume(self):
-        brains = ['MD589_25um_sagittal.tif', 'MD585_MD589.tif', 'MD594_MD589.tif']
+        moving_brains = ['MD585', 'MD594']
+        brains = ['MD589_25um_sagittal.tif']
+        for moving_brain in moving_brains:
+            brains.append(f'{moving_brain}_{self.fixed}_{self.um}um_{self.orientation}.tif')
+
         volumes = []
         for brain in brains:
-            brainpath = os.path.join(self.fixed_path, brain)
+            brainpath = os.path.join(self.data, brain)
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 sys.exit()
@@ -650,7 +640,7 @@ class VolumeRegistration:
         merged_volume = np.sum(volumes, axis=0)
         average_volume = merged_volume / float(len(volumes))
         average_volume = normalize8(average_volume)
-        savepath = os.path.join(self.fixed_path, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.data, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, average_volume)
 
