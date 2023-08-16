@@ -520,7 +520,8 @@ class VolumeRegistration:
 
         elastixImageFilter = self.setup_registration(self.fixed, self.moving)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
-        elastixImageFilter.PrintParameterMap()
+        if self.debug:
+            elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
 
@@ -554,10 +555,11 @@ class VolumeRegistration:
         # set point paths
         fixed_point_path = os.path.join(self.data, f'{fixed}_{self.um}um_{self.orientation}.pts')
         moving_point_path = os.path.join(self.data, f'{moving}_{self.um}um_{self.orientation}.pts')
-        print(f'moving volume path={moving_path}')
-        print(f'fixed volume path={fixed_path}')
-        print(f'moving point path={moving_point_path}')
-        print(f'fixed point path={fixed_point_path}')
+        if self.debug:
+            print(f'moving volume path={moving_path}')
+            print(f'fixed volume path={fixed_path}')
+            print(f'moving point path={moving_point_path}')
+            print(f'fixed point path={fixed_point_path}')
         
         fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
         movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
@@ -613,7 +615,6 @@ class VolumeRegistration:
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
 
-
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
 
@@ -621,6 +622,24 @@ class VolumeRegistration:
 
 
     def create_average_volume(self):
+        """Steps:
+            1. Create smoothed volumes of the 3 MDXXX brains
+            2. Create point sets for each MDXXX brain
+            3. Register MD585 and MD594 (moving brains) to MD589. You now have 3 brains to average
+            4. Use this method to get the average brain: Atlas_25um_sagittal.tif
+            5. Crop that volume to better match the Allen atlas
+            6. Pad the Allen atlas to better match the atlas you created here
+            7. Register the DK atlas to the Allen atlas
+            8. Update the DK Atlas COMs to reflect the crop you did above
+            9. Create a new atlas with the modified COMs
+        A. To create an average brain registered to the Allen atlas, run:
+            1. python src/registration/scripts/stack2volume2atlas.py --moving MD585 --fixed MD589 --task register_volume
+            2. python src/registration/scripts/stack2volume2atlas.py --moving MD594 --fixed MD589 --task register_volume
+            3. python src/registration/scripts/stack2volume2atlas.py --moving MD589 --task create_average_volume
+            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
+            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
+            
+        """
         moving_brains = ['MD585', 'MD594']
         brains = ['MD589_25um_sagittal.tif']
         for moving_brain in moving_brains:
