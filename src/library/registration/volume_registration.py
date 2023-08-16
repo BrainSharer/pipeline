@@ -266,7 +266,7 @@ class VolumeRegistration:
             print(f'{self.registered_point_file} does not exist, exiting.')
             sys.exit()
 
-        com_annotator_id = 2
+        com_annotator_id = 1
         structureController = StructureCOMController(self.moving)
         coms = structureController.get_coms(self.moving, annotator_id=com_annotator_id)
 
@@ -301,7 +301,7 @@ class VolumeRegistration:
 
             if self.debug and brain_region is not None:
                 #lf = [round(l) for l in lf]
-                print(annotation_session.id, self.moving, brain_region.id, source, structure,  int(x), int(y), int(z))
+                print(annotation_session.id, self.moving, brain_region.id, source, structure,  int(x/25), int(y/25), int(z/25))
 
 
     def transformix_polygons(self):
@@ -664,8 +664,8 @@ class VolumeRegistration:
             1. python src/registration/scripts/stack2volume2atlas.py --moving MD585 --fixed MD589 --task register_volume
             2. python src/registration/scripts/stack2volume2atlas.py --moving MD594 --fixed MD589 --task register_volume
             3. python src/registration/scripts/stack2volume2atlas.py --moving MD589 --task create_average_volume
-            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
-            5. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task crop_volume
+            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task crop
+            5. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
             6. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
             7. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task transformix_points
             8. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task insert_points
