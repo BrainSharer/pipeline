@@ -29,7 +29,7 @@ import os
 import sys
 import numpy as np
 from skimage import io
-#from skimage.filters import gaussian        
+from skimage.filters import gaussian        
 #from skimage.exposure import rescale_intensity
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
@@ -47,6 +47,10 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
 from library.utilities.utilities_process import read_image
+
+# constants
+MOVING_CROP = 50
+
 
 def sort_from_center(polygon:list) -> list:
     """Get the center of the unique points in a polygon and then use math.atan2 to get
@@ -95,6 +99,12 @@ def dice(im1, im2):
     # Compute Dice coefficient
     intersection = np.logical_and(im1, im2)
     return 2. * intersection.sum() / (im1.sum() + im2.sum())
+
+def pad_volume(volume, padto):
+    re = (padto[2] - volume.shape[2]) // 1
+    ce = (padto[1] - volume.shape[1]) // 1
+    return np.pad(volume, [[0, 0], [0, ce], [0, re]], constant_values=(0))
+
 
 class VolumeRegistration:
     """This class takes a downsampled image stack and registers it to the Allen volume
@@ -230,6 +240,14 @@ class VolumeRegistration:
         178.1 -10.9 14.5
         180.4 -18.1 78.9
         """
+        if not os.path.exists(self.unregistered_point_file):
+            print(f'{self.unregistered_point_file} does not exist, exiting.')
+            sys.exit()
+
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
+        if not os.path.exists(reverse_transformation_pfile):
+            print(f'{reverse_transformation_pfile} does not exist, exiting.')
+            sys.exit()
         
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
         transformixImageFilter.SetFixedPointSetFileName(self.unregistered_point_file)
@@ -619,6 +637,16 @@ class VolumeRegistration:
         elastixImageFilter.SetLogFileName('elastix.log')
 
         return elastixImageFilter
+    
+    def crop_volume(self):
+
+        moving_volume = io.imread(self.moving_volume_path)
+        moving_volume = moving_volume[:,MOVING_CROP:500, MOVING_CROP:725]
+        savepath = os.path.join(self.data, f'Atlas_{self.um}um_{self.orientation}.tif')
+        print(f'Saving img to {savepath}')
+        io.imsave(savepath, moving_volume)
+
+
 
 
     def create_average_volume(self):
@@ -637,7 +665,10 @@ class VolumeRegistration:
             2. python src/registration/scripts/stack2volume2atlas.py --moving MD594 --fixed MD589 --task register_volume
             3. python src/registration/scripts/stack2volume2atlas.py --moving MD589 --task create_average_volume
             4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
-            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
+            5. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task crop_volume
+            6. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
+            7. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task transformix_points
+            8. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task insert_points
             
         """
         moving_brains = ['MD585', 'MD594']
@@ -657,8 +688,7 @@ class VolumeRegistration:
             volumes.append(brainimg)
 
         merged_volume = np.sum(volumes, axis=0)
-        average_volume = merged_volume / float(len(volumes))
-        average_volume = normalize8(average_volume)
+        average_volume = merged_volume
         savepath = os.path.join(self.data, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, average_volume)
