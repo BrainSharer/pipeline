@@ -657,18 +657,20 @@ class VolumeRegistration:
             4. Use this method to get the average brain: Atlas_25um_sagittal.tif
             5. Crop that volume to better match the Allen atlas
             6. Pad the Allen atlas to better match the atlas you created here
-            7. Register the DK atlas to the Allen atlas
-            8. Update the DK Atlas COMs to reflect the crop you did above
-            9. Create a new atlas with the modified COMs
+            7. Substract the  MOVING_CROP amount from the x,y pts points to match the upper left crop
+            8. Register the DK atlas to the Allen atlas
+            9. Update the DK Atlas COMs to reflect the crop you did above
+            10. Create a new atlas with the modified COMs
         A. To create an average brain registered to the Allen atlas, run:
             1. python src/registration/scripts/stack2volume2atlas.py --moving MD585 --fixed MD589 --task register_volume
             2. python src/registration/scripts/stack2volume2atlas.py --moving MD594 --fixed MD589 --task register_volume
             3. python src/registration/scripts/stack2volume2atlas.py --moving MD589 --task create_average_volume
             4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task crop
-            5. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
-            6. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
-            7. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task transformix_points
-            8. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task insert_points
+            5. update points to match crop
+            6. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
+            7. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
+            8. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task transformix_points
+            9. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task insert_points
             
         """
         moving_brains = ['MD585', 'MD594']
