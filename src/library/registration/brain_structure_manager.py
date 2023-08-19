@@ -13,7 +13,6 @@ from library.controller.structure_com_controller import StructureCOMController
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
-from library.registration.volume_registration import VolumeRegistration
 from library.controller.annotation_session_controller import AnnotationSessionController
 
 
@@ -35,9 +34,9 @@ class BrainStructureManager():
         self.aligned_contours = {}
         self.com_annotator_id = 2
         self.polygon_annotator_id = 0
-        self.volumeRegistration = VolumeRegistration(moving=self.animal)
         self.debug = debug
-        self.midbrain_keys = {'SNC_L', 'SNC_R', 'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
+        # self.midbrain_keys = {'SNC_L', 'SNC_R', 'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
+        self.midbrain_keys = {'3N_L','3N_R','4N_L','4N_R','IC','PBG_L','PBG_R','SC','SNC_L','SNC_R','SNR_L','SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
         self.region = region
         self.allen_um = 25 # size in um of allen atlas
@@ -90,7 +89,6 @@ class BrainStructureManager():
         else:
             area_keys = moving_coms.keys()
 
-
         fixed_coms = self.fixed_brain.get_coms(annotator_id=self.fixed_brain.com_annotator_id)
         common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & area_keys)
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
@@ -137,6 +135,7 @@ class BrainStructureManager():
         # get transformation at um 
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
+            print(f'R is empty with {self.animal} ID={polygon_annotator_id}')
             return
 
         # loop through structure objects
@@ -231,48 +230,6 @@ class BrainStructureManager():
         save_mesh(aligned_structure, mesh_filepath)
         np.savetxt(com_filepath, self.com)
         
-
-    def transformix_points(self, points):
-        polygons = defaultdict(list)
-
-        write_filepath = os.path.join(self.point_path, 'point.pts')
-        transformixImageFilter = self.volumeRegistration.setup_transformix(
-            self.volumeRegistration.reverse_elastix_output)
-
-        # First, write all data to a pts file
-        with open(write_filepath, 'w') as f:
-            f.write('point\n')
-            f.write(f'{len(points)}\n')
-            for point in points:
-                x = point[0]
-                y = point[1]
-                z = point[2]
-                f.write(f'{x} {y} {z}')
-                f.write('\n')
-
-        # done writing, now transform
-        transformixImageFilter.SetFixedPointSetFileName(write_filepath)
-        transformixImageFilter.Execute()
-        # done transforming, now read
-        read_filepath = self.volumeRegistration.registered_point_file
-        with open(read_filepath, "r") as f:
-            lines = f.readlines()
-            f.close()
-        # done reading, now stuff into dictionary and return
-        point_or_index = 'OutputPoint'
-        for i in range(len(lines)):
-            lx = lines[i].split()[lines[i].split().index(
-                point_or_index)+3:lines[i].split().index(point_or_index)+6]  # x,y,z
-            lf = [float(f) for f in lx]
-            x = lf[0]
-            y = lf[1]
-            z = lf[2]
-
-            xy = (x, y)
-            section = int(np.round(z))
-            polygons[section].append(xy)
-
-        return polygons
 
 
     def get_center_of_mass(self):

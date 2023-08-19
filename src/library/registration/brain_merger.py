@@ -28,7 +28,7 @@ class BrainMerger():
         self.volumes_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
         self.coms_to_merge = defaultdict(list)
-        atlas = 'atlasV8'
+        atlas = 'Atlas'
         self.data_path = os.path.join(data_path, 'atlas_data', atlas)
         self.volume_path = os.path.join(self.data_path, 'structure')
         self.origin_path = os.path.join(self.data_path, 'origin')
@@ -255,32 +255,25 @@ class BrainMerger():
 
             
 
-    def save_brain_area_data(self, region):
+    def save_brain_area_data(self):
+        """Save data to make it easy to load in a notebook for evaluation
+        """
+
         animal = 'Atlas'
-        brainManager = BrainStructureManager(animal, region=region)
+        brainManager = BrainStructureManager(animal)
         brainManager.fixed_brain = BrainStructureManager('Allen')
         brainManager.com_annotator_id = 1
         brainManager.fixed_brain.com_annotator_id = 1
 
-
-        csvfile = f"using_{region}"
-
-        area_keys = brainManager.allen_structures_keys
-
         moving_coms = brainManager.get_coms(annotator_id=1)
         allen_coms = brainManager.fixed_brain.get_coms(annotator_id=1)
-        common_keys = sorted(allen_coms.keys() & moving_coms.keys() & area_keys)
-        moving_points = np.array([moving_coms[s] for s in common_keys])
+        common_keys = sorted(allen_coms.keys() & moving_coms.keys())
         allen_point_dict = {s:allen_coms[s] for s in common_keys}
         moving_point_dict = {s:moving_coms[s] for s in common_keys}
         assert len(moving_point_dict) > 0, 'Not enough moving points.'
         assert len(allen_point_dict) == len(moving_point_dict), \
             f'Length of datasets do not match. Fixed={len(allen_point_dict)} moving={len(moving_point_dict)}'
 
-        R, t = brainManager.get_transform_to_align_brain(brainManager)
-        print('Got R and t from get transform')
-        reg_points = R @ moving_points.T + t
-        reg_point_dict = {s:reg_points.T[i] for i,s in enumerate(common_keys)}
 
         distances = []
         sortme = {}
@@ -288,15 +281,14 @@ class BrainMerger():
             (x,y,z) = allen_point_dict[structure]
             allen_point = np.array([x,y,z])    
             moving_point = np.array(moving_point_dict[structure])
-            reg_point = brain_to_atlas_transform(moving_point, R, t)
-            d = self.calculate_distance(allen_point, reg_point)
+            d = self.calculate_distance(allen_point, moving_point)
             distances.append(d)
             sortme[structure] = d
 
         ds = {k: v for k, v in sorted(sortme.items(), key=lambda item: item[1])}
         # 1st dataframe = distances
         df_distance = pd.DataFrame(ds.items(), columns=['Structure', 'distance'])
-        csvfilename = os.path.join(self.csv_path, f'{csvfile}_distance.csv')
+        csvfilename = os.path.join(self.csv_path, 'distance.csv')
         df_distance.to_csv(csvfilename, index = False)
 
         # 2nd dataframe = allen
@@ -304,15 +296,15 @@ class BrainMerger():
         df_allen['S'] = df_allen.apply (lambda row: self.label_left_right(row), axis=1)
         df_allen['area'] = df_allen.apply (lambda row: self.label_area(row, brainManager.midbrain_keys), axis=1)
         df_allen[['X', 'Y', 'Z']] = pd.DataFrame(df_allen['xyz'].tolist(), index=df_allen.index)
-        csvfilename = os.path.join(self.csv_path, f'{csvfile}_allen.csv')
+        csvfilename = os.path.join(self.csv_path, 'Allen.csv')
         df_allen.to_csv(os.path.join(csvfilename), index = False)
 
         # save 3rd dataframe = atlas
-        df_atlas = pd.DataFrame(reg_point_dict.items(), columns=['Structure', 'xyz'])
+        df_atlas = pd.DataFrame(moving_point_dict.items(), columns=['Structure', 'xyz'])
         df_atlas['S'] = df_atlas.apply (lambda row: self.label_left_right(row), axis=1)
         df_atlas['area'] = df_atlas.apply (lambda row: self.label_area(row, brainManager.midbrain_keys), axis=1)
         df_atlas[['X', 'Y', 'Z']] = pd.DataFrame(df_atlas['xyz'].tolist(), index=df_atlas.index)
-        csvfilename = os.path.join(self.csv_path, f'{csvfile}_atlas.csv')
+        csvfilename = os.path.join(self.csv_path, f'Atlas.csv')
         df_atlas.to_csv(csvfilename, index = False)
 
 

@@ -134,6 +134,17 @@ class StructureCOMController(SqlController):
             .order_by(AnnotationSession.FK_prep_id).all()
         return sessions
 
+    def get_com_annotator(self, FK_prep_id):
+        sessions = self.get_active_animal_sessions(FK_prep_id=FK_prep_id)
+        users = []
+        for session in sessions:
+            users.append(session.FK_user_id)
+        try:
+            id = max(users, key=users.count)
+        except:
+            id = None
+        return id
+        
 
     def structure_abbreviation_to_id(self, abbreviation):
         try:

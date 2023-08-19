@@ -8,6 +8,8 @@ import os
 import sys
 import json
 import numpy as np
+
+
 np.finfo(np.dtype("float32"))
 np.finfo(np.dtype("float64"))
 import shutil
@@ -16,12 +18,14 @@ import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 from pathlib import Path
 from skimage import io
+from scipy.ndimage import center_of_mass
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.controller.sql_controller import SqlController
-from library.utilities.utilities_process import SCALING_FACTOR
+from library.controller.structure_com_controller import StructureCOMController
+from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import allen_structures
 
 
@@ -105,10 +109,25 @@ class AtlasCreator:
         if os.path.exists(self.OUTPUT_DIR):
             shutil.rmtree(self.OUTPUT_DIR)
         os.makedirs(self.OUTPUT_DIR, exist_ok=True)
-
         self.sqlController = SqlController(self.fixed_brain)
-        self.xy_resolution = self.sqlController.scan_run.resolution
-        self.zresolution = self.sqlController.scan_run.zresolution
+
+    def get_transform_to_align_brain(self):
+        fixed = 'Allen'
+        midbrain_keys = {'SC', 'SNC_L', 'SNC_R', '7N_L', '7N_R', 'SpV_L', 'SpV_R'}
+        structureController = StructureCOMController(fixed)
+        fixed_coms = structureController.get_COM('Allen', annotator_id=1)
+        moving_coms = structureController.get_COM('Atlas', annotator_id=1)
+        common_keys = sorted(fixed_coms.keys() & moving_coms.keys())
+        fixed_points = np.array([fixed_coms[s] for s in common_keys])
+        moving_points = np.array([moving_coms[s] for s in common_keys])
+
+        # Divide by the Allen um
+        fixed_points /= 25
+        moving_points /= 25
+
+        self.R, self.t = umeyama(moving_points.T, fixed_points.T)
+        
+
 
     def get_allen_id(self, color, structure):
         try:
@@ -124,12 +143,14 @@ class AtlasCreator:
     def create_atlas(self, save, ng):
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um coo
+        self.get_transform_to_align_brain()
         width = (self.sqlController.scan_run.width) + 200
         height = (self.sqlController.scan_run.height) + 100
-        z_length = self.sqlController.scan_run.number_of_slides
+        z_length = 456 # depth of Allen atlas
         atlas_volume = np.zeros(( int(width), int(height), z_length), dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
         volume_dir = os.path.join(self.ATLAS_PATH, 'structure')
+        com_dir = os.path.join(self.ATLAS_PATH, 'com')
         if not os.path.exists(origin_dir):
             print(f'{origin_dir} does not exist, exiting.')
             sys.exit()
@@ -140,63 +161,71 @@ class AtlasCreator:
         x_length = int(width)
         atlas_box_size=(x_length, y_length, z_length)
         print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
-        xy_resolution = self.xy_resolution * 1000
-        atlas_box_scales=[xy_resolution, xy_resolution, self.zresolution*1000]
+        resolution = 25 * 1000 # Allen isotropic
+        atlas_box_scales=[resolution, resolution, resolution]
         atlas_box_scales = np.array(atlas_box_scales)
         atlas_box_size = np.array(atlas_box_size)
-        atlas_box_center = atlas_box_size / 2
         color = 1000
         print(f'origin dir {origin_dir}')
         print(f'origin dir {volume_dir}')
-        print(f'box center {atlas_box_center}')
         print(f'Using data from {self.ATLAS_PATH}')
         origins = sorted(os.listdir(origin_dir))
         volumes = sorted(os.listdir(volume_dir))
+        coms = sorted(os.listdir(com_dir))
         print(f'Working with {len(origins)} origins and {len(volumes)} volumes.')
         ids = {}
         
-        for origin_file, volume_file in zip(origins, volumes):
+        for origin_file, volume_file, com_file in zip(origins, volumes, coms):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f'{Path(origin_file).stem} and {Path(volume_file).stem} do not match')
             structure = Path(origin_file).stem
             allen_color = self.get_allen_id(color, structure)
             color += 2
 
-            #if structure != 'TG_R':
+            #if structure != 'SC':
             #    continue
 
-            origin = np.loadtxt(os.path.join(origin_dir, origin_file))
-            volume = np.load(os.path.join(volume_dir, volume_file))
+            x,y,z = np.loadtxt(os.path.join(origin_dir, origin_file))
+            #x,y,z = np.loadtxt(os.path.join(com_dir, com_file))
+            
+            #x,y,z = brain_to_atlas_transform(origin, self.R, self.t)
 
+            volume = np.load(os.path.join(volume_dir, volume_file))
             volume = volume.astype(np.uint32)
             volume[volume > 0] = allen_color
+            #xc,yc,zc = center_of_mass(volume)
+            xs,ys,zs = np.where(volume != 0)
+            preshape = volume.shape
+            try:
+                volume = volume[min(xs):max(xs)+1,min(ys):max(ys)+1,min(zs):max(zs)+1] 
+            except:
+                pass
             ids[structure] = allen_color
-            x, y, z = origin
-            x_start = int(round(x))
-            y_start = int(round(y))
+            row_start = int(round(x))
+            col_start = int(round(y))
             z_start = int(round(z))
-            x_end = x_start + volume.shape[0]
-            y_end = y_start + volume.shape[1]
+            row_end = row_start + volume.shape[0]
+            col_end = col_start + volume.shape[1]
 
             #z_indices = [z for z in range(volume.shape[2]) if z % 2 == 0]
             #volume = volume[:, :, z_indices]
             z_end = z_start + volume.shape[2]
-            volume_ids, counts = np.unique(volume, return_counts=True)
             if debug:
-                print(f'{structure} origin={np.round(origin)}, \
-                    x: {x_start}->{x_end}, y: {y_start}->{y_end}, z: {z_start}->{z_end} \
-                    color={allen_color} ids={volume_ids} counts={counts}')
-            
+                volume_ids, counts = np.unique(volume, return_counts=True)
+                print(f'{structure} preshape={preshape} postshape={volume.shape}  \
+                    x: {row_start}->{row_end}, y: {col_start}->{col_end}, z: {z_start}->{z_end}', end=" ")
+                print(f'color={allen_color} ids={volume_ids} counts={counts}')
+            #continue
             try:
-                atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
+                atlas_volume[row_start:row_end, col_start:col_end, z_start:z_end] += volume
             except ValueError as ve:
                 print(f'Error adding {structure} to atlas: {ve}')
         
         print(f'Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
         
         save_volume = np.swapaxes(atlas_volume, 0, 2)
-        atlas_volume_ids, counts = np.unique(atlas_volume, return_counts=True)
         if self.debug:
+            atlas_volume_ids, counts = np.unique(atlas_volume, return_counts=True)
             print('ids')
             print(atlas_volume_ids)
             print('counts')
@@ -205,7 +234,7 @@ class AtlasCreator:
         #print(f'Shape of atlas volume {atlas_volume.shape} after swapping 0 and 2')
         if save:
             #save_volume = np.swapaxes(save_volume, 1, 2)
-            outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{atlas}.tif'
+            outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_25um_sagittal.tif'
             io.imsave(outpath, save_volume)
         if ng:
             neuroglancer = NumpyToNeuroglancer(atlas_volume, atlas_box_scales, offset=[0,0,0])
@@ -213,6 +242,8 @@ class AtlasCreator:
             neuroglancer.add_segment_properties(ids)
             neuroglancer.add_downsampled_volumes()
             neuroglancer.add_segmentation_mesh()
+
+
 
 
 

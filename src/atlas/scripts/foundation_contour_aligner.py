@@ -35,8 +35,10 @@ from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
 from library.image_manipulation.filelocation_manager import data_path as DATA_PATH
 from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.registration.brain_structure_manager import BrainStructureManager
+
 DOWNSAMPLE_FACTOR = 32
-from brain_structure_manager import BrainStructureManager
+
 
 def create_downsampled_transforms(animal, transforms, downsample):
     """
@@ -267,6 +269,6 @@ if __name__ == '__main__':
     animals = ['MD585', 'MD589', 'MD594']
     for animal in animals:
         aligner = FoundationContourAligner(animal)
-        aligner.create_aligned_contours()
-        # aligner.show_steps()
+        aligner.load_csv_for_foundation_brains()
+        aligner.align_contours()
         aligner.save_json_contours()

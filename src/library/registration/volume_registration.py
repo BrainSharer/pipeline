@@ -29,7 +29,7 @@ import os
 import sys
 import numpy as np
 from skimage import io
-from skimage.filters import gaussian        
+#from skimage.filters import gaussian        
 #from skimage.exposure import rescale_intensity
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
@@ -47,6 +47,8 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
 from library.utilities.utilities_process import read_image
+from library.registration.brain_structure_manager import BrainStructureManager
+from library.registration.brain_merger import BrainMerger
 
 # constants
 MOVING_CROP = 50
@@ -118,7 +120,8 @@ class VolumeRegistration:
 
     def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', debug=False):
         DATA = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
-        self.data = DATA
+        self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
+        self.data_path = DATA
         self.moving = moving
         self.animal = moving
         self.debug = debug
@@ -131,16 +134,16 @@ class VolumeRegistration:
         self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
         self.fileLocationManager = FileLocationManager(self.moving)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
-        self.moving_volume_path = os.path.join(self.data, f'{self.moving}_{um}um_{orientation}.tif' )
-        self.fixed_volume_path = os.path.join(self.data, f'{self.fixed}_{um}um_{orientation}.tif' )
-        self.registered_volume = os.path.join(self.data, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
+        self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
+        self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
+        self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         
-        self.registration_output = os.path.join(self.data, self.output_dir)
+        self.registration_output = os.path.join(self.data_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
         self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
         
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
-        self.unregistered_point_file = os.path.join(self.data, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
+        self.unregistered_point_file = os.path.join(self.data_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
         if self.debug:
@@ -224,6 +227,19 @@ class VolumeRegistration:
         transformixImageFilter.SetFixedPointSetFileName(self.unregistered_point_file)
         transformixImageFilter.Execute()
 
+    
+    def create_unregistered_pointfile(self):
+        origin_dir = os.path.join(self.atlas_path, 'origin')
+        origin_files = sorted(os.listdir(origin_dir))
+        pointfile = os.path.join(self.data_path, 'Atlas_25um_sagittal_unregistered.pts')
+        with open(pointfile, 'w') as f:
+            f.write('point\n')
+            f.write(f'{len(origin_files)}\n')
+            for origin_file in origin_files:
+                x,y,z = np.loadtxt(os.path.join(origin_dir, origin_file))
+                f.write(f'{x} {y} {z}')
+                f.write('\n')
+        return origin_files
 
     def transformix_points(self):
         """Helper method when you want to rerun the transform on a set of points.
@@ -253,6 +269,32 @@ class VolumeRegistration:
         transformixImageFilter.SetFixedPointSetFileName(self.unregistered_point_file)
         transformixImageFilter.Execute()
 
+    def transformix_origins(self):
+        registered_origin_path = os.path.join(self.atlas_path, 'registered_origin')
+        os.makedirs(registered_origin_path, exist_ok=True)
+        origin_files = self.create_unregistered_pointfile()
+        structures = sorted([str(origin).replace('.txt','') for origin in origin_files])
+        self.transformix_points()
+        point_or_index = 'OutputPoint'
+
+        with open(self.registered_point_file, "r") as f:                
+            lines=f.readlines()
+            f.close()
+
+        point_or_index = 'OutputPoint'
+        for i in range(len(lines)):        
+            lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
+            lf = [float(f) for f in lx]
+            x = lf[0]
+            y = lf[1]
+            z = lf[2]
+            structure = structures[i]
+            print(i, structure,  int(x), int(y), int(z))
+            origin_filepath = os.path.join(registered_origin_path, f'{structure}.txt')
+            np.savetxt(origin_filepath, (x,y,z))
+
+
+
 
     def insert_points(self):
         """This method will take the pickle file of COMs and insert them.
@@ -266,20 +308,22 @@ class VolumeRegistration:
             print(f'{self.registered_point_file} does not exist, exiting.')
             sys.exit()
 
-        com_annotator_id = 1
+        com_annotator_id = 2
         structureController = StructureCOMController(self.moving)
         coms = structureController.get_coms(self.moving, annotator_id=com_annotator_id)
 
         point_or_index = 'OutputPoint'
         source='COMPUTER'
-        self.moving = 'Atlas'
         sessionController = AnnotationSessionController(self.moving)
 
         with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
-        assert len(lines) == len(coms), f'Length of {self.registered_point_file}={len(lines)} != length of coms={len(coms)}'
+
+        if len(lines) != len(coms):
+            print(f'Length of {self.registered_point_file}={len(lines)} != length of coms={len(coms)}')
+            return
 
         point_or_index = 'OutputPoint'
         for i in range(len(lines)):        
@@ -293,7 +337,7 @@ class VolumeRegistration:
            
             brain_region = sessionController.get_brain_region(structure)
             if brain_region is not None:
-                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, 1)
+                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, com_annotator_id)
                 entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
                 sessionController.upsert_structure_com(entry)
             else:
@@ -301,7 +345,7 @@ class VolumeRegistration:
 
             if self.debug and brain_region is not None:
                 #lf = [round(l) for l in lf]
-                print(annotation_session.id, self.moving, brain_region.id, source, structure,  int(x/25), int(y/25), int(z/25))
+                print(i, annotation_session.id, self.moving, brain_region.id, source, structure,  int(x/25), int(y/25), int(z/25))
 
 
     def transformix_polygons(self):
@@ -561,8 +605,8 @@ class VolumeRegistration:
 
     def setup_registration(self, fixed, moving):
         
-        fixed_path = os.path.join(self.data, f'{fixed}_{self.um}um_{self.orientation}.tif' )
-        moving_path = os.path.join(self.data, f'{moving}_{self.um}um_{self.orientation}.tif' )
+        fixed_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
+        moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
 
         if not os.path.exists(fixed_path):
             print(f'{fixed_path} does not exist')
@@ -571,8 +615,8 @@ class VolumeRegistration:
             print(f'{moving_path} does not exist')
             return
         # set point paths
-        fixed_point_path = os.path.join(self.data, f'{fixed}_{self.um}um_{self.orientation}.pts')
-        moving_point_path = os.path.join(self.data, f'{moving}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.pts')
         if self.debug:
             print(f'moving volume path={moving_path}')
             print(f'fixed volume path={fixed_path}')
@@ -642,7 +686,7 @@ class VolumeRegistration:
 
         moving_volume = io.imread(self.moving_volume_path)
         moving_volume = moving_volume[:,MOVING_CROP:500, MOVING_CROP:725]
-        savepath = os.path.join(self.data, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.data_path, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, moving_volume)
 
@@ -680,7 +724,7 @@ class VolumeRegistration:
 
         volumes = []
         for brain in brains:
-            brainpath = os.path.join(self.data, brain)
+            brainpath = os.path.join(self.data_path, brain)
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 sys.exit()
@@ -691,12 +735,65 @@ class VolumeRegistration:
 
         merged_volume = np.sum(volumes, axis=0)
         average_volume = merged_volume
-        savepath = os.path.join(self.data, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.data_path, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, average_volume)
 
 
-    def check_registration(self):
+    def volume_origin_creation(self):
+        structureController = StructureCOMController('MD589')
+        polygonController = PolygonSequenceController('MD589')
+        pg_sessions = polygonController.get_available_volumes_sessions()
+        animal_users = {}
+        animals = set()
+        for session in pg_sessions:
+            animals.add(session.FK_prep_id)
+            animal_users[session.FK_prep_id] = session.FK_user_id
+
+        animal_polygon_com = {}
+        for animal in sorted(animals):
+            com_annotator_id = structureController.get_com_annotator(FK_prep_id=animal)
+            if com_annotator_id is not None:
+                animal_polygon_com[animal] = (com_annotator_id, animal_users[animal])
+
+        brainMerger = BrainMerger(self.debug)
+        #animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
+        for animal, (com_annotator_id, polygon_annotator_id) in animal_polygon_com.items():
+            if 'test' in animal or 'Atlas' in animal:
+                continue
+            
+            print(f'{animal} {com_annotator_id} {polygon_annotator_id}')
+            
+            brainManager = BrainStructureManager(animal, 'all', self.debug)
+            brainManager.polygon_annotator_id = polygon_annotator_id
+            brainManager.fixed_brain = BrainStructureManager('MD589', self.debug)
+            brainManager.fixed_brain.com_annotator_id = 2
+            brainManager.com_annotator_id = com_annotator_id
+            brainManager.compute_origin_and_volume_for_brain_structures(brainManager, brainMerger, 
+                                                                        polygon_annotator_id)
+            if brainManager.volume is not None:
+                brainManager.save_brain_origins_and_volumes_and_meshes()
+
+        if self.debug:
+            return
+        
+        for structure in brainMerger.volumes_to_merge:
+            volumes = brainMerger.volumes_to_merge[structure]
+            volume = brainMerger.merge_volumes(structure, volumes)
+            brainMerger.volumes[structure]= volume
+
+        if len(brainMerger.origins_to_merge) > 0:
+            print('Finished filling up volumes and origins')
+            brainMerger.save_atlas_origins_and_volumes_and_meshes()
+            brainMerger.save_coms_to_db()
+            #brainMerger.evaluate(region)
+            brainMerger.save_brain_area_data()
+            print('Finished saving data to disk and to DB.')
+        else:
+            print('No data to save')
+
+
+    def check_status(self):
         """Starter method to check for existing directories and files
         """
         status = []
@@ -722,8 +819,8 @@ class VolumeRegistration:
             status.append(f'\tUnnregisted points at: {self.unregistered_point_file}')
 
 
-        fixed_point_path = os.path.join(self.data, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
-        moving_point_path = os.path.join(self.data, f'{self.moving}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.data_path, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.data_path, f'{self.moving}_{self.um}um_{self.orientation}.pts')
 
         if os.path.exists(fixed_point_path):
             status.append(f'\tFixed points at: {fixed_point_path}')

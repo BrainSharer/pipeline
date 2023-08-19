@@ -30,7 +30,7 @@ from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from foundation_contour_aligner import parse_elastix, create_downsampled_transforms
-from settings import data_path as DATA_PATH, atlas as ATLAS
+from settings import data_path as DATA_PATH
 from library.utilities.utilities_process import get_image_size
 
 DOWNSAMPLE_FACTOR = 32
@@ -80,9 +80,8 @@ def interpolate(points, new_len):
     return list(map(tuple, arr_2d))
 
 
-def create_volumes(animal):
+def create_json(animal):
 
-    sqlController = SqlController(animal)
     section_offsets = create_clean_transform(animal)
     transforms = parse_elastix(animal)
     warp_transforms = create_downsampled_transforms(animal, transforms, downsample=True)
@@ -166,4 +165,4 @@ if __name__ == '__main__':
         animals = [animal]
 
     for animal in animals:
-        create_volumes(animal)
+        create_json(animal)

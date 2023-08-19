@@ -43,10 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='Allen')
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
-    parser.add_argument("--task", 
-                        help="Enter the task you want to perform: \
-                          create_volume|register_volume|reverse_register_volume|transformix_volume|tranformix_points|create_precomputed|insert_points", 
-                        required=False, default="check_status", type=str)
+    parser.add_argument("--task", help="Enter the task you want to perform", required=False, default="status", type=str)
     
     args = parser.parse_args()
     moving = args.moving
@@ -66,12 +63,14 @@ if __name__ == '__main__':
                         'transformix_points': volumeRegistration.transformix_points,
                         'transformix_coms': volumeRegistration.transformix_coms,
                         'create_precomputed': volumeRegistration.create_precomputed,
-                        'status': volumeRegistration.check_registration,
+                        'status': volumeRegistration.check_status,
                         'insert_points': volumeRegistration.insert_points,
                         'fill_contours': volumeRegistration.fill_contours,
                         'polygons': volumeRegistration.transformix_polygons,
                         'create_average_volume': volumeRegistration.create_average_volume,
-                        'crop': volumeRegistration.crop_volume
+                        'crop': volumeRegistration.crop_volume,
+                        'origins': volumeRegistration.volume_origin_creation,
+                        'transformix_origins': volumeRegistration.transformix_origins
     }
 
     if task in function_mapping:

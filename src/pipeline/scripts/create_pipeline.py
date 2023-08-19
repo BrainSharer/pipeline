@@ -89,7 +89,7 @@ if __name__ == "__main__":
                         'create_metrics': pipeline.create_metrics,
                         'extra_channel': pipeline.extra_channel,
                         'neuroglancer': pipeline.neuroglancer,
-                        'check_status': pipeline.check_status
+                        'status': pipeline.check_status
     }
 
     if task in function_mapping:

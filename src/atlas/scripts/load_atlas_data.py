@@ -184,7 +184,7 @@ def load_foundation_brain_polygon_sequences(animal):
 
 if __name__ == '__main__':
     animals = ['MD585', 'MD589', 'MD594']
-    #for animal in animals:
-    #    load_foundation_brain_polygon_sequences(animal)
-    load_com()
+    for animal in animals:
+        load_foundation_brain_polygon_sequences(animal)
+    #load_com()
     #update_coms()
