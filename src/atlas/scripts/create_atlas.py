@@ -99,12 +99,13 @@ class NumpyToNeuroglancer():
         tq.execute()
 
 class AtlasCreator:
-    def __init__(self, animal, debug):
+    def __init__(self, animal='Atlas', debug=False):
         self.animal = animal
         self.debug = debug
         self.DATA_PATH = '/net/birdstore/Active_Atlas_Data/data_root'
         self.fixed_brain = 'Allen'
         self.ATLAS_PATH = os.path.join(self.DATA_PATH, 'atlas_data', animal)
+        self.REG_PATH = os.path.join(self.DATA_PATH, 'brains_info/registration')
         self.OUTPUT_DIR = f'/home/httpd/html/data/{animal}'
         if os.path.exists(self.OUTPUT_DIR):
             shutil.rmtree(self.OUTPUT_DIR)
@@ -114,10 +115,11 @@ class AtlasCreator:
     def get_transform_to_align_brain(self):
         fixed = 'Allen'
         midbrain_keys = {'SC', 'SNC_L', 'SNC_R', '7N_L', '7N_R', 'SpV_L', 'SpV_R'}
+        testing_structures = {'PBG_R', '3N_L', 'PBG_L', '4N_L', '4N_R', '3N_R'}
         structureController = StructureCOMController(fixed)
         fixed_coms = structureController.get_COM('Allen', annotator_id=1)
         moving_coms = structureController.get_COM('Atlas', annotator_id=1)
-        common_keys = sorted(fixed_coms.keys() & moving_coms.keys())
+        common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & testing_structures)
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
         moving_points = np.array([moving_coms[s] for s in common_keys])
 
@@ -144,38 +146,34 @@ class AtlasCreator:
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um coo
         self.get_transform_to_align_brain()
-        width = (self.sqlController.scan_run.width) + 200
-        height = (self.sqlController.scan_run.height) + 100
-        z_length = 456 # depth of Allen atlas
-        atlas_volume = np.zeros(( int(width), int(height), z_length), dtype=np.uint32)
+        allen_path = os.path.join(self.REG_PATH, 'Allen_25um_sagittal.tif')
+        allen_img = io.imread(allen_path)
+        height = allen_img.shape[0]
+        width = allen_img.shape[1] + 200
+        z_length = allen_img.shape[2]
+        atlas_box_size=(width, height, z_length)
+        atlas_volume = np.zeros(atlas_box_size, dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
         volume_dir = os.path.join(self.ATLAS_PATH, 'structure')
-        com_dir = os.path.join(self.ATLAS_PATH, 'com')
         if not os.path.exists(origin_dir):
             print(f'{origin_dir} does not exist, exiting.')
             sys.exit()
         if not os.path.exists(volume_dir):
             print(f'{volume_dir} does not exist, exiting.')
             sys.exit()
-        y_length = int(height)
-        x_length = int(width)
-        atlas_box_size=(x_length, y_length, z_length)
-        print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
         resolution = 25 * 1000 # Allen isotropic
-        atlas_box_scales=[resolution, resolution, resolution]
-        atlas_box_scales = np.array(atlas_box_scales)
-        atlas_box_size = np.array(atlas_box_size)
+        atlas_box_scales = np.array([resolution, resolution, resolution])
         color = 1000
+        print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
         print(f'origin dir {origin_dir}')
         print(f'origin dir {volume_dir}')
         print(f'Using data from {self.ATLAS_PATH}')
         origins = sorted(os.listdir(origin_dir))
         volumes = sorted(os.listdir(volume_dir))
-        coms = sorted(os.listdir(com_dir))
         print(f'Working with {len(origins)} origins and {len(volumes)} volumes.')
         ids = {}
         
-        for origin_file, volume_file, com_file in zip(origins, volumes, coms):
+        for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f'{Path(origin_file).stem} and {Path(volume_file).stem} do not match')
             structure = Path(origin_file).stem
@@ -185,15 +183,12 @@ class AtlasCreator:
             #if structure != 'SC':
             #    continue
 
-            x,y,z = np.loadtxt(os.path.join(origin_dir, origin_file))
-            #x,y,z = np.loadtxt(os.path.join(com_dir, com_file))
-            
-            #x,y,z = brain_to_atlas_transform(origin, self.R, self.t)
+            origin = np.loadtxt(os.path.join(origin_dir, origin_file))
+            x,y,z = brain_to_atlas_transform(origin, self.R, self.t)
 
             volume = np.load(os.path.join(volume_dir, volume_file))
             volume = volume.astype(np.uint32)
             volume[volume > 0] = allen_color
-            #xc,yc,zc = center_of_mass(volume)
             xs,ys,zs = np.where(volume != 0)
             preshape = volume.shape
             try:

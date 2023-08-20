@@ -757,7 +757,12 @@ class VolumeRegistration:
                 animal_polygon_com[animal] = (com_annotator_id, animal_users[animal])
 
         brainMerger = BrainMerger(self.debug)
-        #animal_users = [['MD585',3], ['MD589',3], ['MD594',3]]
+        """
+        animal_polygon_com = {}
+        animal_polygon_com['MD585'] = (2,3)
+        animal_polygon_com['MD589'] = (2,3)
+        animal_polygon_com['MD594'] = (2,3)
+        """
         for animal, (com_annotator_id, polygon_annotator_id) in animal_polygon_com.items():
             if 'test' in animal or 'Atlas' in animal:
                 continue
