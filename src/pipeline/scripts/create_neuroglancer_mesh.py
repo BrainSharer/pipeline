@@ -85,7 +85,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
     print(f'\nMidfile: {infile} dtype={DTYPE}, shape={midfile.shape}, ids={ids}, counts={counts}')
-    print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={data_type}, scales={scales}')
+    print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={DTYPE}, scales={scales}')
     print(f'Initial chunks at {chunks} and chunks for downsampling=({chunkXY},{chunkXY},{chunkZ})\n')
     
     
