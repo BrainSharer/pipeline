@@ -270,6 +270,7 @@ class NumpyToNeuroglancer():
         tq.execute()
 
         print(f'Creating multires mesh tasks with {cpus} CPUs')
+        # this is where the error occurs
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, min_chunk_size=[64,64,64])
         tq.insert(tasks)    
         tq.execute()
@@ -355,7 +356,7 @@ class NumpyToNeuroglancer():
                 #img = resize(img, orientation, anti_aliasing=True)
             img = np.array(im)
             img = img.astype(np.int32)
-            img[img > 0] = 255
+            img[img > 0] = 1
         except:
             print(f'could not resize {basefile} with shape={img.shape} to new shape={orientation}')
             return
