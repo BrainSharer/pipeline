@@ -270,7 +270,7 @@ class NumpyToNeuroglancer():
         tq.execute()
 
         print(f'Creating multires mesh tasks with {cpus} CPUs')
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, min_chunk_size=[64,64,64])
         tq.insert(tasks)    
         tq.execute()
 
@@ -354,7 +354,7 @@ class NumpyToNeuroglancer():
                 im = im.resize((width//scaling_factor, height//scaling_factor))
                 #img = resize(img, orientation, anti_aliasing=True)
             img = np.array(im)
-            img = img.astype(np.uint64)
+            img = img.astype(np.int32)
             img[img > 0] = 255
         except:
             print(f'could not resize {basefile} with shape={img.shape} to new shape={orientation}')

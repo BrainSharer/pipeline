@@ -32,7 +32,7 @@ from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import get_cpus, get_hostname
-DTYPE = np.uint64
+DTYPE = np.int32
 
 def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     if scaling_factor > 5:
