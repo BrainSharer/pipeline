@@ -30,9 +30,8 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
 from library.utilities.utilities_process import get_cpus, get_hostname
-DTYPE = np.int32
 
 def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     if scaling_factor > 5:
@@ -72,8 +71,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     midim = Image.open(infile)
     midfile = np.array(midim)
     del midim
-    midfile = midfile.astype(np.uint8)
-    midfile[midfile > 0] = 255
+    midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
 
     if limit > 0:
@@ -84,13 +82,12 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
-    print(f'\nMidfile: {infile} dtype={DTYPE}, shape={midfile.shape}, ids={ids}, counts={counts}')
-    print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={DTYPE}, scales={scales}')
+    print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
+    print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={MESHDTYPE}, scales={scales}')
     print(f'Initial chunks at {chunks} and chunks for downsampling=({chunkXY},{chunkXY},{chunkZ})\n')
     
-    
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
-        data_type=DTYPE, chunk_size=chunks)
+        data_type=MESHDTYPE, chunk_size=chunks)
 
     ng.init_precomputed(MESH_INPUT_DIR, volume_size)
 

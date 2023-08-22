@@ -15,6 +15,8 @@ from cloudvolume.lib import touch
 from collections import defaultdict
 
 from library.utilities.utilities_process import get_cpus, read_image
+MESHDTYPE = np.int8
+
 
 
 def calculate_chunks(downsample, mip):
@@ -239,7 +241,8 @@ class NumpyToNeuroglancer():
         _, cpus = get_cpus()
         print(f'Creating downsamples with {cpus} CPUs')
         tq = LocalTaskQueue(parallel=cpus)
-        #tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, num_mips=num_mips, chunk_size=chunk_size, compress=True)
+        tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, num_mips=num_mips, chunk_size=chunk_size, compress=True)
+        print('creating image shard downsample tasks')
         tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
         tq.insert(tasks)
         tq.execute()
@@ -265,13 +268,15 @@ class NumpyToNeuroglancer():
         64 dies at limit 50 full res
         32 dies at limit 100 full res
         """
-        tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=True) # The first phase of creating mesh
+        shape = [128,128,128]
+        print(f'Creating meshing tasks with shape={shape}')
+        tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=True, shape=shape) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
-        print(f'Creating multires mesh tasks with {cpus} CPUs')
+        print(f'Creating multires mesh tasks with {cpus} CPUs with layer_path={layer_path}')
         # this is where the error occurs
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, min_chunk_size=[64,64,64])
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path)
         tq.insert(tasks)    
         tq.execute()
 
@@ -355,8 +360,7 @@ class NumpyToNeuroglancer():
                 im = im.resize((width//scaling_factor, height//scaling_factor))
                 #img = resize(img, orientation, anti_aliasing=True)
             img = np.array(im)
-            img = img.astype(np.int32)
-            img[img > 0] = 1
+            img = img.astype(MESHDTYPE)
         except:
             print(f'could not resize {basefile} with shape={img.shape} to new shape={orientation}')
             return
