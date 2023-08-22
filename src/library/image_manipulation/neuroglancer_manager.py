@@ -239,8 +239,8 @@ class NumpyToNeuroglancer():
         _, cpus = get_cpus()
         print(f'Creating downsamples with {cpus} CPUs')
         tq = LocalTaskQueue(parallel=cpus)
-        tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, num_mips=num_mips, chunk_size=chunk_size, compress=True)
-        #tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
+        #tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, num_mips=num_mips, chunk_size=chunk_size, compress=True)
+        tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
         tq.insert(tasks)
         tq.execute()
 
@@ -265,14 +265,14 @@ class NumpyToNeuroglancer():
         64 dies at limit 50 full res
         32 dies at limit 100 full res
         """
-        tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=False) # The first phase of creating mesh
+        tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=True) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
-        #print(f'Creating multires mesh tasks with {cpus} CPUs')
-        #tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
-        #tq.insert(tasks)    
-        #tq.execute()
+        print(f'Creating multires mesh tasks with {cpus} CPUs')
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
+        tq.insert(tasks)    
+        tq.execute()
 
         print(f'Creating meshing manifest tasks with {cpus} CPUs')
         tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
@@ -332,6 +332,8 @@ class NumpyToNeuroglancer():
         :param file_key: file_key: tuple
         """
 
+        debug = False
+
         index, infile, orientation, progress_dir, scaling_factor = file_key
         basefile = os.path.basename(infile)
         progress_file = os.path.join(progress_dir, basefile)
@@ -364,8 +366,9 @@ class NumpyToNeuroglancer():
             print(f'could not reshape {infile}')
             return
 
-        ids, counts = np.unique(img, return_counts=True)
-        print(f'{basefile} dtype={img.dtype}, shape={img.shape}, ids={ids}, counts={counts}')
+        if debug:
+            ids, counts = np.unique(img, return_counts=True)
+            print(f'{basefile} dtype={img.dtype}, shape={img.shape}, ids={ids}, counts={counts}')
 
         try:
             self.precomputed_vol[:, :, index] = img

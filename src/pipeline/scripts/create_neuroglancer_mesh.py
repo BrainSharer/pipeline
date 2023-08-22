@@ -12,6 +12,8 @@ import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 import shutil
 import numpy as np
+np.finfo(np.dtype("float32"))
+np.finfo(np.dtype("float64"))
 from pathlib import Path
 
 import faulthandler
@@ -24,7 +26,7 @@ This will give you a stacktrace of the running process and you can see where it 
 """
 
 
-PIPELINE_ROOT = Path('./src/pipeline').absolute()
+PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -34,7 +36,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import get_cpus, get_hostname
 DTYPE = np.uint64
 
-def create_mesh(animal, limit, scaling_factor, skeleton):
+def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     if scaling_factor > 5:
         chunkXY = 64
     else:
@@ -148,11 +150,13 @@ if __name__ == '__main__':
     parser.add_argument('--limit', help='Enter the # of files to test', required=False, default=0)
     parser.add_argument('--scaling_factor', help='Enter an integer that will be the denominator', required=False, default=1)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
+    parser.add_argument("--debug", help="debug", required=False, default=False)
     args = parser.parse_args()
     animal = args.animal
     limit = int(args.limit)
     scaling_factor = int(args.scaling_factor)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
+    debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
-    create_mesh(animal, limit, scaling_factor, skeleton)
+    create_mesh(animal, limit, scaling_factor, skeleton, debug)
 
