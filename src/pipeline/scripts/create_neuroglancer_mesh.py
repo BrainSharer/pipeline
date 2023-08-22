@@ -25,13 +25,11 @@ kill -s SIGUSR1 <pid>
 This will give you a stacktrace of the running process and you can see where it hangs.
 """
 
-
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.image_manipulation.filelocation_manager import FileLocationManager
-
 from library.controller.sql_controller import SqlController
+from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import get_cpus, get_hostname
 DTYPE = np.uint64
