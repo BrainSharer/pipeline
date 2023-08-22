@@ -76,7 +76,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     midfile[midfile > 0] = 255
     ids, counts = np.unique(midfile, return_counts=True)
 
-    data_type = midfile.dtype
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
@@ -85,13 +84,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
-    print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
+    print(f'\nMidfile: {infile} dtype={DTYPE}, shape={midfile.shape}, ids={ids}, counts={counts}')
     print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={data_type}, scales={scales}')
     print(f'Initial chunks at {chunks} and chunks for downsampling=({chunkXY},{chunkXY},{chunkZ})\n')
     
     
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
-        data_type=data_type, chunk_size=chunks)
+        data_type=DTYPE, chunk_size=chunks)
 
     ng.init_precomputed(MESH_INPUT_DIR, volume_size)
 
