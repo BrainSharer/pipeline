@@ -94,7 +94,7 @@ class FileLocationManager(object):
     def get_histogram(self, channel=1):
         return os.path.join(self.histogram, f"CH{channel}")
 
-    def get_neuroglancer(self, downsample=True, channel=1, rechunck=False):
+    def get_neuroglancer(self, downsample=True, channel=1, rechunk=False):
         '''
         Returns path to store neuroglancer files ('precomputed' format)
 
@@ -104,16 +104,16 @@ class FileLocationManager(object):
             channel_outdir = f"C{channel}T"
         else:
             channel_outdir = f"C{channel}"
-        if not rechunck:
+        if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel=1, rechunck=False):
+    def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
         if downsample:
             channel_outdir = f"C{channel}T"
         else:
             channel_outdir = f"C{channel}"
-        if not rechunck:
+        if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 

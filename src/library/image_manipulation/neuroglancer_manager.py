@@ -204,6 +204,60 @@ class NumpyToNeuroglancer():
         with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
             json.dump(info, file, indent=2)
 
+    def run_all_tasks(self, outpath):
+        _, cpus = get_cpus()
+        mips = [0,1]
+        tq = LocalTaskQueue(parallel=cpus)
+        outpath = f'file://{outpath}'
+        print(f'Running create transfer tasks on src path={self.precomputed_vol.layer_cloudpath}')
+        tasks = tc.create_transfer_tasks(self.precomputed_vol.layer_cloudpath, dest_layer_path=outpath, mip=0)
+        tq.insert(tasks)
+        tq.execute()
+
+        cv2 = CloudVolume(outpath, 0)
+
+        for mip in mips:
+            cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_100', mip)
+            tasks = tc.create_downsampling_tasks(
+                cv.layer_cloudpath,
+                mip=mip,
+                num_mips=1,
+                compress=True,
+                chunk_size=[32,32,32]
+            )
+            tq.insert(tasks)
+            tq.execute()
+
+
+        layer_path = cv2.layer_cloudpath
+
+        """
+        print('Running create image_shard_transfer tasks')
+        for mip in mips:
+            cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_100', mip)
+            tasks = tc.create_image_shard_transfer_tasks(cv.layer_cloudpath, outpath, mip=mip)
+            tq.insert(tasks)
+            tq.execute()
+        """
+
+        print('Creating meshing tasks')
+        for mip in mips:
+            tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=False) # The first phase of creating mesh
+            tq.insert(tasks)
+            tq.execute()
+
+
+        segment_properties = {str(id): str(id) for id in [0,1]}
+        print(f'Creating meshing manifest tasks with {cpus} CPUs')
+        tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
+
+
+
+
+
+
 
 
     def add_rechunking(self, outpath: str, chunks=[64, 64, 64], mip=0, skip_downsamples=True) -> None:
@@ -226,7 +280,7 @@ class NumpyToNeuroglancer():
         tq.execute()
 
 
-    def add_downsampled_volumes(self, chunk_size = [128, 128, 64], num_mips = 3) -> None:
+    def add_downsampled_volumes(self, layer_path, chunk_size = [128, 128, 64], num_mips = 3) -> None:
         """Augments 'precomputed' cloud volume with additional resolutions using 
         chunk calculations
         tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, factor=factors, compress=True,  chunk_size=chunks)
@@ -239,11 +293,11 @@ class NumpyToNeuroglancer():
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
         
         _, cpus = get_cpus()
-        print(f'Creating downsamples with {cpus} CPUs')
+        print(f'Creating downsamples with {cpus} CPUs path={layer_path}')
         tq = LocalTaskQueue(parallel=cpus)
-        tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, num_mips=num_mips, chunk_size=chunk_size, compress=True)
-        print('creating image shard downsample tasks')
-        tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
+        tasks = tc.create_downsampling_tasks(layer_path, num_mips=num_mips, chunk_size=chunk_size, compress=True)
+        #print('creating image shard downsample tasks')
+        #tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
         tq.insert(tasks)
         tq.execute()
 
@@ -268,22 +322,27 @@ class NumpyToNeuroglancer():
         64 dies at limit 50 full res
         32 dies at limit 100 full res
         """
-        shape = [128,128,128]
-        print(f'Creating meshing tasks with shape={shape}')
-        tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=True, shape=shape) # The first phase of creating mesh
+        
+        #print(f'Creating meshing tasks with layer_path={layer_path}')
+        #for mip in [0,1]:
+        tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-
-        print(f'Creating multires mesh tasks with {cpus} CPUs with layer_path={layer_path}')
+        
+        #print(f'Creating multires mesh tasks with {cpus} CPUs with layer_path={layer_path}')
         # this is where the error occurs
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path)
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2)
+        #cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_input_100')
+        #tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=layer_path, dest=layer_path, mip=0, num_lod=2)
         tq.insert(tasks)    
         tq.execute()
-
+        
+        
         print(f'Creating meshing manifest tasks with {cpus} CPUs')
         tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
+        
 
     def normalize_stack(self, layer_path, src_path=None, dest_path=None):
         """This does basically the same thing as our cleaning process.

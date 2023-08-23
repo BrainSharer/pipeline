@@ -108,7 +108,7 @@ class NgPrecomputedMaker:
         if self.downsample:
             mips = [0, 1, 2]
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
-            self.downsample, self.channel, rechunck=True
+            self.downsample, self.channel, rechunk=True
         )
         if os.path.exists(OUTPUT_DIR):
             print(f"DIR {OUTPUT_DIR} already exists and not performing any downsampling.")

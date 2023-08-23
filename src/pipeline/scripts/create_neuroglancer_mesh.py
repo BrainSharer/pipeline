@@ -12,8 +12,8 @@ import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 import shutil
 import numpy as np
-np.finfo(np.dtype("float32"))
-np.finfo(np.dtype("float64"))
+#np.seterr(all=None, divide=None, over=None, under=None, invalid=None)
+np.seterr(all="ignore")
 from pathlib import Path
 
 import faulthandler
@@ -34,13 +34,6 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer,
 from library.utilities.utilities_process import get_cpus, get_hostname
 
 def create_mesh(animal, limit, scaling_factor, skeleton, debug):
-    if scaling_factor > 5:
-        chunkXY = 64
-    else:
-        chunkXY = 128
-    # chunkZ = chunkXY // 2
-    chunkZ = chunkXY
-    chunks = (chunkXY, chunkXY, 1)
     sqlController = SqlController(animal)
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
@@ -80,6 +73,12 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         files = files[_start:_end]
         len_files = len(files)
     
+    if scaling_factor > 5:
+        chunkXY = 64
+    else:
+        chunkXY = 128
+    chunkZ = chunkXY // 2
+    chunks = (chunkXY, chunkXY, 1)
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
     print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
@@ -90,7 +89,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         data_type=MESHDTYPE, chunk_size=chunks)
 
     ng.init_precomputed(MESH_INPUT_DIR, volume_size)
-
+    
     file_keys = []
     index = 0
     for i in range(0, len_files, scaling_factor):
@@ -110,20 +109,21 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     
     
     chunks = (chunkXY, chunkXY, chunkZ)
+    ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     ng.add_rechunking(MESH_DIR, chunks=chunks, mip=0, skip_downsamples=True)
-
     tq = LocalTaskQueue(parallel=cpus)
     cloudpath2 = f'file://{MESH_DIR}'
-    ng.add_downsampled_volumes(chunk_size = chunks, num_mips = 1)
-
-    ##### add segment properties
     cv2 = CloudVolume(cloudpath2, 0)
+    ng.add_downsampled_volumes(cloudpath2, chunk_size = chunks, num_mips = 2)
+    
+    ##### add segment properties
     segment_properties = {str(id): str(id) for id in ids}
     ng.add_segment_properties(cv2, segment_properties)
-
     ##### first mesh task, create meshing tasks
     ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
+ 
+
 
     ##### skeleton
     if skeleton:
