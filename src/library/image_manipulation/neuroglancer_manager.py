@@ -293,11 +293,9 @@ class NumpyToNeuroglancer():
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
         
         _, cpus = get_cpus()
-        print(f'Creating downsamples with {cpus} CPUs path={layer_path}')
+        print(f'Creating downsampling tasks with {cpus} CPUs and chunks={chunk_size}')
         tq = LocalTaskQueue(parallel=cpus)
         tasks = tc.create_downsampling_tasks(layer_path, num_mips=num_mips, chunk_size=chunk_size, compress=True)
-        #print('creating image shard downsample tasks')
-        #tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, chunk_size=chunk_size)
         tq.insert(tasks)
         tq.execute()
 
@@ -323,23 +321,17 @@ class NumpyToNeuroglancer():
         32 dies at limit 100 full res
         """
         
-        #print(f'Creating meshing tasks with layer_path={layer_path}')
-        #for mip in [0,1]:
-        tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
+        tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=False) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-        
-        #print(f'Creating multires mesh tasks with {cpus} CPUs with layer_path={layer_path}')
-        # this is where the error occurs
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2)
-        #cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_input_100')
-        #tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=layer_path, dest=layer_path, mip=0, num_lod=2)
+                
+        print(f'Creating unshared multires task with {cpus} CPUs')
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=6)
         tq.insert(tasks)    
         tq.execute()
         
-        
         print(f'Creating meshing manifest tasks with {cpus} CPUs')
-        tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
+        tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
         

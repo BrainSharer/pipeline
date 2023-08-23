@@ -66,17 +66,17 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     del midim
     midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
-
+    ids = ids.tolist()
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
     
-    if scaling_factor > 5:
-        chunkXY = 64
-    else:
+    if scaling_factor > 10:
         chunkXY = 128
+    else:
+        chunkXY = 256
     chunkZ = chunkXY // 2
     chunks = (chunkXY, chunkXY, 1)
     height, width = midfile.shape
@@ -84,7 +84,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
     print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={MESHDTYPE}, scales={scales}')
     print(f'Initial chunks at {chunks} and chunks for downsampling=({chunkXY},{chunkXY},{chunkZ})\n')
-    
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
         data_type=MESHDTYPE, chunk_size=chunks)
 
@@ -115,7 +114,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     tq = LocalTaskQueue(parallel=cpus)
     cloudpath2 = f'file://{MESH_DIR}'
     cv2 = CloudVolume(cloudpath2, 0)
-    ng.add_downsampled_volumes(cloudpath2, chunk_size = chunks, num_mips = 2)
+    ng.add_downsampled_volumes(cloudpath2, chunk_size = chunks, num_mips = 1)
     
     ##### add segment properties
     segment_properties = {str(id): str(id) for id in ids}
@@ -123,8 +122,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     ##### first mesh task, create meshing tasks
     ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
  
-
-
     ##### skeleton
     if skeleton:
         print('Creating skeletons')
