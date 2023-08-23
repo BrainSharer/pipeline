@@ -73,10 +73,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         files = files[_start:_end]
         len_files = len(files)
     
-    if scaling_factor > 10:
-        chunkXY = 128
+    if scaling_factor >= 10:
+        chunkXY = 64
     else:
-        chunkXY = 256
+        chunkXY = 128
     chunkZ = chunkXY // 2
     chunks = (chunkXY, chunkXY, 1)
     height, width = midfile.shape

@@ -306,7 +306,7 @@ class NumpyToNeuroglancer():
         :param shape: list[int]
         :param mip: int, pyramid level
         """
-        magnitude = 5
+        magnitude = 3
         if self.precomputed_vol is None:
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
 
@@ -326,7 +326,7 @@ class NumpyToNeuroglancer():
         tq.execute()
                 
         print(f'Creating unshared multires task with {cpus} CPUs')
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=3)
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path)
         tq.insert(tasks)    
         tq.execute()
         
