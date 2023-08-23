@@ -206,57 +206,30 @@ class NumpyToNeuroglancer():
 
     def run_all_tasks(self, outpath):
         _, cpus = get_cpus()
-        mips = [0,1]
         tq = LocalTaskQueue(parallel=cpus)
-        outpath = f'file://{outpath}'
-        print(f'Running create transfer tasks on src path={self.precomputed_vol.layer_cloudpath}')
-        tasks = tc.create_transfer_tasks(self.precomputed_vol.layer_cloudpath, dest_layer_path=outpath, mip=0)
+        layer_path = f'file://{outpath}'
+        tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, mip=0)        
         tq.insert(tasks)
         tq.execute()
 
-        cv2 = CloudVolume(outpath, 0)
+        tasks = tc.create_image_shard_transfer_tasks(self.precomputed_vol.layer_cloudpath, layer_path, mip=0)
+        tq.insert(tasks)
+        tq.execute()
 
-        for mip in mips:
-            cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_100', mip)
-            tasks = tc.create_downsampling_tasks(
-                cv.layer_cloudpath,
-                mip=mip,
-                num_mips=1,
-                compress=True,
-                chunk_size=[32,32,32]
-            )
-            tq.insert(tasks)
-            tq.execute()
+        tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
 
+        print(f'Creating sharded multires task with {cpus} CPUs')
+        #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path)
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path)
+        tq.insert(tasks)    
+        tq.execute()
 
-        layer_path = cv2.layer_cloudpath
-
-        """
-        print('Running create image_shard_transfer tasks')
-        for mip in mips:
-            cv = CloudVolume(f'file:///net/birdstore/Active_Atlas_Data/data_root/pipeline_data/X/www/neuroglancer_data/mesh_100', mip)
-            tasks = tc.create_image_shard_transfer_tasks(cv.layer_cloudpath, outpath, mip=mip)
-            tq.insert(tasks)
-            tq.execute()
-        """
-
-        print('Creating meshing tasks')
-        for mip in mips:
-            tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=False) # The first phase of creating mesh
-            tq.insert(tasks)
-            tq.execute()
-
-
-        segment_properties = {str(id): str(id) for id in [0,1]}
         print(f'Creating meshing manifest tasks with {cpus} CPUs')
         tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-
-
-
-
-
 
 
 
@@ -326,7 +299,7 @@ class NumpyToNeuroglancer():
         tq.execute()
                 
         print(f'Creating unshared multires task with {cpus} CPUs')
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path)
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1)
         tq.insert(tasks)    
         tq.execute()
         

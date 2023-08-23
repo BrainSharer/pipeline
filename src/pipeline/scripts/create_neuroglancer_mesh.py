@@ -73,17 +73,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         files = files[_start:_end]
         len_files = len(files)
     
-    if scaling_factor >= 10:
-        chunkXY = 64
-    else:
-        chunkXY = 128
-    chunkZ = chunkXY // 2
-    chunks = (chunkXY, chunkXY, 1)
+    chunk = 64
+    chunks = (chunk, chunk, 1)
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
     print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
     print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={MESHDTYPE}, scales={scales}')
-    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunkXY},{chunkXY},{chunkZ})\n')
+    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunk},{chunk},{chunk})\n')
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
         data_type=MESHDTYPE, chunk_size=chunks)
 
@@ -107,9 +103,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         executor.shutdown(wait=True)
     
     
-    chunks = (chunkXY, chunkXY, chunkZ)
+    chunks = (chunk, chunk, chunk)
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
+    
     ng.add_rechunking(MESH_DIR, chunks=chunks, mip=0, skip_downsamples=True)
     tq = LocalTaskQueue(parallel=cpus)
     cloudpath2 = f'file://{MESH_DIR}'
@@ -121,7 +118,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     ng.add_segment_properties(cv2, segment_properties)
     ##### first mesh task, create meshing tasks
     ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
- 
+    
+    #ng.run_all_tasks(MESH_DIR)
+
     ##### skeleton
     if skeleton:
         print('Creating skeletons')
