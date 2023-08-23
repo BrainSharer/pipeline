@@ -9,16 +9,23 @@ and downsample = True. Run them in this sequence:
 
 Explanation for the tasks:
 
-- extract - extracts the metadata from the CZI and inserts into the database. \
-    Also creates web friendly PNG files for viewing in the portal. Extracts the TIFF \
-    files at the standard downsampling factor
-- mask - This is after the database portal QC. The normalized images are created and the masks \
-    are also created. The user peforms QC on the masks and makes sure they are good.
-- clean - Final masks are created and then the images are cleaned from the masks.
-- histogram - Histograms are created of all channel 1 sections
-- align - Alignment with Elastix is run on the cleaned images
-- create_metrics - Alignment with Elastix is run on the cleaned images between one channel and another. This won't be run usually.
-- neuroglancer - Neuroglancer precomputed data is created from the aligned and cleaned images.
+- extract - Metadata from the CZI files is extracted and inserted into the database. \
+    The TIFF files are first extracted from the CZI files at the standard downsampling factor, and then \
+    later, the full resolution images are extracted. Web friendly PNG files are created from the TIFF files \
+    for viewing in the portal. After this step, a user can verify the \
+    database data and make any ordering, replacement or reproduction corrections.
+- mask - Masks and normalized images are then created for the cleaning process. \
+    A segmentation algorithmn is used to create initial masks for each image. These masks are used \
+    to clean each channel of any unwanted slide debris. The user can peform QC on the masks \
+    and makes sure they remove the debris and not the desired tissue.
+- clean - After the masks are verified to be accurate, the final masks are created and then \
+    the images are cleaned from the masks.
+- histogram - Histograms showing the distribution of the image intensity levels are created \
+    for all cleaned channel 1 sections.
+- align - Section to section alignment with Elastix is then run on the cleaned images using a rigid transformation. 
+- create_metrics - Each section to section alignment with Elastix is evaluated on the cleaned images. This data \
+    is entered into the database for reference purposes.
+- neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 
 **Timing results**
 
