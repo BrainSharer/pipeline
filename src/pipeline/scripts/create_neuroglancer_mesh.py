@@ -55,7 +55,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     files = sorted(os.listdir(INPUT))
 
     os.makedirs(MESH_INPUT_DIR, exist_ok=True)
-    os.makedirs(MESH_DIR, exist_ok=True)
     os.makedirs(PROGRESS_DIR, exist_ok=True)
 
     len_files = len(files)
@@ -72,8 +71,12 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
-    
-    chunk = 64
+
+    if scaling_factor >= 10:    
+        chunk = 64
+    else:
+        chunk = 128
+
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
@@ -95,7 +98,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         file_keys.append([index, infile, (volume_size[1], volume_size[0]), PROGRESS_DIR, scaling_factor])
         index += 1
 
-
     _, cpus = get_cpus()
     print(f'Working on {len(file_keys)} files with {cpus} cpus')
     with ProcessPoolExecutor(max_workers=cpus) as executor:
@@ -106,27 +108,48 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     chunks = (chunk, chunk, chunk)
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
-    
-    ng.add_rechunking(MESH_DIR, chunks=chunks, mip=0, skip_downsamples=True)
+    # the input dir is now read and the rechunks are created in the final dir
+    _, cpus = get_cpus()
     tq = LocalTaskQueue(parallel=cpus)
-    cloudpath2 = f'file://{MESH_DIR}'
-    cv2 = CloudVolume(cloudpath2, 0)
-    ng.add_downsampled_volumes(cloudpath2, chunk_size = chunks, num_mips = 1)
+    if not os.path.exists(MESH_DIR):
+        os.makedirs(MESH_DIR, exist_ok=True)
+        layer_path = f'file://{MESH_DIR}'
+        #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
+        #ng.add_rechunking(layer_path)
+        #tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=outputpath, mip=mip, skip_downsamples=skip_downsamples)
+        tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
+        tq.insert(tasks)
+        tq.execute()
     
     ##### add segment properties
+    cloudpath = CloudVolume(layer_path, 0)
     segment_properties = {str(id): str(id) for id in ids}
-    ng.add_segment_properties(cv2, segment_properties)
+    ng.add_segment_properties(cloudpath, segment_properties)
     ##### first mesh task, create meshing tasks
-    ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
+    #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
-    #ng.run_all_tasks(MESH_DIR)
+    print('Creating sharded mesh')
+    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
+    tq.insert(tasks)
+    tq.execute()
+          
+    print(f'Creating shared multires task with {cpus} CPUs')
+    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
+    tq.insert(tasks)    
+    tq.execute()
+    
+    print(f'Creating meshing manifest tasks with {cpus} CPUs')
+    tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
+    tq.insert(tasks)
+    tq.execute()
 
     ##### skeleton
     if skeleton:
         print('Creating skeletons')
-        tasks = tc.create_skeletonizing_tasks(cv2.layer_cloudpath, mip=0)
+        tasks = tc.create_skeletonizing_tasks(layer_path, mip=0)
+        tq = LocalTaskQueue(parallel=cpus)
         tq.insert(tasks)
-        tasks = tc.create_unsharded_skeleton_merge_tasks(cv2.layer_cloudpath)
+        tasks = tc.create_unsharded_skeleton_merge_tasks(layer_path)
         tq.insert(tasks)
         tq.execute()
     

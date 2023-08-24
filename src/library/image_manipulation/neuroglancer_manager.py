@@ -204,36 +204,7 @@ class NumpyToNeuroglancer():
         with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
             json.dump(info, file, indent=2)
 
-    def run_all_tasks(self, outpath):
-        _, cpus = get_cpus()
-        tq = LocalTaskQueue(parallel=cpus)
-        layer_path = f'file://{outpath}'
-        tasks = tc.create_image_shard_downsample_tasks(self.precomputed_vol.layer_cloudpath, mip=0)        
-        tq.insert(tasks)
-        tq.execute()
-
-        tasks = tc.create_image_shard_transfer_tasks(self.precomputed_vol.layer_cloudpath, layer_path, mip=0)
-        tq.insert(tasks)
-        tq.execute()
-
-        tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
-
-        print(f'Creating sharded multires task with {cpus} CPUs')
-        #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path)
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path)
-        tq.insert(tasks)    
-        tq.execute()
-
-        print(f'Creating meshing manifest tasks with {cpus} CPUs')
-        tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
-
-
-
-    def add_rechunking(self, outpath: str, chunks=[64, 64, 64], mip=0, skip_downsamples=True) -> None:
+    def add_rechunking(self, outputpath, chunks=[64, 64, 64], mip=0, skip_downsamples=True) -> None:
         """Augments 'precomputed' cloud volume with additional chunk calculations
         [so format has pointers to location of individual volumes?]
 
@@ -246,9 +217,9 @@ class NumpyToNeuroglancer():
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
         _, cpus = get_cpus()
         tq = LocalTaskQueue(parallel=cpus)
-        outpath = f'file://{outpath}'
+        #outpath = f'file://{outpath}'
         tasks = tc.create_transfer_tasks(self.precomputed_vol.layer_cloudpath, 
-            dest_layer_path=outpath, chunk_size=chunks, mip=mip, skip_downsamples=skip_downsamples)
+            dest_layer_path=outputpath, mip=mip, skip_downsamples=skip_downsamples)
         tq.insert(tasks)
         tq.execute()
 
@@ -271,7 +242,6 @@ class NumpyToNeuroglancer():
         tasks = tc.create_downsampling_tasks(layer_path, num_mips=num_mips, chunk_size=chunk_size, compress=True)
         tq.insert(tasks)
         tq.execute()
-
 
     def add_segmentation_mesh(self, layer_path, mip = 0) -> None:
         """Augments 'precomputed' cloud volume with segmentation mesh
