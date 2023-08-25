@@ -128,13 +128,14 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     ##### first mesh task, create meshing tasks
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
-    print('Creating sharded mesh')
-    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
+    print('Creating unsharded mesh')
+    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=False) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
           
-    print(f'Creating shared multires task with {cpus} CPUs')
-    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1, min_shards=2)
+    print(f'Creating unshared multires task with {cpus} CPUs')
+    # tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1, min_shards=2)
+    tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1)
     tq.insert(tasks)    
     tq.execute()
     
