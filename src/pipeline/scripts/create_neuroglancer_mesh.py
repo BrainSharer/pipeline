@@ -66,23 +66,26 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
-    if limit > 0:
-        _start = midpoint - limit
-        _end = midpoint + limit
-        files = files[_start:_end]
-        len_files = len(files)
 
     if scaling_factor >= 10:    
         chunk = 64
     else:
         chunk = 128
 
+    chunkZ = chunk
+    if limit > 0:
+        _start = midpoint - limit
+        _end = midpoint + limit
+        files = files[_start:_end]
+        len_files = len(files)
+        chunkZ //= 2
+
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
     print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
     print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={MESHDTYPE}, scales={scales}')
-    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunk},{chunk},{chunk})\n')
+    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunk},{chunk},{chunkZ})\n')
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
         data_type=MESHDTYPE, chunk_size=chunks)
 
@@ -105,7 +108,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         executor.shutdown(wait=True)
     
     
-    chunks = (chunk, chunk, chunk)
+    chunks = (chunk, chunk, chunkZ)
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
