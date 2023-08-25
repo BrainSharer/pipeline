@@ -116,8 +116,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         layer_path = f'file://{MESH_DIR}'
         #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
         #ng.add_rechunking(layer_path)
-        #tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=outputpath, mip=mip, skip_downsamples=skip_downsamples)
-        tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
+        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0)
+        #tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
         tq.insert(tasks)
         tq.execute()
     
@@ -134,7 +134,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     tq.execute()
           
     print(f'Creating shared multires task with {cpus} CPUs')
-    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
+    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1, min_shards=2)
     tq.insert(tasks)    
     tq.execute()
     
