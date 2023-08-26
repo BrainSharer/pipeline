@@ -147,7 +147,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
     # must return HTTP/1.1 206 Partial Content
     # 
-    lods = 0
+    lods = 1
     print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
     tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods)
     tq.insert(tasks)    
