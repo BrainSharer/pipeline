@@ -138,16 +138,17 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
           
     print(f'Creating sharded multires task with {cpus} CPUs')
     # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
+    # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
     
     # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
     # must return HTTP/1.1 206 Partial Content
     # 
-    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1, max_labels_per_shard=1)
+    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1)
     tq.insert(tasks)    
     tq.execute()
     
     print(f'Creating meshing manifest tasks with {cpus} CPUs')
-    tasks = tc.create_mesh_manifest_tasks(layer_path) # The second phase of creating mesh
+    tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=4) # The second phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
