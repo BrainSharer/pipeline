@@ -119,7 +119,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         layer_path = f'file://{MESH_DIR}'
         #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
         #ng.add_rechunking(layer_path)
-        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0)
+        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True)
         #tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
         tq.insert(tasks)
         tq.execute()
@@ -131,14 +131,22 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     ##### first mesh task, create meshing tasks
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
-    print('Creating unsharded mesh')
-    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=False) # The first phase of creating mesh
+    print('Creating sharded mesh')
+    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
           
-    print(f'Creating unshared multires task with {cpus} CPUs')
+    print(f'Creating sharded multires task with {cpus} CPUs')
     # tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1, min_shards=2)
-    tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1)
+    #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1) 1=106MB, chunks at 64,64,64
+    #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=0) 1=66MB, chunks at 64,64,64, also same with skip downsamples dir=188M
+    #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1, magnitude=4) 106M and dir=229M
+    #tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=1, magnitude=5) 106M and dir=229M
+    
+    # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
+    # must return HTTP/1.1 206 Partial Content
+    # 
+    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=1)
     tq.insert(tasks)    
     tq.execute()
     
