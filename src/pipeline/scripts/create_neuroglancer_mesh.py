@@ -119,6 +119,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
         layer_path = f'file://{MESH_DIR}'
         #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
         #ng.add_rechunking(layer_path)
+        print('Creating transfer tasks (rechunking)')
         tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True)
         #tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
         tq.insert(tasks)
@@ -127,6 +128,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
     segment_properties = {str(id): str(id) for id in ids}
+
+    print('Creating segment properties')
     ng.add_segment_properties(cloudpath, segment_properties)
     ##### first mesh task, create meshing tasks
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
@@ -136,19 +139,21 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     tq.insert(tasks)
     tq.execute()
           
-    print(f'Creating sharded multires task with {cpus} CPUs')
     # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
     # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
     
     # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
     # must return HTTP/1.1 206 Partial Content
     # 
-    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=2, max_labels_per_shard=1)
+    lods = 2
+    print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
+    tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods, max_labels_per_shard=1)
     tq.insert(tasks)    
     tq.execute()
     
-    print(f'Creating meshing manifest tasks with {cpus} CPUs')
-    tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=4) # The second phase of creating mesh
+    magnitude = 4
+    print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
+    tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
