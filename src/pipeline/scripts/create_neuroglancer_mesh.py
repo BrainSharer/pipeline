@@ -135,6 +135,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
     # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created.
+    # 256 does not work at scaling_factor=7
     shape= 256
     print(f'Creating sharded mesh with shape={shape}')
     tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True, shape=[shape, shape, shape]) # The first phase of creating mesh
@@ -147,16 +148,17 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug):
     # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
     # must return HTTP/1.1 206 Partial Content
     # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
-    # -rw-rw-r-- 1 eodonnell dklab 129M Aug 26 17:07 mesh_9/mesh_mip_0_err_40/0.shard
+    # lod=1: 129M 0.shard
+    # lod=2: 176M 0.shard
 
     # 
-    lods = 2
+    lods = 1
     print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
     tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods)
     tq.insert(tasks)    
     tq.execute()
     
-    magnitude = 3
+    magnitude = 5
     print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
     tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
