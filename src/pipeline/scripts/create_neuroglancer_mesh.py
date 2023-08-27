@@ -33,7 +33,7 @@ from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
 from library.utilities.utilities_process import get_cpus, get_hostname
 
-def create_mesh(animal, limit, scaling_factor, skeleton, multires=True, debug=False):
+def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=False):
     sqlController = SqlController(animal)
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
@@ -138,7 +138,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, multires=True, debug=Fa
     # 256 does not work at scaling_factor=7
     shape= 256
     print(f'Creating sharded mesh with shape={shape}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=True, shape=[shape, shape, shape]) # The first phase of creating mesh
+    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
           
@@ -152,7 +152,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, multires=True, debug=Fa
     # lod=2: 176M 0.shard
 
     # 
-    if multires:
+    if sharded:
         lods = 1
         print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods)
@@ -185,15 +185,15 @@ if __name__ == '__main__':
     parser.add_argument('--limit', help='Enter the # of files to test', required=False, default=0)
     parser.add_argument('--scaling_factor', help='Enter an integer that will be the denominator', required=False, default=1)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
-    parser.add_argument("--multires", help="Create multiple resolutions", required=False, default=False)
+    parser.add_argument("--sharded", help="Create multiple resolutions", required=False, default=False)
     parser.add_argument("--debug", help="debug", required=False, default=False)
     args = parser.parse_args()
     animal = args.animal
     limit = int(args.limit)
     scaling_factor = int(args.scaling_factor)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
-    multires = bool({"true": True, "false": False}[str(args.multires).lower()])
+    sharded = bool({"true": True, "false": False}[str(args.sharded).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
-    create_mesh(animal, limit, scaling_factor, skeleton, multires, debug)
+    create_mesh(animal, limit, scaling_factor, skeleton, sharded, debug)
 
