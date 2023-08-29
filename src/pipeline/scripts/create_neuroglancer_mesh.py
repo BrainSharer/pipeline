@@ -119,7 +119,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
         #ng.add_rechunking(layer_path)
         print('Creating transfer tasks (rechunking)')
-        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True)
+        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=False)
         #tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
         tq.insert(tasks)
         tq.execute()
@@ -136,8 +136,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created.
     # 256 does not work at scaling_factor=7
     shape= 256
-    print(f'Creating sharded mesh with shape={shape}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=0, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
+    mip=0 # Segmentations only use the 1st mip
+    print(f'Creating sharded mesh with shape={shape} at mip={mip}')
+    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
           
@@ -149,11 +150,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
     # lod=1: 129M 0.shard
     # lod=2: 176M 0.shard
-    # lod=10, 102M 0.shard
+    # lod=10, 102M 0.shard, with draco=10
 
     # 
     
-    magnitude = 3
+    magnitude = 4
     print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
     tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
