@@ -67,11 +67,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
 
-    if scaling_factor >= 10:    
+    if scaling_factor > 10:    
         chunk = 64
     else:
-        chunk = 128
-
+        chunk = 256
     chunkZ = chunk
     if limit > 0:
         _start = midpoint - limit
@@ -150,20 +149,22 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
     # lod=1: 129M 0.shard
     # lod=2: 176M 0.shard
+    # lod=10, 102M 0.shard
 
     # 
-    if sharded:
-        lods = 1
-        print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods)
-        tq.insert(tasks)    
-        tq.execute()
     
     magnitude = 3
     print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
     tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
     tq.execute()
+
+    if sharded:
+        lods = 10
+        print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods, draco_compression_level=10)
+        tq.insert(tasks)    
+        tq.execute()
 
     ##### skeleton
     if skeleton:
