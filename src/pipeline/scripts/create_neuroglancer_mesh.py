@@ -30,7 +30,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE, calculate_chunks
 from library.utilities.utilities_process import get_cpus, get_hostname
 
 def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=False):
@@ -116,13 +116,16 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if not os.path.exists(MESH_DIR):
         os.makedirs(MESH_DIR, exist_ok=True)
         layer_path = f'file://{MESH_DIR}'
-        #ng.add_rechunking(layer_path, chunks=chunks, mip=0, skip_downsamples=True)
-        #ng.add_rechunking(layer_path)
         print('Creating transfer tasks (rechunking)')
-        tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=False)
-        #tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path)
+        #tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
+        tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path, mip=0, chunk_size=chunks)
         tq.insert(tasks)
         tq.execute()
+
+    tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=0, chunk_size=chunks)
+    #tasks = tc.create_downsampling_tasks(layer_path,mip=0,num_mips=1,preserve_chunk_size=False,compress=True,chunk_size=chunks)
+    tq.insert(tasks)
+    tq.execute()
     
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
