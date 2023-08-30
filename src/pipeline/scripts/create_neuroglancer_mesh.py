@@ -137,8 +137,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
     # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created.
-    # 256 does not work at scaling_factor=7
-    shape= 256
+    # 256 does not work at scaling_factor=7 or 4
+    shape= 448
     mip=0 # Segmentations only use the 1st mip
     print(f'Creating sharded mesh with shape={shape} at mip={mip}')
     tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
