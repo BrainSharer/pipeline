@@ -116,14 +116,21 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if not os.path.exists(MESH_DIR):
         os.makedirs(MESH_DIR, exist_ok=True)
         layer_path = f'file://{MESH_DIR}'
-        print('Creating transfer tasks (rechunking)')
-        #tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
-        tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path, mip=0, chunk_size=chunks)
+        if sharded: 
+            tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path, mip=0, chunk_size=chunks)
+        else:
+            tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
+
+        print(f'Creating transfer tasks (rechunking) with shards={sharded}')
         tq.insert(tasks)
         tq.execute()
 
-    tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=0, chunk_size=chunks)
-    #tasks = tc.create_downsampling_tasks(layer_path,mip=0,num_mips=1,preserve_chunk_size=False,compress=True,chunk_size=chunks)
+    if sharded:
+        tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=0, chunk_size=chunks)
+    else:
+        tasks = tc.create_downsampling_tasks(layer_path, mip=0, num_mips=1, preserve_chunk_size=False, compress=True, chunk_size=chunks)
+
+    print(f'Creating downsamplings tasks (rechunking) with shards={sharded}')
     tq.insert(tasks)
     tq.execute()
     
@@ -136,14 +143,17 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ##### first mesh task, create meshing tasks
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     
-    # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created.
+    # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
     # 256 does not work at scaling_factor=7 or 4
-    shape= 448
+    # 128 works at scaling_factor=4 and at 10
+    # 448 does not work at scaling_factor=10,
+    shape= 128
     mip=0 # Segmentations only use the 1st mip
-    print(f'Creating sharded mesh with shape={shape} at mip={mip}')
+    print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
     tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
+
           
     # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
     # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
@@ -154,21 +164,24 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=1: 129M 0.shard
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
+    #
 
-    # 
-    
-    magnitude = 4
+    LOD = 1
+    if sharded:
+        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD, draco_compression_level=10)
+    else:
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+
+    print(f'Creating multires task with shards={str(sharded)} ')
+    tq.insert(tasks)    
+    tq.execute()
+
+    magnitude = 3
     print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
     tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
-    if sharded:
-        lods = 10
-        print(f'Creating sharded multires task with {cpus} CPUs with LODs={lods}')
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=lods, draco_compression_level=10)
-        tq.insert(tasks)    
-        tq.execute()
 
     ##### skeleton
     if skeleton:
