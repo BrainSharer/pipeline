@@ -70,7 +70,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if scaling_factor > 10:    
         chunk = 64
     else:
-        chunk = 256
+        chunk = 64
     chunkZ = chunk
     if limit > 0:
         _start = midpoint - limit
@@ -106,12 +106,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         executor.map(ng.process_image_mesh, sorted(file_keys), chunksize=1)
         executor.shutdown(wait=True)
     
-    
-    chunks = (chunk, chunk, chunkZ)
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
     _, cpus = get_cpus()
+    chunks = [chunk, chunk, chunk]
     tq = LocalTaskQueue(parallel=cpus)
     if not os.path.exists(MESH_DIR):
         os.makedirs(MESH_DIR, exist_ok=True)
@@ -121,11 +120,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         else:
             tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
 
-        print(f'Creating transfer tasks (rechunking) with shards={sharded}')
+        print(f'Creating transfer tasks (rechunking) with shards={sharded} with chunks={chunks}')
         tq.insert(tasks)
         tq.execute()
 
-    print(f'Creating downsamplings tasks (rechunking) with shards={sharded}')
+    print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks}')
     if sharded:
         for mip in [0, 1]:
             tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, chunk_size=chunks)
