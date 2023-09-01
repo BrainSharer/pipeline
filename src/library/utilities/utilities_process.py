@@ -38,7 +38,13 @@ def get_image_size(filepath: str):
     except:
         print(f'Could not identify file={filepath}')
     results = result_parts.split()
-    width, height = results[2].split("x")
+    try:
+        width, height = results[2].split("x")
+    except ValueError as ve:
+        print(f'Could not get width/height of {filepath}')
+        print(ve)
+        sys.exit()
+        
     return int(width), int(height)
 
 
