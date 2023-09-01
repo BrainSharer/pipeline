@@ -168,17 +168,18 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
     #
-    LOD = 1
-    if sharded:
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD, draco_compression_level=10)
-    else:
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+    if False:
+        LOD = 1
+        if sharded:
+            tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD, draco_compression_level=10)
+        else:
+            tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
 
-    print(f'Creating multires task with shards={str(sharded)} ')
-    tq.insert(tasks)    
-    tq.execute()
+        print(f'Creating multires task with shards={str(sharded)} ')
+        tq.insert(tasks)    
+        tq.execute()
 
-    magnitude = 3
+    magnitude = 4
     print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
     tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
     tq.insert(tasks)
