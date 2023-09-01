@@ -70,7 +70,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if scaling_factor > 10:    
         chunk = 64
     else:
-        chunk = 64
+        chunk = 128
     chunkZ = chunk
     if limit > 0:
         _start = midpoint - limit
@@ -132,7 +132,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
             tq.execute()
 
     else:
-        tasks = tc.create_downsampling_tasks(layer_path, mip=0, num_mips=1, preserve_chunk_size=False, compress=True, chunk_size=chunks)
+        tasks = tc.create_downsampling_tasks(layer_path, mip=0, num_mips=2, preserve_chunk_size=False, compress=True, chunk_size=chunks)
         tq.insert(tasks)
         tq.execute()
 
@@ -150,10 +150,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # 128 works at scaling_factor=4 and at 10
     # 448 does not work at scaling_factor=10,
 
-    shape= 448
+    shape = chunks
     mip=0 # Segmentations only use the 1st mip
     print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=[shape, shape, shape]) # The first phase of creating mesh
+    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=shape) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 

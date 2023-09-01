@@ -113,6 +113,7 @@ class Pipeline(
         self.extract_slide_meta_data_and_insert_to_database()
         self.extract_tiffs_from_czi()
         self.create_web_friendly_image()
+        print('Finished extracting.')
 
     def mask(self):
         print(self.TASK_MASK)
@@ -120,17 +121,20 @@ class Pipeline(
         self.apply_QC()
         self.create_normalized_image()
         self.create_mask()
+        print('Finished masking.')
     
     def clean(self):
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
         self.create_cleaned_images()
+        print('Finished cleaning')
     
     def histogram(self):
         print(self.TASK_HISTOGRAM)
         self.make_histogram()
         self.make_combined_histogram()
+        print('Finished creating histograms.')
 
     def align(self):
         print(self.TASK_ALIGN)
@@ -144,6 +148,7 @@ class Pipeline(
             self.call_alignment_metrics()
 
         self.create_web_friendly_sections()
+        print('Finished aligning.')
 
 
     def create_metrics(self):
@@ -152,6 +157,7 @@ class Pipeline(
             print(f'Starting iteration {i}')
             self.iteration = i
             self.call_alignment_metrics()
+        print('Finished creating alignment metrics.')
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
@@ -177,6 +183,7 @@ class Pipeline(
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
+        print('Finished creating neuroglancer data.')
 
 
     def check_status(self):
