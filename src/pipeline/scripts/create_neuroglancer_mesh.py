@@ -70,7 +70,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if scaling_factor > 10:    
         chunk = 64
     else:
-        chunk = 128
+        chunk = 256
     chunkZ = chunk
     if limit > 0:
         _start = midpoint - limit
