@@ -53,12 +53,16 @@ class TiffExtractor(ParallelManager):
             czi_file = os.path.join(INPUT, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             output_path = os.path.join(OUTPUT, tif_file)
+            if self.debug:
+                print(f'creating thumbnail={output_path}')
             if not os.path.exists(czi_file):
                 continue
             if os.path.exists(output_path):
                 continue
             scene = section.scene_index
             file_keys.append([czi_file, output_path, scene, self.channel, scale_factor])
+        if self.debug:
+            print(f'Extracting a total of {len(file_keys)} thumbnails')
         workers = self.get_nworkers()
         self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
