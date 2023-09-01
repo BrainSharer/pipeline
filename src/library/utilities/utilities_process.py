@@ -33,7 +33,10 @@ def get_image_size(filepath: str):
     :return: tuple of int width and height of the file
     """
 
-    result_parts = str(check_output(["identify", filepath]))
+    try:
+        result_parts = str(check_output(["identify", filepath]))
+    except:
+        print(f'Could not identify file={filepath}')
     results = result_parts.split()
     width, height = results[2].split("x")
     return int(width), int(height)
