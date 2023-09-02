@@ -51,27 +51,6 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     T = np.vstack([np.column_stack([R, shift]), [0, 0, 1]])
     return T
 
-def rigid_transform_to_parmeters(transform, center):
-    """convert a 2d transformation matrix (3*3) to the rotation angles, 
-    rotation center and translation
-
-
-    :param transform: (array like): 3*3 array that stores the 2*2 transformation \
-    matrix and the 1*2 translation vector for a \
-    2D image.  the third row of the array is a place holder of values [0,0,1].
-    :param center: tuple of floats showing the center of the image.
-
-    :return:    float: x translation, float: y translation, float: rotation angle \
-    in arc list of x and y for rotation center
-    """     
-
-    R = transform[:2,:2]
-    shift = transform[:2,2]
-    tan = R[1,0]/R[0,0]
-    rotation = np.arctan(tan)
-    xshift, yshift = shift - center + np.dot(R, center)
-    return xshift, yshift, rotation, center
-
 def create_rigid_parameters(elastixImageFilter):
     """Creates the rigid paramaters used by Elastix.
     This sets lots of parameters in this dictionary and it used multiple places.
@@ -327,7 +306,7 @@ def align_image_to_affine(file_key):
         print(f'align image to affine, could not open {infile}')
 
     try:
-        im2 = im1.transform((im1.size), Image.AFFINE, T.flatten()[:6], resample=Image.NEAREST)
+        im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except:
         print(f'align image to affine, could not transform {infile}')
 
