@@ -25,6 +25,27 @@ from library.utilities.utilities_process import SCALING_FACTOR, read_image, writ
 NUM_ITERATIONS = "1000"
 
 
+def rigid_transform_to_parmeters(transform,center):
+    """convert a 2d transformation matrix (3*3) to the rotation angles, rotation center and translation
+    This is used in the manual aligner notebook.
+
+    Args:
+        transform (array like): 3*3 array that stores the 2*2 transformation matrix and the 1*2 translation vector for a 
+        2D image.  the third row of the array is a place holder of values [0,0,1].
+
+    Returns:
+        float: x translation
+        float: y translation
+        float: rotation angle in arc
+        list:  lisf of x and y for rotation center
+    """        
+    R = transform[:2,:2]
+    shift = transform[:2,2]
+    tan= R[1,0]/R[0,0]
+    rotation = np.arctan(tan)
+    xshift,yshift = shift-center +np.dot(R, center)
+    return xshift,yshift,rotation,center
+
 def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     """Takes the rotation, xshift, yshift that were created by Elastix
     and stored in the elastix_transformation table. Creates a matrix of the

@@ -70,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument("--downsample", help="Enter true or false", required=False, default="true")
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
+    parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=1, type=int)
     parser.add_argument("--tg", help="Extend the mask to expose the entire underside of the brain", required=False, default=False)
     parser.add_argument("--task", 
                         help="Enter the task you want to perform: \
@@ -81,12 +82,13 @@ if __name__ == "__main__":
     animal = args.animal
     rescan_number = int(args.rescan_number)
     channel = args.channel
+    iterations = args.iterations
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     tg = bool({"true": True, "false": False}[str(args.tg).lower()])
     task = str(args.task).strip().lower()
 
-    pipeline = Pipeline(animal, rescan_number, channel, downsample, tg, debug, task)
+    pipeline = Pipeline(animal, rescan_number=0, channel=1, iterations=iterations, downsample=True, tg=False, task='status', debug=False)
 
     function_mapping = {'extract': pipeline.extract,
                         'mask': pipeline.mask,

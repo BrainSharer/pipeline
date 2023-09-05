@@ -54,14 +54,13 @@ class ElastixManager(FileLogger):
         The transformations are calculated from the next image to the previous
         This is done in a simple loop with no workers. Usually takes
         up to an hour to run for a stack. It only needs to be run once for
-        each brain. We are now using 2 iterations to get better alignment.
+        each brain. We are now using multiple iterations to get better alignment.
         The 2nd pass uses the results of the 1st pass to align
         """
         if self.channel == 1 and self.downsample:
-            INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_cleaned")
-            if self.iteration == 1:
-                INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_aligned_iteration_0")
-
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
+                                                                          iterations=self.iterations,
+                                                                          channel=1, resolution='thumbnail')
             files = sorted(os.listdir(INPUT))
             nfiles = len(files)
             self.logevent(f"INPUT FOLDER: {INPUT}")
@@ -164,10 +163,11 @@ class ElastixManager(FileLogger):
         """
 
         if self.channel == 1 and self.downsample:
-            INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_aligned_iteration_0")
-            if self.iteration == 1:
-                INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_aligned")
-            
+
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
+                                                                               iterations=self.iterations,
+                                                                               channel=1, resolution='thumbnail')
+
             ELASTIX_OUTPUT = self.fileLocationManager.elastix
             os.makedirs(ELASTIX_OUTPUT, exist_ok=True)
 
@@ -363,11 +363,9 @@ class ElastixManager(FileLogger):
         """
         if not self.downsample:
             transforms = create_downsampled_transforms(transforms, downsample=False)
-            INPUT = self.fileLocationManager.get_full_cleaned(self.channel)
-            OUTPUT = self.fileLocationManager.get_full_aligned_iteration_0(self.channel)
-            if self.iteration == 1:
-                INPUT = self.fileLocationManager.get_full_aligned_iteration_0(self.channel)
-                OUTPUT = self.fileLocationManager.get_full_aligned(self.channel)
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
+                                                                               iterations=self.iterations,
+                                                                               channel=1, resolution='full')
 
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
@@ -383,11 +381,9 @@ class ElastixManager(FileLogger):
         """
 
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            OUTPUT = self.fileLocationManager.get_thumbnail_aligned_iteration_0(self.channel)
-            if self.iteration == 1:
-                INPUT = self.fileLocationManager.get_thumbnail_aligned_iteration_0(self.channel)
-                OUTPUT = self.fileLocationManager.get_thumbnail_aligned(self.channel)
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
+                                                                               iterations=self.iterations,
+                                                                               channel=1, resolution='thumbnail')
 
             print(f'Aligning {len(os.listdir(INPUT))} images from {os.path.basename(os.path.normpath(INPUT))} to {os.path.basename(os.path.normpath(OUTPUT))}', end=" ")
             self.align_images(INPUT, OUTPUT, transforms)

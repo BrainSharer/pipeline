@@ -67,8 +67,24 @@ class FileLocationManager(object):
     def get_full_aligned(self, channel=1):
         return os.path.join(self.prep, f"CH{channel}", "full_aligned")
 
-    def get_thumbnail_aligned_iteration_0(self, channel=1):
-        return os.path.join(self.prep, f"CH{channel}", "thumbnail_aligned_iteration_0")
+    def get_alignment_directories(self, iteration, iterations, channel=1, resolution='thumbnail'):
+
+        if iteration == 0:
+            input = os.path.join(self.prep, f'CH{channel}', f'{resolution}_cleaned')
+            output = os.path.join(self.prep, f"CH{channel}", f'{resolution}_aligned_iteration_{iteration}')
+        if iteration > 0:
+            dir_number = iteration - 1
+            input = os.path.join(self.prep, f"CH{channel}", f'{resolution}_aligned_iteration_{dir_number}')
+            dir_number = iteration
+            output = os.path.join(self.prep, f"CH{channel}", f'{resolution}_aligned_iteration_{dir_number}')
+        if iteration == iterations - 1:
+            output = os.path.join(self.prep, f"CH{channel}", f'{resolution}_aligned')
+
+        os.makedirs(output, exist_ok=True)
+        return input, output
+
+    def get_thumbnail_aligned_iteration(self, channel=1, iteration=0):
+        return os.path.join(self.prep, f"CH{channel}", f"thumbnail_aligned_iteration_{iteration}")
 
     def get_thumbnail_aligned(self, channel=1):
         return os.path.join(self.prep, f"CH{channel}", "thumbnail_aligned")

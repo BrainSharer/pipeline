@@ -59,7 +59,10 @@ class Pipeline(
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
 
-    def __init__(self, animal, rescan_number, channel, downsample, tg, debug, task):
+    # animal, rescan_number=0, channel=1, iterations=iterations, downsample=False, tg=False, task='status', debug=False)
+
+    def __init__(self, animal, rescan_number=0, channel=1, iterations=2, downsample=False, 
+                 tg=False, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
@@ -85,22 +88,26 @@ class Pipeline(
         self.animal = animal
         self.rescan_number = rescan_number
         self.channel = channel
+        self.iterations = iterations
         self.downsample = downsample
         self.debug = debug
-        self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
+        self.fileLocationManager = FileLocationManager(
+            animal, data_path=data_path)
         self.sqlController = SqlController(animal, rescan_number)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.tg = tg
         self.check_programs()
-        self.section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        self.section_count = self.sqlController.get_section_count(
+            self.animal, self.rescan_number)
         super().__init__(self.fileLocationManager.get_logdir())
 
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
-        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20), f"@ {str(SCALING_FACTOR)}".ljust(20))
+        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
+            20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\ttg:".ljust(20), f"{str(self.tg)}".ljust(20))
@@ -137,15 +144,17 @@ class Pipeline(
         print('Finished creating histograms.')
 
     def align(self):
+        """Default iterations is 2, so we subtract to do 0,1 iterations
+        """
+
         print(self.TASK_ALIGN)
-        for i in [0, 1]:
-            print(f'Starting iteration {i}')
+        for i in range(0, self.iterations):
             self.iteration = i
+            print(f'Starting iteration {i} of {self.iterations}.', end=" ")
             self.create_within_stack_transformations()
             transformations = self.get_transformations()
             self.align_downsampled_images(transformations)
             self.align_full_size_image(transformations)
-            self.call_alignment_metrics()
 
         self.create_web_friendly_sections()
         print('Finished aligning.')

@@ -48,6 +48,7 @@ class MetaUtilities:
                 file_keys = []
                 for i, file in enumerate(files_ordered_by_filesize_desc.keys()):
                     infile = os.path.join(INPUT, file)
+                    infile = infile.replace(" ","_").strip()
                     if i == 0:  # largest file
                         single_file_size = os.path.getsize(infile)
 
