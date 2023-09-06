@@ -144,7 +144,7 @@ class Pipeline(
         print('Finished creating histograms.')
 
     def align(self):
-        """Default iterations is 2, so we subtract to do 0,1 iterations
+        """The number of iterations is set on the command line argument
         """
 
         print(self.TASK_ALIGN)

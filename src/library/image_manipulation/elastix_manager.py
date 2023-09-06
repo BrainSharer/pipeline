@@ -365,7 +365,7 @@ class ElastixManager(FileLogger):
             transforms = create_downsampled_transforms(transforms, downsample=False)
             INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
                                                                                iterations=self.iterations,
-                                                                               channel=1, resolution='full')
+                                                                               channel=self.channel, resolution='full')
 
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
@@ -383,7 +383,7 @@ class ElastixManager(FileLogger):
         if self.downsample:
             INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
                                                                                iterations=self.iterations,
-                                                                               channel=1, resolution='thumbnail')
+                                                                               channel=self.channel, resolution='thumbnail')
 
             print(f'Aligning {len(os.listdir(INPUT))} images from {os.path.basename(os.path.normpath(INPUT))} to {os.path.basename(os.path.normpath(OUTPUT))}', end=" ")
             self.align_images(INPUT, OUTPUT, transforms)
