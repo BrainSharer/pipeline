@@ -43,4 +43,12 @@ class SlideCZIToTifController():
             except Exception as e:
                 print(f'No merge for  {e}')
                 self.session.rollback()
-            
+            # set empty slide to inactive
+            try:
+                self.session.query(Slide)\
+                    .filter(Slide.id == other_slide).update({'active': False})
+                self.session.commit()
+            except Exception as e:
+                print(f'No merge for  {e}')
+                self.session.rollback()
+

@@ -26,8 +26,8 @@ class MetaUtilities:
         file_validation_status, unique_files = self.file_validation(czi_files)
         db_validation_status, unprocessed_czifiles = self.all_slide_meta_data_exists_in_database(unique_files)
         if not file_validation_status and not db_validation_status:
-            self.logevent("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
-            print("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
+            self.logevent("ERROR IN CZI FILES OR DB COUNTS")
+            print("ERROR IN CZI FILES OR DB COUNTS")
             sys.exit()
 
         if len(unprocessed_czifiles) > 0:
@@ -55,7 +55,8 @@ class MetaUtilities:
         return self.sqlController.scan_run.id
 
     def file_validation(self, czi_files):
-        """CHECK IF DUPLICATE SLIDE NUMBERS EXIST IN FILENAMES; ALSO CHECKS CZI FORMAT
+        """CHECK IF DUPLICATE SLIDE NUMBERS EXIST IN FILENAMES. If there are duplicates, record the ID.
+        ALSO CHECKS CZI FORMAT
         CHECK DB COUNT FOR SLIDE TABLE
 
         :param czi_files: list of CZI files
@@ -78,7 +79,7 @@ class MetaUtilities:
             msg2 = "NO DUPLICATE FILES; CONTINUE"
         else:
             self.multiple_slides = list(set([i for i in slide_id if slide_id.count(i)>1]))
-            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); STOP"
+            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S);"
             
         print(msg, msg2, sep="\n")
         self.logevent(msg)
