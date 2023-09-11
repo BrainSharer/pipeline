@@ -1,15 +1,12 @@
 """This module is responsible for extracting metadata from the CZI files.
 """
 
-import os, sys, time, re, psutil
+import os, sys, time, re
 from datetime import datetime
 from pathlib import Path
-import operator
 
-from library.controller.sql_controller import SqlController
 from library.database_model.slide import Slide, SlideCziTif
 from library.image_manipulation.czi_manager import CZIManager
-from library.utilities.utilities_process import convert_size
 
 
 class MetaUtilities:
@@ -26,51 +23,29 @@ class MetaUtilities:
         INPUT = self.fileLocationManager.get_czi(self.rescan_number)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.get_user_entered_scan_id()
-        print(f'\tScan run ID={self.scan_id}')
         file_validation_status, unique_files = self.file_validation(czi_files)
-        db_validation_status,outstanding_files = self.all_slide_meta_data_exists_in_database(unique_files)
-        if file_validation_status and db_validation_status:
-            if len(outstanding_files) > 0:
-                dict_target_filesizes = {}  # dict for symlink <-> target file size
-                for filename in outstanding_files:
-                    symlink = os.path.join(INPUT, filename)
-                    target_file = Path(symlink).resolve()  # target of symbolic link
-                    file_size = os.path.getsize(target_file)
-                    dict_target_filesizes[filename] = file_size
-
-                files_ordered_by_filesize_desc = dict(
-                    sorted(
-                        dict_target_filesizes.items(),
-                        key=operator.itemgetter(1),
-                        reverse=True,
-                    )
-                )
-                file_keys = []
-                for i, file in enumerate(files_ordered_by_filesize_desc.keys()):
-                    infile = os.path.join(INPUT, file)
-                    infile = infile.replace(" ","_").strip()
-                    if i == 0:  # largest file
-                        single_file_size = os.path.getsize(infile)
-
-                    file_keys.append([infile, self.scan_id])
-
-                ram_coefficient = 2
-
-                mem_avail = psutil.virtual_memory().available
-                batch_size = mem_avail // (single_file_size * ram_coefficient)
-                msg = f"MEM AVAILABLE: {convert_size(mem_avail)}; [LARGEST] SINGLE FILE SIZE: {convert_size(single_file_size)}; BATCH SIZE: {round(batch_size,0)}"
-                self.logevent(msg)
-                
-                workers = self.get_nworkers()
-                print(f'working on parallel extract files={len(file_keys)}')
-                self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
-            else:
-                msg = "NOTHING TO PROCESS - SKIPPING"
-                print(msg)
-                self.logevent(msg)
-        else:
+        db_validation_status, unprocessed_czifiles = self.all_slide_meta_data_exists_in_database(unique_files)
+        if not file_validation_status and not db_validation_status:
             self.logevent("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
+            print("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
             sys.exit()
+
+        if len(unprocessed_czifiles) > 0:
+            file_keys = []
+            for unprocessed_czifile in unprocessed_czifiles:
+                infile = os.path.join(INPUT, unprocessed_czifile)
+                infile = infile.replace(" ","_").strip()
+                file_keys.append([infile, self.scan_id])
+
+            self.logevent(f"Working on {infile}")
+            
+            workers = self.get_nworkers()
+            print(f'working on parallel extract files={len(file_keys)}')
+            self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
+        else:
+            msg = "NOTHING TO PROCESS - SKIPPING"
+            print(msg)
+            self.logevent(msg)
 
     def get_user_entered_scan_id(self):
         """Get id in the "scan run" table for the current microscopy scan that 
@@ -92,22 +67,23 @@ class MetaUtilities:
         for file in czi_files:
             filename = os.path.splitext(file)
             if filename[1] == ".czi":
-                slide_id.append(
-                    int(re.sub("[^0-9]", "", str(re.findall(r"slide\d+", filename[0]))))
-                )
+                slide_id.append(int(re.sub("[^0-9]", "", str(re.findall(r"slide\d+", filename[0])))))
 
         total_slides_cnt = len(slide_id)
         unique_slides_cnt = len(set(slide_id))
         msg = f"CZI SLIDES COUNT: {total_slides_cnt}; UNIQUE CZI SLIDES COUNT: {unique_slides_cnt}"
         status = True
+        
         if unique_slides_cnt == total_slides_cnt and unique_slides_cnt > 0:
             msg2 = "NO DUPLICATE FILES; CONTINUE"
         else:
+            self.multiple_slides = list(set([i for i in slide_id if slide_id.count(i)>1]))
             msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); STOP"
-            status = False
+            
         print(msg, msg2, sep="\n")
         self.logevent(msg)
         self.logevent(msg2)
+        
 
         return status, czi_files
 
@@ -121,8 +97,7 @@ class MetaUtilities:
         """
         
         qry = self.sqlController.session.query(Slide).filter(
-            Slide.scan_run_id == self.scan_id
-        )
+            Slide.scan_run_id == self.scan_id)
         query_results = self.sqlController.session.execute(qry)
         results = [x for x in query_results]
         db_slides_cnt = len(results)
@@ -145,10 +120,8 @@ class MetaUtilities:
             completed_files = []
             for row in results:
                 completed_files.append(row[0].file_name)
-            outstanding_files = set(czi_files).symmetric_difference(
-                set(completed_files)
-            )
-            czi_files = outstanding_files
+            unprocessed_czifiles = set(czi_files).symmetric_difference(set(completed_files))
+            czi_files = unprocessed_czifiles
             msg = f"OUTSTANDING SLIDES COUNT: {len(czi_files)}"
             print(msg)
             self.logevent(msg)
@@ -190,6 +163,7 @@ class MetaUtilities:
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
 
+
         slide = Slide()
         slide.scan_run_id = scan_id
         slide.slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
@@ -197,9 +171,7 @@ class MetaUtilities:
         slide.processed = False
         slide.file_size = os.path.getsize(infile)
         slide.file_name = os.path.basename(os.path.normpath(infile))
-        slide.created = datetime.fromtimestamp(
-            Path(os.path.normpath(infile)).stat().st_mtime
-        )
+        slide.created = datetime.fromtimestamp(Path(os.path.normpath(infile)).stat().st_mtime)
         slide.scenes = len([elem for elem in czi_metadata.values()][0].keys())
         self.session.begin()
         self.session.add(slide)
@@ -233,13 +205,10 @@ class MetaUtilities:
                 self.session.add_all(tif_list)
                 self.session.commit()
 
-
         return
 
-def validate(session):
-    try:
-        # Try to get the underlying session connection, If you can get it, its up
-        connection = session.connection()
-        return True
-    except:
-        return False
+
+    def correct_multiples(self):
+        for slide_physical_id in self.multiple_slides:
+            self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id)
+            print(f'updated tiffs to fall use this slide physical ID={slide_physical_id}')

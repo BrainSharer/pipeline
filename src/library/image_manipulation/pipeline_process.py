@@ -91,15 +91,15 @@ class Pipeline(
         self.iterations = iterations
         self.downsample = downsample
         self.debug = debug
-        self.fileLocationManager = FileLocationManager(
-            animal, data_path=data_path)
+        self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
         self.sqlController = SqlController(animal, rescan_number)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.tg = tg
         self.check_programs()
-        self.section_count = self.sqlController.get_section_count(
-            self.animal, self.rescan_number)
+        self.section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        self.multiple_slides = []
+
         super().__init__(self.fileLocationManager.get_logdir())
 
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -118,6 +118,7 @@ class Pipeline(
     def extract(self):
         print(self.TASK_EXTRACT)
         self.extract_slide_meta_data_and_insert_to_database()
+        self.correct_multiples()
         self.extract_tiffs_from_czi()
         self.create_web_friendly_image()
         print('Finished extracting.')

@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument("--downsample", help="Enter true or false", required=False, default="true")
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
-    parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=1, type=int)
+    parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=2, type=int)
     parser.add_argument("--tg", help="Extend the mask to expose the entire underside of the brain", 
                         required=False, default=False)
     parser.add_argument("--task", 
