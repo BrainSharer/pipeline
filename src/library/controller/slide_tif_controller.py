@@ -1,3 +1,5 @@
+from sqlalchemy import func
+
 from library.database_model.slide import Slide, SlideCziTif
 
 
@@ -24,21 +26,25 @@ class SlideCZIToTifController():
 
     def get_and_correct_multiples(self, scan_run_id, slide_physical_id):
         slide_physical_ids = []
-        rows = self.session.query(Slide)\
+        slide_rows = self.session.query(Slide)\
             .filter(Slide.scan_run_id == scan_run_id)\
             .filter(Slide.slide_physical_id == slide_physical_id)
-        for row in rows:
-            slide_physical_ids.append(row.id)
+        for slide_row in slide_rows:
+            slide_physical_ids.append(slide_row.id)
         print(f'slide_physical_ids={slide_physical_ids}')
         master_slide = min(slide_physical_ids)
         print(f'master slide={master_slide}')
         slide_physical_ids.remove(master_slide)
         print(f'other slides = {slide_physical_ids}')
+        max_index = self.session.query(func.max(SlideCziTif.scene_index)).filter(SlideCziTif.FK_slide_id == master_slide).one()[0] + 1
+        if not isinstance(max_index, int):
+            print('we should not get here')
+            max_index = 3
         for other_slide in slide_physical_ids:
             print(f'Updating slideczitiff set FK_slide_id={master_slide} where FK_slideid={other_slide}')
             try:
                 self.session.query(SlideCziTif)\
-                    .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide})
+                    .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide, 'scene_index': SlideCziTif.scene_index + max_index})
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')
