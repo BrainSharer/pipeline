@@ -21,6 +21,7 @@ class SlideCZIToTifController():
             print(f'No merge for  {e}')
             self.session.rollback()
 
+
     def get_slide(self, id):
         return self.session.query(Slide).filter(Slide.id == id)
 

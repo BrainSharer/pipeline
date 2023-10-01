@@ -50,11 +50,11 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
         avg = np.mean(bottom_rows)
         bgcolor = int(round(avg))
     new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
+    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
     if img.ndim == 2:
         try:
             new_img[startr:endr, startc:endc] = img
         except:
-            #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
             ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
             #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
             print(f'Could not place {file} with rows, columns:{img.shape[0]}x{img.shape[1]} in rows,columns={max_height}x{max_width}')
@@ -198,7 +198,7 @@ def clean_and_rotate_image(file_key):
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
 
-    #cleaned = crop_image(cleaned, mask)
+    cleaned = crop_image(cleaned, mask)
     del img
     del mask
     if rotation > 0:
@@ -242,6 +242,20 @@ def crop_image(img, mask):
     :return: numpy array of cropped image
     """
 
+    x1, y1, x2, y2 = get_image_box(mask)
+    img = np.ascontiguousarray(img, dtype=np.uint16)
+    cropped = img[y1:y2, x1:x2]
+    return cropped
+
+
+def get_image_box(mask):
+    """Find new max width and height
+
+    :param img: numpy array of image
+    :param mask: numpy array of mask
+    :return: numpy array of cropped image
+    """
+
     BUFFER = 2
     mask = np.array(mask)
     mask[mask > 0] = 255
@@ -261,12 +275,8 @@ def crop_image(img, mask):
     y1 = min(x[1] for x in boxes) - BUFFER
     x2 = max(x[2] for x in boxes) + BUFFER
     y2 = max(x[3] for x in boxes) + BUFFER
-    box = np.array([x1, y1, x2, y2])
-    box[box < 0] = 0
-    x1, y1, x2, y2 = box
-    img = np.ascontiguousarray(img, dtype=np.uint16)
-    cropped = img[y1:y2, x1:x2]
-    return cropped
+    x1, y1, x2, y2 = [0 if i < 0 else i for i in [x1, y1, x2, y2]]
+    return x1, y1, x2, y2
 
 
 def merge_mask(image, mask):

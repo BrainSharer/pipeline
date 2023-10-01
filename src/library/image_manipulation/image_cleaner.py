@@ -5,8 +5,8 @@ import os
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
-from library.utilities.utilities_mask import clean_and_rotate_image
-from library.utilities.utilities_process import SCALING_FACTOR, test_dir
+from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
 
 
 class ImageCleaner:
@@ -23,9 +23,31 @@ class ImageCleaner:
         """
 
         if self.downsample:
+            self.crop_all_images()
             self.create_cleaned_images_thumbnail()
+            
         else:
             self.create_cleaned_images_full_resolution()
+
+    def crop_all_images(self):
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
+        maskfiles = sorted(os.listdir(MASKS))
+        widths = []
+        heights = []
+        for maskfile in maskfiles:
+            maskpath = os.path.join(MASKS, maskfile)
+            mask = read_image(maskpath)
+            x1, y1, x2, y2 = get_image_box(mask)
+            width = x2 - x1
+            height = y2 - y1
+            widths.append(width)
+            heights.append(height)
+        max_width = max(widths)
+        max_height = max(heights)
+        if self.debug:
+            print(f'Updating {self.animal} width={max_width} height={max_height}')
+        self.sqlController.update_cropped_data(self.sqlController.scan_run.id, max_width, max_height)
+        
 
     def create_cleaned_images_thumbnail(self, channel=1):
         """Clean the image using the masks for the downsampled version

@@ -135,6 +135,7 @@ class Pipeline(
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
+            
         self.create_cleaned_images()
         print('Finished cleaning')
     
