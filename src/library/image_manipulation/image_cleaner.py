@@ -30,7 +30,7 @@ class ImageCleaner:
             self.create_cleaned_images_full_resolution()
 
     def crop_all_images(self):
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(MASKS))
         widths = []
         heights = []
