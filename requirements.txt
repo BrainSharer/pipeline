@@ -226,7 +226,7 @@ pbr==5.10.0
 pep517==0.13.0
 pexpect==4.8.0
 pickleshare==0.7.5
-Pillow==9.2.0
+Pillow==10.0.1
 Pint==0.19.2
 platformdirs==3.5.1
 plotly==5.13.1
