@@ -100,6 +100,7 @@ if __name__ == "__main__":
                         'create_metrics': pipeline.create_metrics,
                         'extra_channel': pipeline.extra_channel,
                         'neuroglancer': pipeline.neuroglancer,
+                        'cell_labels': pipeline.cell_labels,
                         'status': pipeline.check_status
     }
 

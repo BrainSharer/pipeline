@@ -22,6 +22,7 @@ from library.image_manipulation.mask_manager import MaskManager
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
+from library.image_manipulation.cell_labeling import CellMaker
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
 try:
@@ -44,7 +45,8 @@ class Pipeline(
     HistogramMaker,
     ElastixManager,
     NgPrecomputedMaker,
-    FileLogger
+    FileLogger,
+    CellMaker
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -58,6 +60,7 @@ class Pipeline(
     TASK_CREATE_METRICS = "Creating elastix  metrics"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
+    TASK_CELL_LABELS = "Creating centroids for cells"
 
     # animal, rescan_number=0, channel=1, iterations=iterations, downsample=False, tg=False, task='status', debug=False)
 
@@ -195,6 +198,11 @@ class Pipeline(
         self.create_neuroglancer()
         self.create_downsamples()
         print('Finished creating neuroglancer data.')
+
+    def cell_labels(self):
+        print(self.TASK_CELL_LABELS)
+        self.start_labels()
+
 
 
     def check_status(self):
