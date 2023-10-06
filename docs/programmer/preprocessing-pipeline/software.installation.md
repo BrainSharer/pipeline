@@ -14,11 +14,6 @@ and install the required packages:
     source /usr/local/share/pipeline/bin/activate
     pip install -U pip
     pip install build
-    cd ..
-    git clone git@github.com:ActiveBrainAtlas2/abakit.git
-    cd abakit
-    python -m build
-    pip install . --extra-index-url --trusted-host
     cd ../preprocessing-pipeline
     pip install -r requirements.txt
     sudo apt install imagemagick
@@ -39,11 +34,6 @@ and install the required packages:
     pip install -U pip
     pip install build
     sudo dnf install python3-devel
-    cd ..
-    git clone https://github.com/ActiveBrainAtlas2/abakit.git
-    cd abakit
-    python -m build
-    pip install . --extra-index-url --trusted-host
     cd ../preprocessing-pipeline
     pip install -r requirements.txt
     cd /usr/local/share/
@@ -51,9 +41,8 @@ and install the required packages:
     sudo unzip bftools.zip
     ```    
     change the version as needed in the requirements.txt file
-1. We are currently using Ubuntu 18.04 as of December 2021 (20.04 is on muralis). Either install this 
-on your local machine or install it as a VM with Virtualbox or VMware. Note, using Ubuntu 20.04 also works, 
-and since our servers will eventually get upgraded to that, you may as well install 20.04 
+1. We are currently using Ubuntu 22.04 as of October 2023 (22.04 is on muralis). Either install this 
+on your local machine or install it as a VM with Virtualbox or VMware. 
 1. Create this directory to start with: `sudo mkdir -p /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK52/preps/CH1` 
 1. Make yourself user: `sudo chown -R $(id -u):$(id -g) /net`
 1. Get some thumbnails to start with 
