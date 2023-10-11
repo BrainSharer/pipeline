@@ -170,7 +170,6 @@ class BrainStructureManager():
             origin, section_size = self.get_origin_and_section_size(polygons)
             volume = []
             for _, contour_points in polygons.items():
-                vertices = np.array(contour_points)
                 # subtract origin so the array starts drawing in the upper top left
                 vertices = np.array(contour_points) - origin[:2]
                 contour_points = (vertices).astype(np.int32)
