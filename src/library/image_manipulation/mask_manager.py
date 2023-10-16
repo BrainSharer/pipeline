@@ -27,42 +27,31 @@ class MaskManager:
 
     def apply_user_mask_edits(self):
         """Apply the edits made on the image masks to extract the tissue from the 
-        surround debris to create the final masks used to clean the images
+        surround debris to create the final masks used to clean the images.
+        INPUT dir is the colored merged masks
         """
         
-        COLORED = self.fileLocationManager.get_thumbnail_colored(self.channel)
+        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
         MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        test_dir(self.animal, COLORED, self.section_count, True, same_size=False)
+        test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
-        files = sorted(os.listdir(COLORED))
-        self.logevent(f"INPUT FOLDER: {COLORED}")
+        files = sorted(os.listdir(INPUT))
+        self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {MASKS}")
         for file in files:
-            filepath = os.path.join(COLORED, file)
+            filepath = os.path.join(INPUT, file)
             maskpath = os.path.join(MASKS, file)
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             mask = mask[:, :, 2]
             mask[mask > 0] = 255
+            if self.nomask:
+                # entire image is just white
+                mask[mask == 0] = 255
             cv2.imwrite(maskpath, mask.astype(np.uint8))
-
-        if self.tg:
-            for file in files:
-                maskpath = os.path.join(MASKS, file)
-                maskfillpath = os.path.join(MASKS, file)   
-                maskfile = Image.open(maskpath) # 
-                mask = np.array(maskfile)
-                white = np.where(mask==255)
-                whiterows = white[0]
-                whitecols = white[1]
-                firstrow = whiterows[0]
-                lastrow = whiterows[-1]
-                lastcol = whitecols[-1]
-                mask[firstrow:lastrow, 0:lastcol] = 255
-                cv2.imwrite(maskfillpath, mask.astype(np.uint8))
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -155,6 +144,7 @@ class MaskManager:
     def create_downsampled_mask(self, channel=1):
         """Create masks for the downsampled images using a machine learning algorithm.
         The input files are the files that have been normalized.
+        The output files are the colored merged files. 
         """
         
         self.load_machine_learning_model()

@@ -71,8 +71,8 @@ if __name__ == "__main__":
     parser.add_argument("--downsample", help="Enter true or false", required=False, default="true")
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
     parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=2, type=int)
-    parser.add_argument("--tg", help="Extend the mask to expose the entire underside of the brain", 
-                        required=False, default=False)
+    parser.add_argument("--nomask", help="Do not create a mask. Use all the tissue.", 
+                        required=False, default=False, type=str)
     parser.add_argument("--task", 
                         help="Enter the task you want to perform: \
                         extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|check_status",
@@ -86,11 +86,11 @@ if __name__ == "__main__":
     iterations = args.iterations
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    tg = bool({"true": True, "false": False}[str(args.tg).lower()])
+    nomask = bool({"true": True, "false": False}[str(args.nomask).lower()])
     task = str(args.task).strip().lower()
 
     pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel, iterations=iterations, 
-                        downsample=downsample, tg=tg, task=task, debug=False)
+                        downsample=downsample, nomask=nomask, task=task, debug=False)
 
     function_mapping = {'extract': pipeline.extract,
                         'mask': pipeline.mask,

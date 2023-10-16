@@ -65,7 +65,7 @@ class Pipeline(
     # animal, rescan_number=0, channel=1, iterations=iterations, downsample=False, tg=False, task='status', debug=False)
 
     def __init__(self, animal, rescan_number=0, channel=1, iterations=2, downsample=False, 
-                 tg=False, task='status', debug=False):
+                 nomask=False, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
@@ -98,7 +98,7 @@ class Pipeline(
         self.sqlController = SqlController(animal, rescan_number)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
-        self.tg = tg
+        self.nomask = nomask
         self.check_programs()
         self.section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
         self.multiple_slides = []
@@ -113,7 +113,7 @@ class Pipeline(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
-        print("\ttg:".ljust(20), f"{str(self.tg)}".ljust(20))
+        print("\tnomask:".ljust(20), f"{str(self.nomask)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print()
 
