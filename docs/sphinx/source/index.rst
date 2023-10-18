@@ -1,4 +1,4 @@
-Active Atlas Preprocessing Pipeline
+Brainsharer Preprocessing Pipeline
 ===================================
 These pages contain documentation for the Kleinfeld lab's brain preprocessing pipeline.
 Specifically, the documentation includes:

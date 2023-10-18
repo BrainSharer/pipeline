@@ -20,5 +20,5 @@ help:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 publish:
-	rsync -auv --delete build/html/* webdev:/var/www/html/docs/preprocessing-pipeline/
+	rsync -auv --delete build/html/* webdev:/var/www/webdev/docs/preprocessing-pipeline/
 

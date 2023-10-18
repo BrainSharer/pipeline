@@ -15,8 +15,8 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Active Atlas Preprocessing Pipeline'
-copyright = "2022, Kleinfeld lab UCSD"
+project = 'Brainsharer Pipeline'
+copyright = "2023, Kleinfeld lab UCSD"
 author = "Kleinfeld lab UCSD"
 release = '1.0'
 
