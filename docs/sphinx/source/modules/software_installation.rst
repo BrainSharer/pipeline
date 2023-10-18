@@ -3,14 +3,14 @@ Software installation
 
 Creating a sandbox on your computer or on a new workstation.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-1. We are currently using Ubuntu 22.04 as of Nov 2022. Either install this on your 
+1. We are currently using Ubuntu 22.04 as of Oct 2023. Either install this on your 
    local machine or install it as a VM with Virtualbox or VMware. 
 
 2. Cloning the repository and creating a virtual environment with our
    standard location:
 
 - ``sudo apt install build-essential libmysqlclient-dev python3-dev``     
-- ``git clone git@github.com:ActiveBrainAtlas2/preprocessing-pipeline.git``  
+- ``git clone git@github.com:BrainSharer/pipeline.git``  
 - ``sudo python3 -m venv /usr/local/share/pipeline``
 - ``sudo chown -R $(id -u):$(id -g) /usr/local/share/pipeline``
 - ``cd preprocessing-pipeline``
@@ -32,10 +32,10 @@ Creating a sandbox on your computer or on a new workstation.
 6. You can now experiment with some of the thumbnails for DK52.
 7. If you are using the VPN or are at UCSD, you won't need to install MariaDB, otherwise you will
    need to install the database portal yourself.
-8. Clone the repository, use the same virtualenv as above. You might
+8. Clone the Django database portal repository, use the same virtualenv as above. You might
    need to install some more packages.
 
-- ``git clone git@github.com:ActiveBrainAtlas2/activebrainatlasadmin.git``
+- ``git clone git@github.com:BrainSharer/BrainsharerMonoRepo.git``
 
 Mysql for the database portal on Ubuntu
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -71,14 +71,14 @@ Step-by-step guide:
 4. Fetch the database with the last backup from ratto (to current
    directory), and import it to the database using the following BASH commands:
 
-- ``last_backup=`ssh ratto ls -1tr /net/birdstore/Active_Atlas_Data/data_root/database/backups/ | tail -1``
-- ``rsync -auv ratto:/net/birdstore/Active_Atlas_Data/data_root/database/backups/$last_backup ./``
-- ``mysql active_atlas_development < $last_backup``
+- ``last_backup=`ssh brainsharer.org ls -1tr /var/backups/brainsharer/brainsharer*.gz | tail -1``
+- ``rsync -auv brainsharer.org:/var/backups/brainsharer/$last_backup ./``
+- ``mysql brainsharer < $last_backup``
 
 
 6. Test by going into the database and running some commands:
 
-- ``mysql active_atlas_development``
+- ``mysql brainsharer``
 - ``show tables;``
 
 
@@ -109,70 +109,45 @@ Directory structure of the pipeline
 
 ::
 
-   DK52
+   DK101
    ├── czi
-   ├── histogram
-   │   ├── CH1
-   │   ├── CH2
-   │   └── CH3
-   ├── neuroglancer_data
-   │   ├── C1
-   │   │   ├── 10400_10400_20000
-   │   │   ├── 1300_1300_20000
-   │   │   ├── 20800_20800_20000
-   │   │   ├── 2600_2600_20000
-   │   │   ├── 325_325_20000
-   │   │   ├── 41600_41600_20000
-   │   │   ├── 5200_5200_20000
-   │   │   ├── 650_650_20000
-   │   │   └── 83200_83200_40000
-   │   ├── C2
-   │   │   ├── 10400_10400_20000
-   │   │   ├── 1300_1300_20000
-   │   │   ├── 20800_20800_20000
-   │   │   ├── 2600_2600_20000
-   │   │   ├── 325_325_20000
-   │   │   ├── 41600_41600_20000
-   │   │   ├── 5200_5200_20000
-   │   │   ├── 650_650_20000
-   │   │   └── 83200_83200_40000
-   │   ├── C3
-   │   │   ├── 10400_10400_20000
-   │   │   ├── 1300_1300_20000
-   │   │   ├── 20800_20800_20000
-   │   │   ├── 2600_2600_20000
-   │   │   ├── 325_325_20000
-   │   │   ├── 41600_41600_20000
-   │   │   ├── 5200_5200_20000
-   │   │   ├── 650_650_20000
-   │   │   └── 83200_83200_40000
    ├── preps
    │   ├── CH1
-   │   │   ├── full
-   │   │   ├── full_aligned
-   │   │   ├── full_cleaned
    │   │   ├── normalized
    │   │   ├── thumbnail
    │   │   ├── thumbnail_aligned
+   │   │   ├── thumbnail_aligned_iteration_0
+   │   │   ├── thumbnail_aligned_iteration_1
+   │   │   ├── thumbnail_aligned_iteration_2
    │   │   └── thumbnail_cleaned
    │   ├── CH2
-   │   │   ├── full
-   │   │   ├── full_aligned
-   │   │   ├── full_cleaned
+   │   │   ├── normalized
    │   │   ├── thumbnail
    │   │   ├── thumbnail_aligned
+   │   │   ├── thumbnail_aligned_iteration_0
+   │   │   ├── thumbnail_aligned_iteration_1
+   │   │   ├── thumbnail_aligned_iteration_2
    │   │   └── thumbnail_cleaned
    │   ├── CH3
-   │   │   ├── full
-   │   │   ├── full_aligned
-   │   │   ├── full_cleaned
+   │   │   ├── normalized
    │   │   ├── thumbnail
    │   │   ├── thumbnail_aligned
+   │   │   ├── thumbnail_aligned_iteration_0
+   │   │   ├── thumbnail_aligned_iteration_1
+   │   │   ├── thumbnail_aligned_iteration_2
    │   │   └── thumbnail_cleaned
-   │   └── masks
-   │       ├── full_masked
-   │       ├── thumbnail_colored
-   │       └── thumbnail_masked
+   │   ├── elastix
+   │   ├── masks
+   │   │   └── CH1
+   │   ├── thumbnail_original
+   │   └── tif
+   └── www
+     ├── neuroglancer_data
+      │   ├── C1T
+      │   ├── C2T
+      │   └── C3T
+      ├── scene
+      └── section
 
    
 
@@ -181,10 +156,10 @@ Database backups
 
 1. The development and production databases are backed up multiple times
    each day on basalis
-2. If you need a backup, look on basalis at:
-   ``/net/birdstore/Active_Atlas_Data/data_root/database/backups/``
+2. If you need a backup, look on brainsharer.org at:
+   ``/var/backups/brainsharer``
 3. The development database is named ``active_atlas_development``
-4. The production database is named ``active_atlas_production`` ###
+4. The production database is named ``brainsharer`` ###
    Setting up SSH connections to the servers
 5. Refer `Checking for existing SSH
    keys <https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/checking-for-existing-ssh-keys>`__
