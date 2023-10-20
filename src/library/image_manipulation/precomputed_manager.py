@@ -85,20 +85,23 @@ class NgPrecomputedMaker:
         chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
-        # hard coding num channels to 1
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
             scales,
             "image",
             midfile.dtype,
-            num_channels=1,
+            num_channels=num_channels,
             chunk_size=chunks,
         )
         
         ng.init_precomputed(OUTPUT_DIR, volume_size)
         workers = self.get_nworkers()
-        self.run_commands_concurrently(ng.process_image, file_keys, workers)
+        if self.debug:
+            for file_key in file_keys:
+                ng.process_image(file_key=file_key)
+        else:
+            self.run_commands_concurrently(ng.process_image, file_keys, workers)
         ng.precomputed_vol.cache.flush()
 
 
