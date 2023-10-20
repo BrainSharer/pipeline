@@ -40,7 +40,7 @@ class StructureCOMController(SqlController):
             .join(AnnotationSession)\
                 .filter(AnnotationSession.FK_prep_id==prep_id)\
                 .filter(AnnotationSession.FK_user_id==annotator_id)\
-            .   all()
+                .all()
         brain_region_dict = {}
         brain_regions = self.session.query(BrainRegion).filter(BrainRegion.active==True).all()
         for brain_region in brain_regions:
