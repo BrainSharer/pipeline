@@ -310,14 +310,14 @@ class NumpyToNeuroglancer():
              return
 
         img = read_image(infile)
+        if img.ndims > 1:
+            img = img[:,:,0]
 
         try:
             img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
         except:
             print(f'could not reshape {infile}')
             return
-        if img.ndims > 1:
-            img = img[:,:,0]
         try:
             self.precomputed_vol[:, :, index] = img
         except:
