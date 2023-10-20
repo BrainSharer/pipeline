@@ -85,13 +85,14 @@ class NgPrecomputedMaker:
         chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        # hard coding num channels to 1
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
             scales,
             "image",
             midfile.dtype,
-            num_channels=num_channels,
+            num_channels=1,
             chunk_size=chunks,
         )
         
