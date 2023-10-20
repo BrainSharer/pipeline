@@ -144,8 +144,8 @@ class BrainStructureManager():
         for structure in structures:
             self.abbreviation = structure.abbreviation
 
-            if self.abbreviation != '10N_R':
-                continue
+            #if self.abbreviation != '10N_R':
+            #    continue
 
             #if structure.abbreviation not in self.allen_structures_keys:
             #    continue
