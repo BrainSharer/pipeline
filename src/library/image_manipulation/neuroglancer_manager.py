@@ -317,7 +317,7 @@ class NumpyToNeuroglancer():
             print(f'could not reshape {infile}')
             return
         if img.ndims > 1:
-            img = img.flatten()
+            img = img[:,:,0]
         try:
             self.precomputed_vol[:, :, index] = img
         except:
