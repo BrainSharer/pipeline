@@ -5,6 +5,7 @@ from collections import defaultdict
 import cv2
 import json
 from scipy.ndimage import center_of_mass
+from skimage.filters import gaussian
 
 
 from library.controller.polygon_sequence_controller import PolygonSequenceController
@@ -39,7 +40,7 @@ class BrainStructureManager():
         self.midbrain_keys = {'3N_L','3N_R','4N_L','4N_R','IC','PBG_L','PBG_R','SC','SNC_L','SNC_R','SNR_L','SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
         self.region = region
-        self.allen_um = 25 # size in um of allen atlas
+        self.allen_um = 32 # size in um of allen atlas
 
         self.com = None
         self.origin = None
@@ -123,7 +124,8 @@ class BrainStructureManager():
         xspan = max_x - min_x
         yspan = max_y - min_y
         origin = np.array([min_x, min_y, min_z])
-        section_size = np.array([xspan, yspan]).astype(int)
+        # flipped yspan and xspan 19 Oct 2023
+        section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
 
@@ -141,6 +143,9 @@ class BrainStructureManager():
         # loop through structure objects
         for structure in structures:
             self.abbreviation = structure.abbreviation
+
+            if self.abbreviation != '10N_R':
+                continue
 
             #if structure.abbreviation not in self.allen_structures_keys:
             #    continue
@@ -166,7 +171,6 @@ class BrainStructureManager():
                 section = int(np.round(z))
                 polygons[section].append(xy)
 
-            color = 1 # on/off
             origin, section_size = self.get_origin_and_section_size(polygons)
             volume = []
             for _, contour_points in polygons.items():
@@ -174,17 +178,19 @@ class BrainStructureManager():
                 vertices = np.array(contour_points) - origin[:2]
                 contour_points = (vertices).astype(np.int32)
                 volume_slice = np.zeros(section_size, dtype=np.uint8)
-                volume_slice = cv2.polylines(volume_slice, [contour_points], isClosed=True, color=color, thickness=1)
-                volume_slice = cv2.fillPoly(volume_slice, pts=[contour_points], color=color)
+                cv2.drawContours(volume_slice, [contour_points], -1, (1), thickness=-1)
                 volume.append(volume_slice)
-            volume = np.array(volume).astype(np.bool8)
             volume = np.swapaxes(volume,0,2)
+            #volume = gaussian(volume, 1)
             # set structure object values
             self.abbreviation = structure.abbreviation
             self.origin = origin
             self.volume = volume
             # Add origin and com
             self.com = np.array(self.get_center_of_mass()) + np.array(self.origin)
+            # save individual structure, mesh and origin
+            self.save_brain_origins_and_volumes_and_meshes()
+            # merge data
             brainMerger.volumes_to_merge[structure.abbreviation].append(self.volume)
             brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(self.com)

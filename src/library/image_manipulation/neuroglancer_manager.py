@@ -319,7 +319,7 @@ class NumpyToNeuroglancer():
         try:
             self.precomputed_vol[:, :, index] = img
         except:
-            print(f'could not set {infile} to precomputed')
+            print(f'Error:{infile} with Shape={img.shape}')
             return
 
         touch(progress_file)

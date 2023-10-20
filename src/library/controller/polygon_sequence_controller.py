@@ -49,12 +49,15 @@ class PolygonSequenceController(SqlController):
         return volume
     
     def get_available_volumes_sessions(self):
-        """retruns a list of available session objects that is currently active in the database
+        """returns a list of available session objects that is currently active in the database
+        ID=54 is the ID for polygon in the brain_region table
 
         Returns:
             list: list of volume sessions
         """        
-        active_sessions = self.session.query(AnnotationSession).\
-            filter(AnnotationSession.annotation_type==AnnotationType.POLYGON_SEQUENCE)\
-            .filter(AnnotationSession.active==1).all()
+        active_sessions = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.annotation_type==AnnotationType.POLYGON_SEQUENCE)\
+            .filter(AnnotationSession.active==1)\
+            .filter(AnnotationSession.FK_brain_region_id != 54)\
+            .all()
         return active_sessions

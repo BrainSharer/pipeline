@@ -69,7 +69,7 @@ def symmetricalize_volume(volume):
     return symmetrical_volume
 
 
-def volume_to_polygon(volume,origin, times_to_simplify=0,min_vertices=200):
+def volume_to_polygon(volume, origin, times_to_simplify=0, min_vertices=200):
     """
     Convert a volume to a mesh, either as vertices/faces tuple or a vtk.Polydata.
 
@@ -78,10 +78,14 @@ def volume_to_polygon(volume,origin, times_to_simplify=0,min_vertices=200):
         min_vertices (int): minimum number of vertices. Simplification will stop if the number of vertices drops below this value.
         return_vertex_face_list (bool): If True, return only (vertices, faces); otherwise, return polydata.
     """
-
-    vol_padded = np.pad(volume, ((5,5),(5,5),(5,5)), 'constant') # need this otherwise the sides of volume will not close and expose the hollow inside of structures
-    vertices, faces = mcubes.marching_cubes(vol_padded, 0) # more than 5 times faster than skimage.marching_cube + correct_orientation
-    vertices = vertices + origin - (5,5,5)
+    # need this otherwise the sides of volume will not close and expose the hollow inside of structures
+    if volume is None:
+        print('In volume_to_polygon, volume is None')
+        return
+    vol_padded = np.pad(volume, ((5, 5), (5, 5), (5, 5)), 'constant')
+    # more than 5 times faster than skimage.marching_cube + correct_orientation
+    vertices, faces = mcubes.marching_cubes(vol_padded, 0)
+    vertices = vertices + origin - (5, 5, 5)
     polydata = mesh_to_polydata(vertices, faces)
 
     for _ in range(times_to_simplify):
