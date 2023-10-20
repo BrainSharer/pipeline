@@ -319,7 +319,7 @@ class NumpyToNeuroglancer():
         try:
             self.precomputed_vol[:, :, index] = img
         except:
-            print(f'Error:{infile} with Shape={img.shape}')
+            print(f'Error:{infile} with Shape={img.shape} with dims={img.ndim}')
             return
 
         touch(progress_file)
