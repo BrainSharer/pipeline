@@ -15,6 +15,7 @@ from library.image_manipulation.filelocation_manager import data_path, FileLocat
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
 from library.controller.annotation_session_controller import AnnotationSessionController
+from library.utilities.utilities_process import SCALING_FACTOR
 
 
 
@@ -40,8 +41,7 @@ class BrainStructureManager():
         self.midbrain_keys = {'3N_L','3N_R','4N_L','4N_R','IC','PBG_L','PBG_R','SC','SNC_L','SNC_R','SNR_L','SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
         self.region = region
-        self.allen_um = 32 # size in um of allen atlas
-
+        self.allen_um = 25 # size in um of allen atlas
         self.com = None
         self.origin = None
         self.volume = None
@@ -143,61 +143,67 @@ class BrainStructureManager():
         # loop through structure objects
         for structure in structures:
             self.abbreviation = structure.abbreviation
+            if self.data_exists():
+                com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
+                origin_filepath = os.path.join(self.origin_path, f'{self.abbreviation}.txt')
+                volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
+                self.com = np.loadtxt(com_filepath)
+                self.origin = np.loadtxt(origin_filepath)
+                self.volume = np.load(volume_filepath)
+            else:
+                #if structure.abbreviation not in self.allen_structures_keys:
+                #    continue
+                
+                df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
+                if df.empty:
+                    continue;
 
-            #if self.abbreviation != '10N_R':
-            #    continue
+                #####TRANSFORMED point dictionary
+                polygons = defaultdict(list)
 
-            #if structure.abbreviation not in self.allen_structures_keys:
-            #    continue
-            
-            df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
-            if df.empty:
-                continue;
+                for _, row in df.iterrows():
+                    x = row['coordinate'][0] 
+                    y = row['coordinate'][1] 
+                    z = row['coordinate'][2]
+                    # transform points to fixed brain um with rigid transform
+                    x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+                    # scale transformed points to 25um
+                    x = x / SCALING_FACTOR / self.sqlController.scan_run.resolution
+                    y = y / SCALING_FACTOR / self.sqlController.scan_run.resolution
+                    z /= 20
+                    xy = (x, y)
+                    section = int(np.round(z))
+                    polygons[section].append(xy)
 
-            #####TRANSFORMED point dictionary
-            polygons = defaultdict(list)
-
-            for _, row in df.iterrows():
-                x = row['coordinate'][0] 
-                y = row['coordinate'][1] 
-                z = row['coordinate'][2]
-                # transform points to fixed brain um with rigid transform
-                x,y,z = brain_to_atlas_transform((x,y,z), R, t)
-                # scale transformed points to 25um
-                x /= self.allen_um
-                y /= self.allen_um
-                z /= self.allen_um
-                xy = (x, y)
-                section = int(np.round(z))
-                polygons[section].append(xy)
-
-            origin, section_size = self.get_origin_and_section_size(polygons)
-            volume = []
-            for _, contour_points in polygons.items():
-                # subtract origin so the array starts drawing in the upper top left
-                vertices = np.array(contour_points) - origin[:2]
-                contour_points = (vertices).astype(np.int32)
-                volume_slice = np.zeros(section_size, dtype=np.uint8)
-                cv2.drawContours(volume_slice, [contour_points], -1, (1), thickness=-1)
-                volume.append(volume_slice)
-            volume = np.swapaxes(volume,0,2)
-            #volume = gaussian(volume, 1)
-            # set structure object values
-            self.abbreviation = structure.abbreviation
-            self.origin = origin
-            self.volume = volume
-            # Add origin and com
-            self.com = np.array(self.get_center_of_mass()) + np.array(self.origin)
-            # save individual structure, mesh and origin
-            self.save_brain_origins_and_volumes_and_meshes()
+                origin, section_size = self.get_origin_and_section_size(polygons)
+                volume = []
+                for _, contour_points in polygons.items():
+                    # subtract origin so the array starts drawing in the upper top left
+                    vertices = np.array(contour_points) - origin[:2]
+                    contour_points = (vertices).astype(np.int32)
+                    volume_slice = np.zeros(section_size, dtype=np.uint8)
+                    cv2.drawContours(volume_slice, [contour_points], -1, (1), thickness=-1)
+                    volume.append(volume_slice)
+                volume = np.swapaxes(volume,0,2)
+                #volume = gaussian(volume, 1)
+                # set structure object values
+                self.abbreviation = structure.abbreviation
+                self.origin = origin
+                self.volume = volume
+                # Add origin and com
+                self.com = np.array(self.get_center_of_mass()) + np.array(self.origin)
+                # save individual structure, mesh and origin
+                self.save_brain_origins_and_volumes_and_meshes()
+                del origin, volume
+                
             # merge data
             brainMerger.volumes_to_merge[structure.abbreviation].append(self.volume)
             brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
             brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
             # debug info
-            ids, counts = np.unique(volume, return_counts=True)
+            ids, counts = np.unique(self.volume, return_counts=True)
             print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
-            print(volume.dtype, volume.shape, end="\t")
+            print(self.volume.dtype, self.volume.shape, end="\t")
             print(ids, counts)
 
 
@@ -246,3 +252,18 @@ class BrainStructureManager():
             print(ids, counts)
             com = np.array([0,0,0])
         return com
+    
+    def data_exists(self):
+            
+        com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
+        origin_filepath = os.path.join(self.origin_path, f'{self.abbreviation}.txt')
+        volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
+
+        com_exists = os.path.exists(com_filepath)
+        origin_exists = os.path.exists(origin_filepath)
+        volume_exists = os.path.exists(volume_filepath)
+
+        if origin_exists and volume_exists and com_exists:
+            return True
+        else:
+            return False

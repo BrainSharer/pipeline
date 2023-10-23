@@ -125,8 +125,9 @@ class AtlasCreator:
             moving_points = np.array([moving_coms[s] for s in common_keys])
             if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
                 print(f'Error calculating transform {self.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
-                print(f'Length fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
                 sys.exit()
+            if self.debug:
+                print(f'Length fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
 
             # Divide by the Allen um
             fixed_points /= 25
@@ -157,8 +158,8 @@ class AtlasCreator:
         if 'Atlas' in self.animal:
             target_path = os.path.join(self.REG_PATH, 'Allen_25um_sagittal.tif')
             target_img = io.imread(target_path)
-            height = target_img.shape[0]
-            width = target_img.shape[1] + 150
+            rows = target_img.shape[0] + 500
+            columns = target_img.shape[1] + 600
             z_length = target_img.shape[2]
             xy_resolution = 25 * 1000 # Allen isotropic
             z_resolution = xy_resolution
@@ -166,14 +167,14 @@ class AtlasCreator:
             dir_path = os.path.join(self.DATA_PATH, 'pipeline_data', self.animal, 'preps/CH1/thumbnail_aligned')
             z_length = len(os.listdir(dir_path))
             self.sqlController = SqlController(self.animal)
-            height = int(round(self.sqlController.scan_run.height / SCALING_FACTOR))
-            width = int(round(self.sqlController.scan_run.width / SCALING_FACTOR))
+            rows = int(round(self.sqlController.scan_run.height / SCALING_FACTOR)) + 100
+            columns = int(round(self.sqlController.scan_run.width / SCALING_FACTOR)) + 100
             xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR * 1000
             z_resolution = self.sqlController.scan_run.zresolution * 1000
 
 
         
-        atlas_box_size=(width, height, z_length)
+        atlas_box_size=(rows, columns, z_length)
         print(f'box size={atlas_box_size} xy_resolution={xy_resolution} z_resolution={z_resolution}')
         atlas_volume = np.zeros(atlas_box_size, dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
@@ -184,7 +185,7 @@ class AtlasCreator:
         if not os.path.exists(volume_dir):
             print(f'{volume_dir} does not exist, exiting.')
             sys.exit()
-        atlas_box_scales = np.array([xy_resolution, xy_resolution, z_resolution])
+        atlas_box_scales = np.array([int(xy_resolution), int(xy_resolution), int(z_resolution)])
         print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
         print(f'origin dir {origin_dir}')
         print(f'origin dir {volume_dir}')
@@ -201,32 +202,30 @@ class AtlasCreator:
             allen_color = self.get_allen_id(color, structure)
             color += 2
 
-            #if structure != 'SC':
-            #    continue
-
             origin = np.loadtxt(os.path.join(origin_dir, origin_file))
             x,y,z = brain_to_atlas_transform(origin, self.R, self.t)
 
             volume = np.load(os.path.join(volume_dir, volume_file))
             volume = volume.astype(np.uint32)
             volume[volume > 0] = allen_color
-            xs,ys,zs = np.where(volume != 0)
             preshape = volume.shape
+            
+            """
+            xs,ys,zs = np.where(volume != 0)
             try:
                 volume = volume[min(xs):max(xs)+1,min(ys):max(ys)+1,min(zs):max(zs)+1] 
             except:
+                print('Could not broadcast volume')
                 pass
+            """
             ids[structure] = allen_color
             row_start = int(round(x))
             col_start = int(round(y))
             z_start = int(round(z))
             row_end = row_start + volume.shape[0]
             col_end = col_start + volume.shape[1]
-
-            if 'Atlas' not in self.animal:
-                z_indices = [z for z in range(volume.shape[2]) if z % 2 == 0]
-                volume = volume[:, :, z_indices]
             z_end = z_start + volume.shape[2]
+
             if debug:
                 volume_ids, counts = np.unique(volume, return_counts=True)
                 print(f'{structure} preshape={preshape} postshape={volume.shape}  \
@@ -247,10 +246,7 @@ class AtlasCreator:
             print(atlas_volume_ids)
             print('counts')
             print(counts)
-        #atlas_volume = np.rot90(atlas_volume, axes=(0, 1))
-        #print(f'Shape of atlas volume {atlas_volume.shape} after swapping 0 and 2')
         if save:
-            #save_volume = np.swapaxes(save_volume, 1, 2)
             outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_25um_sagittal.tif'
             io.imsave(outpath, save_volume)
         if ng:
