@@ -108,9 +108,11 @@ class NgPrecomputedMaker:
     def create_downsamples(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
         chunks = calculate_chunks(self.downsample, 0)
-        mips = [0, 1, 2, 3, 4, 5, 6, 7]
+        #mips = [0, 1, 2, 3, 4, 5, 6, 7]
+        mip_count = 8
         if self.downsample:
-            mips = [0, 1, 2]
+            #mips = [0, 1, 2]
+            mip_count = 3
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
             self.downsample, self.channel, rechunk=True
         )
@@ -138,26 +140,14 @@ class NgPrecomputedMaker:
         tq.insert(tasks)
         tq.execute()
         
-        # If there aren't enough sections, it really can't downsample
-        if self.downsample and self.section_count < 100:
-            return
-        
-        for mip in mips:
-            cv = CloudVolume(outpath, mip)
-            chunks = calculate_chunks(self.downsample, mip)
-            factors = calculate_factors(self.downsample, mip)
-            tasks = tc.create_downsampling_tasks(
-                cv.layer_cloudpath,
-                mip=mip,
-                num_mips=1,
-                factor=factors,
-                preserve_chunk_size=False,
-                compress=True,
-                chunk_size=chunks,
-            )
-            tq.insert(tasks)
-            tq.execute()
-
+        cv = CloudVolume(outpath)
+        tasks = tc.create_downsampling_tasks(
+            cv.layer_cloudpath,
+            num_mips=mip_count,
+            compress=True,
+        )
+        tq.insert(tasks)
+        tq.execute()
 
 
     def create_neuroglancer_normalization(self):
