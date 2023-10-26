@@ -108,11 +108,9 @@ class NgPrecomputedMaker:
     def create_downsamples(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
         chunks = calculate_chunks(self.downsample, 0)
-        #mips = [0, 1, 2, 3, 4, 5, 6, 7]
-        mip_count = 8
+        mips = 8
         if self.downsample:
-            #mips = [0, 1, 2]
-            mip_count = 3
+            mips = 3
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
             self.downsample, self.channel, rechunk=True
         )
@@ -143,7 +141,7 @@ class NgPrecomputedMaker:
         cv = CloudVolume(outpath)
         tasks = tc.create_downsampling_tasks(
             cv.layer_cloudpath,
-            num_mips=mip_count,
+            num_mips=mips,
             compress=True,
         )
         tq.insert(tasks)
