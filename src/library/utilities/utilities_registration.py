@@ -72,7 +72,46 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     T = np.vstack([np.column_stack([R, shift]), [0, 0, 1]])
     return T
 
+
 def create_rigid_parameters(elastixImageFilter):
+    """Creates the rigid paramaters used by Elastix.
+    This sets lots of parameters in this dictionary and it used multiple places.
+
+    :param elastixImageFilter: object set in previous method for Elastix.
+    :return: dictionary of parameters
+    """
+
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("rigid")
+    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+    rigid_params["FixedInternalImagePixelType"] = ["float"]
+    rigid_params["MovingInternalImagePixelType"] = ["float"]
+    rigid_params["FixedImageDimension"] = ["2"]
+    rigid_params["MovingImageDimension"] = ["2"]
+    rigid_params["UseDirectionCosines"] = ["false"]
+    rigid_params["HowToCombineTransforms"] = ["Compose"]
+    rigid_params["DefaultPixelValue"] = ["0.0"]
+    rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["Resampler"] = ["DefaultResampler"]
+    rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    rigid_params["NumberOfResolutions"] = ["8"]
+    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    rigid_params["Transform"] = ["EulerTransform"]
+    rigid_params["AutomaticScalesEstimation"] = ["true"]
+    rigid_params["AutomaticTransformInitialization"] = ["true"]
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
+    rigid_params["MaximumNumberOfIterations"] = [NUM_ITERATIONS]
+    rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
+    rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
+    rigid_params["ImageSampler"] = ["Random"]
+
+
+    return rigid_params
+
+
+
+def create_rigid_parametersXXX(elastixImageFilter):
     """Creates the rigid paramaters used by Elastix.
     This sets lots of parameters in this dictionary and it used multiple places.
 
@@ -87,6 +126,7 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["ShowExactMetricValue"] = ["false"]
     rigid_params["CheckNumberOfSamples"] = ["true"]
     rigid_params["NumberOfSpatialSamples"] = ["7500"]
+    rigid_params["SampleRegionSize"] = ["5.0"]
     rigid_params["SubtractMean"] = ["true"]
     rigid_params["MaximumNumberOfSamplingAttempts"] = ["0"]
     rigid_params["SigmoidInitialTime"] = ["0"]
@@ -253,7 +293,7 @@ def align_elastix(fixed, moving):
     rigid_params = create_rigid_parameters(elastixImageFilter)
     elastixImageFilter.SetParameterMap(translationMap)
     elastixImageFilter.AddParameterMap(rigid_params)
-    elastixImageFilter.LogToConsoleOff()
+    elastixImageFilter.LogToConsoleOn()
     elastixImageFilter.Execute()
     
     translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
