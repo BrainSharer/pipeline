@@ -293,7 +293,7 @@ def align_elastix(fixed, moving):
     rigid_params = create_rigid_parameters(elastixImageFilter)
     elastixImageFilter.SetParameterMap(translationMap)
     elastixImageFilter.AddParameterMap(rigid_params)
-    elastixImageFilter.LogToConsoleOn()
+    elastixImageFilter.LogToConsoleOff()
     elastixImageFilter.Execute()
     
     translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
