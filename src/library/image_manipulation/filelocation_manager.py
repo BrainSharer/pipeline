@@ -1,6 +1,7 @@
 """This module takes care of all the file locations of all the czi, tiff and log files.
 """
 import os
+import sys
 
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
 
@@ -138,4 +139,9 @@ class FileLocationManager(object):
         This method is only called on first instance then stored as environment variable
         [See: FileLogger class for more information]
         '''
-        return os.path.join(self.stack)
+        stackpath = os.path.join(self.stack)
+        if os.path.exists(stackpath):
+            return stackpath
+        else:
+            print(f'Path not found {stackpath}')
+            sys.exit()
