@@ -382,7 +382,7 @@ def align_image_to_affine(file_key):
     del im1
 
     try:
-        im2.save(outfile)
+        im2.save(outfile, compression=None)
     except Exception as e:
         print(f'align image to affine, could not save {outfile}')
         print(f'Error={e}')
