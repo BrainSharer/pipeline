@@ -16,7 +16,6 @@ regarding one particular parameter.
  while the other parameters correspond to the translations that are measured in millimeters*
 
 """
-import gc
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -366,7 +365,7 @@ def align_image_to_affine(file_key):
     try:
         im1 = Image.open(infile)
     except Exception as e:
-        print(f'align image to affine, could not open {infile} error {e}')
+        #print(f'align image to affine, could not open {infile} error {e}')
         
         try:
             im = imread(infile)
@@ -377,7 +376,7 @@ def align_image_to_affine(file_key):
         try:
             im1 = Image.fromarray(im)
         except:
-            print('Could not convert array to PIL')
+            print(f'Could not convert array to PIL type={type(im)}')
             return
         del im
 
