@@ -41,6 +41,7 @@ class ParallelManager:
         
         if self.debug:
             for file_key in sorted(file_keys):
+                print(f'Debugging {file_key}')
                 function(file_key)
         else:
             with ProcessPoolExecutor(max_workers=workers) as executor:
