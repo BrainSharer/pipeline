@@ -363,18 +363,21 @@ def align_image_to_affine(file_key):
     infile, outfile, T = file_key
     try:
         im1 = Image.open(infile)
-    except:
-        print(f'align image to affine, could not open {infile}')
+    except Exception as e:
+        print(f'align image to affine, could not open {infile} error {e}')
+        return
 
     try:
         im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except:
         print(f'align image to affine, could not transform {infile}')
+        return
 
     try:
         im2.save(outfile)
     except:
         print(f'align image to affine, could not save {infile}')
+        return
 
     del im1, im2
     return
