@@ -361,6 +361,7 @@ def align_image_to_affine(file_key):
     :param file_key: tuple of file input and output
     :return: nothing
     """
+    import sys
     infile, outfile, T = file_key
     try:
         im1 = Image.open(infile)
@@ -371,20 +372,20 @@ def align_image_to_affine(file_key):
             im = imread(infile)
         except:
             print(f'Could not use tifffile to open={infile}')
-            return
+            sys.exit()
         
         try:
             im1 = Image.fromarray(im)
         except:
             print(f'Could not convert array to PIL type={type(im)}')
-            return
+            sys.exit()
         del im
 
     try:
         im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except Exception as e:
         print(f'align image to affine, could not transform {infile} to {outfile}')
-        return
+        sys.exit()
     
     del im1
 
