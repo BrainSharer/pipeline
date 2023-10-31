@@ -430,7 +430,7 @@ class ElastixManager(FileLogger):
         start_time = timer()
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
         end_time = timer()
-        total_elapsed_time = round((end_time - start_time),2)
+        total_elapsed_time = round((end_time - start_time), 2)
         print(f'took {total_elapsed_time} seconds.')
 
 
