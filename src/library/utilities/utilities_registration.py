@@ -18,9 +18,9 @@ regarding one particular parameter.
 """
 import gc
 import numpy as np
-from PIL import Image, TiffImagePlugin
+from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
-TiffImagePlugin.DEBUG = True
+from tifffile import imwrite, imread
 import SimpleITK as sitk
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
@@ -391,9 +391,8 @@ def align_image_to_affine(file_key):
         except:
             print('could not convert file to numpy')
             return
-        from tifffile import imsave
         try:
-            imsave(outfile, im2)
+            imwrite(outfile, im2)
         except:
             print('could not save file with tifffile')
             return
