@@ -17,8 +17,9 @@ regarding one particular parameter.
 
 """
 import numpy as np
-from PIL import Image
+from PIL import Image, TiffImagePlugin
 Image.MAX_IMAGE_PIXELS = None
+TiffImagePlugin.DEBUG = True
 import SimpleITK as sitk
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
