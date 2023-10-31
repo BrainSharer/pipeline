@@ -382,13 +382,24 @@ def align_image_to_affine(file_key):
     del im1
 
     try:
-        im2.save(outfile, compression=None)
-    except Exception as e:
+        im2.save(outfile)
+    except:
         print(f'align image to affine, could not save {outfile}')
-        print(f'Error={e}')
-        return
-    finally:
-         gc.collect()
+
+        try:
+            im2 = np.asarray(im2)
+        except:
+            print('could not convert file to numpy')
+            return
+        from tifffile import imsave
+        try:
+            imsave(outfile, im2)
+        except:
+            print('could not save file with tifffile')
+            return
+
+
+
 
     del im2
     return
