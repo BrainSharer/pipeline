@@ -90,7 +90,7 @@ if __name__ == "__main__":
     task = str(args.task).strip().lower()
 
     pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel, iterations=iterations, 
-                        downsample=downsample, nomask=nomask, task=task, debug=False)
+                        downsample=downsample, nomask=nomask, task=task, debug=debug)
 
     function_mapping = {'extract': pipeline.extract,
                         'mask': pipeline.mask,
