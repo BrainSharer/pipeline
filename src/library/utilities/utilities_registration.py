@@ -16,6 +16,7 @@ regarding one particular parameter.
  while the other parameters correspond to the translations that are measured in millimeters*
 
 """
+import gc
 import numpy as np
 from PIL import Image, TiffImagePlugin
 Image.MAX_IMAGE_PIXELS = None
@@ -367,12 +368,16 @@ def align_image_to_affine(file_key):
     except Exception as e:
         print(f'align image to affine, could not open {infile} error {e}')
         return
+    finally:
+         gc.collect()
 
     try:
         im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except Exception as e:
         print(f'align image to affine, could not transform {infile} to {outfile}')
         return
+    finally:
+         gc.collect()
     
     del im1
 
@@ -382,6 +387,8 @@ def align_image_to_affine(file_key):
         print(f'align image to affine, could not save {outfile}')
         print(f'Error={e}')
         return
+    finally:
+         gc.collect()
 
     del im2
     return
