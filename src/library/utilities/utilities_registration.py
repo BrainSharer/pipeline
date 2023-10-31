@@ -372,6 +372,8 @@ def align_image_to_affine(file_key):
     except:
         print(f'align image to affine, could not transform {infile}')
         return
+    
+    del im1
 
     try:
         im2.save(outfile)
@@ -379,7 +381,7 @@ def align_image_to_affine(file_key):
         print(f'align image to affine, could not save {infile}')
         return
 
-    del im1, im2
+    del im2
     return
 
 
