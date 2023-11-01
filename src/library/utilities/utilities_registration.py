@@ -365,26 +365,29 @@ def align_image_to_affine(file_key):
     infile, outfile, T = file_key
     try:
         im1 = Image.open(infile)
-    except Exception as e:
-        #print(f'align image to affine, could not open {infile} error {e}')
+    except:
         
         try:
             im = imread(infile)
-        except:
+        except Exception as e:
             print(f'Could not use tifffile to open={infile}')
+            print(f'Error={e}')
             sys.exit()
         
         try:
             im1 = Image.fromarray(im)
-        except:
-            print(f'Could not convert array to PIL type={type(im)}')
+        except Exception as e:
+            print(f'Could not convert file type={type(im)} to PIL ')
+            print(f'Error={e}')
             sys.exit()
         del im
 
     try:
         im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except Exception as e:
-        print(f'align image to affine, could not transform {infile} to {outfile}')
+        print(f'align image to affine, could not transform {infile} to:')
+        print(outfile)
+        print(f'Error={e}')
         sys.exit()
     
     del im1
@@ -392,21 +395,20 @@ def align_image_to_affine(file_key):
     try:
         im2.save(outfile)
     except:
-        print(f'align image to affine, could not save {outfile}')
 
         try:
             im2 = np.asarray(im2)
-        except:
-            print('could not convert file to numpy')
-            return
+        except Exception as e:
+            print(f'could not convert file type={type(im2)} to numpy')
+            print(f'Error={e}')
+            sys.exit()
+
         try:
             imwrite(outfile, im2)
-        except:
-            print('could not save file with tifffile')
-            return
-
-
-
+        except Exception as e:
+            print('could not save {outfile} with tifffile')
+            print(f'Error={e}')
+            sys.exit()
 
     del im2
     return
