@@ -40,6 +40,8 @@ class FileLocationManager(object):
         self.histogram = os.path.join(self.www, "histogram")
         self.neuroglancer_data = os.path.join(self.www, "neuroglancer_data")
         self.neuroglancer_progress = os.path.join(self.neuroglancer_data, 'progress')
+        self.ome_zarr_data = os.path.join(self.www, "ome-zarr")
+        self.cell_labels_data = os.path.join(self.root, "cell_labels")
         self.section_web = os.path.join(self.www, "section")
         self.tif = os.path.join(self.prep, "tif")
         self.thumbnail = os.path.join(self.prep, "CH1", "thumbnail")
@@ -63,10 +65,24 @@ class FileLocationManager(object):
         return os.path.join(self.prep, f"CH{channel}", "full_cleaned")
 
     def get_full_aligned_iteration_0(self, channel=1):
-        return os.path.join(self.prep, f"CH{channel}", "full_aligned_iteration_0")
+        if isinstance(channel, int):
+            return os.path.join(self.prep, f"CH{channel}", "full_aligned_iteration_0")
+        else:
+            return os.path.join(self.prep, f"{channel}", "full_aligned_iteration_0")
 
     def get_full_aligned(self, channel=1):
-        return os.path.join(self.prep, f"CH{channel}", "full_aligned")
+        if isinstance(channel, int):
+            validated_path = os.path.join(self.prep, f"CH{channel}", "full_aligned")
+        else:
+            validated_path = os.path.join(self.prep, f"{channel}", "full_aligned")
+        return validated_path
+    
+    def get_ome_zarr(self, channel=1):
+        if isinstance(channel, int):
+            validated_path = os.path.join(self.ome_zarr_data, f"CH{channel}.zarr")
+        else:
+            validated_path = os.path.join(self.ome_zarr_data, f"{channel}.zarr")
+        return validated_path
 
     def get_alignment_directories(self, iteration, iterations, channel, resolution):
 
@@ -110,6 +126,14 @@ class FileLocationManager(object):
 
     def get_histogram(self, channel=1):
         return os.path.join(self.histogram, f"CH{channel}")
+    
+    def get_cell_labels(self):
+        '''
+        Returns path to store cell labels
+
+        Note: This path is also web-accessbile [@ UCSD]
+        '''
+        return os.path.join(self.cell_labels_data)
 
     def get_neuroglancer(self, downsample=True, channel=1, rechunk=False):
         '''
@@ -117,19 +141,25 @@ class FileLocationManager(object):
 
         Note: This path is also web-accessbile [@ UCSD]
         '''
+        prefix = ''
+        if isinstance(channel, int):
+            prefix = 'C'
         if downsample:
-            channel_outdir = f"C{channel}T"
+            channel_outdir = f"{prefix}{channel}T"
         else:
-            channel_outdir = f"C{channel}"
+            channel_outdir = f"{prefix}{channel}"
         if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
     def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
+        prefix = ''
+        if isinstance(channel, int):
+            prefix = 'C'
         if downsample:
-            channel_outdir = f"C{channel}T"
+            channel_outdir = f"{prefix}{channel}T"
         else:
-            channel_outdir = f"C{channel}"
+            channel_outdir = f"{prefix}{channel}"
         if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
