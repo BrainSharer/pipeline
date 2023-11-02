@@ -310,8 +310,8 @@ class NumpyToNeuroglancer():
              return
 
         img = read_image(infile)
-        if img.ndims > 1:
-            print(f'{infile }Number of dimensions = {img.ndims}')
+        if img.ndim > 1:
+            print(f'{infile }Number of dimensions = {img.ndim}')
             #img = img[:,:,0]
 
         try:
