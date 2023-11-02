@@ -100,7 +100,7 @@ class Pipeline(
         self.hostname = get_hostname()
         self.nomask = nomask
         self.check_programs()
-        self.section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        self.section_count = self.get_section_count()
         self.multiple_slides = []
 
         super().__init__(self.fileLocationManager.get_logdir())
@@ -116,6 +116,15 @@ class Pipeline(
         print("\tnomask:".ljust(20), f"{str(self.nomask)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print()
+
+    def get_section_count(self):
+        section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        if section_count == 0:
+            INPUT = self.fileLocationManager.get_thumbnail
+            if os.path.exists(INPUT):
+                section_count = len(os.listdir(INPUT))
+
+        return section_count
 
 
     def extract(self):
