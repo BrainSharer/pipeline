@@ -291,13 +291,13 @@ class ElastixManager(FileLogger):
         return R, xshift, yshift
 
 
-    def get_rotation_center(self, channel=1):
+    def get_rotation_center(self):
         """return a rotation center for finding the parameters of a transformation from the transformation matrix
 
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(channel)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         midfilepath = os.path.join(INPUT, files[midpoint])
@@ -321,7 +321,7 @@ class ElastixManager(FileLogger):
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(1)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         transformation_to_previous_sec = {}
@@ -438,7 +438,7 @@ class ElastixManager(FileLogger):
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        INPUT = fileLocationManager.get_thumbnail_aligned(channel=1)
+        INPUT = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         OUTPUT = fileLocationManager.section_web
 
         os.makedirs(OUTPUT, exist_ok=True)
