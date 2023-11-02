@@ -222,13 +222,13 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = ['masks/CH1/thumbnail_colored', 'masks/CH1/thumbnail_masked', f'CH{self.channel}/thumbnail', f'CH{self.channel}/thumbnail_cleaned',
-                        f'CH{self.channel}/thumbnail_aligned_iteration_0', f'CH{self.channel}/thumbnail_aligned']
-            ndirectory = f'C{self.channel}T'
+            directories = ['masks/C1/thumbnail_colored', 'masks/C1/thumbnail_masked', f'{self.channel}/thumbnail', f'{self.channel}/thumbnail_cleaned',
+                        f'{self.channel}/thumbnail_aligned_iteration_0', f'{self.channel}/thumbnail_aligned']
+            ndirectory = f'{self.channel}T'
         else:
-            directories = ['masks/CH1/full_masked', f'CH{self.channel}/full', f'CH{self.channel}/full_cleaned',
-                        f'CH{self.channel}/full_aligned_iteration_0', f'CH{self.channel}/full_aligned']
-            ndirectory = f'C{self.channel}'
+            directories = ['masks/C1/full_masked', f'{self.channel}/full', f'{self.channel}/full_cleaned',
+                        f'{self.channel}/full_aligned_iteration_0', f'{self.channel}/full_aligned']
+            ndirectory = f'{self.channel}'
 
         
         for directory in directories:
