@@ -65,11 +65,11 @@ from library.image_manipulation.pipeline_process import Pipeline
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
-    parser.add_argument("--animal", help="Enter the animal", required=True)
-    parser.add_argument("--rescan_number", help="Enter rescan number, default is 0", required=False, default=0)
+    parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
+    parser.add_argument("--rescan_number", help="Enter rescan number, default is 0", required=False, default=0, type=int)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
-    parser.add_argument("--downsample", help="Enter true or false", required=False, default="true")
-    parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
+    parser.add_argument("--downsample", help="Enter true or false", required=False, default="true", type=str)
+    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=2, type=int)
     parser.add_argument("--nomask", help="Do not create a mask. Use all the tissue.", 
                         required=False, default=False, type=str)
