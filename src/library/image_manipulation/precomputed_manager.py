@@ -111,6 +111,7 @@ class NgPrecomputedMaker:
         mips = 8
         if self.downsample:
             mips = 3
+        
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
             self.downsample, self.channel, rechunk=True
         )
@@ -128,8 +129,10 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
+        if self.section_count < 100:
+            chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
         if self.debug:
-            print(f'Create transfer task with chunks={chunks}')
+            print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
         tasks = tc.create_transfer_tasks(
             cloudpath,
             dest_layer_path=outpath,
