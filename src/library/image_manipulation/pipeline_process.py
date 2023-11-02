@@ -120,16 +120,9 @@ class Pipeline(
     def get_section_count(self):
         section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
         if section_count == 0:
-            INPUT = self.fileLocationManager.thumbnail
+            INPUT = self.fileLocationManager.get_full_aligned()
             if os.path.exists(INPUT):
-                print('Section count dir exists')
                 section_count = len(os.listdir(INPUT))
-            else:
-                print('Section count dir NOT exists')
-        else:
-            print('Section is not equal to zero')
-
-
 
         return section_count
 
