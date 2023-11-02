@@ -54,7 +54,7 @@ increasing the step size will make the pipeline move forward in the process.
 """
 import argparse
 from pathlib import Path
-import sys
+import sys, socket
 from timeit import default_timer as timer
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -75,8 +75,8 @@ if __name__ == "__main__":
                         required=False, default=False, type=str)
     parser.add_argument("--task", 
                         help="Enter the task you want to perform: \
-                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|check_status",
-                        required=False, default="check_status", type=str)
+                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|status|cell_labels",
+                        required=False, default="status", type=str)
 
     args = parser.parse_args()
 
@@ -88,6 +88,7 @@ if __name__ == "__main__":
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     nomask = bool({"true": True, "false": False}[str(args.nomask).lower()])
     task = str(args.task).strip().lower()
+    process_hostname = socket.gethostname()
 
     pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel, iterations=iterations, 
                         downsample=downsample, nomask=nomask, task=task, debug=debug)
@@ -106,7 +107,7 @@ if __name__ == "__main__":
 
     if task in function_mapping:
         start_time = timer()
-        pipeline.logevent(f"START  {str(task)}, downsample: {str(downsample)}")
+        pipeline.logevent(f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}")
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time),2)
@@ -118,5 +119,3 @@ if __name__ == "__main__":
         print(f'{task} is not a correct task. Choose one of these:')
         for key in function_mapping.keys():
             print(f'\t{key}')
-
-
