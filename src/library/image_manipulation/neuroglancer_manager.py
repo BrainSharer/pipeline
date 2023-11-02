@@ -310,9 +310,9 @@ class NumpyToNeuroglancer():
              return
 
         img = read_image(infile)
-        if img.ndim > 1:
-            print(f'{infile }Number of dimensions = {img.ndim}')
-            #img = img[:,:,0]
+        if img.ndim > 2:
+            print(f'{infile }Number of dimensions = {img.ndim} shape={img.shape}')
+            img = img[:,:,0]
 
         try:
             img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
