@@ -64,11 +64,6 @@ class FileLocationManager(object):
     def get_full_cleaned(self, channel='C1'):
         return os.path.join(self.prep, f"{channel}", "full_cleaned")
 
-    def get_full_aligned_iteration_0(self, channel='C1'):
-        if isinstance(channel, int):
-            return os.path.join(self.prep, f"{channel}", "full_aligned_iteration_0")
-        else:
-            return os.path.join(self.prep, f"{channel}", "full_aligned_iteration_0")
 
     def get_full_aligned(self, channel='C1'):
         if isinstance(channel, int):
@@ -84,24 +79,13 @@ class FileLocationManager(object):
             validated_path = os.path.join(self.ome_zarr_data, f"{channel}.zarr")
         return validated_path
 
-    def get_alignment_directories(self, iteration, iterations, channel, resolution):
+    def get_alignment_directories(self, channel, resolution):
 
-        if iteration == 0:
-            input = os.path.join(self.prep, f'{channel}', f'{resolution}_cleaned')
-            output = os.path.join(self.prep, f"{channel}", f'{resolution}_aligned_iteration_{iteration}')
-        if iteration > 0:
-            dir_number = iteration - 1
-            input = os.path.join(self.prep, f"{channel}", f'{resolution}_aligned_iteration_{dir_number}')
-            dir_number = iteration
-            output = os.path.join(self.prep, f"{channel}", f'{resolution}_aligned_iteration_{dir_number}')
-        if iteration == iterations - 1:
-            output = os.path.join(self.prep, f"{channel}", f'{resolution}_aligned')
+        input = os.path.join(self.prep, f'{channel}', f'{resolution}_cleaned')
+        output = os.path.join(self.prep, f'{channel}', f'{resolution}_aligned')
 
         os.makedirs(output, exist_ok=True)
         return input, output
-
-    def get_thumbnail_aligned_iteration(self, channel='C1', iteration=0):
-        return os.path.join(self.prep, f"{channel}", f"thumbnail_aligned_iteration_{iteration}")
 
     def get_thumbnail_aligned(self, channel='C1'):
         return os.path.join(self.prep, f"{channel}", "thumbnail_aligned")

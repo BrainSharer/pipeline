@@ -62,9 +62,10 @@ class Pipeline(
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
 
-    # animal, rescan_number=0, channel=1, iterations=iterations, downsample=False, tg=False, task='status', debug=False)
+    #animal, rescan_number=rescan_number, channel=channel, downsample=downsample, nomask=nomask, task=task, debug=debug)
 
-    def __init__(self, animal, rescan_number=0, channel=1, iterations=2, downsample=False, 
+
+    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
                  nomask=False, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
@@ -91,7 +92,6 @@ class Pipeline(
         self.animal = animal
         self.rescan_number = rescan_number
         self.channel = channel
-        self.iterations = iterations
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
@@ -162,13 +162,10 @@ class Pipeline(
         """
 
         print(self.TASK_ALIGN)
-        for i in range(0, self.iterations):
-            self.iteration = i
-            print(f'Starting iteration {i} of {self.iterations}.', end=" ")
-            self.create_within_stack_transformations()
-            transformations = self.get_transformations()
-            self.align_downsampled_images(transformations)
-            self.align_full_size_image(transformations)
+        self.create_within_stack_transformations()
+        transformations = self.get_transformations()
+        self.align_downsampled_images(transformations)
+        self.align_full_size_image(transformations)
 
         self.create_web_friendly_sections()
         print('Finished aligning.')
@@ -176,10 +173,7 @@ class Pipeline(
 
     def create_metrics(self):
         print(self.TASK_CREATE_METRICS)
-        for i in [0, 1]:
-            print(f'Starting iteration {i}')
-            self.iteration = i
-            self.call_alignment_metrics()
+        self.call_alignment_metrics()
         print('Finished creating alignment metrics.')
 
     def extra_channel(self):
@@ -223,11 +217,11 @@ class Pipeline(
 
         if self.downsample:
             directories = ['masks/C1/thumbnail_colored', 'masks/C1/thumbnail_masked', f'{self.channel}/thumbnail', f'{self.channel}/thumbnail_cleaned',
-                        f'{self.channel}/thumbnail_aligned_iteration_0', f'{self.channel}/thumbnail_aligned']
+                        f'{self.channel}/thumbnail_aligned']
             ndirectory = f'{self.channel}T'
         else:
             directories = ['masks/C1/full_masked', f'{self.channel}/full', f'{self.channel}/full_cleaned',
-                        f'{self.channel}/full_aligned_iteration_0', f'{self.channel}/full_aligned']
+                        f'{self.channel}/full_aligned']
             ndirectory = f'{self.channel}'
 
         

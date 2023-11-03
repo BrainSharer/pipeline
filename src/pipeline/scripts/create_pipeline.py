@@ -70,7 +70,6 @@ if __name__ == "__main__":
     parser.add_argument("--channel", help="Enter channel", required=False, default='C1', type=str)
     parser.add_argument("--downsample", help="Enter true or false", required=False, default="true", type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
-    parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=2, type=int)
     parser.add_argument("--nomask", help="Do not create a mask. Use all the tissue.", 
                         required=False, default=False, type=str)
     parser.add_argument("--task", 
@@ -83,14 +82,13 @@ if __name__ == "__main__":
     animal = args.animal
     rescan_number = int(args.rescan_number)
     channel = args.channel
-    iterations = args.iterations
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     nomask = bool({"true": True, "false": False}[str(args.nomask).lower()])
     task = str(args.task).strip().lower()
     process_hostname = socket.gethostname()
 
-    pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel, iterations=iterations, 
+    pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel,
                         downsample=downsample, nomask=nomask, task=task, debug=debug)
 
     function_mapping = {'extract': pipeline.extract,
