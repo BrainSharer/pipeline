@@ -82,9 +82,9 @@ class NgPrecomputedMaker:
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
 
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
-        chunks = calculate_chunks(self.downsample, -1)
+        #chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
-        self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        #self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
@@ -92,7 +92,7 @@ class NgPrecomputedMaker:
             "image",
             midfile.dtype,
             num_channels=num_channels,
-            chunk_size=chunks,
+            #chunk_size=chunks,
         )
         
         ng.init_precomputed(OUTPUT_DIR, volume_size)
@@ -129,16 +129,14 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
-        if self.section_count < 100:
-            chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
+        #if self.section_count < 100:
+        #    chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
         if self.debug:
             print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
         tasks = tc.create_transfer_tasks(
             cloudpath,
             dest_layer_path=outpath,
-            chunk_size=chunks,
             mip=0,
-            skip_downsamples=True,
         )
         tq.insert(tasks)
         tq.execute()
