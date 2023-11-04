@@ -14,8 +14,8 @@ class Normalizer:
     def create_normalized_image(self):
         """Normalize the downsampled images with QC applied"""
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-            OUTPUT = self.fileLocationManager.get_normalized(self.channel)
+            INPUT = self.fileLocationManager.get_thumbnail(self.active_channel)
+            OUTPUT = self.fileLocationManager.get_normalized(self.active_channel)
             self.logevent(f"INPUT FOLDER: {INPUT}")
             files = sorted(os.listdir(INPUT))
             self.logevent(f"CURRENT FILE COUNT: {len(files)}")

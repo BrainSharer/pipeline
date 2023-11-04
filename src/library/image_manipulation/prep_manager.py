@@ -29,10 +29,10 @@ class PrepCreater:
 
         if self.downsample:
             INPUT = self.fileLocationManager.thumbnail_original
-            OUTPUT = self.fileLocationManager.get_thumbnail(self.channel)
+            OUTPUT = self.fileLocationManager.get_thumbnail(self.active_channel)
         else:
             INPUT = self.fileLocationManager.tif
-            OUTPUT = self.fileLocationManager.get_full(self.channel)
+            OUTPUT = self.fileLocationManager.get_full(self.active_channel)
             
         starting_files = os.listdir(INPUT)
         self.logevent(f"INPUT FOLDER: {INPUT}")
