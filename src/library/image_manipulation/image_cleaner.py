@@ -96,7 +96,7 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        #test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
+        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(INPUT))
 
         file_keys = []
