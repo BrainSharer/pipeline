@@ -66,8 +66,10 @@ class NgPrecomputedMaker:
         """create the Seung lab cloud volume format from the image stack"""
 
         if self.downsample:
+            chunks = [64, 64, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.active_channel)
         if not self.downsample:
+            chunks = [128, 128, 1]
             INPUT = self.fileLocationManager.get_full_aligned(channel=self.active_channel)
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.active_channel)
@@ -84,7 +86,7 @@ class NgPrecomputedMaker:
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         #chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
-        #self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
@@ -92,7 +94,7 @@ class NgPrecomputedMaker:
             "image",
             midfile.dtype,
             num_channels=num_channels,
-            #chunk_size=chunks,
+            chunk_size=chunks,
         )
         
         ng.init_precomputed(OUTPUT_DIR, volume_size)
