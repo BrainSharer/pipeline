@@ -76,9 +76,9 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.active_channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-        #starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
+        starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
-        #self.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
 
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
@@ -107,9 +107,13 @@ class NgPrecomputedMaker:
 
     def create_downsamples(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
-        chunks = calculate_chunks(self.downsample, 0)
+        #chunks = calculate_chunks(self.downsample, 0)
+        xy_chunk = 128
+        chunks = [xy_chunk, xy_chunk, 1]
         mips = 8
         if self.downsample:
+            xy_chunk = int(xy_chunk//2)
+            chunks = [xy_chunk, xy_chunk, 1]
             mips = 3
         
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.active_channel, rechunk=True)
@@ -125,15 +129,16 @@ class NgPrecomputedMaker:
         self.logevent(f"INPUT_DIR: {INPUT_DIR}")
         self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
         workers =self.get_nworkers()
-
+        chunks = [xy_chunk, xy_chunk, 64]
         tq = LocalTaskQueue(parallel=workers)
-        #if self.section_count < 100:
-        #    chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
+        if self.section_count < 100:
+            chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
         if self.debug:
             print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
         tasks = tc.create_transfer_tasks(
             cloudpath,
             dest_layer_path=outpath,
+            chunk_size=chunks,
             mip=0,
         )
         tq.insert(tasks)
