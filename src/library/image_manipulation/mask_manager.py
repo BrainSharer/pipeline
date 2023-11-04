@@ -150,7 +150,7 @@ class MaskManager:
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
         NORMALIZED = self.fileLocationManager.get_normalized(self.active_channel)
-        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=channel) # usually channel=1, except for step 6
+        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.active_channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {NORMALIZED}")
         
         test_dir(self.animal, NORMALIZED, self.section_count, self.downsample, same_size=False)
