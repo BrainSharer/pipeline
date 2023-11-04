@@ -107,7 +107,6 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
     rigid_params["ImageSampler"] = ["Random"]
 
-
     return rigid_params
 
 
@@ -299,8 +298,8 @@ def align_elastix(fixed, moving):
     
     translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
     rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-    x1,y1 = translations
-    R,x2,y2 = rigid
+    x1, y1 = translations
+    R, x2, y2 = rigid
     x = float(x1) + float(x2)
     y = float(y1) + float(y2)
     return float(R), float(x), float(y)

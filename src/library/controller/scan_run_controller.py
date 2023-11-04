@@ -90,3 +90,24 @@ class ScanRunController():
             except Exception as e:
                 print(f'No merge for  {e}')
                 self.session.rollback()
+
+
+    def get_channels(self, FK_prep_id):
+        """Update the scan run table with safe and good values for the width and height
+
+        :param id: integer primary key of scan run table
+        """
+        scan_run = self.session.query(ScanRun).filter(ScanRun.FK_prep_id == FK_prep_id).first()
+        channel_count = int(scan_run.channels_per_scene)
+        channels = []
+        channels.append(scan_run.channel1_name)
+        if channel_count > 1:
+            channels.append(scan_run.channel2_name)
+        if channel_count > 2:
+            channels.append(scan_run.channel3_name)
+        if channel_count > 3:
+            channels.append(scan_run.channel4_name)
+
+        return channels
+
+
