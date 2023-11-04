@@ -133,8 +133,7 @@ class NgPrecomputedMaker:
         tq = LocalTaskQueue(parallel=workers)
         if self.section_count < 100:
             chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
-        if self.debug:
-            print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
+        print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
         tasks = tc.create_transfer_tasks(
             cloudpath,
             dest_layer_path=outpath,
@@ -150,6 +149,7 @@ class NgPrecomputedMaker:
         tasks = tc.create_downsampling_tasks(
             cv.layer_cloudpath,
             num_mips=mips,
+            chunk_size=chunks,
             compress=True,
         )
         tq.insert(tasks)

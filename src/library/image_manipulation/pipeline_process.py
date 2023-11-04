@@ -111,7 +111,7 @@ class Pipeline(
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
-        print("\tchannel:".ljust(20), f"{str(self.channel)} ({str(self.active_channel)})".ljust(20))
+        print("\tactive channel:".ljust(20), f"{str(self.channel)} ({str(self.active_channel)})".ljust(20))
         print("\tchannels:".ljust(20), f"{str(self.channels)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
