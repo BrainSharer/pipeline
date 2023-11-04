@@ -91,7 +91,6 @@ class Pipeline(
         self.task = task
         self.animal = animal
         self.rescan_number = rescan_number
-        self.channel = channel
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
@@ -102,13 +101,18 @@ class Pipeline(
         self.check_programs()
         self.section_count = self.get_section_count()
         self.multiple_slides = []
+        self.channel = channel
+        self.channels = self.sqlController.get_channels(self.animal)
+        self.active_channel = self.channels[self.channel - 1]
+        self.base_channel = self.channels[0]
 
         super().__init__(self.fileLocationManager.get_logdir())
 
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
-        print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
+        print("\tchannel:".ljust(20), f"{str(self.channel)} ({str(self.active_channel)})".ljust(20))
+        print("\tchannels:".ljust(20), f"{str(self.channels)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
@@ -180,6 +184,7 @@ class Pipeline(
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
         This step will do everything for the self.channel, so you don't need to run self.channel X for step 2, or 4. You do need
         to run step 0 and step 1.
+        TODO fix for channel variable name
         """
         print(self.TASK_EXTRA_CHANNEL)
         i = 2
@@ -189,12 +194,12 @@ class Pipeline(
             self.create_normalized_image()
             self.create_downsampled_mask()
             self.apply_user_mask_edits()
-            self.create_cleaned_images_thumbnail(channel=self.channel)
+            self.create_cleaned_images_thumbnail(channel=self.active_channel)
             self.create_dir2dir_transformations()
         else:
-            self.create_full_resolution_mask(channel=self.channel)
-            self.create_cleaned_images_full_resolution(channel=self.channel)
-            self.apply_full_transformations(channel=self.channel)
+            self.create_full_resolution_mask(channel=self.active_channel)
+            self.create_cleaned_images_full_resolution(channel=self.active_channel)
+            self.apply_full_transformations(channel=self.active_channel)
 
     def neuroglancer(self):
         print(self.TASK_NEUROGLANCER)
@@ -216,13 +221,14 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = ['masks/C1/thumbnail_colored', 'masks/C1/thumbnail_masked', f'{self.channel}/thumbnail', f'{self.channel}/thumbnail_cleaned',
-                        f'{self.channel}/thumbnail_aligned']
-            ndirectory = f'{self.channel}T'
+            directories = [f'masks/{self.base_channel}/thumbnail_colored', f'masks/{self.base_channel}/thumbnail_masked', 
+                           f'{self.active_channel}/thumbnail', f'{self.active_channel}/thumbnail_cleaned',
+                        f'{self.active_channel}/thumbnail_aligned']
+            ndirectory = f'{self.active_channel}T'
         else:
-            directories = ['masks/C1/full_masked', f'{self.channel}/full', f'{self.channel}/full_cleaned',
-                        f'{self.channel}/full_aligned']
-            ndirectory = f'{self.channel}'
+            directories = [f'masks/{self.base_channel}/full_masked', f'{self.active_channel}/full', f'{self.active_channel}/full_cleaned',
+                        f'{self.active_channel}/full_aligned']
+            ndirectory = f'{self.active_channel}'
 
         
         for directory in directories:

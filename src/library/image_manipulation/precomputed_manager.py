@@ -66,19 +66,19 @@ class NgPrecomputedMaker:
         """create the Seung lab cloud volume format from the image stack"""
 
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+            INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.active_channel)
         if not self.downsample:
-            INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            INPUT = self.fileLocationManager.get_full_aligned(channel=self.active_channel)
 
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.active_channel)
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
+        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.active_channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-        starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
+        #starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
-        self.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        #self.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
 
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
@@ -112,14 +112,12 @@ class NgPrecomputedMaker:
         if self.downsample:
             mips = 3
         
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
-            self.downsample, self.channel, rechunk=True
-        )
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.active_channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
             print(f"DIR {OUTPUT_DIR} already exists and not performing any downsampling.")
             return
         outpath = f"file://{OUTPUT_DIR}"
-        INPUT_DIR = self.fileLocationManager.get_neuroglancer( self.downsample, self.channel )
+        INPUT_DIR = self.fileLocationManager.get_neuroglancer( self.downsample, self.active_channel )
         if not os.path.exists(INPUT_DIR):
             print(f"DIR {INPUT_DIR} does not exist, exiting.")
             sys.exit()
@@ -159,9 +157,7 @@ class NgPrecomputedMaker:
         mips = [0, 1, 2, 3, 4, 5, 6, 7]
         if self.downsample:
             mips = [0, 1, 2]
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
-            self.downsample, self.channel, rechunck=True
-        )
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.active_channel, rechunck=True)
         outpath = f"file://{OUTPUT_DIR}"
 
         tq = LocalTaskQueue(parallel=workers)

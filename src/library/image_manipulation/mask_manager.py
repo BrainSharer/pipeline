@@ -31,8 +31,8 @@ class MaskManager:
         INPUT dir is the colored merged masks
         """
         
-        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
+        INPUT = self.fileLocationManager.get_thumbnail_colored(self.active_channel)
+        MASKS = self.fileLocationManager.get_thumbnail_masked(self.base_channel)
         
         test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
@@ -108,11 +108,11 @@ class MaskManager:
             print("no model to load")
             return
 
-    def create_full_resolution_mask(self, channel=1):
+    def create_full_resolution_mask(self, channel):
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
-        FULLRES = self.fileLocationManager.get_full(self.channel)
+        FULLRES = self.fileLocationManager.get_full(self.active_channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=channel) # usually channel=1, except for step 6
         MASKED = self.fileLocationManager.get_full_masked(channel=channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {FULLRES}")
