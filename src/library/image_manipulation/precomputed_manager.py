@@ -137,7 +137,7 @@ class NgPrecomputedMaker:
             chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
             mips = int(mips//2)
 
-        print(f'Create transfer task with chunks={chunks} and section count={self.section_count}')
+        print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
         tasks = tc.create_transfer_tasks(
             cloudpath,
             dest_layer_path=outpath,
@@ -146,8 +146,8 @@ class NgPrecomputedMaker:
         )
         tq.insert(tasks)
         tq.execute()
-        print('Finished transfer task')
-        print(f'Create downsample tasks with mips={mips}')
+        print('Finished transfer tasks')
+        print(f'Creating downsample tasks with mips={mips} and chunks={chunks}')
         cv = CloudVolume(outpath)
         tasks = tc.create_downsampling_tasks(
             cv.layer_cloudpath,
