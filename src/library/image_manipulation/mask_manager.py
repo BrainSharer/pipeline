@@ -108,13 +108,13 @@ class MaskManager:
             print("no model to load")
             return
 
-    def create_full_resolution_mask(self, channel):
+    def create_full_resolution_mask(self):
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
         FULLRES = self.fileLocationManager.get_full(self.active_channel)
-        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=channel) # usually channel=1, except for step 6
-        MASKED = self.fileLocationManager.get_full_masked(channel=channel) # usually channel=1, except for step 6
+        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.base_channel) # usually channel=1, except for step 6
+        MASKED = self.fileLocationManager.get_full_masked(channel=self.base_channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {FULLRES}")
         starting_files = os.listdir(FULLRES)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -141,7 +141,7 @@ class MaskManager:
         workers = self.get_nworkers()
         self.run_commands_concurrently(self.resize_tif, file_keys, workers)
 
-    def create_downsampled_mask(self, channel=1):
+    def create_downsampled_mask(self):
         """Create masks for the downsampled images using a machine learning algorithm.
         The input files are the files that have been normalized.
         The output files are the colored merged files. 
