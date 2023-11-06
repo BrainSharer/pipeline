@@ -78,11 +78,12 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.active_channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
+        """
         starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
-
+        """
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         #chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
@@ -101,6 +102,7 @@ class NgPrecomputedMaker:
         workers = self.get_nworkers()
         if self.debug:
             for file_key in file_keys:
+                print(file_key)
                 ng.process_image(file_key=file_key)
         else:
             self.run_commands_concurrently(ng.process_image, file_keys, workers)
@@ -137,27 +139,41 @@ class NgPrecomputedMaker:
             chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
             mips = int(mips//2)
 
-        print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
-        tasks = tc.create_transfer_tasks(
-            cloudpath,
-            dest_layer_path=outpath,
-            chunk_size=chunks,
-            mip=0,
-        )
-        tq.insert(tasks)
-        tq.execute()
-        print('Finished transfer tasks')
-        print(f'Creating downsample tasks with mips={mips} and chunks={chunks}')
-        cv = CloudVolume(outpath)
-        tasks = tc.create_downsampling_tasks(
-            cv.layer_cloudpath,
-            num_mips=mips,
-            chunk_size=chunks,
-            compress=True,
-        )
-        tq.insert(tasks)
-        tq.execute()
+        # Hard coding shard to true now for testing
+        from timeit import default_timer as timer
+        start_time = timer()
+        shard = True
+        if shard:
+            tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, chunk_size=chunks, mip=0)
+            tq.insert(tasks)
+            tq.execute()
 
+            cv = CloudVolume(outpath)
+            for mip in range(0, mips):
+                print(f'Creating downsampled shards at mip={mip}')
+                tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, mip=mip)
+                tq.insert(tasks)
+                tq.execute()
+        else:
+            print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
+            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, chunk_size=chunks, mip=0, skip_downsamples=True)
+            tq.insert(tasks)
+            tq.execute()
+            print('Finished transfer tasks')
+            print(f'Creating downsample tasks with mips={mips} and chunks={chunks}')
+            cv = CloudVolume(outpath)
+            tasks = tc.create_downsampling_tasks(
+                cv.layer_cloudpath,
+                num_mips=mips,
+                chunk_size=chunks,
+                compress=True,
+            )
+            tq.insert(tasks)
+            tq.execute()
+        
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time),2)
+        print(f'Sharding={str(shard)} took {total_elapsed_time} seconds')
 
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
