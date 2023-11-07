@@ -31,8 +31,8 @@ class MaskManager:
         INPUT dir is the colored merged masks
         """
         
-        INPUT = self.fileLocationManager.get_thumbnail_colored(self.active_channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(self.base_channel)
+        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
+        MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
         test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
@@ -112,9 +112,9 @@ class MaskManager:
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
-        FULLRES = self.fileLocationManager.get_full(self.active_channel)
-        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.base_channel) # usually channel=1, except for step 6
-        MASKED = self.fileLocationManager.get_full_masked(channel=self.base_channel) # usually channel=1, except for step 6
+        FULLRES = self.fileLocationManager.get_full(self.channel)
+        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
+        MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {FULLRES}")
         starting_files = os.listdir(FULLRES)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -149,8 +149,8 @@ class MaskManager:
         
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
-        NORMALIZED = self.fileLocationManager.get_normalized(self.active_channel)
-        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.active_channel) # usually channel=1, except for step 6
+        NORMALIZED = self.fileLocationManager.get_normalized(self.channel)
+        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {NORMALIZED}")
         
         test_dir(self.animal, NORMALIZED, self.section_count, self.downsample, same_size=False)

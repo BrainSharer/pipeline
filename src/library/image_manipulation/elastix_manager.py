@@ -53,7 +53,7 @@ class ElastixManager(FileLogger):
         TODO this needs to be modified to account for the channel variable name
         """
         if self.channel == 1 and self.downsample:
-            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.base_channel, resolution='thumbnail')
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
             files = sorted(os.listdir(INPUT))
             nfiles = len(files)
             self.logevent(f"INPUT FOLDER: {INPUT}")
@@ -158,7 +158,7 @@ class ElastixManager(FileLogger):
 
         if self.channel == 1 and self.downsample:
 
-            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.base_channel, resolution='thumbnail')
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
 
             ELASTIX_OUTPUT = self.fileLocationManager.elastix
             os.makedirs(ELASTIX_OUTPUT, exist_ok=True)
@@ -282,7 +282,7 @@ class ElastixManager(FileLogger):
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.active_channel)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         midfilepath = os.path.join(INPUT, files[midpoint])
@@ -306,7 +306,7 @@ class ElastixManager(FileLogger):
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.active_channel)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         transformation_to_previous_sec = {}
@@ -348,7 +348,7 @@ class ElastixManager(FileLogger):
         """
         if not self.downsample:
             transforms = create_downsampled_transforms(transforms, downsample=False)
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.active_channel, resolution='full')
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
             self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -363,7 +363,7 @@ class ElastixManager(FileLogger):
         """
 
         if self.downsample:
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.active_channel, resolution='thumbnail')
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
             print(f'Aligning {len(os.listdir(INPUT))} images from {os.path.basename(os.path.normpath(INPUT))} to {os.path.basename(os.path.normpath(OUTPUT))}', end=" ")
             self.align_images(INPUT, OUTPUT, transforms)
 
@@ -417,7 +417,7 @@ class ElastixManager(FileLogger):
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        INPUT = fileLocationManager.get_thumbnail_aligned(channel=self.active_channel)
+        INPUT = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         OUTPUT = fileLocationManager.section_web
 
         os.makedirs(OUTPUT, exist_ok=True)

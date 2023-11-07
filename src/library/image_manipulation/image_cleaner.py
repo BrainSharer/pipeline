@@ -24,12 +24,12 @@ class ImageCleaner:
 
         if self.downsample:
             self.crop_all_images()
-            self.create_cleaned_images_thumbnail(self.active_channel)            
+            self.create_cleaned_images_thumbnail(self.channel)            
         else:
-            self.create_cleaned_images_full_resolution(self.active_channel)
+            self.create_cleaned_images_full_resolution(self.channel)
 
     def crop_all_images(self):
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=self.base_channel) # usually channel=1, except for step 6
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(MASKS))
         widths = []
         heights = []
@@ -54,7 +54,7 @@ class ImageCleaner:
         
         CLEANED = self.fileLocationManager.get_thumbnail_cleaned(channel)
         INPUT = self.fileLocationManager.get_thumbnail(channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=self.base_channel) # usually channel=1, except for step 6
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {INPUT}")
         starting_files = os.listdir(INPUT)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -72,7 +72,7 @@ class ImageCleaner:
         CLEANED = self.fileLocationManager.get_full_cleaned(channel)
         os.makedirs(CLEANED, exist_ok=True)
         INPUT = self.fileLocationManager.get_full(channel)
-        MASKS = self.fileLocationManager.get_full_masked(channel=self.base_channel) #usually channel=1, except for step 6
+        MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
         starting_files = os.listdir(INPUT)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"FILE COUNT: {len(starting_files)}")
