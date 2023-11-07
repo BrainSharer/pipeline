@@ -55,61 +55,61 @@ class FileLocationManager(object):
         
         return czi_path
     
-    def get_full(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "full")
+    def get_full(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "full")
 
-    def get_thumbnail(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "thumbnail")
+    def get_thumbnail(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "thumbnail")
 
-    def get_full_cleaned(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "full_cleaned")
+    def get_full_cleaned(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "full_cleaned")
 
 
-    def get_full_aligned(self, channel='C1'):
+    def get_full_aligned(self, channel=1):
         if isinstance(channel, int):
-            validated_path = os.path.join(self.prep, f"{channel}", "full_aligned")
+            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         else:
-            validated_path = os.path.join(self.prep, f"{channel}", "full_aligned")
+            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         return validated_path
     
-    def get_ome_zarr(self, channel='C1'):
+    def get_ome_zarr(self, channel=1):
         if isinstance(channel, int):
-            validated_path = os.path.join(self.ome_zarr_data, f"{channel}.zarr")
+            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         else:
-            validated_path = os.path.join(self.ome_zarr_data, f"{channel}.zarr")
+            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
     def get_alignment_directories(self, channel, resolution):
 
-        input = os.path.join(self.prep, f'{channel}', f'{resolution}_cleaned')
-        output = os.path.join(self.prep, f'{channel}', f'{resolution}_aligned')
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cleaned')
+        output = os.path.join(self.prep, f'C{channel}', f'{resolution}_aligned')
 
         os.makedirs(output, exist_ok=True)
         return input, output
 
-    def get_thumbnail_aligned(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "thumbnail_aligned")
+    def get_thumbnail_aligned(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "thumbnail_aligned")
 
-    def get_thumbnail_cleaned(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "thumbnail_cleaned")
+    def get_thumbnail_cleaned(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
 
-    def get_normalized(self, channel='C1'):
-        return os.path.join(self.prep, f"{channel}", "normalized")
+    def get_normalized(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "normalized")
 
-    def get_thumbnail_colored(self, channel='C1'):
-        return os.path.join(self.masks, f"{channel}", "thumbnail_colored")
+    def get_thumbnail_colored(self, channel=1):
+        return os.path.join(self.masks, f"C{channel}", "thumbnail_colored")
     
-    def get_thumbnail_masked(self, channel='C1'):
-        return os.path.join(self.masks, f"{channel}", "thumbnail_masked")
+    def get_thumbnail_masked(self, channel=1):
+        return os.path.join(self.masks, f"C{channel}", "thumbnail_masked")
 
-    def get_full_colored(self, channel='C1'):
-        return os.path.join(self.masks, f"{channel}", "full_colored")
+    def get_full_colored(self, channel=1):
+        return os.path.join(self.masks, f"C{channel}", "full_colored")
     
-    def get_full_masked(self, channel='C1'):
-        return os.path.join(self.masks, f"{channel}", "full_masked")
+    def get_full_masked(self, channel=1):
+        return os.path.join(self.masks, f"C{channel}", "full_masked")
 
-    def get_histogram(self, channel='C1'):
-        return os.path.join(self.histogram, f"{channel}")
+    def get_histogram(self, channel=1):
+        return os.path.join(self.histogram, f"C{channel}")
     
     def get_cell_labels(self):
         '''
@@ -119,23 +119,23 @@ class FileLocationManager(object):
         '''
         return os.path.join(self.cell_labels_data)
 
-    def get_neuroglancer(self, downsample=True, channel='C1', rechunk=False):
+    def get_neuroglancer(self, downsample=True, channel=1, rechunk=False):
         '''
         Returns path to store neuroglancer files ('precomputed' format)
 
         Note: This path is also web-accessbile [@ UCSD]
         '''
         if downsample:
-            channel_outdir = f"{channel}T"
+            channel_outdir = f"C{channel}T"
         else:
             channel_outdir = channel
         if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel='C1', rechunk=False):
+    def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
         if downsample:
-            channel_outdir = f"{channel}T"
+            channel_outdir = f"C{channel}T"
         else:
             channel_outdir = channel
         if not rechunk:

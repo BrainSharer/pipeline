@@ -102,17 +102,13 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
-        self.channels = self.sqlController.get_channels(self.animal)
-        self.active_channel = self.channels[self.channel - 1]
-        self.base_channel = self.channels[0]
 
         super().__init__(self.fileLocationManager.get_logdir())
 
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
-        print("\tactive channel:".ljust(20), f"{str(self.channel)} ({str(self.active_channel)})".ljust(20))
-        print("\tchannels:".ljust(20), f"{str(self.channels)}".ljust(20))
+        print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
@@ -221,14 +217,14 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = [f'masks/{self.base_channel}/thumbnail_colored', f'masks/{self.base_channel}/thumbnail_masked', 
-                           f'{self.active_channel}/thumbnail', f'{self.active_channel}/thumbnail_cleaned',
-                        f'{self.active_channel}/thumbnail_aligned']
-            ndirectory = f'{self.active_channel}T'
+            directories = [f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked', 
+                           f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
+                        f'C{self.channel}/thumbnail_aligned']
+            ndirectory = f'C{self.channel}T'
         else:
-            directories = [f'masks/{self.base_channel}/full_masked', f'{self.active_channel}/full', f'{self.active_channel}/full_cleaned',
-                        f'{self.active_channel}/full_aligned']
-            ndirectory = f'{self.active_channel}'
+            directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', f'C{self.channel}/full_cleaned',
+                        f'C{self.channel}/full_aligned']
+            ndirectory = f'C{self.channel}'
 
         
         for directory in directories:
