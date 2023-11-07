@@ -234,10 +234,10 @@ class Pipeline(
                 print(f'Dir={directory} exists with {filecount} files. Sections count matches directory count: {section_count == filecount}')
             else:
                 print(f'Non-existent dir={dir}')
-
+        del dir, directory, directories
         dir = os.path.join(neuroglancer, ndirectory)
         if os.path.exists(dir):
-            print(f'Dir={directory} exists.')
+            print(f'Dir={dir} exists.')
         else:
             print(f'Non-existent dir={dir}')
 
