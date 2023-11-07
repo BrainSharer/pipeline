@@ -190,12 +190,12 @@ class Pipeline(
             self.create_normalized_image()
             self.create_downsampled_mask()
             self.apply_user_mask_edits()
-            self.create_cleaned_images_thumbnail(channel=self.active_channel)
+            self.create_cleaned_images_thumbnail(channel=self.channel)
             self.create_dir2dir_transformations()
         else:
-            self.create_full_resolution_mask(channel=self.active_channel)
-            self.create_cleaned_images_full_resolution(channel=self.active_channel)
-            self.apply_full_transformations(channel=self.active_channel)
+            self.create_full_resolution_mask(channel=self.channel)
+            self.create_cleaned_images_full_resolution(channel=self.channel)
+            self.apply_full_transformations(channel=self.channel)
 
     def neuroglancer(self):
         print(self.TASK_NEUROGLANCER)

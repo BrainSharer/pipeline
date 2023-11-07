@@ -125,19 +125,18 @@ class FileLocationManager(object):
 
         Note: This path is also web-accessbile [@ UCSD]
         '''
+        channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir = f"C{channel}T"
-        else:
-            channel_outdir = channel
+            channel_outdir += "T"
         if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
     def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
+        channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir = f"C{channel}T"
-        else:
-            channel_outdir = channel
+            channel_outdir += "T"
+
         if not rechunk:
             channel_outdir += "_rechunkme"
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
