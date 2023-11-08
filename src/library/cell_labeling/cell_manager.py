@@ -3,8 +3,7 @@ import json
 
 sys.path.append(os.path.abspath('./../../'))
 # from library.utilities.utilities_process import SCALING_FACTOR, test_dir
-sys.path.append(os.path.abspath('./../'))
-from image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.filelocation_manager import FileLocationManager
 
 class CellMaker:
     """Kui's cell labeler
