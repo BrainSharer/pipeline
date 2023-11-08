@@ -210,6 +210,14 @@ class Pipeline(
         print(self.TASK_CELL_LABELS)
         self.check_prerequisites()
 
+        #CHECK THAT WE HAVE 2 CHANNELS (IF STATEMENT; THEN PROCEED)
+        #ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
+        
+        self.start_labels()
+        print('Finished automatic cell labeling.')
+
+        #ADD CLEANUP OF SCRATCH FOLDER
+
     def check_status(self):
         prep = self.fileLocationManager.prep
         neuroglancer = self.fileLocationManager.neuroglancer_data
