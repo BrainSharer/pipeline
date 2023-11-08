@@ -26,13 +26,16 @@ class CellMaker:
 
         #CHECK FOR FULL-RESOLUTION TIFF IMAGES (IF OME-ZARR NOT PRESENT)
         INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
-        print(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}') #SEND TO LOG FILE
+        print(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
+        self.logevent(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
 
         OUTPUT = self.fileLocationManager.get_cell_labels()
         print(f'CELL LABELS OUTPUT DIR: {OUTPUT}')
+        self.logevent(f'CELL LABELS OUTPUT DIR: {OUTPUT}')
 
         SCRATCH = '/scratch' #REMOVE HARD-CODING LATER; SEE IF WE CAN AUTO-DETECT NVME
         print(f'TEMP STORAGE LOCATION: {SCRATCH}')
+        self.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
 
         #CHECK FOR PRESENCE OF meta-data.json
         meta_data_file = 'meta-data.json'
@@ -47,6 +50,7 @@ class CellMaker:
             dyes = [item['description'] for item in info['Neuroanatomical_tracing']]
             assert 'GFP' in dyes and 'NeurotraceBlue' in dyes
             print('TWO CHANNELS READY')
+            self.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {dyes}")
   
         else:
             #CREATE META-DATA STORE
