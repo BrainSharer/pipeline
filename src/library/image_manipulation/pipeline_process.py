@@ -22,7 +22,7 @@ from library.image_manipulation.mask_manager import MaskManager
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
-from library.image_manipulation.cell_labeling import CellMaker
+from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
 try:
@@ -204,10 +204,11 @@ class Pipeline(
         print('Finished creating neuroglancer data.')
 
     def cell_labels(self):
+        """
+        USED FOR AUTOMATED CELL LABELING
+        """
         print(self.TASK_CELL_LABELS)
-        self.start_labels()
-
-
+        self.check_prerequisites()
 
     def check_status(self):
         prep = self.fileLocationManager.prep
