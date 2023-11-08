@@ -10,6 +10,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer,
     calculate_factors
 from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
+XY_CHUNK = 512
 
 
 class NgPrecomputedMaker:
@@ -68,8 +69,8 @@ class NgPrecomputedMaker:
         if self.downsample:
             chunks = [64, 64, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        if not self.downsample:
-            chunks = [128, 128, 1]
+        else:
+            chunks = [XY_CHUNK, XY_CHUNK, 1]
             INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
@@ -85,7 +86,6 @@ class NgPrecomputedMaker:
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
         """
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
-        #chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         ng = NumpyToNeuroglancer(
@@ -110,13 +110,13 @@ class NgPrecomputedMaker:
 
 
     def create_downsamples(self):
-        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
-        #chunks = calculate_chunks(self.downsample, 0)
-        xy_chunk = 128
-        chunks = [xy_chunk, xy_chunk, 1]
+        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
+        """
+
+        chunks = [XY_CHUNK, XY_CHUNK, 1]
         mips = 8
         if self.downsample:
-            xy_chunk = int(xy_chunk//2)
+            xy_chunk = int(XY_CHUNK//8)
             chunks = [xy_chunk, xy_chunk, 1]
             mips = 4
         
@@ -133,15 +133,12 @@ class NgPrecomputedMaker:
         self.logevent(f"INPUT_DIR: {INPUT_DIR}")
         self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
         workers =self.get_nworkers()
-        chunks = [xy_chunk, xy_chunk, 64]
+        chunks[2] = 64
         tq = LocalTaskQueue(parallel=workers)
         if self.section_count < 100:
             chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
-            mips = int(mips//2)
+            #mips = int(mips//2)
 
-        # Hard coding shard to true now for testing
-        from timeit import default_timer as timer
-        start_time = timer()
         shard = True
         if shard:
             tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, chunk_size=chunks, mip=0, fill_missing=True)
@@ -149,7 +146,7 @@ class NgPrecomputedMaker:
             tq.execute()
 
             cv = CloudVolume(outpath)
-            for mip in range(0, mips):
+            for mip in range(0, 8):
                 print(f'Creating downsampled shards at mip={mip}')
                 tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, mip=mip, fill_missing=True)
                 tq.insert(tasks)
@@ -171,9 +168,6 @@ class NgPrecomputedMaker:
             tq.insert(tasks)
             tq.execute()
         
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time),2)
-        print(f'Sharding={str(shard)} took {total_elapsed_time} seconds')
 
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
