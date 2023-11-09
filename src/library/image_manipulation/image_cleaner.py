@@ -23,7 +23,9 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            self.crop_all_images()
+            if not self.nomask:
+                # don't crop images when you want the entire image
+                self.crop_all_images()
             self.create_cleaned_images_thumbnail(self.channel)            
         else:
             self.create_cleaned_images_full_resolution(self.channel)
@@ -116,6 +118,7 @@ class ImageCleaner:
                     max_width,
                     max_height,
                     self.channel,
+                    self.nomask
                 ]
             )
 

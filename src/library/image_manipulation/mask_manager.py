@@ -160,9 +160,7 @@ class MaskManager:
         self.logevent(f"OUTPUT FOLDER: {COLORED}")
         for file in files:
             filepath = os.path.join(NORMALIZED, file)
-            mask_dest_file = (
-                os.path.splitext(file)[0] + ".tif"
-            )  # colored mask images have .tif extension
+            mask_dest_file = (os.path.splitext(file)[0] + ".tif")
             maskpath = os.path.join(COLORED, mask_dest_file)
 
             if os.path.exists(maskpath):
