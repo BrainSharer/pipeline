@@ -187,7 +187,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel = file_key
+    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, nomask = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -198,7 +198,8 @@ def clean_and_rotate_image(file_key):
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
 
-    cleaned = crop_image(cleaned, mask)
+    if not nomask:
+        cleaned = crop_image(cleaned, mask)
     del img
     del mask
     if rotation > 0:

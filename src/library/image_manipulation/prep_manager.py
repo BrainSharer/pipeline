@@ -1,4 +1,5 @@
 import os
+import sys
 from PIL import Image
 from library.controller.scan_run_controller import ScanRunController
 Image.MAX_IMAGE_PIXELS = None
@@ -33,7 +34,10 @@ class PrepCreater:
         else:
             INPUT = self.fileLocationManager.tif
             OUTPUT = self.fileLocationManager.get_full(self.channel)
-            
+        
+        if not os.path.exists(INPUT):
+            print(f'This dir does not exist. {INPUT}')
+            sys.exit()
         starting_files = os.listdir(INPUT)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")

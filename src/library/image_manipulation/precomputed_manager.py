@@ -146,7 +146,7 @@ class NgPrecomputedMaker:
             tq.execute()
 
             cv = CloudVolume(outpath)
-            for mip in range(0, 8):
+            for mip in range(0, mips):
                 print(f'Creating downsampled shards at mip={mip}')
                 tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, mip=mip, fill_missing=True)
                 tq.insert(tasks)
