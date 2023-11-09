@@ -1,9 +1,13 @@
 import os, sys
 import json
+from ome_zarr.io import parse_url
+from ome_zarr.reader import Reader
 
 sys.path.append(os.path.abspath('./../../'))
 # from library.utilities.utilities_process import SCALING_FACTOR, test_dir
 from library.image_manipulation.filelocation_manager import FileLocationManager
+
+
 
 class CellMaker:
     """Kui's cell labeler
@@ -53,7 +57,7 @@ class CellMaker:
             self.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {dyes}")
   
         else:
-            #CREATE META-DATA STORE
+            #CREATE META-DATA STORE (PULL FROM DATABASE)
             print(f'NOT FOUND; CREATING @ {meta_store}')
 
 
@@ -82,21 +86,38 @@ class CellMaker:
 
 
     def start_labels(self):
-        """Get aligned images
+        """1. USE DASK TO 'TILE' IMAGES
+           2. USE 
         """
 
 
         #add cell type to logs, pass argument to function
         #only premotor cell type for now
 
-
+        #READ FULL-RESOLUTION TIFF FILES (FOR NOW)
         INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
-        files = sorted(os.listdir(INPUT))
-        for file in files:
-            filepath = os.path.join(INPUT, file)
-            ##### do stuff on each file here
-            print(filepath)
+        print(f'INPUT: {INPUT}')
+        total_sections = len(sorted(os.listdir(INPUT)))
+        print(f'total sections_TIFF: {total_sections}')
 
+        #ALT PROCESSING: READ OME-ZARR DIRECTLY AND STORE REFERENCES TO EACH SECTION
+        #FOLLOWING CODE FUNCTIONAL AS OF 9-NOV-2023
+        # INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
+        # print(f'INPUT: {INPUT}')
+        #
+        # # Open the OME-Zarr file
+        # store = parse_url(INPUT, mode="r").store
+        # reader = Reader(parse_url(INPUT))
+        # nodes = list(reader())
+        # image_node = nodes[0]  # first node is image pixel data
+        # dask_data = image_node.data
+        # total_sections = dask_data[0].shape[2]
+        # print(f'total sections_OME-Zarr: {total_sections}')
+
+        # for file in files:
+        #     filepath = os.path.join(INPUT, file)
+        #     ##### do stuff on each file here
+        #     print(filepath)
 
 
 
