@@ -10,7 +10,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer,
     calculate_factors
 from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
-XY_CHUNK = 512
+XY_CHUNK = 128
 
 
 class NgPrecomputedMaker:
@@ -64,10 +64,13 @@ class NgPrecomputedMaker:
         return midfile, file_keys, volume_size, num_channels
 
     def create_neuroglancer(self):
-        """create the Seung lab cloud volume format from the image stack"""
+        """create the Seung lab cloud volume format from the image stack
+        For a large isotropic data set, Allen uses chunks = [128,128,128]
+        """
 
         if self.downsample:
-            chunks = [64, 64, 1]
+            xy_chunk = int(XY_CHUNK//2)
+            chunks = [xy_chunk, xy_chunk, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
@@ -116,7 +119,7 @@ class NgPrecomputedMaker:
         chunks = [XY_CHUNK, XY_CHUNK, 1]
         mips = 8
         if self.downsample:
-            xy_chunk = int(XY_CHUNK//8)
+            xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, 1]
             mips = 4
         
@@ -133,11 +136,15 @@ class NgPrecomputedMaker:
         self.logevent(f"INPUT_DIR: {INPUT_DIR}")
         self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
         workers =self.get_nworkers()
-        chunks[2] = 64
+        if self.downsample:
+            chunks[2] = xy_chunk
+        else:
+            chunks[2] = XY_CHUNK
+
+
         tq = LocalTaskQueue(parallel=workers)
         if self.section_count < 100:
             chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
-            #mips = int(mips//2)
 
         shard = True
         if shard:
@@ -162,7 +169,6 @@ class NgPrecomputedMaker:
             tasks = tc.create_downsampling_tasks(
                 cv.layer_cloudpath,
                 num_mips=mips,
-                chunk_size=chunks,
                 compress=True,
             )
             tq.insert(tasks)
