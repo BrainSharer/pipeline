@@ -143,11 +143,12 @@ class NgPrecomputedMaker:
 
 
         tq = LocalTaskQueue(parallel=workers)
-        if self.section_count < 100:
-            chunks = [chunks[0], chunks[0], int(chunks[2]//2)]
+        #if self.section_count < 100:
+        #    chunks = []
 
         shard = True
         if shard:
+            print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
             tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, chunk_size=chunks, mip=0, fill_missing=True)
             tq.insert(tasks)
             tq.execute()
