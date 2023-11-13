@@ -3,9 +3,9 @@ The only required argument is the animal and step. By default it will work on ch
 and downsample = True. Run them in this sequence:
 
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 2|3 --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 1 downsample false --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 2|3 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 downsample false --task
 
 Explanation for the tasks:
 
