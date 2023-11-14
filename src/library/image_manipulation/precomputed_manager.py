@@ -6,11 +6,10 @@ from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 
 
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, calculate_chunks, \
-    calculate_factors
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
-XY_CHUNK = 64
+XY_CHUNK = 128
 
 
 class NgPrecomputedMaker:
@@ -68,7 +67,7 @@ class NgPrecomputedMaker:
         For a large isotropic data set, Allen uses chunks = [128,128,128]
         """
 
-        if self.downsample:
+        if self.downsample or self.section_count < 100:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
@@ -82,12 +81,12 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-        """
+        
         starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
-        """
+        
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
@@ -118,10 +117,9 @@ class NgPrecomputedMaker:
 
         chunks = [XY_CHUNK, XY_CHUNK, 1]
         mips = 8
-        if self.downsample:
+        if self.downsample or self.section_count < 100:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, 1]
-            mips = 4
         
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
@@ -143,8 +141,6 @@ class NgPrecomputedMaker:
 
 
         tq = LocalTaskQueue(parallel=workers)
-        #if self.section_count < 100:
-        #    chunks = []
 
         shard = True
         if shard:
