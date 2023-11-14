@@ -90,6 +90,10 @@ class NgPrecomputedMaker:
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        if self.debug:
+            #num_channels = 1
+            print(f'volume_size={volume_size} num_channels={num_channels}')
+            
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
@@ -114,6 +118,10 @@ class NgPrecomputedMaker:
     def create_downsamples(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
         """
+
+        INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
+        midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
 
         chunks = [XY_CHUNK, XY_CHUNK, 1]
         mips = 8
@@ -141,9 +149,7 @@ class NgPrecomputedMaker:
 
 
         tq = LocalTaskQueue(parallel=workers)
-
-        shard = True
-        if shard:
+        if num_channels == 1:
             print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
             tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, chunk_size=chunks, mip=0, fill_missing=True)
             tq.insert(tasks)
