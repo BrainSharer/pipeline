@@ -3,7 +3,7 @@ It also has the main class to convert numpy arrays (images) into the precomputed
 """
 
 import os
-from skimage import io
+from skimage import color
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 import json
@@ -311,8 +311,8 @@ class NumpyToNeuroglancer():
 
         img = read_image(infile)
         if img.ndim > 2:
-            print(f'{infile }Number of dimensions = {img.ndim} shape={img.shape}')
-            img = img[:,:,0]
+            #print(f'{infile }Number of dimensions = {img.ndim} shape={img.shape}')
+           img = color.rgb2gray(img)
 
         try:
             img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
