@@ -123,11 +123,11 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
 
-        chunks = [XY_CHUNK, XY_CHUNK, 1]
+        chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
         mips = 8
         if self.downsample or self.section_count < 100:
             xy_chunk = int(XY_CHUNK//2)
-            chunks = [xy_chunk, xy_chunk, 1]
+            chunks = [xy_chunk, xy_chunk, xy_chunk]
         
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
@@ -142,11 +142,6 @@ class NgPrecomputedMaker:
         self.logevent(f"INPUT_DIR: {INPUT_DIR}")
         self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
         workers =self.get_nworkers()
-        if self.downsample:
-            chunks[2] = xy_chunk
-        else:
-            chunks[2] = XY_CHUNK
-
 
         tq = LocalTaskQueue(parallel=workers)
         if num_channels == 1:
