@@ -10,7 +10,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer,
     calculate_factors
 from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
-XY_CHUNK = 128
+XY_CHUNK = 64
 
 
 class NgPrecomputedMaker:
