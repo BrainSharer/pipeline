@@ -91,7 +91,6 @@ class NgPrecomputedMaker:
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         if self.debug:
-            #num_channels = 1
             print(f'volume_size={volume_size} num_channels={num_channels}')
             
         ng = NumpyToNeuroglancer(

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float
+from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float, Boolean
 from sqlalchemy.orm import relationship
 
 from library.database_model.atlas_model import Base, AtlasModel
@@ -38,6 +38,7 @@ class ScanRun(Base, AtlasModel):
     height = Column(Integer, default=0, nullable=False)
     rotation = Column(Integer, default=0, nullable=False)
     flip = Column(Enum("none", "flip", "flop"))
+    mask = Column(Boolean, default=True, nullable=False)
 
     comments = Column(String)
 

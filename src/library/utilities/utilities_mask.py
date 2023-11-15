@@ -81,40 +81,6 @@ def normalize_image(img):
     return img
 
 
-def scaledXXX(img, mask, scale=30000):
-    """This scales the image to the limit specified. You can get this value
-    by looking at the combined histogram of the image stack. It is quite
-    often less than 30000 for channel 1.
-    One of the reasons this takes so much RAM is a large float64 array is being
-    multiplied by another large array. That is WHERE all the RAM is going!!!!!
-
-    :param img: image we are working on.
-    :param mask: binary mask file
-    :param epsilon:
-    :param limit: max value we wish to scale to
-    :return: scaled image in 16bit format
-    """
-    dtype = img.dtype
-    epsilon = 0.99
-    img = img * (mask > 0)
-    upper = int(np.quantile(img, epsilon)) # gets almost the max value of img
-    img[img > upper] = upper
-    img = rescale_intensity(img, out_range=(0, upper)).astype(dtype)
-    #print(f'\nUpper={upper}')
-    """
-    _max = np.quantile(img, epsilon)
-    scaled = (img * (scale / _max)).astype(np.uint16) # scale the image from original values to e.g., 30000/10000
-    if debug:
-        print(f'Scaled image max={scaled.max()} @ epsilon ={round(epsilon,3)}')
-    """
-
-    scaled = (img * (scale // upper)).astype(dtype) # scale the image from original values to e.g., 30000/10000
-    del img
-    #scaled[scaled > _range] = _range # if values are > 16bit, set to 16bit
-    scaled = scaled * (mask > 0) # just work on the non masked values. This is where all the RAM goes!!!!!!!
-    del mask
-    return scaled
-
 def scaled(img, mask, scale=30000):
     """First we find really high values, which are the bright spots and turn them down
     """
@@ -187,7 +153,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, nomask = file_key
+    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -198,7 +164,7 @@ def clean_and_rotate_image(file_key):
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
 
-    if not nomask:
+    if mask_image:
         cleaned = crop_image(cleaned, mask)
     del img
     del mask
