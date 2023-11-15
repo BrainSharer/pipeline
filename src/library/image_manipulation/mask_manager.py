@@ -48,7 +48,7 @@ class MaskManager:
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             mask = mask[:, :, 2]
             mask[mask > 0] = 255
-            if self.nomask:
+            if not self.mask:
                 # entire image is just white
                 mask[mask == 0] = 255
             cv2.imwrite(maskpath, mask.astype(np.uint8))
