@@ -7,7 +7,6 @@ import igneous.task_creation as tc
 
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
 XY_CHUNK = 128
 
@@ -90,8 +89,7 @@ class NgPrecomputedMaker:
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
-        if self.debug:
-            print(f'volume_size={volume_size} num_channels={num_channels}')
+        print(f'volume_size={volume_size} num_channels={num_channels} dtype={midfile.dtype}')
             
         ng = NumpyToNeuroglancer(
             self.animal,
@@ -127,6 +125,8 @@ class NgPrecomputedMaker:
         if self.downsample or self.section_count < 100:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
+            mips = 4
+
         
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
@@ -145,32 +145,33 @@ class NgPrecomputedMaker:
         tq = LocalTaskQueue(parallel=workers)
         if num_channels == 1:
             print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
-            tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, chunk_size=chunks, mip=0, fill_missing=True)
+            tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, 
+                                                         chunk_size=chunks, mip=0, fill_missing=True)
             tq.insert(tasks)
             tq.execute()
+            print(f'Finished sharded transfer transfer tasks with chunks={chunks}')
 
             cv = CloudVolume(outpath)
             for mip in range(0, mips):
                 print(f'Creating downsampled shards at mip={mip}')
-                tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, mip=mip, fill_missing=True)
+                tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, 
+                                                               mip=mip)
                 tq.insert(tasks)
                 tq.execute()
         else:
             print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
-            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, chunk_size=chunks, mip=0, skip_downsamples=True)
+            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips,
+                                             chunk_size=chunks, mip=0, skip_downsamples=True)
             tq.insert(tasks)
             tq.execute()
             print('Finished transfer tasks')
-            print(f'Creating downsample tasks with mips={mips} and chunks={chunks}')
-            cv = CloudVolume(outpath)
-            tasks = tc.create_downsampling_tasks(
-                cv.layer_cloudpath,
-                num_mips=mips,
-                compress=True,
-            )
-            tq.insert(tasks)
-            tq.execute()
-        
+            for mip in range(0, mips):
+                cv = CloudVolume(outpath, mip)
+                print(f'Creating downsample tasks at mip={mip}')
+                tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
+                                                     num_mips=1, compress=True)
+                tq.insert(tasks)
+                tq.execute()
 
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
