@@ -121,7 +121,7 @@ class NgPrecomputedMaker:
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
 
         chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
-        mips = 8
+        mips = 7
         if self.downsample or self.section_count < 100:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
@@ -176,14 +176,14 @@ class NgPrecomputedMaker:
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
         workers =self.get_nworkers()
-        mips = [0, 1, 2, 3, 4, 5, 6, 7]
+        mips = 8
         if self.downsample:
-            mips = [0, 1, 2]
+            mips = 4
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunck=True)
         outpath = f"file://{OUTPUT_DIR}"
 
         tq = LocalTaskQueue(parallel=workers)
-        for mip in mips:
+        for mip in range(0, mips):
             # first pass: create per z-slice histogram
             cv = CloudVolume(outpath, mip)
             tasks = tc.create_luminance_levels_tasks(cv.layer_cloudpath, coverage_factor=0.01, mip=mip) 
