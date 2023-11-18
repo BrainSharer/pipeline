@@ -167,21 +167,25 @@ class MaskManager:
                 continue
 
             img = Image.open(filepath)
-            torch_input = transform(img)
-            torch_input = torch_input.unsqueeze(0)
-            self.loaded_model.eval()
-            with torch.no_grad():
-                pred = self.loaded_model(torch_input)
-            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
-            mask = masks[0]
-            dims = mask.ndim
-            if dims > 2:
-                mask = combine_dims(mask)
-            raw_img = np.array(img)
-            mask = mask.astype(np.uint8)
-            mask[mask > 0] = 255
-            merged_img = merge_mask(raw_img, mask)
-            del mask
+            if self.mask_image:
+                torch_input = transform(img)
+                torch_input = torch_input.unsqueeze(0)
+                self.loaded_model.eval()
+                with torch.no_grad():
+                    pred = self.loaded_model(torch_input)
+                masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                mask = masks[0]
+                dims = mask.ndim
+                if dims > 2:
+                    mask = combine_dims(mask)
+                raw_img = np.array(img)
+                mask = mask.astype(np.uint8)
+                mask[mask > 0] = 255
+                merged_img = merge_mask(raw_img, mask)
+                del mask
+            else:
+                img = np.array(img)
+                merged_img = np.zeros_like(img)
             cv2.imwrite(maskpath, merged_img)
 
     @staticmethod
