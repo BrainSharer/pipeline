@@ -188,7 +188,7 @@ class MaskManager:
                 merged_img = np.zeros(img.shape)
                 merged_img = merged_img.astype(np.uint8)
                 merged_img = 255
-            cv2.imwrite(maskpath, merged_img)
+            cv2.imwrite(maskpath, merged_img.astype(np.uint8))
 
     @staticmethod
     def resize_tif(file_key):
