@@ -46,11 +46,10 @@ class MaskManager:
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
-            mask = mask[:, :, 2]
-            mask[mask > 0] = 255
-            if not self.mask_image:
-                # entire image is just white
-                mask[mask == 0] = 255
+            if self.mask_image:
+                mask = mask[:, :, 2]
+                mask[mask > 0] = 255
+
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
 
