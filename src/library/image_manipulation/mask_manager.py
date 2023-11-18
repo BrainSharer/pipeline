@@ -48,7 +48,7 @@ class MaskManager:
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             mask = mask[:, :, 2]
             mask[mask > 0] = 255
-            if not self.mask:
+            if not self.mask_image:
                 # entire image is just white
                 mask[mask == 0] = 255
             cv2.imwrite(maskpath, mask.astype(np.uint8))
@@ -187,7 +187,7 @@ class MaskManager:
                 img = np.array(img)
                 merged_img = np.zeros_like(img)
                 merged_img = 255
-            cv2.imwrite(maskpath, merged_img)
+            cv2.imwrite(maskpath, merged_img.astype(np.uint8))
 
     @staticmethod
     def resize_tif(file_key):
