@@ -57,7 +57,7 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
         except:
             ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
             #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
-            print(f'Could not place {file} with rows, columns:{img.shape[0]}x{img.shape[1]} in rows,columns={max_height}x{max_width}')
+            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
     if img.ndim == 3:
         try:
             new_img = np.zeros([max_height, max_width, 3]) + bgcolor
