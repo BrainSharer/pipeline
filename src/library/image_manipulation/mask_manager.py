@@ -185,7 +185,7 @@ class MaskManager:
                 del mask
             else:
                 img = np.array(img)
-                merged_img = np.zeros_like(img)
+                merged_img = np.zeros_like(img) + 255
             cv2.imwrite(maskpath, merged_img)
 
     @staticmethod
