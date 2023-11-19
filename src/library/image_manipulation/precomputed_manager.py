@@ -118,7 +118,12 @@ class NgPrecomputedMaker:
 
         INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
-        midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+        try:
+            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+        except:
+            INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+
 
         chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
         mips = 7
