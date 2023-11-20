@@ -52,6 +52,22 @@ class MaskManager:
 
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
+        if self.tg:
+            for file in files:
+                maskpath = os.path.join(MASKS, file)
+                maskfillpath = os.path.join(MASKS, file)   
+                maskfile = Image.open(maskpath) # 
+                mask = np.array(maskfile)
+                white = np.where(mask==255)
+                whiterows = white[0]
+                whitecols = white[1]
+                firstrow = whiterows[0]
+                lastrow = whiterows[-1]
+                lastcol = whitecols[-1]
+                mask[firstrow:lastrow, 0:lastcol] = 255
+                cv2.imwrite(maskfillpath, mask.astype(np.uint8))
+
+
 
     def get_model_instance_segmentation(self, num_classes):
         """This loads the mask model CNN
