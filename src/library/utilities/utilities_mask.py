@@ -223,7 +223,7 @@ def get_image_box(mask):
     :return: numpy array of cropped image
     """
 
-    BUFFER = 2
+    BUFFER = 10
     mask = np.array(mask)
     mask[mask > 0] = 255
     _, thresh = cv2.threshold(mask, 200, 255, 0)

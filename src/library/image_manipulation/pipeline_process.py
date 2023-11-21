@@ -25,6 +25,8 @@ from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
+from library.database_model.scan_run import IMAGE_MASK
+
 try:
     from settings import data_path, host, schema
 except ImportError:
@@ -111,7 +113,7 @@ class Pipeline(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
-        print("\tmask:".ljust(20), f"{str(self.mask_image)}".ljust(20))
+        print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print()
 

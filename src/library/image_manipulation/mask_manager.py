@@ -13,6 +13,7 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+from library.database_model.scan_run import BOTTOM_MASK, FULL_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.utilities.utilities_process import test_dir, get_image_size
 
@@ -46,13 +47,13 @@ class MaskManager:
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
-            if self.mask_image:
+            if self.mask_image > 0:
                 mask = mask[:, :, 2]
                 mask[mask > 0] = 255
 
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
-        if self.tg:
+        if self.mask_image == BOTTOM_MASK:
             for file in files:
                 maskpath = os.path.join(MASKS, file)
                 maskfillpath = os.path.join(MASKS, file)   
@@ -66,7 +67,6 @@ class MaskManager:
                 lastcol = whitecols[-1]
                 mask[firstrow:lastrow, 0:lastcol] = 255
                 cv2.imwrite(maskfillpath, mask.astype(np.uint8))
-
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -106,9 +106,7 @@ class MaskManager:
         """Load the CNN model used to generate image masks
         """
         
-        modelpath = os.path.join(
-            "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth"
-        )
+        modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth")
         self.loaded_model = self.get_model_instance_segmentation(num_classes=2)
         workers = 2
         batch_size = 4
@@ -182,7 +180,7 @@ class MaskManager:
                 continue
 
             img = Image.open(filepath)
-            if self.mask_image:
+            if self.mask_image > 0:
                 torch_input = transform(img)
                 torch_input = torch_input.unsqueeze(0)
                 self.loaded_model.eval()
