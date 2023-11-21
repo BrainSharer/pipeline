@@ -13,9 +13,9 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
-from library.database_model.scan_run import BOTTOM_MASK, FULL_MASK
+from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
-from library.utilities.utilities_process import test_dir, get_image_size
+from library.utilities.utilities_process import read_image, test_dir, get_image_size
 
 
 class MaskManager:
@@ -57,14 +57,13 @@ class MaskManager:
             for file in files:
                 maskpath = os.path.join(MASKS, file)
                 maskfillpath = os.path.join(MASKS, file)   
-                maskfile = Image.open(maskpath) # 
-                mask = np.array(maskfile)
+                mask = read_image(maskfillpath)
                 white = np.where(mask==255)
                 whiterows = white[0]
-                whitecols = white[1]
+                #whitecols = white[1]
                 firstrow = whiterows[0]
                 lastrow = whiterows[-1]
-                lastcol = whitecols[-1]
+                lastcol = max(white[1])
                 mask[firstrow:lastrow, 0:lastcol] = 255
                 cv2.imwrite(maskfillpath, mask.astype(np.uint8))
 
