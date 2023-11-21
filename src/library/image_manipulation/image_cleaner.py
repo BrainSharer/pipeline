@@ -5,6 +5,7 @@ import os
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
+from library.database_model.scan_run import FULL_MASK
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
 
@@ -23,7 +24,7 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            if self.mask_image: # don't crop images when you want the entire image
+            if self.mask_image == FULL_MASK: 
                 self.crop_all_images()
             self.create_cleaned_images_thumbnail(self.channel)            
         else:
@@ -46,7 +47,7 @@ class ImageCleaner:
         max_height = max(heights)
         if self.debug:
             print(f'Updating {self.animal} width={max_width} height={max_height}')
-        self.sqlController.update_cropped_data(self.sqlController.scan_run.id, max_width, max_height)
+        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
         
 
     def create_cleaned_images_thumbnail(self, channel):

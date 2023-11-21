@@ -4,7 +4,7 @@ from PIL import Image
 from library.controller.scan_run_controller import ScanRunController
 Image.MAX_IMAGE_PIXELS = None
 
-from library.utilities.utilities_process import get_image_size
+from library.utilities.utilities_process import get_image_size, read_image
 
 
 class PrepCreater:
@@ -19,8 +19,19 @@ class PrepCreater:
         height are correct.
         """
         if self.channel == 1 and self.downsample:
-            scanrunController = ScanRunController(self.session)
-            scanrunController.update_scanrun(self.sqlController.scan_run.id)
+            INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
+            files = sorted(os.listdir(INPUT))
+            widths = []
+            heights = []
+            for file in files:
+                filepath = os.path.join(INPUT, file)
+                img = read_image(filepath)
+                widths.append(img.shape[1])
+                heights.append(img.shape[0])
+            max_width = max(widths)
+            max_height = max(heights)
+            self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
+
 
     def apply_QC(self):
         """Applies the inclusion and replacement results defined by the user on the Django admin portal for the Quality Control step
