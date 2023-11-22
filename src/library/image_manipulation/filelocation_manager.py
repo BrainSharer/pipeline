@@ -41,7 +41,7 @@ class FileLocationManager(object):
         self.neuroglancer_data = os.path.join(self.www, "neuroglancer_data")
         self.neuroglancer_progress = os.path.join(self.neuroglancer_data, 'progress')
         self.ome_zarr_data = os.path.join(self.root, stack, "ome-zarr")
-        self.cell_labels_data = os.path.join(self.root, "cell_labels")
+        self.cell_labels_data = os.path.join(self.prep, "cell_labels")
         self.section_web = os.path.join(self.www, "section")
         self.tif = os.path.join(self.prep, "tif")
         self.thumbnail = os.path.join(self.prep, "1", "thumbnail")
