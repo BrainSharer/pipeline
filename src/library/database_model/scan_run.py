@@ -1,7 +1,12 @@
-from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float
+from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float, Boolean
 from sqlalchemy.orm import relationship
 
 from library.database_model.atlas_model import Base, AtlasModel
+NO_MASK = 0
+FULL_MASK = 1
+BOTTOM_MASK = 2
+IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK'}
+
 
 class ScanRun(Base, AtlasModel):  
     """This class describes the blueprint of a scan. Each animal will usually 
@@ -38,6 +43,7 @@ class ScanRun(Base, AtlasModel):
     height = Column(Integer, default=0, nullable=False)
     rotation = Column(Integer, default=0, nullable=False)
     flip = Column(Enum("none", "flip", "flop"))
+    mask = Column(Integer, default=FULL_MASK, nullable=False)
 
     comments = Column(String)
 

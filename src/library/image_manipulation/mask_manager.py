@@ -13,8 +13,9 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
-from library.utilities.utilities_process import test_dir, get_image_size
+from library.utilities.utilities_process import read_image, test_dir, get_image_size
 
 
 class MaskManager:
@@ -46,12 +47,25 @@ class MaskManager:
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
-            mask = mask[:, :, 2]
-            mask[mask > 0] = 255
-            if self.nomask:
-                # entire image is just white
-                mask[mask == 0] = 255
+            if self.mask_image > 0:
+                mask = mask[:, :, 2]
+                mask[mask > 0] = 255
+
             cv2.imwrite(maskpath, mask.astype(np.uint8))
+
+        if self.mask_image == BOTTOM_MASK:
+            for file in files:
+                maskpath = os.path.join(MASKS, file)
+                maskfillpath = os.path.join(MASKS, file)   
+                mask = read_image(maskfillpath)
+                white = np.where(mask==255)
+                whiterows = white[0]
+                #whitecols = white[1]
+                firstrow = whiterows[0]
+                lastrow = whiterows[-1]
+                lastcol = max(white[1])
+                mask[firstrow:lastrow, 0:lastcol] = 255
+                cv2.imwrite(maskfillpath, mask.astype(np.uint8))
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -91,9 +105,7 @@ class MaskManager:
         """Load the CNN model used to generate image masks
         """
         
-        modelpath = os.path.join(
-            "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth"
-        )
+        modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth")
         self.loaded_model = self.get_model_instance_segmentation(num_classes=2)
         workers = 2
         batch_size = 4
@@ -167,22 +179,28 @@ class MaskManager:
                 continue
 
             img = Image.open(filepath)
-            torch_input = transform(img)
-            torch_input = torch_input.unsqueeze(0)
-            self.loaded_model.eval()
-            with torch.no_grad():
-                pred = self.loaded_model(torch_input)
-            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
-            mask = masks[0]
-            dims = mask.ndim
-            if dims > 2:
-                mask = combine_dims(mask)
-            raw_img = np.array(img)
-            mask = mask.astype(np.uint8)
-            mask[mask > 0] = 255
-            merged_img = merge_mask(raw_img, mask)
-            del mask
-            cv2.imwrite(maskpath, merged_img)
+            if self.mask_image > 0:
+                torch_input = transform(img)
+                torch_input = torch_input.unsqueeze(0)
+                self.loaded_model.eval()
+                with torch.no_grad():
+                    pred = self.loaded_model(torch_input)
+                masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                mask = masks[0]
+                dims = mask.ndim
+                if dims > 2:
+                    mask = combine_dims(mask)
+                raw_img = np.array(img)
+                mask = mask.astype(np.uint8)
+                mask[mask > 0] = 255
+                merged_img = merge_mask(raw_img, mask)
+                del mask
+            else:
+                img = np.array(img)
+                merged_img = np.zeros(img.shape)
+                merged_img = merged_img.astype(np.uint8)
+                merged_img[merged_img == 0] = 255
+            cv2.imwrite(maskpath, merged_img.astype(np.uint8))
 
     @staticmethod
     def resize_tif(file_key):

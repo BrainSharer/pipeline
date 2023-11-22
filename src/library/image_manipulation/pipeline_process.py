@@ -25,6 +25,8 @@ from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
+from library.database_model.scan_run import IMAGE_MASK
+
 try:
     from settings import data_path, host, schema
 except ImportError:
@@ -62,11 +64,9 @@ class Pipeline(
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
 
-    #animal, rescan_number=rescan_number, channel=channel, downsample=downsample, nomask=nomask, task=task, debug=debug)
-
 
     def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
-                 nomask=False, task='status', debug=False):
+                 task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
@@ -97,7 +97,7 @@ class Pipeline(
         self.sqlController = SqlController(animal, rescan_number)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
-        self.nomask = nomask
+        self.mask_image = self.sqlController.scan_run.mask
         self.check_programs()
         self.section_count = self.get_section_count()
         self.multiple_slides = []
@@ -113,7 +113,7 @@ class Pipeline(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
-        print("\tnomask:".ljust(20), f"{str(self.nomask)}".ljust(20))
+        print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print()
 
@@ -226,21 +226,21 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = [f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked', 
+            directories = [f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
                            f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
-                        f'C{self.channel}/thumbnail_aligned']
+                           f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
-            directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', f'C{self.channel}/full_cleaned',
-                        f'C{self.channel}/full_aligned']
+            directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', 
+                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_aligned']
             ndirectory = f'C{self.channel}'
 
-        
         for directory in directories:
             dir = os.path.join(prep, directory)
             if os.path.exists(dir):
                 filecount = len(os.listdir(dir))
-                print(f'Dir={directory} exists with {filecount} files. Sections count matches directory count: {section_count == filecount}')
+                print(f'Dir={directory} exists with {filecount} files.', end=' ') 
+                print(f'Sections count matches directory count: {section_count == filecount}')
             else:
                 print(f'Non-existent dir={dir}')
         del dir, directory, directories
@@ -254,10 +254,10 @@ class Pipeline(
     @staticmethod
     def check_programs():
         """
-        Make sure the necessary tools are installed on the machine and configures the memory of involving tools to work with
-        big images.
-        Some tools we use are based on java so we adjust the java heap size limit to 10 GB.  This is big enough for our purpose but should
-        be increased accordingly if your images are bigger
+        Make sure the necessary tools are installed on the machine and configures the memory of 
+        involving tools to work with big images.
+        We use to use java so we adjust the java heap size limit to 10 GB.  This is big enough 
+        for our purpose but should be increased accordingly if your images are bigger
         If the check failed, check the workernoshell.err.log in your project directory for more information
         """
         

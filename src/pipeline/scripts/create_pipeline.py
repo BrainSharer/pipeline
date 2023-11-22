@@ -87,13 +87,6 @@ if __name__ == "__main__":
         "--debug", help="Enter true or false", required=False, default="false", type=str
     )
     parser.add_argument(
-        "--nomask",
-        help="Do not create a mask. Use all the tissue.",
-        required=False,
-        default=False,
-        type=str,
-    )
-    parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
                         extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|status|cell_labels",
@@ -109,7 +102,6 @@ if __name__ == "__main__":
     channel = args.channel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    nomask = bool({"true": True, "false": False}[str(args.nomask).lower()])
     task = str(args.task).strip().lower()
     process_hostname = socket.gethostname()
 
@@ -118,7 +110,6 @@ if __name__ == "__main__":
         rescan_number=rescan_number,
         channel=channel,
         downsample=downsample,
-        nomask=nomask,
         task=task,
         debug=debug,
     )
