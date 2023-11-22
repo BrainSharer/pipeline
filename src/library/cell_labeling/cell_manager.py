@@ -3,6 +3,7 @@ from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 import dask
 from dask import delayed
+import dask.dataframe as dd
 import dask.array as da
 import imageio.v2 as imageio
 from pathlib import Path
@@ -10,6 +11,7 @@ import cv2
 import numpy as np
 import pickle as pkl
 from compress_pickle import dump, load
+import pandas as pd
 
 sys.path.append(os.path.abspath('./../../'))
 # from library.utilities.utilities_process import SCALING_FACTOR, test_dir
@@ -30,10 +32,10 @@ class CellMaker:
 
     def check_prerequisites(self):
         '''
-        CELL LABELING REQUIRES A) AVAILABLE FULL-RESOLUTION IMAGES, B) 2 CHANNELS (NAME, TYPE), C) SCRATCH DIRECTORY, D) OUTPUT DIRECTORY
+        CELL LABELING REQUIRES A) AVAILABLE FULL-RESOLUTION IMAGES, B) 2 CHANNELS (NAME, TYPE), C) SCRATCH DIRECTORY, D) OUTPUT DIRECTORY, E) cell_definitions (manual training of what cell looks like)
         TODO: MOVE ASSERTIONS TO SEPARATE FUNCTION (UNIT TEST)
         '''
-        #CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 31-OCT-2023)
+        #CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 22-OCT-2023)
         # INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
         # print(f'OME-ZARR FOUND: {INPUT}') #SEND TO LOG FILE
 
@@ -80,7 +82,13 @@ class CellMaker:
 
             with open(meta_store, 'w') as fp:
                 json.dump(meta_data_info, fp, indent=4)
-            
+
+        #CHECK FOR CELL TRAINING DEFINITIONS FILE (average-cell_image.pkl)
+        self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
+        if self.avg_cell_img_file.is_file():
+            print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
+            self.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
+
 
     def start_labels(self):
         #only premotor cell type for now
@@ -136,20 +144,23 @@ class CellMaker:
         #OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER
         section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL
         
+        #ONLY LOAD AVERAGE CELL IMAGE ONCE
+        avg_cell_img = load(self.avg_cell_img_file)
+
         file_keys = []
         for section_number in range(section_count):
             if section_count > 1000:
                 str_section_number = str(section_number).zfill(4)
             else:
                 str_section_number = str(section_number).zfill(3) 
-            file_keys.append([str_section_number, segmentation_threshold, cell_radius, max_segment_size, OUTPUT])
+            file_keys.append([str_section_number, segmentation_threshold, cell_radius, max_segment_size, OUTPUT, avg_cell_img])
         
         #TODO: remove comments [that skip this section]
-        # if self.debug:
-        #     for file_key in tuple(file_keys):
-        #         self.identify_cell_candidates(file_key)
-        # else:
-        #     pass
+        if self.debug:
+            for file_key in tuple(file_keys):
+                self.identify_cell_candidates(file_key)
+        else:
+            pass
 
         #     #self.run_commands_concurrently(ng.process_image, file_keys, workers)
         #     file_keys = [self.animal, disk = self.OUTPUT, segmentation_threshold=2000]
@@ -157,35 +168,27 @@ class CellMaker:
 
         # self.create_features_for_all_sections(self.animal, disk = self.OUTPUT, segmentation_threshold=2000, njobs=max_processes)
         
-        self.logevent(f"DEBUG: start_labels - STEP 3 (CREATE CELL FEATURES)")
-        #ask Kui if we can do this per section or if we need to complete prior step (all sections) first
+        
+        #TODO: REMOVE/INTEGRATE AT END OF CELL CANDIDATE IDENTIFICATION (PER SECTION) - FOR TESTING ONLY
+        # section='001'
+        # avg_cell_img = load(self.avg_cell_img_file)
+        # self.calculate_features(section, avg_cell_img, OUTPUT)
 
-
-        if self.debug:
-            for file_key in tuple(file_keys):
-                self.calculate_features(file_key)
-        else:
-            pass
-
-        #org code below:
-        # finder = FeatureFinder(animal,section = section,*args,**kwargs)
-        # if not os.path.exists(finder.get_feature_save_path()):
-        #     finder.calculate_features()
-        #     finder.save_features()
-
+        # if self.debug:
+        #     for file_key in tuple(file_keys):
+        #         self.calculate_features(file_key)
+        # else:
+        #     pass
 
         self.logevent(f"DEBUG: start_labels - STEP 4 (RUN DETECTION)")
-        #what is difference betwen detect_cell and detect_cell_multithreshold (is this for Yoav testing?)
-        if self.debug:
-            for file_key in tuple(file_keys):
-                self.detect_cell(file_key)
-                #break
-        else:
-            pass
+        
+        
+        
 
 
     def identify_cell_candidates(self, file_key: tuple):
         '''2. IDENTIFY CELL CANDIDATES - PREV: find_examples()
+                -REQUIRES IMAGE TILING OR DASK VIRTUAL TILES PRIOR TO RUNNING
 
                 THIS SINGLE METHOD WILL BE RUN IN PARALLEL FOR EACH SECTION
                 -CONSISTS OF 3 SUB-STEPS:
@@ -193,18 +196,14 @@ class CellMaker:
                 B) example finder (identification of cell candidates)
                 C) example saver (saving of cell candidates) 
 
-                REQUIRES IMAGE TILING OR DASK VIRTUAL TILES PRIOR TO RUNNING
-
                 #2-1) LOOP THROUGH EACH OF TILES & PROCESS (PREV: load_and_preprocess_image())
                 #STEP INVOLVES COMPARING EACH TILE IN BOTH CHANNELS AND FINDING DIFFERENCES
-                #STORED IN: difference_ch1, difference_ch3
                 
                 #2-2) IDENTIFY POTENTIAL CELLS: find_connected_segments() #rename
-                #STORED IN: segment_location
 
                 #2-3) GET EXAMPLES & SAVE cell candidates
         '''
-        section_number, segmentation_threshold, cell_radius, max_segment_size, OUTPUT = file_key
+        section_number, segmentation_threshold, cell_radius, max_segment_size, OUTPUT, avg_cell_img = file_key
         output_path = Path(OUTPUT, 'pipeline', self.animal, 'cell_candidates')
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{section_number}.gz')
@@ -231,25 +230,16 @@ class CellMaker:
         #SHAPE WILL BE SAME FOR BOTH CHANNELS (stores as y-axis then x-axis)
         x_dim = org_img_shape[0][1]
         y_dim = org_img_shape[0][0]
-        #print(f'DEBUG: org_img_shape [SWAP AXES LATER] - {org_img_shape[0]}')
-              
-        #AUDIT W/ FAKE DIMENSIONS
-        # x_dim = 7200*5
-        # y_dim = 32500*2
-
+        
         # Create a Dask array from the delayed tasks (NOTE: DELAYED)
         image_stack_virus = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_virus]
         image_stack_dye = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_dye]
         data_virus = dask.compute(image_stack_virus[0])[0] #FULL IMAGE
         data_dye = dask.compute(image_stack_dye[0])[0] #FULL IMAGE
 
-        #print(f'data_virus.shape {data_virus.shape}, data_virus type: {type(data_virus)}')
-
         #SWAP X AND Y AXES (READ IN Y-AXIS, THEN X-AXIS BUT WE WANT X,Y)
         data_virus = np.swapaxes(data_virus, 1, 0)
         data_dye = np.swapaxes(data_dye, 1, 0)
-
-        #print(f'FULL RESOLUTION IMAGE SHAPE: {data_virus.shape}') #TODO: REMOVE
 
         #FINAL VERSION BELOW:
         # x_window = virtual_tile_width = x_dim // total_virtual_tiles
@@ -261,20 +251,16 @@ class CellMaker:
         total_virtual_tile_columns = 5
         x_window = virtual_tile_width = int(math.ceil(x_dim / total_virtual_tile_rows))
         y_window = virtual_tile_height = int(math.ceil(y_dim / total_virtual_tile_columns))
-        
         #total_virtual_tile_columns = total_virtual_tile_rows = total_virtual_tiles = total_virtual_tile_rows * total_virtual_tile_columns
-        #print(f'DEBUG VIRTUAL TILE DIMENSIONS- x_window:{x_window}, y_window:{y_window}')#TODO: REMOVE
         #TODO: FOR TESTING - REMOVE END
 
         cell_candidates=[]
-        #print(f'DEBUG: total_virtual_tile_rows {total_virtual_tile_rows}, total_virtual_tile_columns {total_virtual_tile_columns}')
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
                 x_start = row*x_window
                 x_end = x_window*(row+1)
                 y_start = col*y_window
                 y_end = y_window*(col+1)
-                #print(f'DEBUG: x_start, x_end, y_start, y_end - {x_start, x_end, y_start, y_end}; DIMENSIONS [SHOULD BE] - {x_end-x_start, y_end-y_start}')
                 
                 image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS NUMPY ARRAY
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS NUMPY ARRAY
@@ -291,7 +277,6 @@ class CellMaker:
                 #print(f'debug connected_segments: {connected_segments}')
 
                 if connected_segments[0] > 2: #FOUND CELL CANDIDATE (first element of tuple is count)
-                    #print('FOUND CELL CANDIDATES:', connected_segments[0]) #TODO: REMOVE
                     cell_candidates.append(self.filter_cell_candidates(section_number, connected_segments, max_segment_size, cell_radius, x_window, y_window, absolute_coordinates, difference_ch1, difference_ch3))
                 # else:
                 #     print(f'NO CELL CANDIDATE (COUNT {connected_segments[0]} DID NOT MEET THRESHOLD: 2)') #TODO: REMOVE
@@ -301,40 +286,88 @@ class CellMaker:
         print(f'SAVE CELL CANDIDATES @ {output_file}')
         dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
 
-        # start = time.time()
-        dump(cell_candidates, output_file, compression="zipfile", allowZip64 = True, set_default_extension=True) #must allow 64-bit zip files (just in case)
-        # stop = time.time()
-        # print(f'DEBUG: elapsed time: {stop - start}s')
-
+        #MOVE ON TO FEATURE CALCULATION WHILE WE HAVE ALL DATA LOADED IN RAM
+        if len(cell_candidates) > 0:
+            self.calculate_features(section_number, avg_cell_img, OUTPUT)
+        else:
+            print(f'NO CELL CANDIDATES FOUND FOR SECTION {section_number}; SKIPPING FEATURE CALCULATION')
     
-    def calculate_features(self, file_key: tuple):
+
+    def calculate_features(self, section, avg_cell_img, OUTPUT):
         '''3. CALCULATE CELL FEATURES
 
             THIS SINGLE METHOD WILL BE RUN IN PARALLEL FOR EACH SECTION
             -CONSISTS OF 6 SUB-STEPS:
-            A) LOAD THE MANUAL ANNOTATIONS TRAINING DATA (AVERAGE HISTORICAL CELL IMAGE) - 2 ARRAYS (CH1, CH3)
+            A) LOAD THE MANUAL ANNOTATIONS TRAINING DATA (AVERAGE HISTORICAL CELL IMAGE: average_cell_image.pkl)
             B) load information from cell candidates (pickle files)
-            C) calculate_correlation_and_energy FOR CHANNEL 1
-            D) calculate_correlation_and_energy FOR CHANNEL 3
-            E) features_using_center_connectd_components(example)
-            F) SAVE FEATURES (CSV FILE)
+            C1) calculate_correlation_and_energy FOR CHANNEL 1
+            C2) calculate_correlation_and_energy FOR CHANNEL 3
+            D) features_using_center_connectd_components(example)
+            E) SAVE FEATURES (CSV FILE)
 
             REQUIRES PRIOR ID OF CELL CANDIDATES PRIOR TO RUNNING (ALL SECTIONS OR JUST SINGLE SECTION? - ASK KUI)
 
             PRIOR DOC: Master function, calls methods to calculate the features that are then stored in self.features
         '''
-            
+        output_path = Path(OUTPUT, 'pipeline', self.animal, 'cell_features')
+        output_path.mkdir(parents=True, exist_ok=True)
+        output_file = Path(output_path, f'cell_features_{section}.csv')
+
+        self.logevent(f"DEBUG: start_labels - STEP 3 (CREATE CELL FEATURES)")
+        print(f"DEBUG: start_labels - STEP 3 (CREATE CELL FEATURES)")
+
         #STEP 3-A)
-        # average_image_ch1 = 
-        # average_image_ch3 = 
+        #MOVED TO PRIOR STEP (CELL CANDIDATE IDENTIFICATION); NOW PASSED AS INPUT PARAMETER
 
-        #STEP 3-B) load information from cell candidates (pickle files from step 2)
+        #STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification)
+        input_file = Path(f'/scratch/pipeline/{self.animal}/cell_candidates/', f'extracted_cells_{section}.gz')
+        print(f'reading: {input_file}')
+        cell_candidate_data = load(input_file)
+        try:
+            print(f'CELL CANDIDATES COUNT: {len(cell_candidate_data[0])}')
+        except:
+            print('NOT AVAILABLE')
 
+        output_spreadsheet = []
+        for cell in range(len(cell_candidate_data[0])):
+            #VALIDATE FILE - MAY NOT BE NECESSARY IF WE DON'T HAVE FILES
+            if self.animal == cell_candidate_data[0][cell]["animal"] and section == cell_candidate_data[0][cell]["section"]:
+                absolute_coordinates_YX = cell_candidate_data[0][cell]["absolute_coordinates_YX"]
+                image_CH3 = cell_candidate_data[0][cell]['image_CH3']
+                image_CH1 = cell_candidate_data[0][cell]['image_CH1']
+                
+                #STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
+                ch1_corr, ch1_energy = self.calculate_correlation_and_energy(avg_cell_img['CH1'], image_CH1)
+                ch3_corr, ch3_energy = self.calculate_correlation_and_energy(avg_cell_img['CH3'], image_CH3)
+
+                #STEP 3-D) features_using_center_connectd_components
+                ch1_contrast, ch3_constrast, moments_data = self.features_using_center_connected_components(cell_candidate_data[0][cell])
+
+                # print(f'DEBUG: absolute_coordinates_YX: {absolute_coordinates_YX}')
+                # print(f'DEBUG: ch1_corr: {ch1_corr}, ch1_energy: {ch1_energy}, ch3_corr: {ch3_corr}, ch3_energy: {ch3_energy}')
+                # print(f'DEBUG: ch1_contrast: {ch1_contrast}, ch3_constrast: {ch3_constrast}, moments_data: {moments_data}')
+
+                #BUILD FEATURES DICTIONARY - can we remove 'label'?
+                spreadsheet_row = {'animal': self.animal, 'section': section, 'index': cell, 'label': 0, 'area': cell_candidate_data[0][cell]['area'], 
+                                      'height': cell_candidate_data[0][cell]['cell_shape_YX'][0], 'width': cell_candidate_data[0][cell]['cell_shape_YX'][1], 'row': absolute_coordinates_YX[0], 'col': absolute_coordinates_YX[1], 
+                                      'corr_CH1': ch1_corr, 'energy_CH1': ch1_energy, 'corr_CH3': ch3_corr, 'energy_CH3': ch3_energy, 'contrast1': ch1_contrast, 'contrast3': ch3_constrast}
+                spreadsheet_row.update(moments_data[0])
+                output_spreadsheet.append(spreadsheet_row)
+
+        # print(f'DEBUG: output_spreadsheet: {output_spreadsheet}')
+
+        #TODO:contrast and moments are wrong
+        #maybe move to dask dataframe, time permitting
+
+        df = pd.DataFrame(output_spreadsheet)
+        df.to_csv(output_file, index=False)
+
+
+        #TODO: REMOVE - NOTES:
         #we need to provide absolute coordinates for each feature (already in pickle file: absolute_coordinates_YX)
         #this will replace: self.copy_information_from_examples(example)
 
-
-        #OLD WILLIAM CONFUSING MESS
+        #OLD WILLIAM CONFUSING MESS - from calculate_features()
         # for tilei in range(len(self.Examples)):
         #     print(f'processing {tilei}')
         #     examples_in_tilei = self.Examples[tilei]
@@ -347,69 +380,60 @@ class CellMaker:
         #             self.calculate_correlation_and_energy(example,channel=3)
         #             self.features_using_center_connectd_components(example)
         #             self.features.append(self.featurei)
-
-
-        #STEP 3-C, 3-D) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
-        #STEP 3-C-1, 3-D-1) - SEEMS TO LOAD THE AVERAGE IMAGE & PERFORMS CALCULATION OF CORRELATION AND ENERGY?
-        #corr,energy = compute_image_features.calc_img_features(image, average_image)
         
-        #ch1 (CORRELATION AND ENERGY)
-        self.calc_img_features(image, average_image)  
 
-        #STEP 3-C-2, 3-D-2) #SOBEL EDGE DETECTOR - calc_img_features()
-        #STORES CORRELATION AND ENERGY IN self.featurei
-        
-        #ch3  (CORRELATION AND ENERGY)
-        self.calc_img_features(image, average_image)
-
-
-        #STEP 3-E-1) features_using_center_connectd_components()
-        #CONTAINS 4 SUB-METHODS: mask_mean(), append_string_to_every_key(), calc_moments_of_mask(), calc_contrasts_relative_to_mask()
-        #POPULATES image1, image3 with each channel image (is this the average image?)
-        #POPULATES mask WITH MASK FROM CELL CANDIDATE (is there an average mask?)
-        #CALCULATES 'MOMENTS OF MASK' (COULD THIS BE ANY MORE CONFUSING? IS THIS A HEART-TO-HEART?)
-        #CALCULATES CONTRASTS RELATIVE TO MASK (WHAT IS THIS?) SOMETHING WITH MASK MEAN BETWEEN THE CHANNELS
-        
-        #STEP 3-E-2) APPENDS FEATURE TO LIST OF FEATURES (self.features)
-        feature_list = self.features_using_center_connectd_components(self,example)
-        
-        #STEP 3-F-1) SAVE FEATURES (CSV FILE) - should match 'puntas_1_threshold_2000.csv' (example)
-
-
-    def calc_img_features(img,mean_s):
+    def calculate_correlation_and_energy(self, avg_cell_img, cell_candidate_img):  
         '''PART OF STEP 3. CALCULATE CELL FEATURES
 
+        CALCULATE CORRELATION [BETWEEN cell_candidate_img AND avg_cell_img] and AND ENERGY FOR CELL CANIDIDATE
+
+        NOTE: avg_cell_img AND cell_candidate_img CONTAIN RESPECTIVE CHANNELS PRIOR TO PASSING IN ARGUMENTS
+        N.B. THIS METHOD CONSOLIDATED WITH calc_img_features()
+
         PRIOR DOCSTRING: 
-            img = input image
-            mean_s: the untrimmed mean image
-            Computes the agreement between the gradient of the mean image and the gradient of this example
-            mean_x,mean_y = the gradients of the particular image
-            img_x,img_y = the gradients of the image
+        img = input image
+        mean_s: the untrimmed mean image
+        Computes the agreement between the gradient of the mean image and the gradient of this example
+        mean_x,mean_y = the gradients of the particular image
+        img_x,img_y = the gradients of the image
         '''
-            
-        img,mean=equalize_array_size_by_trimming(img,mean_s)
-        mean_x,mean_y=sobel(mean)
-        img_x,img_y=sobel(img)
-        
-        dot_prod = (mean_x*img_x)+(mean_y*img_y)
-        corr=np.mean(dot_prod.flatten())      #corr = the mean correlation between the dot products at each pixel location
-        
-        mag=np.sqrt(img_x*img_x + img_y*img_y)
-        energy=np.mean((mag*mean).flatten())  #energy: the mean of the norm of the image gradients at each pixel location
-        return corr,energy
 
-    def equalize_array_size_by_trimming(array1,array2):
-        '''PART OF STEP 3. CALCULATE CELL FEATURES'''
-        """makes array1 and array 2 the same size"""
-        size0=min(array1.shape[0],array2.shape[0])
-        size1=min(array1.shape[1],array2.shape[1])
-        array1=self.trim_array_to_size(array1,size0,size1)
-        array2=self.trim_array_to_size(array2,size0,size1)
-        return array1,array2    
+        #ENSURE IMAGE ARRAYS TO SAME SIZE
+        cell_candidate_img, avg_cell_img = self.equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
 
-    def trim_array_to_size(array,size0,size2):
-        '''PART OF STEP 3. CALCULATE CELL FEATURES'''
-        """trims an array to size"""
+        #COMPUTE NORMALIZED SOBEL EDGE MAGNITUDES
+        avg_cell_img_x, avg_cell_img_y = self.sobel(avg_cell_img)
+        cell_candidate_img_x, cell_candidate_img_y = self.sobel(cell_candidate_img)
+        
+        #corr = the mean correlation between the dot products at each pixel location
+        dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
+        corr = np.mean(dot_prod.flatten())      
+        
+        #energy: the mean of the norm of the image gradients at each pixel location
+        mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
+        energy = np.mean((mag * avg_cell_img).flatten())  
+
+        return corr, energy
+
+
+    def equalize_array_size_by_trimming(self, array1, array2):
+        '''PART OF STEP 3. CALCULATE CELL FEATURES
+        
+        PRIOR DOCSTRING:
+        makes array1 and array 2 the same size
+        '''
+        size0 = min(array1.shape[0], array2.shape[0])
+        size1 = min(array1.shape[1], array2.shape[1])
+        array1 = self.trim_array_to_size(array1, size0, size1)
+        array2 = self.trim_array_to_size(array2, size0, size1)
+        return array1, array2    
+
+    def trim_array_to_size(self, array, size0, size2):
+        '''PART OF STEP 3. CALCULATE CELL FEATURES
+        
+        PRIOR DOCSTRING:
+        trims an array to size
+        '''
         if(array.shape[0]>size0):
             size_difference=int((array.shape[0]-size0)/2)
             array=array[size_difference:size_difference+size0,:]
@@ -418,9 +442,28 @@ class CellMaker:
             array=array[:,size_difference:size_difference+size2]
         return array
 
-
-    def features_using_center_connectd_components(self,example):   
+    def sobel(self, img):
         '''PART OF STEP 3. CALCULATE CELL FEATURES
+
+        PRIOR DOCSTRING:
+        Compute the normalized sobel edge magnitudes
+        '''
+        sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
+        sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
+        _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
+        _std = np.sqrt((np.var(sobel_x)+np.var(sobel_y))/2)
+        sobel_x = (sobel_x - _mean) / _std
+        sobel_y = (sobel_y - _mean) / _std
+        return sobel_x, sobel_y
+
+    def features_using_center_connected_components(self, cell_candidate_data):   
+        '''PART OF STEP 3. CALCULATE CELL FEATURES
+
+        #CONTAINS 4 SUB-METHODS: mask_mean(), append_string_to_every_key(), calc_moments_of_mask(), calc_contrasts_relative_to_mask()
+        #POPULATES image1, image3 with each channel image (is this the average image?)
+        #POPULATES mask WITH MASK FROM CELL CANDIDATE (is there an average mask?)
+        #CALCULATES 'MOMENTS OF MASK' (COULD THIS BE ANY MORE CONFUSING? IS THIS A HEART-TO-HEART?)
+        #CALCULATES CONTRASTS RELATIVE TO MASK (WHAT IS THIS?) SOMETHING WITH MASK MEAN BETWEEN THE CHANNELS
         
         PRIOR DOCSTRING: calculated designed features for detection input
         '''
@@ -432,7 +475,8 @@ class CellMaker:
         def append_string_to_every_key(dictionary, post_fix): 
             return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
         
-        def calc_moments_of_mask(mask):   # calculate moments (how many) and Hu Moments (7)
+        def calc_moments_of_mask(mask):   
+            # calculate moments (how many) and Hu Moments (7)
             mask = mask.astype(np.float32)
             moments = cv2.moments(mask)
             """
@@ -450,45 +494,25 @@ class CellMaker:
                     );
             Hu Moments are described in this paper: https://www.researchgate.net/publication/224146066_Analysis_of_Hu's_moment_invariants_on_image_scaling_and_rotation
             """
+            
             huMoments = cv2.HuMoments(moments)
-            moments = append_string_to_every_key(moments,f'_mask')
-            self.featurei.update(moments)
-            self.featurei.update({'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)})
+            moments = append_string_to_every_key(moments, f'_mask')
+            return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)})
         
-        def calc_contrasts_relative_to_mask(mask,image1,image3):
-            self.featurei['contrast1']=mask_mean(mask,image1)
-            self.featurei['contrast3']=mask_mean(mask,image3)
+        mask = cell_candidate_data['mask']  
+        moments_data = calc_moments_of_mask(mask)
 
-        image1 = example['image_CH1']
-        image3 = example['image_CH3']
-        mask = example['mask']  
-        calc_moments_of_mask(mask)
-        calc_contrasts_relative_to_mask(mask,image1,image3)
+        #CALCULATE CONSTRASTS RELATIVE TO MASK
+        ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
+        ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
 
-
-    def save_features(self):
-        '''PART OF STEP 3. CALCULATE CELL FEATURES
-        
-        PRIOR DOCSTRING: save features for one section
-        '''
-        df=pd.DataFrame() #NOW HE WANTS TO USE PANDAS? REPLACE W/ DASK [IMPORT FEWER MODULES] - ref: https://docs.dask.org/en/stable/dataframe.html
-        i = 0
-        for featurei in self.features:
-            df_dict = pd.DataFrame(featurei,index = [i])
-            i+=1
-            df=pd.concat([df,df_dict])
-        outfile=self.get_feature_save_path()
-        print('df shape=',df.shape,'output_file=',outfile)
-        try:
-            df.to_csv(outfile,index=False)
-        except IOError as e:
-            print(e)
+        return (ch1_contrast, ch3_constrast, moments_data)
 
 
     def detect_cell(self, file_key: tuple):
-        ''' 
-        4. DETECT CELLS; PRODUCE CONFIDENCE INTERVALS PER CELL
+        ''' PART OF STEP 4. DETECT CELLS; PRODUCE CONFIDENCE INTERVALS PER CELL
 
+        PRIOR DOCSTRING:
         30 previously trained models are used to calculate a prediction score for features calculated in step
         The mean and standard deviation of the 30 detectors are then used to make a decision if a candidate is a sure or unsure detection.'''
         
@@ -538,6 +562,8 @@ class CellMaker:
 
 
     def capture_total_sections(self, input_format: str, INPUT):
+        '''PART OF STEP 1. USE DASK TO 'TILE' IMAGES
+        '''
         if input_format == 'tif':
             #READ FULL-RESOLUTION TIFF FILES (FOR NOW)
             #INPUT = self.fileLocationManager.get_full_aligned(channel=channel)
@@ -560,16 +586,16 @@ class CellMaker:
         return total_sections
     
 
-    def load_image(self, file):
+    def load_image(self, file: str):
         return imageio.imread(file)
     
 
     def subtract_blurred_image(self, image):
-        """
-        STEP INVOLVES COMPARING EACH TILE IN BOTH CHANNELS AND FINDING DIFFERENCES (DESCRIPTIONNOT ACCURATE)
-
+        '''PART OF STEP 2. IDENTIFY CELL CANDIDATES
+        
+        PRIOR DOCSTRING:
         average the image by subtracting gaussian blurred mean
-        """
+        '''
         image = np.float32(image)
 
         small = cv2.resize(image, (0, 0), fx=0.05, fy=0.05, interpolation=cv2.INTER_AREA)
@@ -581,7 +607,11 @@ class CellMaker:
     
 
     def find_connected_segments(self, image, segmentation_threshold) -> tuple:
-        """find connected segments (cell candidates)"""
+        '''PART OF STEP 2. IDENTIFY CELL CANDIDATES
+        
+        PRIOR DOCSTRING:
+        find connected segments (cell candidates)
+        '''
         n_segments, segment_masks, segment_stats, segment_location = cv2.connectedComponentsWithStats(np.int8(image > segmentation_threshold))
         segment_location = np.int32(segment_location)
         segment_location = np.flip(segment_location, 1) #why do we need to reverse axis order? Was William coding in a mirror?
@@ -589,7 +619,10 @@ class CellMaker:
 
 
     def filter_cell_candidates(self, section_number, connected_segments, max_segment_size, cell_radius, x_window, y_window, absolute_coordinates, difference_ch1, difference_ch3):
-        """creates examples for one tile
+        '''PART OF STEP 2. IDENTIFY CELL CANDIDATES
+        
+        PRIOR DOCSTRING:
+        creates examples for one tile
 
         :type tile: _type_
         :return: examples
@@ -599,7 +632,7 @@ class CellMaker:
         
         Area is for the object, where pixel values are not zero
         Segments are filtered to remove those that are too large or too small
-        """
+        '''
         n_segments, segment_masks, segment_stats, segment_location = connected_segments
         # print(f'DEBUG segment_location: {segment_location}')
         #segment_stats, segment_location may not be required if we are passing abosolute coordinates
@@ -632,12 +665,6 @@ class CellMaker:
 
             segment_mask = segment_masks[row_start:row_end, col_start:col_end]# == segmenti
 
-            # print(f'DEBUG - segment_mask.shape: {segment_mask.shape}')
-            # print(f'DEBUG - difference_ch3.shape: {difference_ch3.shape}')
-            # print(f'DEBUG - difference_ch1.shape: {difference_ch1.shape}')
-            # print(f'DEBUG - absolute_coordinates_YX: {absolute_coordinates[2]+segment_col, absolute_coordinates[0]+segment_row}')
-            # print(f'DEBUG - cell_shape_YX: {(height, width)}')
-
             candidate = {'animal': self.animal,
                        'section': section_number,
                        'area': object_area,
@@ -646,7 +673,7 @@ class CellMaker:
                     #    'height': height,
                     #    'width': width,
                        'absolute_coordinates_YX': (absolute_coordinates[2]+segment_col, absolute_coordinates[0]+segment_row),
-                       'cell_shape_YX:': (height, width),
+                       'cell_shape_YX': (height, width),
                        'image_CH3': difference_ch3[row_start:row_end, col_start:col_end].T,
                        'image_CH1': difference_ch1[row_start:row_end, col_start:col_end].T,
                        'mask': segment_mask}
