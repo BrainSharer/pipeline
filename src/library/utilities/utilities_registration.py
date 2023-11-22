@@ -83,6 +83,7 @@ def create_rigid_parameters(elastixImageFilter):
     """
 
     rigid_params = elastixImageFilter.GetDefaultParameterMap("rigid")
+    rigid_params["AutomaticTransformInitialization"] = ["true"]
     rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
     rigid_params["FixedInternalImagePixelType"] = ["float"]
     rigid_params["MovingInternalImagePixelType"] = ["float"]
@@ -99,7 +100,6 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
     rigid_params["Transform"] = ["EulerTransform"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
-    rigid_params["AutomaticTransformInitialization"] = ["true"]
     rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     rigid_params["MaximumNumberOfIterations"] = ["2500"]
@@ -302,6 +302,8 @@ def align_elastix(fixed, moving):
     R, x2, y2 = rigid
     x = float(x1) + float(x2)
     y = float(y1) + float(y2)
+    #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+    #R, x, y = rigid
     return float(R), float(x), float(y)
 
 
