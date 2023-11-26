@@ -90,10 +90,17 @@ class SectionRegistration(Pipeline):
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
 
-        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
+        elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
         elastixImageFilter.SetLogFileName('elastix.log')
 
         return elastixImageFilter
+    
+    def getMetricValue(self):
+        logpath = os.path.join(self.registration_output, 'elastix.log')
+        with open(logpath, "r") as fp:
+            for line in self.lines_that_start_with("Final", fp):
+                return line
+
     
     def get_transformations(self):
         transformations = {}
@@ -137,4 +144,6 @@ class SectionRegistration(Pipeline):
             fixed_index - 1, transformations)
         return transformation
 
-
+    @staticmethod
+    def lines_that_start_with(string, fp):
+        return [line for line in fp if line.startswith(string)]
