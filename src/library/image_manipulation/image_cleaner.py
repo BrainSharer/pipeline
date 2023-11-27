@@ -24,13 +24,13 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            if self.mask_image == FULL_MASK: 
-                self.crop_all_images()
+            if self.mask_image == FULL_MASK and self.channel == 1: 
+                self.get_crop_size()
             self.create_cleaned_images_thumbnail(self.channel)            
         else:
             self.create_cleaned_images_full_resolution(self.channel)
 
-    def crop_all_images(self):
+    def get_crop_size(self):
         MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(MASKS))
         widths = []
@@ -47,7 +47,6 @@ class ImageCleaner:
         max_height = max(heights)
         if self.debug:
             print(f'Updating {self.animal} width={max_width} height={max_height}')
-        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
         
 
     def create_cleaned_images_thumbnail(self, channel):
