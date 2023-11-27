@@ -47,6 +47,7 @@ class ImageCleaner:
         max_height = max(heights)
         if self.debug:
             print(f'Updating {self.animal} width={max_width} height={max_height}')
+        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
         
 
     def create_cleaned_images_thumbnail(self, channel):
