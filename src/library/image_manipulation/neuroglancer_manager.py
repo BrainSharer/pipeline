@@ -5,7 +5,6 @@ It also has the main class to convert numpy arrays (images) into the precomputed
 import os
 import sys
 from PIL import Image
-
 Image.MAX_IMAGE_PIXELS = None
 import json
 import numpy as np
