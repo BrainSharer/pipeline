@@ -172,7 +172,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
     #
-    LOD = 4
+    LOD = 0
     if sharded:
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
     else:
