@@ -30,7 +30,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE, calculate_chunks
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
 from library.utilities.utilities_process import get_cpus, get_hostname
 
 def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=False):
@@ -38,7 +38,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
     z = sqlController.scan_run.zresolution * 1000
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'full')
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full')
     MESH_INPUT_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_input_{scaling_factor}')
     MESH_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
     PROGRESS_DIR = os.path.join(fileLocationManager.neuroglancer_data, 'progress', f'mesh_{scaling_factor}')
@@ -47,7 +47,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     z *= scaling_factor
 
     scales = (int(xy), int(xy), int(z))
-    if 'godzilla' in get_hostname():
+    if 'tobor' in get_hostname():
         print(f'Cleaning {MESH_DIR}')
         if os.path.exists(MESH_DIR):
             shutil.rmtree(MESH_DIR)
@@ -77,7 +77,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
-        chunkZ //= 2
+        #chunkZ //= 2
 
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
@@ -116,7 +116,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         os.makedirs(MESH_DIR, exist_ok=True)
         layer_path = f'file://{MESH_DIR}'
         if sharded: 
-            tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, layer_path, mip=0, chunk_size=chunks)
+            tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
+                                                         layer_path, mip=0, 
+                                                         chunk_size=chunks, fill_missing=True)
         else:
             tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
 
@@ -126,9 +128,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
 
     print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks}')
     if sharded:
-        for mip in [0, 1]:
+        for mip in range(0, 4):
             tasks = tc.create_image_shard_downsample_tasks(
-                layer_path, mip=mip, chunk_size=chunks)
+                layer_path, mip=mip)
             tq.insert(tasks)
             tq.execute()
 
@@ -170,13 +172,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
     #
-    LOD = 2
+    LOD = 0
     if sharded:
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
     else:
         tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
 
-    print(f'Creating multires task with shards={str(sharded)} ')
+    print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
     tq.insert(tasks)    
     tq.execute()
 
