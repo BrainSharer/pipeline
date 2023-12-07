@@ -119,9 +119,8 @@ class VolumeRegistration:
     """
 
     def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', debug=False):
-        DATA = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        self.data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
-        self.data_path = DATA
         self.moving = moving
         self.animal = moving
         self.debug = debug

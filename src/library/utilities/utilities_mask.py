@@ -5,6 +5,7 @@ import sys
 import cv2
 import numpy as np
 from skimage.exposure import rescale_intensity
+from library.database_model.scan_run import FULL_MASK
 
 from library.utilities.utilities_process import read_image, write_image
 
@@ -164,7 +165,7 @@ def clean_and_rotate_image(file_key):
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
 
-    if mask_image:
+    if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
     del img
     del mask
