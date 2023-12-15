@@ -102,8 +102,7 @@ class CellMaker():
             self.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
         #CHECK FOR MODEL FILE (models_example.pkl)
-        #self.model_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example.pkl')
-        self.model_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example_new.pkl')
+        self.model_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example.pkl')
         if self.model_file.is_file():
             print(f'FOUND MODEL FILE @ {self.model_file}')
             self.logevent(f'FOUND MODEL FILE @ {self.model_file}')
@@ -136,24 +135,23 @@ class CellMaker():
                 self.virus_channel = channel_number
                 self.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
 
-        INPUT = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
-        input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_channel)
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
-
-        #OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
-        section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL
-
-        avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE        
-
+        avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
         self.max_segment_size = 100000
         self.segmentation_threshold = 2000 
         self.cell_radius = 40
 
+        if self.input_format == 'tif':
+            INPUT = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
+            input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_channel)
+            section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL TO GET TOTAL SECTION COUNT
+        else:
+            INPUT = input_path_dye = self.fileLocationManager.get_ome_zarr(channel=self.dye_channel)
+            input_path_virus = self.fileLocationManager.get_ome_zarr(channel=self.virus_channel)
+            #OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
+        
         file_keys = []
         for section in range(section_count):
-            # if section < 180:
-            #    continue
-            
             if section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -221,7 +219,7 @@ class CellMaker():
                         'image_CH3': difference_ch3[row_start:row_end, col_start:col_end].T,
                         'image_CH1': difference_ch1[row_start:row_end, col_start:col_end].T,
                         'mask': segment_mask.T}
-                Examples.append(candidate)
+                Examples.extend(candidate)
             return Examples
     
         output_path = Path(SCRATCH, 'pipeline', animal, 'cell_candidates')
@@ -233,10 +231,31 @@ class CellMaker():
             input_file_virus = Path(input_path_virus, str_section_number + '.tif')
             input_file_dye = Path(input_path_dye, str_section_number + '.tif')
         else:
+            store = parse_url(input_path_virus, mode="r").store
+            reader = Reader(parse_url(input_path_virus))
+            nodes = list(reader())
+            image_node = nodes[0]  # first node is image pixel data
+            dask_data = image_node.data
+            total_sections = dask_data[0].shape[2]
+
+            input_file_virus = []
+            for img in dask_data[0][0][0]:
+                input_file_virus.append(img)
+
+            store = parse_url(input_path_dye, mode="r").store
+            reader = Reader(parse_url(input_path_dye))
+            nodes = list(reader())
+            image_node = nodes[0]  # first node is image pixel data
+            dask_data = image_node.data
+            total_sections = dask_data[0].shape[2]
+
+            input_file_dye = []
+            for img in dask_data[0][0][0]:
+                input_file_dye.append(img)
+            
             #TODO: DIFFERENT PROCESSING FOR OME-ZARR
             #see del_img_extract2.py (this folder) for more info
-            pass
-
+        
         # Create delayed tasks for loading the images (SEPARATE TASK LIST PER CHANNEL)
         delayed_tasks_virus = [delayed(load_image)(path) for path in [input_file_virus]]
         delayed_tasks_dye = [delayed(load_image)(path) for path in [input_file_dye]]
@@ -482,17 +501,11 @@ class CellMaker():
     def capture_total_sections(self, input_format: str, INPUT):
         '''PART OF STEP 1. USE DASK TO 'TILE' IMAGES
         '''
-        if input_format == 'tif':
-            #READ FULL-RESOLUTION TIFF FILES (FOR NOW)
-            #INPUT = self.fileLocationManager.get_full_aligned(channel=channel)
+        if input_format == 'tif': #READ FULL-RESOLUTION TIFF FILES (FOR NOW)
             total_sections = len(sorted(os.listdir(INPUT)))
         else:
-            '''ALT PROCESSING: READ OME-ZARR DIRECTLY AND STORE REFERENCES TO EACH SECTION
-                FOLLOWING CODE FUNCTIONAL AS OF 7-DEC-2023
+            '''ALT PROCESSING: READ OME-ZARR DIRECTLY - ONLY WORKS ON V. 0.4 AS OF 8-DEC-2023
             '''
-            #INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
-            #print(f'INPUT: {INPUT}')
-            
             # Open the OME-Zarr file
             store = parse_url(INPUT, mode="r").store
             reader = Reader(parse_url(INPUT))
@@ -500,5 +513,5 @@ class CellMaker():
             image_node = nodes[0]  # first node is image pixel data
             dask_data = image_node.data
             total_sections = dask_data[0].shape[2]
-            #print(f'total sections_OME-Zarr: {total_sections}')
+            del dask_data
         return total_sections
