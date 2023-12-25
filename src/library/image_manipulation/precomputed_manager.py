@@ -6,10 +6,9 @@ from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 
 
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, calculate_chunks, \
-    calculate_factors
-from library.utilities.utilities_mask import normalize16
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
+XY_CHUNK = 128
 
 
 class NgPrecomputedMaker:
@@ -63,11 +62,16 @@ class NgPrecomputedMaker:
         return midfile, file_keys, volume_size, num_channels
 
     def create_neuroglancer(self):
-        """create the Seung lab cloud volume format from the image stack"""
+        """create the Seung lab cloud volume format from the image stack
+        For a large isotropic data set, Allen uses chunks = [128,128,128]
+        """
 
-        if self.downsample:
+        if self.downsample or self.section_count < 100:
+            xy_chunk = int(XY_CHUNK//2)
+            chunks = [xy_chunk, xy_chunk, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        if not self.downsample:
+        else:
+            chunks = [XY_CHUNK, XY_CHUNK, 1]
             INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
@@ -76,15 +80,17 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
+        
         starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
-
+        
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
-        chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        print(f'volume_size={volume_size} num_channels={num_channels} dtype={midfile.dtype}')
+            
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
@@ -97,19 +103,37 @@ class NgPrecomputedMaker:
         
         ng.init_precomputed(OUTPUT_DIR, volume_size)
         workers = self.get_nworkers()
-        self.run_commands_concurrently(ng.process_image, file_keys, workers)
+        if self.debug:
+            for file_key in file_keys:
+                print(file_key)
+                ng.process_image(file_key=file_key)
+        else:
+            self.run_commands_concurrently(ng.process_image, file_keys, workers)
         ng.precomputed_vol.cache.flush()
 
 
     def create_downsamples(self):
-        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
-        chunks = calculate_chunks(self.downsample, 0)
-        mips = [0, 1, 2, 3, 4, 5, 6, 7]
-        if self.downsample:
-            mips = [0, 1, 2]
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
-            self.downsample, self.channel, rechunk=True
-        )
+        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
+        """
+
+        INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
+        try:
+            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+        except:
+            INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+
+
+        chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
+        mips = 7
+        if self.downsample or self.section_count < 100:
+            xy_chunk = int(XY_CHUNK//2)
+            chunks = [xy_chunk, xy_chunk, xy_chunk]
+            mips = 4
+
+        
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
             print(f"DIR {OUTPUT_DIR} already exists and not performing any downsampling.")
             return
@@ -124,51 +148,47 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
-        tasks = tc.create_transfer_tasks(
-            cloudpath,
-            dest_layer_path=outpath,
-            chunk_size=chunks,
-            mip=0,
-            skip_downsamples=True,
-        )
-        tq.insert(tasks)
-        tq.execute()
-        
-        # If there aren't enough sections, it really can't downsample
-        if self.downsample and self.section_count < 100:
-            return
-        
-        for mip in mips:
-            cv = CloudVolume(outpath, mip)
-            chunks = calculate_chunks(self.downsample, mip)
-            factors = calculate_factors(self.downsample, mip)
-            tasks = tc.create_downsampling_tasks(
-                cv.layer_cloudpath,
-                mip=mip,
-                num_mips=1,
-                factor=factors,
-                preserve_chunk_size=False,
-                compress=True,
-                chunk_size=chunks,
-            )
+        if num_channels == 1:
+            print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
+            tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, 
+                                                         chunk_size=chunks, mip=0, fill_missing=True)
             tq.insert(tasks)
             tq.execute()
+            print(f'Finished sharded transfer transfer tasks with chunks={chunks}')
 
-
+            cv = CloudVolume(outpath)
+            for mip in range(0, mips):
+                print(f'Creating downsampled shards at mip={mip}')
+                tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, 
+                                                               mip=mip)
+                tq.insert(tasks)
+                tq.execute()
+        else:
+            print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
+            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips,
+                                             chunk_size=chunks, mip=0, skip_downsamples=True)
+            tq.insert(tasks)
+            tq.execute()
+            print('Finished transfer tasks')
+            for mip in range(0, mips):
+                cv = CloudVolume(outpath, mip)
+                print(f'Creating downsample tasks at mip={mip}')
+                tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
+                                                     num_mips=1, compress=True)
+                tq.insert(tasks)
+                tq.execute()
 
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
         workers =self.get_nworkers()
-        mips = [0, 1, 2, 3, 4, 5, 6, 7]
+        mips = 8
         if self.downsample:
-            mips = [0, 1, 2]
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(
-            self.downsample, self.channel, rechunck=True
-        )
+            mips = 4
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunck=True)
         outpath = f"file://{OUTPUT_DIR}"
 
         tq = LocalTaskQueue(parallel=workers)
-        for mip in mips:
+        for mip in range(0, mips):
             # first pass: create per z-slice histogram
             cv = CloudVolume(outpath, mip)
             tasks = tc.create_luminance_levels_tasks(cv.layer_cloudpath, coverage_factor=0.01, mip=mip) 

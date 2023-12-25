@@ -5,6 +5,7 @@ import numpy as np
 from skimage import io
 
 from library.utilities.utilities_mask import equalized
+from library.utilities.utilities_process import read_image
 
 class Normalizer:
     """Single method to normlize images
@@ -27,17 +28,8 @@ class Normalizer:
                 outpath = os.path.join(OUTPUT, file)
                 if os.path.exists(outpath):
                     continue
-                try:
-                    img = io.imread(infile)
-                except IOError as errno:
-                    print(f"I/O error {errno}")
-                except ValueError:
-                    print("Could not convert data to an integer.")
-                except:
-                    print(f' Could not open {infile}')
-                    print("Unexpected error:", sys.exc_info()[0])
-                    sys.exit()
-
+                
+                img = read_image(infile)
 
                 if img.dtype == np.uint16:
                     img = (img / 256).astype(np.uint8)

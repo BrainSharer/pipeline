@@ -39,7 +39,7 @@ class BrainMerger():
         self.origins = {}
         self.com_path = os.path.join(self.data_path, 'com')
         self.margin = 50
-        self.threshold = 0.25  # the closer to zero, the bigger the structures
+        self.threshold = 0.50  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
         os.makedirs(self.origin_path, exist_ok=True)
@@ -70,7 +70,7 @@ class BrainMerger():
             merged_volume_prob = merged_volume / float(np.max(merged_volume))
             # increasing the STD makes the volume smoother
             # Smooth the probability
-            average_volume = gaussian(merged_volume_prob, 3.0)
+            average_volume = gaussian(merged_volume_prob, 1.0)
             color = 1
             average_volume[average_volume > self.threshold] = color
             average_volume[average_volume != color] = 0

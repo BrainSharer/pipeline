@@ -1,7 +1,12 @@
-from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float
+from sqlalchemy import Column, Integer, Date, ForeignKey, Enum, String, Float, Boolean
 from sqlalchemy.orm import relationship
 
 from library.database_model.atlas_model import Base, AtlasModel
+NO_MASK = 0
+FULL_MASK = 1
+BOTTOM_MASK = 2
+IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK'}
+
 
 class ScanRun(Base, AtlasModel):  
     """This class describes the blueprint of a scan. Each animal will usually 
@@ -23,7 +28,11 @@ class ScanRun(Base, AtlasModel):
     file_type = Column(Enum("CZI", "JPEG2000", "NDPI", "NGR"))
     scenes_per_slide = Column(Enum("1", "2", "3", "4", "5", "6"))
     section_schema = Column(Enum("L to R", "R to L"))
-    channels_per_scene = Column(Enum("1", "2", "3", "4"))
+    channels_per_scene = Column(Integer, default=3)
+    channel1_name = Column(String, default='C1')
+    channel2_name = Column(String, default='C2')
+    channel3_name = Column(String, default='C3')
+    channel4_name = Column(String, default='C4')
     slide_folder_path = Column(String)
     converted_status = Column(Enum("not started", "converted", "converting", "error"))
     ch_1_filter_set = Column(Enum("68", "47", "38", "46", "63", "64", "50"))
@@ -34,6 +43,7 @@ class ScanRun(Base, AtlasModel):
     height = Column(Integer, default=0, nullable=False)
     rotation = Column(Integer, default=0, nullable=False)
     flip = Column(Enum("none", "flip", "flop"))
+    mask = Column(Integer, default=FULL_MASK, nullable=False)
 
     comments = Column(String)
 

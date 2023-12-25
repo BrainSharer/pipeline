@@ -40,27 +40,20 @@ class ElastixManager(FileLogger):
     All methods relate to aligning images in stack
     """
 
-    def __init__(self, iteration=0):
-        self.iteration = iteration
-        LOGFILE_PATH = self.fileLocationManager.stack
+    def __init__(self, LOGFILE_PATH):
         self.pixelType = sitk.sitkFloat32
         super().__init__(LOGFILE_PATH)
-
-
-
 
     def create_within_stack_transformations(self):
         """Calculate and store the rigid transformation using elastix.  
         The transformations are calculated from the next image to the previous
         This is done in a simple loop with no workers. Usually takes
         up to an hour to run for a stack. It only needs to be run once for
-        each brain. We are now using multiple iterations to get better alignment.
-        The 2nd pass uses the results of the 1st pass to align
+        each brain. 
+        TODO this needs to be modified to account for the channel variable name
         """
         if self.channel == 1 and self.downsample:
-            INPUT, _ = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
-                                                                          iterations=self.iterations,
-                                                                          channel=1, resolution='thumbnail')
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
             files = sorted(os.listdir(INPUT))
             nfiles = len(files)
             self.logevent(f"INPUT FOLDER: {INPUT}")
@@ -68,13 +61,14 @@ class ElastixManager(FileLogger):
             for i in range(1, nfiles):
                 fixed_index = os.path.splitext(files[i - 1])[0]
                 moving_index = os.path.splitext(files[i])[0]
-                if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
+                if not self.sqlController.check_elastix_row(self.animal, moving_index):
                     self.calculate_elastix_transformation(INPUT, fixed_index, moving_index)
 
 
     def create_dir2dir_transformations(self):
         """Calculate and store the rigid transformation using elastix.  
         Align CH3 from CH1
+        TODO this needs to be fixed to account for the channel variable name
         """
         MOVING_DIR = os.path.join(self.fileLocationManager.prep, 'CH3', 'thumbnail_cleaned')
         FIXED_DIR = self.fileLocationManager.get_thumbnail_aligned(channel=2)
@@ -94,8 +88,8 @@ class ElastixManager(FileLogger):
             moving_file = os.path.join(MOVING_DIR, file)
             fixed_file = os.path.join(FIXED_DIR, file)
 
-            if self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
-                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index, self.iteration)
+            if self.sqlController.check_elastix_row(self.animal, moving_index):
+                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index)
             else:
                 fixed_arr = read_image(fixed_file)
                 fixed_arr = normalize_image(fixed_arr)
@@ -113,7 +107,7 @@ class ElastixManager(FileLogger):
                 print(f"Moving index={moving_index} took {total_elapsed_time} seconds")
 
                 print(f" took {total_elapsed_time} seconds")
-                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, self.iteration)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
 
@@ -140,7 +134,7 @@ class ElastixManager(FileLogger):
 
         for file in files:
             moving_index = str(file).replace(".tif","")
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index, self.iteration)
+            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index)
 
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             Ts = create_scaled_transform(T)
@@ -164,9 +158,7 @@ class ElastixManager(FileLogger):
 
         if self.channel == 1 and self.downsample:
 
-            INPUT, _ = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
-                                                                               iterations=self.iterations,
-                                                                               channel=1, resolution='thumbnail')
+            INPUT, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
 
             ELASTIX_OUTPUT = self.fileLocationManager.elastix
             os.makedirs(ELASTIX_OUTPUT, exist_ok=True)
@@ -183,14 +175,14 @@ class ElastixManager(FileLogger):
                 fixed_file = os.path.join(INPUT, f"{fixed_index}.tif")
                 moving_file = os.path.join(INPUT, f"{moving_index}.tif")
 
-                if not self.sqlController.check_elastix_metric_row(self.animal, moving_index, self.iteration): 
+                if not self.sqlController.check_elastix_metric_row(self.animal, moving_index): 
                     p = Popen(['python', program, self.animal, fixed_file, moving_file], stdin=PIPE, stdout=PIPE, stderr=PIPE)
                     output, error = p.communicate(b"input data that is passed to subprocess' stdin")
 
                     if len(output) > 0:
                         metric =  float(''.join(c for c in str(output) if (c.isdigit() or c =='.' or c == '-')))
                         updates = {'metric':metric}
-                        self.sqlController.update_elastix_row(self.animal, moving_index, self.iteration, updates)
+                        self.sqlController.update_elastix_row(self.animal, moving_index, updates)
 
     def calculate_elastix_transformation(self, INPUT, fixed_index, moving_index):
         """Calculates the rigid transformation from the Elastix output
@@ -216,7 +208,7 @@ class ElastixManager(FileLogger):
         """
 
         rotation, xshift, yshift = align_elastix(fixed, moving)
-        self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, self.iteration)
+        self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
 
     def calculate_elastix_channels(self, INPUT, fixed_index, moving_index):
@@ -235,7 +227,7 @@ class ElastixManager(FileLogger):
         fixed = sitk.ReadImage(fixed_file, pixelType)
         moving = sitk.ReadImage(moving_file, pixelType)
         rotation, xshift, yshift = align_elastix(fixed, moving)
-        self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, self.iteration)
+        self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
 
 
@@ -264,7 +256,7 @@ class ElastixManager(FileLogger):
 
             return d
 
-    def load_elastix_transformation(self, animal, moving_index, iteration):
+    def load_elastix_transformation(self, animal, moving_index):
         """loading the elastix transformation from the database
 
         :param animal: (str) Animal ID
@@ -272,18 +264,11 @@ class ElastixManager(FileLogger):
 
         :return array: 2*2 roatation matrix, float: x translation, float: y translation
         """
-
-        try:
-            elastixTransformation = (
-                self.sqlController.session.query(ElastixTransformation)
-                .filter(ElastixTransformation.FK_prep_id == animal)
-                .filter(ElastixTransformation.iteration == iteration)
-                .filter(ElastixTransformation.section == moving_index)
-                .one()
-            )
-        except NoResultFound as nrf:
-            print("No value for {} {} error: {}".format(animal, moving_index, nrf))
+        elastixTransformation = self.sqlController.get_elastix_row(animal, moving_index)
+        if elastixTransformation is None:
+            print(f'No value for {animal} at moving index={moving_index}')
             return 0, 0, 0
+
 
         R = elastixTransformation.rotation
         xshift = elastixTransformation.xshift
@@ -291,13 +276,13 @@ class ElastixManager(FileLogger):
         return R, xshift, yshift
 
 
-    def get_rotation_center(self, channel=1):
+    def get_rotation_center(self):
         """return a rotation center for finding the parameters of a transformation from the transformation matrix
 
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(channel)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         midfilepath = os.path.join(INPUT, files[midpoint])
@@ -315,20 +300,20 @@ class ElastixManager(FileLogger):
 
 
     def get_transformations(self):
-        """After the elastix job is done, this goes into each subdirectory and parses the Transformation.0.txt file
+        """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
         
         :param animal: the animal
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cleaned(1)
+        INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         files = sorted(os.listdir(INPUT))
         midpoint = len(files) // 2
         transformation_to_previous_sec = {}
         center = self.get_rotation_center()
 
         for i in range(1, len(files)):
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
@@ -363,10 +348,7 @@ class ElastixManager(FileLogger):
         """
         if not self.downsample:
             transforms = create_downsampled_transforms(transforms, downsample=False)
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
-                                                                               iterations=self.iterations,
-                                                                               channel=self.channel, resolution='full')
-
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
             self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -381,10 +363,7 @@ class ElastixManager(FileLogger):
         """
 
         if self.downsample:
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(iteration=self.iteration,
-                                                                               iterations=self.iterations,
-                                                                               channel=self.channel, resolution='thumbnail')
-
+            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
             print(f'Aligning {len(os.listdir(INPUT))} images from {os.path.basename(os.path.normpath(INPUT))} to {os.path.basename(os.path.normpath(OUTPUT))}', end=" ")
             self.align_images(INPUT, OUTPUT, transforms)
 
@@ -429,7 +408,7 @@ class ElastixManager(FileLogger):
         start_time = timer()
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
         end_time = timer()
-        total_elapsed_time = round((end_time - start_time),2)
+        total_elapsed_time = round((end_time - start_time), 2)
         print(f'took {total_elapsed_time} seconds.')
 
 
@@ -438,7 +417,7 @@ class ElastixManager(FileLogger):
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        INPUT = fileLocationManager.get_thumbnail_aligned(channel=1)
+        INPUT = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         OUTPUT = fileLocationManager.section_web
 
         os.makedirs(OUTPUT, exist_ok=True)

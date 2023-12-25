@@ -19,6 +19,7 @@ regarding one particular parameter.
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
+from tifffile import imwrite, imread
 import SimpleITK as sitk
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
@@ -72,7 +73,45 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     T = np.vstack([np.column_stack([R, shift]), [0, 0, 1]])
     return T
 
+
 def create_rigid_parameters(elastixImageFilter):
+    """Creates the rigid paramaters used by Elastix.
+    This sets lots of parameters in this dictionary and it used multiple places.
+
+    :param elastixImageFilter: object set in previous method for Elastix.
+    :return: dictionary of parameters
+    """
+
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("rigid")
+    rigid_params["AutomaticTransformInitialization"] = ["true"]
+    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+    rigid_params["FixedInternalImagePixelType"] = ["float"]
+    rigid_params["MovingInternalImagePixelType"] = ["float"]
+    rigid_params["FixedImageDimension"] = ["2"]
+    rigid_params["MovingImageDimension"] = ["2"]
+    rigid_params["UseDirectionCosines"] = ["false"]
+    rigid_params["HowToCombineTransforms"] = ["Compose"]
+    rigid_params["DefaultPixelValue"] = ["0.0"]
+    rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["Resampler"] = ["DefaultResampler"]
+    rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    rigid_params["NumberOfResolutions"] = ["5"]
+    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    rigid_params["Transform"] = ["EulerTransform"]
+    rigid_params["AutomaticScalesEstimation"] = ["true"]
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
+    rigid_params["MaximumNumberOfIterations"] = ["2500"]
+    rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
+    rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
+    rigid_params["ImageSampler"] = ["Random"]
+
+    return rigid_params
+
+
+
+def create_rigid_parametersXXX(elastixImageFilter):
     """Creates the rigid paramaters used by Elastix.
     This sets lots of parameters in this dictionary and it used multiple places.
 
@@ -87,6 +126,7 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["ShowExactMetricValue"] = ["false"]
     rigid_params["CheckNumberOfSamples"] = ["true"]
     rigid_params["NumberOfSpatialSamples"] = ["7500"]
+    rigid_params["SampleRegionSize"] = ["5.0"]
     rigid_params["SubtractMean"] = ["true"]
     rigid_params["MaximumNumberOfSamplingAttempts"] = ["0"]
     rigid_params["SigmoidInitialTime"] = ["0"]
@@ -258,10 +298,12 @@ def align_elastix(fixed, moving):
     
     translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
     rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-    x1,y1 = translations
-    R,x2,y2 = rigid
+    x1, y1 = translations
+    R, x2, y2 = rigid
     x = float(x1) + float(x2)
     y = float(y1) + float(y2)
+    #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+    #R, x, y = rigid
     return float(R), float(x), float(y)
 
 
@@ -320,23 +362,56 @@ def align_image_to_affine(file_key):
     :param file_key: tuple of file input and output
     :return: nothing
     """
+    import sys
     infile, outfile, T = file_key
     try:
         im1 = Image.open(infile)
     except:
-        print(f'align image to affine, could not open {infile}')
+        
+        try:
+            im = imread(infile)
+        except Exception as e:
+            print(f'Could not use tifffile to open={infile}')
+            print(f'Error={e}')
+            sys.exit()
+        
+        try:
+            im1 = Image.fromarray(im)
+        except Exception as e:
+            print(f'Could not convert file type={type(im)} to PIL ')
+            print(f'Error={e}')
+            sys.exit()
+        del im
 
     try:
         im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
-    except:
-        print(f'align image to affine, could not transform {infile}')
+    except Exception as e:
+        print(f'align image to affine, could not transform {infile} to:')
+        print(outfile)
+        print(f'Error={e}')
+        sys.exit()
+    
+    del im1
 
     try:
         im2.save(outfile)
     except:
-        print(f'align image to affine, could not save {infile}')
 
-    del im1, im2
+        try:
+            im2 = np.asarray(im2)
+        except Exception as e:
+            print(f'could not convert file type={type(im2)} to numpy')
+            print(f'Error={e}')
+            sys.exit()
+
+        try:
+            imwrite(outfile, im2)
+        except Exception as e:
+            print('could not save {outfile} with tifffile')
+            print(f'Error={e}')
+            sys.exit()
+
+    del im2
     return
 
 

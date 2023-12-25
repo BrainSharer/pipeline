@@ -22,9 +22,11 @@ from library.image_manipulation.mask_manager import MaskManager
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
-from library.image_manipulation.cell_labeling import CellMaker
+from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
+from library.database_model.scan_run import IMAGE_MASK
+
 try:
     from settings import data_path, host, schema
 except ImportError:
@@ -62,10 +64,9 @@ class Pipeline(
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
 
-    # animal, rescan_number=0, channel=1, iterations=iterations, downsample=False, tg=False, task='status', debug=False)
 
-    def __init__(self, animal, rescan_number=0, channel=1, iterations=2, downsample=False, 
-                 tg=False, task='status', debug=False):
+    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
+                 task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
@@ -90,18 +91,17 @@ class Pipeline(
         self.task = task
         self.animal = animal
         self.rescan_number = rescan_number
-        self.channel = channel
-        self.iterations = iterations
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
         self.sqlController = SqlController(animal, rescan_number)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
-        self.tg = tg
+        self.mask_image = self.sqlController.scan_run.mask
         self.check_programs()
-        self.section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        self.section_count = self.get_section_count()
         self.multiple_slides = []
+        self.channel = channel
 
         super().__init__(self.fileLocationManager.get_logdir())
 
@@ -113,9 +113,18 @@ class Pipeline(
             20), f"@ {str(SCALING_FACTOR)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
-        print("\ttg:".ljust(20), f"{str(self.tg)}".ljust(20))
+        print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print()
+
+    def get_section_count(self):
+        section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        if section_count == 0:
+            INPUT = self.fileLocationManager.get_full_aligned()
+            if os.path.exists(INPUT):
+                section_count = len(os.listdir(INPUT))
+
+        return section_count
 
 
     def extract(self):
@@ -153,13 +162,10 @@ class Pipeline(
         """
 
         print(self.TASK_ALIGN)
-        for i in range(0, self.iterations):
-            self.iteration = i
-            print(f'Starting iteration {i} of {self.iterations}.', end=" ")
-            self.create_within_stack_transformations()
-            transformations = self.get_transformations()
-            self.align_downsampled_images(transformations)
-            self.align_full_size_image(transformations)
+        self.create_within_stack_transformations()
+        transformations = self.get_transformations()
+        self.align_downsampled_images(transformations)
+        self.align_full_size_image(transformations)
 
         self.create_web_friendly_sections()
         print('Finished aligning.')
@@ -167,16 +173,14 @@ class Pipeline(
 
     def create_metrics(self):
         print(self.TASK_CREATE_METRICS)
-        for i in [0, 1]:
-            print(f'Starting iteration {i}')
-            self.iteration = i
-            self.call_alignment_metrics()
+        self.call_alignment_metrics()
         print('Finished creating alignment metrics.')
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
         This step will do everything for the self.channel, so you don't need to run self.channel X for step 2, or 4. You do need
         to run step 0 and step 1.
+        TODO fix for channel variable name
         """
         print(self.TASK_EXTRA_CHANNEL)
         i = 2
@@ -200,9 +204,20 @@ class Pipeline(
         print('Finished creating neuroglancer data.')
 
     def cell_labels(self):
+        """
+        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
+        """
         print(self.TASK_CELL_LABELS)
-        self.start_labels()
+        self.check_prerequisites()
 
+        #IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
+
+        #ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
+        
+        self.start_labels()
+        print('Finished automatic cell labeling.')
+
+        #ADD CLEANUP OF SCRATCH FOLDER
 
 
     def check_status(self):
@@ -213,26 +228,27 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = ['masks/CH1/thumbnail_colored', 'masks/CH1/thumbnail_masked', f'CH{self.channel}/thumbnail', f'CH{self.channel}/thumbnail_cleaned',
-                        f'CH{self.channel}/thumbnail_aligned_iteration_0', f'CH{self.channel}/thumbnail_aligned']
+            directories = [f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
+                           f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
+                           f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
-            directories = ['masks/CH1/full_masked', f'CH{self.channel}/full', f'CH{self.channel}/full_cleaned',
-                        f'CH{self.channel}/full_aligned_iteration_0', f'CH{self.channel}/full_aligned']
+            directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', 
+                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_aligned']
             ndirectory = f'C{self.channel}'
 
-        
         for directory in directories:
             dir = os.path.join(prep, directory)
             if os.path.exists(dir):
                 filecount = len(os.listdir(dir))
-                print(f'Dir={directory} exists with {filecount} files. Sections count matches directory count: {section_count == filecount}')
+                print(f'Dir={directory} exists with {filecount} files.', end=' ') 
+                print(f'Sections count matches directory count: {section_count == filecount}')
             else:
                 print(f'Non-existent dir={dir}')
-
+        del dir, directory, directories
         dir = os.path.join(neuroglancer, ndirectory)
         if os.path.exists(dir):
-            print(f'Dir={directory} exists.')
+            print(f'Dir={dir} exists.')
         else:
             print(f'Non-existent dir={dir}')
 
@@ -240,10 +256,10 @@ class Pipeline(
     @staticmethod
     def check_programs():
         """
-        Make sure the necessary tools are installed on the machine and configures the memory of involving tools to work with
-        big images.
-        Some tools we use are based on java so we adjust the java heap size limit to 10 GB.  This is big enough for our purpose but should
-        be increased accordingly if your images are bigger
+        Make sure the necessary tools are installed on the machine and configures the memory of 
+        involving tools to work with big images.
+        We use to use java so we adjust the java heap size limit to 10 GB.  This is big enough 
+        for our purpose but should be increased accordingly if your images are bigger
         If the check failed, check the workernoshell.err.log in your project directory for more information
         """
         

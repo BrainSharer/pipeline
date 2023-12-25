@@ -3,9 +3,9 @@ The only required argument is the animal and step. By default it will work on ch
 and downsample = True. Run them in this sequence:
 
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 2|3 --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 1 downsample false --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX channel 2|3 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 downsample false --task
 
 Explanation for the tasks:
 
@@ -54,10 +54,10 @@ increasing the step size will make the pipeline move forward in the process.
 """
 import argparse
 from pathlib import Path
-import sys
+import sys, socket
 from timeit import default_timer as timer
 
-PIPELINE_ROOT = Path('./src').absolute()
+PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.pipeline_process import Pipeline
@@ -65,58 +65,81 @@ from library.image_manipulation.pipeline_process import Pipeline
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
-    parser.add_argument("--animal", help="Enter the animal", required=True)
-    parser.add_argument("--rescan_number", help="Enter rescan number, default is 0", required=False, default=0)
-    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
-    parser.add_argument("--downsample", help="Enter true or false", required=False, default="true")
-    parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
-    parser.add_argument("--iterations", help="Enter iterations for alignment", required=False, default=2, type=int)
-    parser.add_argument("--tg", help="Extend the mask to expose the entire underside of the brain", 
-                        required=False, default=False)
-    parser.add_argument("--task", 
-                        help="Enter the task you want to perform: \
-                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|check_status",
-                        required=False, default="check_status", type=str)
+    parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
+    parser.add_argument(
+        "--rescan_number",
+        help="Enter rescan number, default is 0",
+        required=False,
+        default=0,
+        type=int,
+    )
+    parser.add_argument(
+        "--channel", help="Enter channel", required=False, default=1, type=int
+    )
+    parser.add_argument(
+        "--downsample",
+        help="Enter true or false",
+        required=False,
+        default="true",
+        type=str,
+    )
+    parser.add_argument(
+        "--debug", help="Enter true or false", required=False, default="false", type=str
+    )
+    parser.add_argument(
+        "--task",
+        help="Enter the task you want to perform: \
+                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|status|cell_labels",
+        required=False,
+        default="status",
+        type=str,
+    )
 
     args = parser.parse_args()
 
     animal = args.animal
     rescan_number = int(args.rescan_number)
     channel = args.channel
-    iterations = args.iterations
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    tg = bool({"true": True, "false": False}[str(args.tg).lower()])
     task = str(args.task).strip().lower()
+    process_hostname = socket.gethostname()
 
-    pipeline = Pipeline(animal, rescan_number=rescan_number, channel=channel, iterations=iterations, 
-                        downsample=downsample, tg=tg, task=task, debug=False)
+    pipeline = Pipeline(
+        animal,
+        rescan_number=rescan_number,
+        channel=channel,
+        downsample=downsample,
+        task=task,
+        debug=debug,
+    )
 
-    function_mapping = {'extract': pipeline.extract,
-                        'mask': pipeline.mask,
-                        'clean': pipeline.clean,
-                        'histogram': pipeline.histogram,
-                        'align': pipeline.align,
-                        'create_metrics': pipeline.create_metrics,
-                        'extra_channel': pipeline.extra_channel,
-                        'neuroglancer': pipeline.neuroglancer,
-                        'cell_labels': pipeline.cell_labels,
-                        'status': pipeline.check_status
+    function_mapping = {
+        "extract": pipeline.extract,
+        "mask": pipeline.mask,
+        "clean": pipeline.clean,
+        "histogram": pipeline.histogram,
+        "align": pipeline.align,
+        "create_metrics": pipeline.create_metrics,
+        "extra_channel": pipeline.extra_channel,
+        "neuroglancer": pipeline.neuroglancer,
+        "cell_labels": pipeline.cell_labels,
+        "status": pipeline.check_status,
     }
 
     if task in function_mapping:
         start_time = timer()
-        pipeline.logevent(f"START  {str(task)}, downsample: {str(downsample)}")
+        pipeline.logevent(
+            f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}"
+        )
         function_mapping[task]()
         end_time = timer()
-        total_elapsed_time = round((end_time - start_time),2)
-        print(f'{task} took {total_elapsed_time} seconds')
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f"{task} took {total_elapsed_time} seconds")
         sep = "*" * 40 + "\n"
         pipeline.logevent(f"{task} took {total_elapsed_time} seconds\n{sep}")
 
     else:
-        print(f'{task} is not a correct task. Choose one of these:')
+        print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():
-            print(f'\t{key}')
-
-
+            print(f"\t{key}")

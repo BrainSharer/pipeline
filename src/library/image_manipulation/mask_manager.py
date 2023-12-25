@@ -13,8 +13,9 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
-from library.utilities.utilities_process import test_dir, get_image_size
+from library.utilities.utilities_process import read_image, test_dir, get_image_size
 
 
 class MaskManager:
@@ -27,40 +28,42 @@ class MaskManager:
 
     def apply_user_mask_edits(self):
         """Apply the edits made on the image masks to extract the tissue from the 
-        surround debris to create the final masks used to clean the images
+        surround debris to create the final masks used to clean the images.
+        INPUT dir is the colored merged masks
         """
         
-        COLORED = self.fileLocationManager.get_thumbnail_colored(self.channel)
+        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
         MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        test_dir(self.animal, COLORED, self.section_count, True, same_size=False)
+        test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
-        files = sorted(os.listdir(COLORED))
-        self.logevent(f"INPUT FOLDER: {COLORED}")
+        files = sorted(os.listdir(INPUT))
+        self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {MASKS}")
         for file in files:
-            filepath = os.path.join(COLORED, file)
+            filepath = os.path.join(INPUT, file)
             maskpath = os.path.join(MASKS, file)
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
-            mask = mask[:, :, 2]
-            mask[mask > 0] = 255
+            if self.mask_image > 0:
+                mask = mask[:, :, 2]
+                mask[mask > 0] = 255
+
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
-        if self.tg:
+        if self.mask_image == BOTTOM_MASK:
             for file in files:
                 maskpath = os.path.join(MASKS, file)
                 maskfillpath = os.path.join(MASKS, file)   
-                maskfile = Image.open(maskpath) # 
-                mask = np.array(maskfile)
+                mask = read_image(maskfillpath)
                 white = np.where(mask==255)
                 whiterows = white[0]
-                whitecols = white[1]
+                #whitecols = white[1]
                 firstrow = whiterows[0]
                 lastrow = whiterows[-1]
-                lastcol = whitecols[-1]
+                lastcol = max(white[1])
                 mask[firstrow:lastrow, 0:lastcol] = 255
                 cv2.imwrite(maskfillpath, mask.astype(np.uint8))
 
@@ -102,9 +105,7 @@ class MaskManager:
         """Load the CNN model used to generate image masks
         """
         
-        modelpath = os.path.join(
-            "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth"
-        )
+        modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth")
         self.loaded_model = self.get_model_instance_segmentation(num_classes=2)
         workers = 2
         batch_size = 4
@@ -119,13 +120,13 @@ class MaskManager:
             print("no model to load")
             return
 
-    def create_full_resolution_mask(self, channel=1):
+    def create_full_resolution_mask(self):
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
         FULLRES = self.fileLocationManager.get_full(self.channel)
-        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=channel) # usually channel=1, except for step 6
-        MASKED = self.fileLocationManager.get_full_masked(channel=channel) # usually channel=1, except for step 6
+        THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
+        MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {FULLRES}")
         starting_files = os.listdir(FULLRES)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -152,15 +153,16 @@ class MaskManager:
         workers = self.get_nworkers()
         self.run_commands_concurrently(self.resize_tif, file_keys, workers)
 
-    def create_downsampled_mask(self, channel=1):
+    def create_downsampled_mask(self):
         """Create masks for the downsampled images using a machine learning algorithm.
         The input files are the files that have been normalized.
+        The output files are the colored merged files. 
         """
         
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
         NORMALIZED = self.fileLocationManager.get_normalized(self.channel)
-        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=channel) # usually channel=1, except for step 6
+        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {NORMALIZED}")
         
         test_dir(self.animal, NORMALIZED, self.section_count, self.downsample, same_size=False)
@@ -170,31 +172,35 @@ class MaskManager:
         self.logevent(f"OUTPUT FOLDER: {COLORED}")
         for file in files:
             filepath = os.path.join(NORMALIZED, file)
-            mask_dest_file = (
-                os.path.splitext(file)[0] + ".tif"
-            )  # colored mask images have .tif extension
+            mask_dest_file = (os.path.splitext(file)[0] + ".tif")
             maskpath = os.path.join(COLORED, mask_dest_file)
 
             if os.path.exists(maskpath):
                 continue
 
             img = Image.open(filepath)
-            torch_input = transform(img)
-            torch_input = torch_input.unsqueeze(0)
-            self.loaded_model.eval()
-            with torch.no_grad():
-                pred = self.loaded_model(torch_input)
-            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
-            mask = masks[0]
-            dims = mask.ndim
-            if dims > 2:
-                mask = combine_dims(mask)
-            raw_img = np.array(img)
-            mask = mask.astype(np.uint8)
-            mask[mask > 0] = 255
-            merged_img = merge_mask(raw_img, mask)
-            del mask
-            cv2.imwrite(maskpath, merged_img)
+            if self.mask_image > 0:
+                torch_input = transform(img)
+                torch_input = torch_input.unsqueeze(0)
+                self.loaded_model.eval()
+                with torch.no_grad():
+                    pred = self.loaded_model(torch_input)
+                masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                mask = masks[0]
+                dims = mask.ndim
+                if dims > 2:
+                    mask = combine_dims(mask)
+                raw_img = np.array(img)
+                mask = mask.astype(np.uint8)
+                mask[mask > 0] = 255
+                merged_img = merge_mask(raw_img, mask)
+                del mask
+            else:
+                img = np.array(img)
+                merged_img = np.zeros(img.shape)
+                merged_img = merged_img.astype(np.uint8)
+                merged_img[merged_img == 0] = 255
+            cv2.imwrite(maskpath, merged_img.astype(np.uint8))
 
     @staticmethod
     def resize_tif(file_key):
