@@ -3,7 +3,7 @@ It also has the main class to convert numpy arrays (images) into the precomputed
 """
 
 import os
-from skimage import io
+import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 import json
@@ -36,8 +36,8 @@ def calculate_chunks(downsample, mip):
 
     d = defaultdict(dict)
     result = [64, 64, 64]
-    d[False][-1] = [1024, 1024, 1]
-    d[False][0] = [256, 256, 128]
+    d[False][-1] = [128, 128, 1]
+    d[False][0] = [128, 128, 128]
     d[False][1] = [128, 128, 64]
     d[False][2] = [128, 128, 64]
     d[False][3] = [128, 128, 64]
@@ -311,21 +311,35 @@ class NumpyToNeuroglancer():
 
         img = read_image(infile)
 
-        try:
-            img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
-        except:
-            print(f'could not reshape {infile}')
-            return
+        
+        if img.ndim > 2:
+            img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
+            img = np.rot90(img, 1)
+            img = np.flipud(img)
+        else:
+            try:
+                img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
+            except Exception as e:
+                print(f'could not reshape {infile}')
+                print(f'img shape={img.shape} with img dims={img.ndim}')
+                print(f'precomputed volume shape={self.precomputed_vol.shape} dims={self.precomputed_vol.ndim}')
+                print(e)
+                sys.exit()
+
         try:
             self.precomputed_vol[:, :, index] = img
-        except:
-            print(f'could not set {infile} to precomputed')
-            return
+        except Exception as e:
+            print(f'Error putting image into volume:{infile}')
+            print(f'img shape={img.shape} with img dims={img.ndim}')
+            print(f'precomputed volume shape={self.precomputed_vol.shape} dims={self.precomputed_vol.ndim}')
+            print(e)
+            sys.exit()
 
         touch(progress_file)
         del img
         return
-    
+
+
     def process_image_mesh(self, file_key):
         """This reads the image and starts the precomputed data
 

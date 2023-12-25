@@ -27,7 +27,7 @@ from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import allen_structures
-
+from library.utilities.utilities_process import SCALING_FACTOR
 
 class NumpyToNeuroglancer():
     viewer = None
@@ -106,28 +106,36 @@ class AtlasCreator:
         self.fixed_brain = 'Allen'
         self.ATLAS_PATH = os.path.join(self.DATA_PATH, 'atlas_data', animal)
         self.REG_PATH = os.path.join(self.DATA_PATH, 'brains_info/registration')
-        self.OUTPUT_DIR = f'/home/httpd/html/data/{animal}'
+        self.OUTPUT_DIR = f'/var/www/brainsharer/structures/{animal}'
         if os.path.exists(self.OUTPUT_DIR):
             shutil.rmtree(self.OUTPUT_DIR)
         os.makedirs(self.OUTPUT_DIR, exist_ok=True)
         self.sqlController = SqlController(self.fixed_brain)
 
     def get_transform_to_align_brain(self):
-        fixed = 'Allen'
-        midbrain_keys = {'SC', 'SNC_L', 'SNC_R', '7N_L', '7N_R', 'SpV_L', 'SpV_R'}
-        testing_structures = {'PBG_R', '3N_L', 'PBG_L', '4N_L', '4N_R', '3N_R'}
-        structureController = StructureCOMController(fixed)
-        fixed_coms = structureController.get_COM('Allen', annotator_id=1)
-        moving_coms = structureController.get_COM('Atlas', annotator_id=1)
-        common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & testing_structures)
-        fixed_points = np.array([fixed_coms[s] for s in common_keys])
-        moving_points = np.array([moving_coms[s] for s in common_keys])
+        if 'Atlas' in self.animal:
+            fixed = 'Allen'
+            midbrain_keys = {'SC', 'SNC_L', 'SNC_R', '7N_L', '7N_R', 'SpV_L', 'SpV_R'}
+            testing_structures = {'PBG_R', '3N_L', 'PBG_L', '4N_L', '4N_R', '3N_R'}
+            structureController = StructureCOMController(fixed)
+            fixed_coms = structureController.get_COM('Allen', annotator_id=1)
+            moving_coms = structureController.get_COM('Atlas', annotator_id=1)
+            common_keys = sorted(fixed_coms.keys() & moving_coms.keys() & testing_structures)
+            fixed_points = np.array([fixed_coms[s] for s in common_keys])
+            moving_points = np.array([moving_coms[s] for s in common_keys])
+            if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
+                print(f'Error calculating transform {self.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
+                sys.exit()
+            if self.debug:
+                print(f'Length fixed coms={len(fixed_coms.keys())} # moving coms={len(moving_coms.keys())}')
 
-        # Divide by the Allen um
-        fixed_points /= 25
-        moving_points /= 25
-
-        self.R, self.t = umeyama(moving_points.T, fixed_points.T)
+            # Divide by the Allen um
+            fixed_points /= 25
+            moving_points /= 25
+            self.R, self.t = umeyama(moving_points.T, fixed_points.T)
+        else:
+            self.R = np.eye(3)
+            self.t = np.zeros((3,1))
         
 
 
@@ -144,14 +152,30 @@ class AtlasCreator:
     
     def create_atlas(self, save, ng):
         # origin is in animal scan_run.resolution coordinates
-        # volume is in 10um coo
+        # volume is in 10um
+        color = 1000
         self.get_transform_to_align_brain()
-        allen_path = os.path.join(self.REG_PATH, 'Allen_25um_sagittal.tif')
-        allen_img = io.imread(allen_path)
-        height = allen_img.shape[0]
-        width = allen_img.shape[1] + 200
-        z_length = allen_img.shape[2]
-        atlas_box_size=(width, height, z_length)
+        if 'Atlas' in self.animal:
+            target_path = os.path.join(self.REG_PATH, 'Allen_25um_sagittal.tif')
+            target_img = io.imread(target_path)
+            rows = target_img.shape[0] + 500
+            columns = target_img.shape[1] + 600
+            z_length = target_img.shape[2]
+            xy_resolution = 25 * 1000 # Allen isotropic
+            z_resolution = xy_resolution
+        else:
+            dir_path = os.path.join(self.DATA_PATH, 'pipeline_data', self.animal, 'preps/CH1/thumbnail_aligned')
+            z_length = len(os.listdir(dir_path))
+            self.sqlController = SqlController(self.animal)
+            rows = int(round(self.sqlController.scan_run.height / SCALING_FACTOR)) + 100
+            columns = int(round(self.sqlController.scan_run.width / SCALING_FACTOR)) + 100
+            xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR * 1000
+            z_resolution = self.sqlController.scan_run.zresolution * 1000
+
+
+        
+        atlas_box_size=(rows, columns, z_length)
+        print(f'box size={atlas_box_size} xy_resolution={xy_resolution} z_resolution={z_resolution}')
         atlas_volume = np.zeros(atlas_box_size, dtype=np.uint32)
         origin_dir = os.path.join(self.ATLAS_PATH, 'origin')
         volume_dir = os.path.join(self.ATLAS_PATH, 'structure')
@@ -161,9 +185,7 @@ class AtlasCreator:
         if not os.path.exists(volume_dir):
             print(f'{volume_dir} does not exist, exiting.')
             sys.exit()
-        resolution = 25 * 1000 # Allen isotropic
-        atlas_box_scales = np.array([resolution, resolution, resolution])
-        color = 1000
+        atlas_box_scales = np.array([int(xy_resolution), int(xy_resolution), int(z_resolution)])
         print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
         print(f'origin dir {origin_dir}')
         print(f'origin dir {volume_dir}')
@@ -180,31 +202,30 @@ class AtlasCreator:
             allen_color = self.get_allen_id(color, structure)
             color += 2
 
-            #if structure != 'SC':
-            #    continue
-
             origin = np.loadtxt(os.path.join(origin_dir, origin_file))
             x,y,z = brain_to_atlas_transform(origin, self.R, self.t)
 
             volume = np.load(os.path.join(volume_dir, volume_file))
             volume = volume.astype(np.uint32)
             volume[volume > 0] = allen_color
-            xs,ys,zs = np.where(volume != 0)
             preshape = volume.shape
+            
+            """
+            xs,ys,zs = np.where(volume != 0)
             try:
                 volume = volume[min(xs):max(xs)+1,min(ys):max(ys)+1,min(zs):max(zs)+1] 
             except:
+                print('Could not broadcast volume')
                 pass
+            """
             ids[structure] = allen_color
             row_start = int(round(x))
             col_start = int(round(y))
             z_start = int(round(z))
             row_end = row_start + volume.shape[0]
             col_end = col_start + volume.shape[1]
-
-            #z_indices = [z for z in range(volume.shape[2]) if z % 2 == 0]
-            #volume = volume[:, :, z_indices]
             z_end = z_start + volume.shape[2]
+
             if debug:
                 volume_ids, counts = np.unique(volume, return_counts=True)
                 print(f'{structure} preshape={preshape} postshape={volume.shape}  \
@@ -225,10 +246,7 @@ class AtlasCreator:
             print(atlas_volume_ids)
             print('counts')
             print(counts)
-        #atlas_volume = np.rot90(atlas_volume, axes=(0, 1))
-        #print(f'Shape of atlas volume {atlas_volume.shape} after swapping 0 and 2')
         if save:
-            #save_volume = np.swapaxes(save_volume, 1, 2)
             outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_25um_sagittal.tif'
             io.imsave(outpath, save_volume)
         if ng:
@@ -244,7 +262,7 @@ class AtlasCreator:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')
-    parser.add_argument('--animal', required=False, default='atlasV8')
+    parser.add_argument('--animal', required=False, default='Atlas')
     parser.add_argument('--debug', required=False, default='true', type=str)
     parser.add_argument('--save', required=False, default='false', type=str)
     parser.add_argument('--ng', required=False, default='false', type=str)

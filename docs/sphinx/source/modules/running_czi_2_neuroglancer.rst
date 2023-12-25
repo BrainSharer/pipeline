@@ -11,20 +11,20 @@ Setup
     with ``nohup``\ and end the command with ``&``. That will make it run
     in the background and you can log out.
 
-Running the initial step (step 0)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Running the initial task - extract
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Create a folder with brain id under
     /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX create
     subfolder DKXX/czi and DKXX/tif. Then copy the czi files to
     DKXX/czi.
 *   Add entries in the animal, scan run and histology table in the
-    database using the `admin portal <https://activebrainatlas.ucsd.edu/activebrainatlas/admin>`__.
+    database using the `admin portal <https://www.brainsharer.org/brainsharer/admin>`__.
 *   All functionality for running the pipeline is found in
     src/pipeline/scripts/create_pipeline.py
 *   You can run the script with the ‘h’ option to get the arguments:
     ``python src/pipeline/scripts/create_pipeline.py -h``
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --step 0``
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task extract``
 
     #. This will scan each czi file.
     #. Extracts the tif meta information and inserts into the
@@ -35,11 +35,11 @@ Running the initial step (step 0)
     #. After this is one you’ll want to do the Django database portal QC
        on the slides
 
-Database portal QC between step 0 and step 1
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Database portal QC after extract task
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Have someone confirm the status of each slide in:
-    https://activebrainatlas.ucsd.edu/activebrainatlas/admin
+    https://www.brainsharer.org/brainsharer/admin
 
     #.  After logging in, go to the Slides link in the Brain category.
     #.  Enter the animal name in the search box.
@@ -69,10 +69,10 @@ Database portal QC between step 0 and step 1
         under the Sections link under Brain. You will need to enter the animal
         name in the search field.
 
-Running Step 1
-~~~~~~~~~~~~~~
+Running mask task
+~~~~~~~~~~~~~~~~~
 
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX step 1``
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task mask``
 
     #. This will read the sections view in the database.
     #. Creates the downsampled files
@@ -85,25 +85,26 @@ Running Step 1
        normalized files and then updating the scan run table in the
        Django database portal and update the rotations. It is usually 3.
 
-Running Step 2
-~~~~~~~~~~~~~~
 
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --step 2``
+Running clean task
+~~~~~~~~~~~~~~~~~~
+
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean``
 
     #. This will finalize the masks
     #. Creates the cleaned files from the masks
 
-Running Step 3
-~~~~~~~~~~~~~~
+Running histogram task
+~~~~~~~~~~~~~~~~~~~~~~
 
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --step 3``
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram``
 
     * This will create all the histograms
 
-Running Step 4
-~~~~~~~~~~~~~~
+Running alignment task
+~~~~~~~~~~~~~~~~~~~~~~
 
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --step 4``
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align``
 
     #. This will run elastix and create the rigid transformation for
        consecutive pair of files.
@@ -117,10 +118,10 @@ Running Step 4
        midpoint. You’ll need to update the database with new parameters.
        The SQL is produced in the last cell of the notebook.
 
-Running Step 5
-~~~~~~~~~~~~~~
+Running neuroglancer task
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --step 5``
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer``
 
     #. This will create all the neuroglancer files in C1T_rechunkme and
        then C1T. C1T_rechunkme is the preliminary data directory that is
@@ -131,14 +132,14 @@ Running Step 5
        https://activebrainatlas.ucsd.edu/data/DKXX/neuroglancer_data/C1T
 
 Running on other channels and the full resolution images
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   After you have completed the downampled version for channel 1, you
     can repeat this entire process by running
-    ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2 --step 1|2|3|4|5``
-    This will run the entire process for channel 2. Some of the steps
+    ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2``
+    This will run the entire process for channel 2. Some of the tasks
     will be automatically skipped.
 *   Repeat the process again for channel 3. Once you are happy with all
     the results, run the process again but with
-    ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false --step 1|2|3|4|5``.
+    ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false``.
     Some of the steps will be skipped automatically.

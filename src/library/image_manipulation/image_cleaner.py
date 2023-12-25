@@ -5,6 +5,7 @@ import os
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
+from library.database_model.scan_run import FULL_MASK
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
 
@@ -23,13 +24,13 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            self.crop_all_images()
-            self.create_cleaned_images_thumbnail()
-            
+            if self.mask_image == FULL_MASK and self.channel == 1: 
+                self.get_crop_size()
+            self.create_cleaned_images_thumbnail(self.channel)            
         else:
-            self.create_cleaned_images_full_resolution()
+            self.create_cleaned_images_full_resolution(self.channel)
 
-    def crop_all_images(self):
+    def get_crop_size(self):
         MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(MASKS))
         widths = []
@@ -46,16 +47,16 @@ class ImageCleaner:
         max_height = max(heights)
         if self.debug:
             print(f'Updating {self.animal} width={max_width} height={max_height}')
-        self.sqlController.update_cropped_data(self.sqlController.scan_run.id, max_width, max_height)
+        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
         
 
-    def create_cleaned_images_thumbnail(self, channel=1):
+    def create_cleaned_images_thumbnail(self, channel):
         """Clean the image using the masks for the downsampled version
         """
         
-        CLEANED = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-        INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=channel) # usually channel=1, except for step 6
+        CLEANED = self.fileLocationManager.get_thumbnail_cleaned(channel)
+        INPUT = self.fileLocationManager.get_thumbnail(channel)
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         self.logevent(f"INPUT FOLDER: {INPUT}")
         starting_files = os.listdir(INPUT)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
@@ -66,20 +67,18 @@ class ImageCleaner:
         os.makedirs(CLEANED, exist_ok=True)
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
-    def create_cleaned_images_full_resolution(self, channel=1):
+    def create_cleaned_images_full_resolution(self, channel):
         """Clean the image using the masks for the full resolution image
         """
         
-        CLEANED = self.fileLocationManager.get_full_cleaned(self.channel)
+        CLEANED = self.fileLocationManager.get_full_cleaned(channel)
         os.makedirs(CLEANED, exist_ok=True)
-        INPUT = self.fileLocationManager.get_full(self.channel)
-        MASKS = self.fileLocationManager.get_full_masked(channel=channel) #usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        INPUT = self.fileLocationManager.get_full(channel)
+        MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
         starting_files = os.listdir(INPUT)
+        self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"FILE COUNT: {len(starting_files)}")
         self.logevent(f"MASK FOLDER: {MASKS}")
-        starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
         self.logevent(f"OUTPUT FOLDER: {CLEANED}")
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
@@ -99,10 +98,7 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        test_dir(
-            self.animal, INPUT, self.section_count, self.downsample, same_size=False
-        )
-
+        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(INPUT))
 
         file_keys = []
@@ -122,6 +118,7 @@ class ImageCleaner:
                     max_width,
                     max_height,
                     self.channel,
+                    self.mask_image
                 ]
             )
 
