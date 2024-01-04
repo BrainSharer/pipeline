@@ -232,6 +232,7 @@ def get_image_box(mask):
     boxes = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
+        print(x,y,w,h)
         area = cv2.contourArea(contour)
         if area > 100:
             xmin = int(round(x))
@@ -245,6 +246,48 @@ def get_image_box(mask):
     y2 = max(x[3] for x in boxes) + BUFFER
     x1, y1, x2, y2 = [0 if i < 0 else i for i in [x1, y1, x2, y2]]
     return x1, y1, x2, y2
+
+def get_box_corners(arr):
+    areaArray = []  
+    _, thresh = cv2.threshold(arr, 200, 250, 0)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    for i, c in enumerate(contours):
+        area = cv2.contourArea(c)
+        areaArray.append(area)
+
+    #first sort the array by area
+    sorteddata = sorted(zip(areaArray, contours), key=lambda x: x[0], reverse=True)
+    #find the nth largest contour [n-1][1], in this case 2
+    secondlargestcontour = sorteddata[1][1]    
+
+    x,y,w,h = cv2.boundingRect(secondlargestcontour)
+    p1x = x
+    p1y = y
+    
+    p2x = x+w
+    p2y = y
+    
+    p3x = x
+    p3y = y+h
+    
+    p4x = x+w
+    p4y = y+h
+    """
+    moving_file = os.path.join(self.input, f"{moving_index}.tif")
+    moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+    if not os.path.exists(moving_point_file):
+        moving_arr = read_image(moving_file)
+        moving_arr = normalize8(moving_arr)
+        p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y = get_box_corners(moving_arr)
+        with open(moving_point_file, 'w') as f:
+            f.write('point\n')
+            f.write('4\n')
+            f.write(f'{p1x} {p1y}\n')
+            f.write(f'{p2x} {p2y}\n')
+            f.write(f'{p3x} {p3y}\n')
+            f.write(f'{p4x} {p4y}\n')
+    """
+    return p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y
 
 
 def merge_mask(image, mask):
