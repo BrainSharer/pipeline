@@ -232,7 +232,6 @@ def get_image_box(mask):
     boxes = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
-        print(x,y,w,h)
         area = cv2.contourArea(contour)
         if area > 100:
             xmin = int(round(x))
