@@ -59,7 +59,6 @@ class Pipeline(
     TASK_CLEAN = "Applying masks"
     TASK_HISTOGRAM =  "Making histogram"
     TASK_ALIGN = "Creating elastix transform"
-    TASK_CREATE_METRICS = "Creating elastix  metrics"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
@@ -170,11 +169,6 @@ class Pipeline(
         self.create_web_friendly_sections()
         print('Finished aligning.')
 
-
-    def create_metrics(self):
-        print(self.TASK_CREATE_METRICS)
-        self.call_alignment_metrics()
-        print('Finished creating alignment metrics.')
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 

@@ -23,8 +23,6 @@ Explanation for the tasks:
 - histogram - Histograms showing the distribution of the image intensity levels are created \
     for all cleaned channel 1 sections.
 - align - Section to section alignment with Elastix is then run on the cleaned images using a rigid transformation. 
-- create_metrics - Each section to section alignment with Elastix is evaluated on the cleaned images. This data \
-    is entered into the database for reference purposes.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 
 **Timing results**
@@ -89,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
-                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|status|cell_labels",
+                        extract|mask|clean|histogram|align|extra_channel|neuroglancer|status|cell_labels",
         required=False,
         default="status",
         type=str,
@@ -120,7 +118,6 @@ if __name__ == "__main__":
         "clean": pipeline.clean,
         "histogram": pipeline.histogram,
         "align": pipeline.align,
-        "create_metrics": pipeline.create_metrics,
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
         "cell_labels": pipeline.cell_labels,
