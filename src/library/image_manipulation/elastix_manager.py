@@ -103,8 +103,8 @@ class ElastixManager(FileLogger):
 
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.1"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.9"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric for each resolution
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
         else:
