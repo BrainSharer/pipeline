@@ -54,8 +54,8 @@ def predict_mask(animal):
     loaded_model = load_machine_learning_model()
     transform = torchvision.transforms.ToTensor()
     fileLocationManager = FileLocationManager(animal)
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'thumbnail_aligned')
-    TG_MASKS = os.path.join(fileLocationManager.masks, 'tg')
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'normalized')
+    TG_MASKS = os.path.join(fileLocationManager.masks, 'C1', 'tg')
     os.makedirs(TG_MASKS, exist_ok=True)
 
     files = sorted(os.listdir(INPUT))
