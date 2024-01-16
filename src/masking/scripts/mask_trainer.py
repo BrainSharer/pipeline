@@ -108,12 +108,8 @@ if __name__ == '__main__':
 
     logfile.write(str(loss_list))
     logfile.write("\n")
-    
-
-
     print('Finished with masks')
     logfile.close()
-
     print('Creating loss chart')
 
     fig = plt.figure()

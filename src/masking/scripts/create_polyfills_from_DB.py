@@ -30,7 +30,7 @@ def create_segmentation(animal, annotator_id, structure_id, debug=False):
     fileLocationManager = FileLocationManager(animal,)
     sqlController = SqlController(animal)
     # vars
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'thumbnail_aligned')
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
     MASK_OUTPUT = os.path.join(DATA_PATH, 'tg', 'thumbnail_masked')
     os.makedirs(MASK_OUTPUT, exist_ok=True)
     NORM_OUTPUT = os.path.join(DATA_PATH, 'tg', 'thumbnail_aligned')
