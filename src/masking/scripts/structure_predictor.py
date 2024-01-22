@@ -131,6 +131,7 @@ class MaskPrediction():
             mask[mask > 0] = 255
             ids, counts = np.unique(mask, return_counts=True)
             areaArray = []
+            point_count = []
             if len(ids) > 1:
                 _, thresh = cv2.threshold(mask, 254, 255, 0)
                 contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -151,10 +152,11 @@ class MaskPrediction():
                     polygon_sequence = PolygonSequence(x=x, y=y, z=z, source=source, 
                                                     polygon_index=polygon_index, point_order=point_order, FK_session_id=self.annotation_session.id)
                     vlist.append(polygon_sequence)
+                    point_count.append(len(vlist))
 
 
                 if self.debug:
-                    print(f'Finished creating {len(vlist)} points for {self.abbreviation} on section={section} of animal={self.animal}')
+                    print(f'Finished creating {len(vlist)} points on section={section}')
                 else:
                     try:
                         self.brainManager.sqlController.session.bulk_save_objects(vlist)
@@ -165,6 +167,11 @@ class MaskPrediction():
                         self.brainManager.sqlController.session.rollback()
                     except Exception as e:
                         self.brainManager.sqlController.session.rollback()
+        if debug: 
+            action = "finding" 
+        else: 
+            action = "inserting"
+        print(f'Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}')
 
     
 
