@@ -43,6 +43,7 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.controller.structure_com_controller import StructureCOMController
+from library.database_model.annotation_points import AnnotationType
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
@@ -336,7 +337,7 @@ class VolumeRegistration:
            
             brain_region = sessionController.get_brain_region(structure)
             if brain_region is not None:
-                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, com_annotator_id)
+                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, com_annotator_id, AnnotationType.STRUCTURE_COM)
                 entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
                 sessionController.upsert_structure_com(entry)
             else:

@@ -9,14 +9,6 @@ from pathlib import Path
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-try:
-    from settings import host, password, schema, user
-except ImportError:
-    print('Missing settings using defaults')
-    data_path = "/net/birdstore/Active_Atlas_Data/data_root"
-    host = "db.dk.ucsd.edu"
-    schema = "active_atlas_production"
-
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.controller.sql_controller import SqlController
@@ -49,44 +41,57 @@ def create_segmentation(animal, annotator_id, structure_id, debug=False):
     scales = np.array([scale_xy, scale_xy, z_scale])
     if debug:
         print('scales', scales, SCALING_FACTOR)
-        sys.exit()
     
     polygons = defaultdict(list)
 
-    if animal in ('DK55', 'DK73', 'DK78'):
-        sfactor = 32
-    else:
-        sfactor = SCALING_FACTOR
     
     for _, row in df.iterrows():
         x = row['coordinate'][0]
         y = row['coordinate'][1]
         z = row['coordinate'][2]
-        xy = (x/scale_xy/sfactor, y/scale_xy/sfactor)
+        xy = (x/scale_xy/SCALING_FACTOR, y/scale_xy/SCALING_FACTOR)
         section = int(np.round(z/z_scale))
         polygons[section].append(xy)
         
     color = 255 # set it below the threshold set in mask class
     
-    for section, points in tqdm(polygons.items()):
-        file = str(section).zfill(3) + ".tif"
-        inpath = os.path.join(INPUT, file)
-        if not os.path.exists(inpath):
-            print(f'{inpath} does not exist')
-            continue
-        img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-        mask = np.zeros((img.shape), dtype=np.uint8)
-        points = np.array(points)
-        points = points.astype(np.int32)
-        cv2.fillPoly(mask, pts = [points], color = color)
-        filename = f"{animal}.{annotator_id}.{structure_id}.{file}"
-        mask_outpath = os.path.join(MASK_OUTPUT, filename)
-        norm_outpath = os.path.join(NORM_OUTPUT, filename)
-        merg_outpath = os.path.join(MERG_OUTPUT, filename)
-        cv2.imwrite(mask_outpath, mask)
-        shutil.copyfile(inpath, norm_outpath)
-        merged_img = merge_mask(img, mask)
-        cv2.imwrite(merg_outpath, merged_img)
+    if debug:
+        for section, points in polygons.items():
+            file = str(section).zfill(3) + ".tif"
+            inpath = os.path.join(INPUT, file)
+            if not os.path.exists(inpath):
+                print(f'{inpath} does not exist')
+                continue
+            img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+            mask = np.zeros((img.shape), dtype=np.uint8)
+            points = np.array(points)
+            points = points.astype(np.int32)
+            cv2.fillPoly(mask, pts = [points], color = color)
+            filename = f"{animal}.{annotator_id}.{structure_id}.{file}"
+            mask_outpath = os.path.join(MASK_OUTPUT, filename)
+            norm_outpath = os.path.join(NORM_OUTPUT, filename)
+            merg_outpath = os.path.join(MERG_OUTPUT, filename)
+            print(f'section={section} point means={np.mean(points, axis=0)}')
+    else:
+        for section, points in tqdm(polygons.items()):
+            file = str(section).zfill(3) + ".tif"
+            inpath = os.path.join(INPUT, file)
+            if not os.path.exists(inpath):
+                print(f'{inpath} does not exist')
+                continue
+            img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+            mask = np.zeros((img.shape), dtype=np.uint8)
+            points = np.array(points)
+            points = points.astype(np.int32)
+            cv2.fillPoly(mask, pts = [points], color = color)
+            filename = f"{animal}.{annotator_id}.{structure_id}.{file}"
+            mask_outpath = os.path.join(MASK_OUTPUT, filename)
+            norm_outpath = os.path.join(NORM_OUTPUT, filename)
+            merg_outpath = os.path.join(MERG_OUTPUT, filename)
+            cv2.imwrite(mask_outpath, mask)
+            shutil.copyfile(inpath, norm_outpath)
+            merged_img = merge_mask(img, mask)
+            cv2.imwrite(merg_outpath, merged_img)
 
             
 if __name__ == '__main__':

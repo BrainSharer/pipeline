@@ -30,9 +30,9 @@ class AnnotationSessionController(SqlController):
         return brain_region
     
 
-    def get_annotation_session(self, prep_id, brain_region_id, annotator_id):
+    def get_annotation_session(self, prep_id, brain_region_id, annotator_id, annotation_type):
         annotation_session = self.session.query(AnnotationSession).filter(AnnotationSession.active==True)\
-            .filter(AnnotationSession.annotation_type==AnnotationType.STRUCTURE_COM)\
+            .filter(AnnotationSession.annotation_type==annotation_type)\
             .filter(AnnotationSession.FK_prep_id==prep_id)\
             .filter(AnnotationSession.FK_brain_region_id==brain_region_id)\
             .filter(AnnotationSession.FK_user_id==annotator_id)\
@@ -42,8 +42,8 @@ class AnnotationSessionController(SqlController):
             annotation_session = AnnotationSession(
                 FK_prep_id=prep_id,
                 FK_user_id=annotator_id,
-                FK_brain_region_id_id=brain_region_id,
-                annotation_type=AnnotationType.STRUCTURE_COM,
+                FK_brain_region_id=brain_region_id,
+                annotation_type=annotation_type,
                 active=True,
                 created=datetime.datetime.now())
 
