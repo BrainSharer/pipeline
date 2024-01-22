@@ -35,11 +35,12 @@ class MaskPrediction():
         self.num_classes = 2
         self.debug = debug
         self.model = self.get_model_instance_segmentation(self.num_classes)
-        self.modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/tg/mask.model.pth" )
+        #self.modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/tg/mask.model.pth" )
+        self.modelpath = os.path.join("/home/eddyod/programming/Pytorch-UNet/checkpoints/checkpoint_epoch20.pth" )
         self.load_machine_learning_model()
-        fileLocationManager = FileLocationManager(animal)
-        self.input = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-        self.output = os.path.join(fileLocationManager.masks, 'C1', 'tg')
+        self.fileLocationManager = FileLocationManager(animal)
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+        self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'tg')
         os.makedirs(self.output, exist_ok=True)
         annotationSessionController = AnnotationSessionController(animal)
         structureController = StructureCOMController(animal)
@@ -78,6 +79,8 @@ class MaskPrediction():
 
     def predict_mask(self):
         transform = torchvision.transforms.ToTensor()
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized')
+        self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'thumbnail_colored')
 
         files = sorted(os.listdir(self.input))
         for file in tqdm(files):
@@ -102,7 +105,7 @@ class MaskPrediction():
             mask = mask.astype(np.uint8)
             mask[mask > 0] = 255
             merged_img = merge_mask(img8, mask)
-            cv2.imwrite(maskpath, mask)
+            cv2.imwrite(maskpath, merged_img)
 
 
     def get_insert_mask_points(self):
@@ -185,5 +188,5 @@ if __name__ == "__main__":
     abbreviation = args.abbreviation
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     mask_predictor = MaskPrediction(animal, abbreviation, debug)
-    mask_predictor.get_insert_mask_points()
-    #mask_predictor.predict_mask()
+    #mask_predictor.get_insert_mask_points()
+    mask_predictor.predict_mask()
