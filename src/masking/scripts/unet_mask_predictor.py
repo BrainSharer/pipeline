@@ -117,6 +117,7 @@ callbacks = [
         tf.keras.callbacks.EarlyStopping(patience=5, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(log_dir='logs')]
 
-model.fit(X_train, y_train, validation_data=(X_test,y_test), batch_size=16, epochs=2, callbacks=callbacks)
+model.fit(X_train, y_train, validation_data=(X_test,y_test), batch_size=16, epochs=20, callbacks=callbacks)
 modelpath = os.path.join(ROOT, 'tg', 'unet_model.keras')
+model.save(modelpath)
 
