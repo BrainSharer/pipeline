@@ -29,6 +29,9 @@ def create_masks(animal, annotator_id, debug=False):
     sqlController = SqlController(animal)
     # vars
     IMG_INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+    if not os.path.exists(IMG_INPUT):
+        print(f'{IMG_INPUT} does not exist')
+        sys.exit()
     MASK_OUTPUT = os.path.join(TRAINING_PATH, 'thumbnail_masked')
     IMG_OUTPUT = os.path.join(TRAINING_PATH, 'thumbnail_aligned')
     os.makedirs(MASK_OUTPUT, exist_ok=True)
