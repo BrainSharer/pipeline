@@ -144,9 +144,10 @@ class StructureDataset(torch.utils.data.Dataset):
         img_path = os.path.join(self.root, self.imgdir, self.imgs[idx])
         mask_path = os.path.join(self.root, self.maskdir, self.masks[idx])
         img = Image.open(img_path) # L = grayscale, doesn't work with 16bit images
-        img16 = np.array(img)
-        img8 = (img16/256).astype('uint8')
-        pimg8 = Image.fromarray(img8)
+        img = np.array(img)
+        if img.dtype == np.uint16:
+            img = (img/256).astype('uint8')
+        pimg8 = Image.fromarray(img)
 
         mask = Image.open(mask_path) # 
         mask = np.array(mask)
