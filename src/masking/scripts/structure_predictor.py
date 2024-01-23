@@ -13,6 +13,9 @@ import cv2
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+import tensorflow as tf
+from tensorflow import keras
+
 from tqdm import tqdm
 
 from pathlib import Path
@@ -29,26 +32,25 @@ from library.database_model.annotation_points import AnnotationType, PolygonSequ
 from library.registration.brain_structure_manager import BrainStructureManager
 
 class MaskPrediction():
-    def __init__(self, animal, abbreviation, debug):
+    def __init__(self, animal, abbreviation=None, debug=False):
         self.animal = animal
         self.abbreviation = abbreviation
         self.num_classes = 2
         self.debug = debug
-        self.model = self.get_model_instance_segmentation(self.num_classes)
-        #self.modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/tg/mask.model.pth" )
-        self.modelpath = os.path.join("/home/eddyod/programming/Pytorch-UNet/checkpoints/checkpoint_epoch20.pth" )
-        self.load_machine_learning_model()
         self.fileLocationManager = FileLocationManager(animal)
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'tg')
         os.makedirs(self.output, exist_ok=True)
-        annotationSessionController = AnnotationSessionController(animal)
-        structureController = StructureCOMController(animal)
-        self.brainManager = BrainStructureManager(animal)
-        self.sqlController = SqlController(animal)
-
-        FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=self.abbreviation)
-        self.annotation_session = annotationSessionController.get_annotation_session(self.animal, FK_brain_region_id, 1, AnnotationType.POLYGON_SEQUENCE)
+        if self.abbreviation is not None:
+            self.model = self.get_model_instance_segmentation(self.num_classes)
+            self.modelpath = os.path.join("/home/eddyod/programming/Pytorch-UNet/checkpoints/checkpoint_epoch20.pth" )
+            self.load_machine_learning_model()
+            annotationSessionController = AnnotationSessionController(animal)
+            structureController = StructureCOMController(animal)
+            self.brainManager = BrainStructureManager(animal)
+            self.sqlController = SqlController(animal)
+            FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=self.abbreviation)
+            self.annotation_session = annotationSessionController.get_annotation_session(self.animal, FK_brain_region_id, 1, AnnotationType.POLYGON_SEQUENCE)
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -106,6 +108,26 @@ class MaskPrediction():
             mask[mask > 0] = 255
             merged_img = merge_mask(img8, mask)
             cv2.imwrite(maskpath, merged_img)
+
+    def predict_keras_mask(self):
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized')
+        self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'thumbnail_masked')
+        ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
+        modelpath = os.path.join(ROOT, 'tg', 'unet_model.keras')
+        model = keras.models.load_model(modelpath)
+
+        files = sorted(os.listdir(self.input))
+        for file in tqdm(files):
+            filepath = os.path.join(self.input, file)
+            mask_dest_file = (os.path.splitext(file)[0] + ".tif")  # colored mask images have .tif extension
+            maskpath = os.path.join(self.output, mask_dest_file)
+            if os.path.exists(maskpath):
+                continue
+            
+            img8 = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+            prediction = model.predict(img8[tf.newaxis, ...])[0]
+            predicted_mask = (prediction > 0.9995).astype(np.uint8)
+            cv2.imwrite(maskpath, predicted_mask)
 
 
     def get_insert_mask_points(self):
@@ -181,7 +203,7 @@ class MaskPrediction():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument("--abbreviation", help="Enter the brain region abbreviation", required=True, type=str)
+    parser.add_argument("--abbreviation", help="Enter the brain region abbreviation", required=False, type=str)
     parser.add_argument('--debug', help='Enter true or false', required=False, default='false', type=str)
     args = parser.parse_args()
     animal = args.animal
@@ -189,4 +211,5 @@ if __name__ == "__main__":
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     mask_predictor = MaskPrediction(animal, abbreviation, debug)
     #mask_predictor.get_insert_mask_points()
-    mask_predictor.predict_mask()
+    #mask_predictor.predict_mask()
+    mask_predictor.predict_keras_mask()

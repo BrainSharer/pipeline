@@ -13,7 +13,7 @@ import warnings
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.mask_utilities.mask_class import MaskDataset, TrigeminalDataset, get_model_instance_segmentation, get_transform
+from library.mask_utilities.mask_class import MaskDataset, StructureDataset, get_model_instance_segmentation, get_transform
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
 
@@ -24,18 +24,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='specify animal', required=False)
     parser.add_argument('--debug', help='test model', required=False, default='false')
-    parser.add_argument('--tg', help='Use TG masks', required=False, default='false')
+    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='true')
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2)
     
     args = parser.parse_args()
-    tg = bool({'true': True, 'false': False}[args.tg.lower()])
+    structures = bool({'true': True, 'false': False}[args.structures.lower()])
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
     animal = args.animal
     epochs = int(args.epochs)
 
-    if tg:
-        ROOT = os.path.join(ROOT, 'tg')
-        dataset = TrigeminalDataset(ROOT, transforms = get_transform(train=True))
+    if structures:
+        ROOT = os.path.join(ROOT, 'structures')
+        dataset = StructureDataset(ROOT, transforms = get_transform(train=True))
     else:
         dataset = MaskDataset(ROOT, animal, transforms = get_transform(train=True))
 
