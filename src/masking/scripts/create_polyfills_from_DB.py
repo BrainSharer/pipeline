@@ -39,7 +39,7 @@ def create_masks(animal, annotator_id, debug=False):
 
     polygon = PolygonSequenceController(animal=animal)
 
-    structure_ids = [21, 33, 14, 15]
+    structure_ids = [21]
 
     for structure_id in structure_ids:
     
