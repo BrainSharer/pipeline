@@ -82,7 +82,7 @@ class MaskPrediction():
         transform = torchvision.transforms.ToTensor()
 
         files = sorted(os.listdir(self.input))
-        for file in tqdm(files[0:10]):
+        for file in tqdm(files):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")  # colored mask images have .tif extension
             maskpath = os.path.join(self.output, mask_dest_file)
