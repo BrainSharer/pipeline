@@ -8,57 +8,8 @@ import cv2
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
-import torchvision.transforms as transforms
-from skimage.draw import random_shapes
 from library.mask_utilities.utils import reduce_dict, collate_fn
 import library.mask_utilities.transforms as T
-
-def generate_images(size=224):
-    image, labels = random_shapes((size, size), min_shapes=2, max_shapes=8, intensity_range=((0, 127),), shape="ellipse", min_size=20, allow_overlap=True)
-    # Generate mask only for ellipses
-    mask = np.sum(image, axis=-1) < 255*3
-
-    image2, _ = random_shapes((size, size), min_shapes=2, max_shapes=8, intensity_range=((0, 127),), shape="triangle", min_size=20, allow_overlap=True)
-
-    image += image2
-    image = 255 - image
-    noise = np.random.randint(0, 30, (224, 224, 1), dtype = np.uint8)
-    image += noise
-    return image, mask
-
-
-class EllipseDataset(torch.utils.data.Dataset):
-    def __init__(self):
-        super().__init__()
-        self.root = '/home/eddyod/tmp'
-        self.imgs = sorted(os.listdir(os.path.join(self.root, 'images')))
-        self.masks = sorted(os.listdir(os.path.join(self.root, 'masks')))
-        self.size = len(self.imgs)
-        self.transform = transforms.Compose([transforms.ToTensor()])
-    def __len__(self):
-        return self.size
-    def __getitem__(self, index):
-            img_path = os.path.join(self.root, 'images', self.imgs[index])
-            mask_path = os.path.join(self.root, 'masks', self.masks[index])
-            img = Image.open(img_path).convert("L") # L = grayscale
-            mask = Image.open(mask_path) # 
-            mask = np.array(mask)
-            mask[mask > 0] = 255
-            img = self.transform(img)
-            y = torch.as_tensor(mask, dtype = torch.uint8)
-            y = torch.unsqueeze(y, 0)
-            return img, y
-
-
-    def XXX__getitem__(self, index):
-            # Generate random image sample
-            X, y = generate_images()
-            # Convert the shape from HxWxC -> CxHxW
-            X = self.transform(X)
-            y = torch.as_tensor(y, dtype = torch.uint8)
-            y = torch.unsqueeze(y, 0)
-            return X, y
-
 
 class MaskDataset(torch.utils.data.Dataset):
     def __init__(self, root, animal=None, transforms=None):
