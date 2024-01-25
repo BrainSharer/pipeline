@@ -32,7 +32,7 @@ from library.registration.brain_structure_manager import BrainStructureManager
 class MaskPrediction():
     def __init__(self, animal, debug=False):
         self.animal = animal
-        self.num_classes = 2
+        self.num_classes = 3
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal)
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
