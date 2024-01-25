@@ -22,16 +22,18 @@ ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--animal', help='specify animal', required=False)
-    parser.add_argument('--debug', help='test model', required=False, default='false')
-    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='true')
-    parser.add_argument('--epochs', help='# of epochs', required=False, default=2)
+    parser.add_argument('--animal', help='specify animal', required=False, type=str)
+    parser.add_argument('--debug', help='test model', required=False, default='false', type=str)
+    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='true', type=str)
+    parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
+    parser.add_argument('--num_classes', help='# of structures', required=True, default=2, type=int)
     
     args = parser.parse_args()
     structures = bool({'true': True, 'false': False}[args.structures.lower()])
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
     animal = args.animal
-    epochs = int(args.epochs)
+    epochs = args.epochs
+    num_classes = args.num_classes
 
     if structures:
         ROOT = os.path.join(ROOT, 'structures')
@@ -71,7 +73,6 @@ if __name__ == '__main__':
         print_freq = 100
     print(f"We have: {n_files} images to train and printing loss info every {print_freq} iterations.")
     # our dataset has two classs, tissue or 'not tissue'
-    num_classes = 2
     modelpath = os.path.join(ROOT, 'mask.model.pth')
     # create logging file
     logpath = os.path.join(ROOT, "mask.logger.txt")
