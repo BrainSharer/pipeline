@@ -46,9 +46,8 @@ class MaskPrediction():
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'structures')
         os.makedirs(self.output, exist_ok=True)
-        self.model = self.get_model_instance_segmentation()
         self.modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/mask.model.pth" )
-        self.load_machine_learning_model()
+
         if False:
             annotationSessionController = AnnotationSessionController(animal)
             structureController = StructureCOMController(animal)
@@ -85,6 +84,8 @@ class MaskPrediction():
 
 
     def predict_masks(self):
+        self.model = self.get_model_instance_segmentation()
+        self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
 
         files = sorted(os.listdir(self.input))
