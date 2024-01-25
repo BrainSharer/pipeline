@@ -13,8 +13,6 @@ import cv2
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
-import tensorflow as tf
-from tensorflow import keras
 
 from tqdm import tqdm
 
