@@ -1,4 +1,3 @@
-import argparse
 import os
 import sys
 import numpy as np
@@ -88,8 +87,9 @@ class MaskPrediction():
         if self.structures:
             ROOT = os.path.join(ROOT, 'structures')
             dataset = StructureDataset(ROOT, transforms = get_transform(train=True))
+            print(dataset[1])
         else:
-            dataset = MaskDataset(ROOT, animal, transforms = get_transform(train=True))
+            dataset = MaskDataset(ROOT, self.animal, transforms = get_transform(train=True))
 
         indices = torch.randperm(len(dataset)).tolist()
 
@@ -160,7 +160,6 @@ class MaskPrediction():
         print('Finished with masks')
         logfile.close()
         print('Creating loss chart')
-        return
 
         fig = plt.figure()
         output_path = os.path.join(ROOT, 'loss_plot.png')
@@ -205,7 +204,9 @@ class MaskPrediction():
 
 
             with torch.no_grad():
-                pred = self.model(img_transformed)
+                prediction = self.model(img_transformed)
+
+            """
             masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
             #masks = [pred[0]["masks"].squeeze().detach().cpu().numpy()]
             mask = masks[0]
@@ -220,7 +221,18 @@ class MaskPrediction():
             mask[mask > 0] = 255
             merged_img = merge_mask(img, mask)
             cv2.imwrite(maskpath, merged_img)
+            """
+            print(prediction[0]['labels'])
+            
+            for i in range(len(prediction[0]['masks'])):
+                # iterate over masks
+                mask = (prediction[0]['masks'][i, 0] > 0.75)
+                mask = mask.mul(255).byte().cpu().numpy()
+                contours, _ = cv2.findContours(
+                        mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+                cv2.drawContours(img, contours, -1, (255, 0, 0), 2, cv2.LINE_AA)
 
+            cv2.imwrite(maskpath, img)
 
     def get_insert_mask_points(self):
         transform = torchvision.transforms.ToTensor()
@@ -284,19 +296,9 @@ class MaskPrediction():
                         self.brainManager.sqlController.session.rollback()
                     except Exception as e:
                         self.brainManager.sqlController.session.rollback()
-        if debug: 
+        if self.debug: 
             action = "finding" 
         else: 
             action = "inserting"
         print(f'Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}')
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Work on Animal")
-    parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument('--debug', help='Enter true or false', required=False, default='false', type=str)
-    args = parser.parse_args()
-    animal = args.animal
-    debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
-    mask_predictor = MaskPrediction(animal, debug)
-    #mask_predictor.get_insert_mask_points()
-    mask_predictor.predict_masks()
