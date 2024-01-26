@@ -83,6 +83,102 @@ class MaskPrediction():
             sys.exit()
 
 
+    def mask_trainer(self):
+        ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
+        if self.structures:
+            ROOT = os.path.join(ROOT, 'structures')
+            dataset = StructureDataset(ROOT, transforms = get_transform(train=True))
+        else:
+            dataset = MaskDataset(ROOT, animal, transforms = get_transform(train=True))
+
+        indices = torch.randperm(len(dataset)).tolist()
+
+        if self.debug:
+            test_cases = 50
+            torch.manual_seed(1)
+            dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
+        else:
+            dataset = torch.utils.data.Subset(dataset, indices)
+
+        workers = 2
+        batch_size = 4
+        torch.multiprocessing.set_sharing_strategy('file_system')
+
+        if torch.cuda.is_available(): 
+            device = torch.device('cuda') 
+            print(f'Using Nvidia graphics card GPU with {workers} workers at a batch size of {batch_size}')
+        else:
+            warnings.filterwarnings("ignore")
+            device = torch.device('cpu')
+            print(f'Using CPU with {workers} workers at a batch size of {batch_size}')
+
+        # define training and validation data loaders
+        data_loader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=True, num_workers=workers,
+            collate_fn=collate_fn)
+
+        n_files = len(dataset)
+        print_freq = 10
+        if n_files > 1000:
+            print_freq = 100
+        print(f"We have: {n_files} images to train and printing loss info every {print_freq} iterations.")
+        # our dataset has two classs, tissue or 'not tissue'
+        # create logging file
+        logpath = os.path.join(ROOT, "mask.logger.txt")
+        logfile = open(logpath, "w")
+        logheader = f"Masking {datetime.now()} with {self.epochs} epochs\n"
+        logfile.write(logheader)
+        # get the model using our helper function
+        model = self.get_model_instance_segmentation()
+        # move model to the right device
+        model.to(device)
+        # construct an optimizer
+        params = [p for p in model.parameters() if p.requires_grad]
+        optimizer = torch.optim.SGD(params, lr=0.005,momentum=0.9, weight_decay=0.0005)
+        # and a learning rate scheduler which decreases the learning rate by # 10x every 3 epochs
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+        loss_list = []
+        # original version with train_one_epoch
+        for epoch in range(self.epochs):
+            # train for one epoch, printing every 10 iterations
+            mlogger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=print_freq)
+            loss_txt = str(mlogger.loss)
+            x = loss_txt.split()
+            loss = float(x[0])
+            del x
+            loss_mask_txt = str(mlogger.loss_mask)
+            x = loss_mask_txt.split()
+            loss_mask = float(x[0])
+            loss_list.append([loss, loss_mask])
+            # update the learning rate
+            lr_scheduler.step()
+        print(f'Saving model to {self.modelpath}')
+        torch.save(model.state_dict(), self.modelpath)
+
+        logfile.write(str(loss_list))
+        logfile.write("\n")
+        print('Finished with masks')
+        logfile.close()
+        print('Creating loss chart')
+        return
+
+        fig = plt.figure()
+        output_path = os.path.join(ROOT, 'loss_plot.png')
+        x = [i for i in range(len(loss_list))]
+        l1 = [i[0] for i in loss_list]
+        l2 = [i[1] for i in loss_list]
+        plt.plot(x, l1,  color='green', linestyle='dashed', marker='o', markerfacecolor='blue', markersize=5, label="Loss")
+        plt.plot(x, l2,  color='red', linestyle=':', marker='o', markerfacecolor='yellow', markersize=5, label="Mask loss")
+        plt.style.use("ggplot")
+        plt.xticks(np.arange(min(x), max(x)+1, 1.0))
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title(f'Loss over {len(x)} epochs with {len(dataset)} images')
+        plt.legend()
+        plt.close()
+        fig.savefig(output_path, bbox_inches="tight")
+        print('Finished with loss plot')
+
     def predict_masks(self):
         self.model = self.get_model_instance_segmentation()
         self.load_machine_learning_model()
@@ -96,37 +192,34 @@ class MaskPrediction():
             if os.path.exists(maskpath):
                 continue
             
-            img8 = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
-            pimg = Image.fromarray(img8)
+            img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+            pimg = Image.fromarray(img)
 
-            # Predict a single image
-            #image = pimg
-            #image = transform(image)
-            #image = image.unsqueeze(0)
-            #prediction = self.model(image)
-            #prediction = prediction > 0.5
-            #print('Prediction: {}'.format(prediction))
-            #return
 
-            torch_input = transform(pimg)
-            torch_input = torch_input.unsqueeze(0)
+            img_transformed = transform(pimg)
+
+
+            img_transformed = img_transformed.unsqueeze(0)
             self.model.eval()
+
+
+
             with torch.no_grad():
-                pred = self.model(torch_input)
-            #masks = [(pred[0]["masks"] > 0.05).squeeze().detach().cpu().numpy()]
-            masks = [pred[0]["masks"].squeeze().detach().cpu().numpy()]
+                pred = self.model(img_transformed)
+            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+            #masks = [pred[0]["masks"].squeeze().detach().cpu().numpy()]
             mask = masks[0]
-            ids, counts = np.unique(mask, return_counts=True)
-            print(f'file={file} len masks={len(masks)}')
-            print(f'file={file} dtype={mask.dtype} ids={ids} counts={counts}')
-            return
+            #ids, counts = np.unique(mask, return_counts=True)
+            #print(f'file={file} len masks={len(masks)}')
+            #print(f'file={file} dtype={mask.dtype} ids={ids} counts={counts}')
+            #return
             dims = mask.ndim
             if dims > 2:
                 mask = combine_dims(mask)
             mask = mask.astype(np.uint8)
-            #mask[mask > 0] = 255
-            merged_img = merge_mask(img8, mask)
-            cv2.imwrite(maskpath, mask)
+            mask[mask > 0] = 255
+            merged_img = merge_mask(img, mask)
+            cv2.imwrite(maskpath, merged_img)
 
 
     def get_insert_mask_points(self):
@@ -141,11 +234,11 @@ class MaskPrediction():
             section = os.path.splitext(file)[0]
             img8 = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
             pimg = Image.fromarray(img8)
-            torch_input = transform(pimg)
-            torch_input = torch_input.unsqueeze(0)
+            img_transformed = transform(pimg)
+            img_transformed = img_transformed.unsqueeze(0)
             self.model.eval()
             with torch.no_grad():
-                pred = self.model(torch_input)
+                pred = self.model(img_transformed)
             masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
             mask = masks[0]
             dims = mask.ndim
@@ -196,104 +289,6 @@ class MaskPrediction():
         else: 
             action = "inserting"
         print(f'Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}')
-
-
-
-    def mask_trainer(self):
-        ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
-        if self.structures:
-            ROOT = os.path.join(ROOT, 'structures')
-            dataset = StructureDataset(ROOT, transforms = get_transform(train=True))
-        else:
-            dataset = MaskDataset(ROOT, animal, transforms = get_transform(train=True))
-
-        indices = torch.randperm(len(dataset)).tolist()
-
-        if self.debug:
-            test_cases = 12
-            torch.manual_seed(1)
-            dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
-        else:
-            dataset = torch.utils.data.Subset(dataset, indices)
-
-        workers = 2
-        batch_size = 4
-        torch.multiprocessing.set_sharing_strategy('file_system')
-
-        if torch.cuda.is_available(): 
-            device = torch.device('cuda') 
-            print(f'Using Nvidia graphics card GPU with {workers} workers at a batch size of {batch_size}')
-        else:
-            warnings.filterwarnings("ignore")
-            device = torch.device('cpu')
-            print(f'Using CPU with {workers} workers at a batch size of {batch_size}')
-
-        # define training and validation data loaders
-        data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True, num_workers=workers,
-            collate_fn=collate_fn)
-
-        n_files = len(dataset)
-        print_freq = 10
-        if n_files > 1000:
-            print_freq = 100
-        print(f"We have: {n_files} images to train and printing loss info every {print_freq} iterations.")
-        # our dataset has two classs, tissue or 'not tissue'
-        # create logging file
-        logpath = os.path.join(ROOT, "mask.logger.txt")
-        logfile = open(logpath, "w")
-        logheader = f"Masking {datetime.now()} with {self.epochs} epochs\n"
-        logfile.write(logheader)
-        # get the model using our helper function
-        model = self.get_model_instance_segmentation()
-        # move model to the right device
-        model.to(device)
-        # construct an optimizer
-        params = [p for p in model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(params, lr=0.005,momentum=0.9, weight_decay=0.0005)
-        # and a learning rate scheduler which decreases the learning rate by # 10x every 3 epochs
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
-        loss_list = []
-        
-        # original version with train_one_epoch
-        for epoch in range(self.epochs):
-            # train for one epoch, printing every 10 iterations
-            mlogger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=print_freq)
-            loss_txt = str(mlogger.loss)
-            x = loss_txt.split()
-            loss = float(x[0])
-            del x
-            loss_mask_txt = str(mlogger.loss_mask)
-            x = loss_mask_txt.split()
-            loss_mask = float(x[0])
-            loss_list.append([loss, loss_mask])
-            # update the learning rate
-            lr_scheduler.step()
-            if not self.debug:
-                torch.save(model.state_dict(), self.modelpath)
-
-        logfile.write(str(loss_list))
-        logfile.write("\n")
-        print('Finished with masks')
-        logfile.close()
-        print('Creating loss chart')
-
-        fig = plt.figure()
-        output_path = os.path.join(ROOT, 'loss_plot.png')
-        x = [i for i in range(len(loss_list))]
-        l1 = [i[0] for i in loss_list]
-        l2 = [i[1] for i in loss_list]
-        plt.plot(x, l1,  color='green', linestyle='dashed', marker='o', markerfacecolor='blue', markersize=5, label="Loss")
-        plt.plot(x, l2,  color='red', linestyle=':', marker='o', markerfacecolor='yellow', markersize=5, label="Mask loss")
-        plt.style.use("ggplot")
-        plt.xticks(np.arange(min(x), max(x)+1, 1.0))
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title(f'Loss over {len(x)} epochs with {len(dataset)} images')
-        plt.legend()
-        plt.close()
-        fig.savefig(output_path, bbox_inches="tight")
-        print('Finished with loss plot')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")

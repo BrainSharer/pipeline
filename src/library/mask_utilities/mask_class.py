@@ -89,7 +89,6 @@ class StructureDataset(torch.utils.data.Dataset):
         self.maskdir = 'thumbnail_masked'
         self.imgs = sorted(os.listdir(os.path.join(root, self.imgdir)))
         self.masks = sorted(os.listdir(os.path.join(root, self.maskdir)))
-
     def __getitem__(self, idx):
         # load images and bounding boxes
         img_path = os.path.join(self.root, self.imgdir, self.imgs[idx])
@@ -111,34 +110,35 @@ class StructureDataset(torch.utils.data.Dataset):
         masks = mask == obj_ids[:, None, None]
         # get bounding box coordinates for each mask
         num_objs = len(obj_ids)
-        # print(num_objs)
-        boxes = []
-        for i in range(num_objs):
-          pos = np.where(masks[i])
-          xmin = np.min(pos[1])
-          xmax = np.max(pos[1])
-          ymin = np.min(pos[0])
-          ymax = np.max(pos[0])
-          # Check if area is larger than a threshold
-          A = abs((xmax-xmin) * (ymax-ymin)) 
-          #print(f"Min area to look for {A}")
-          if A < 5:
-            print('Nr before deletion:', num_objs)
-            obj_ids=np.delete(obj_ids, [i])
-            # print('Area smaller than 5! Box coordinates:', [xmin, ymin, xmax, ymax])
-            print('Nr after deletion:', len(obj_ids))
-            continue
 
-          boxes.append([xmin, ymin, xmax, ymax])
+        boxes = []
+        labels = []
+        for i in range(num_objs):
+            labels.append(i)
+            pos = np.where(masks[i])
+            xmin = np.min(pos[1])
+            xmax = np.max(pos[1])
+            ymin = np.min(pos[0])
+            ymax = np.max(pos[0])
+            # Check if area is larger than a threshold
+            A = abs((xmax-xmin) * (ymax-ymin)) 
+            #print(f"Min area to look for {A}")
+            if A < 5:
+                print('Nr before deletion:', num_objs)
+                obj_ids=np.delete(obj_ids, [i])
+                # print('Area smaller than 5! Box coordinates:', [xmin, ymin, xmax, ymax])
+                print('Nr after deletion:', len(obj_ids))
+                continue
+
+            boxes.append([xmin, ymin, xmax, ymax])
 
         #print('nr boxes is equal to nr ids:', len(boxes)==len(obj_ids))
         num_objs = len(obj_ids)
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        #labels = torch.ones((num_objs,), dtype=torch.int64) # just one class
         # there are multiple classes/labels/structures
-        labels = torch.ones((num_objs,), dtype=torch.int64)
         masks = torch.as_tensor(masks, dtype=torch.uint8)
-
         image_id = torch.tensor([idx])
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         # suppose all instances are not crowd
@@ -146,7 +146,7 @@ class StructureDataset(torch.utils.data.Dataset):
 
         target = {}
         target["boxes"] = boxes
-        target["labels"] = labels
+        target["labels"] = torch.as_tensor(labels, dtype=torch.int64) 
         target["masks"] = masks
         target["image_id"] = image_id
         target["area"] = area
