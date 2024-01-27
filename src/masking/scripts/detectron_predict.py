@@ -9,9 +9,10 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.utils.visualizer import ColorMode
+from detectron2.data import MetadataCatalog
 
 import torch
-from detectron_test import get_structure_dicts, create_structure_metadata
+from detectron_test import get_structure_dicts
 import cv2
 
 INPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/"
@@ -42,7 +43,7 @@ cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")  # path to t
 cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7   # set a custom testing threshold
 predictor = DefaultPredictor(cfg)
 
-structure_metadata = create_structure_metadata()
+structure_metadata = MetadataCatalog.get("structure")
 i = 1
 dataset_dicts = get_structure_dicts(INPUT + "train")
 for d in random.sample(dataset_dicts, 3):    
