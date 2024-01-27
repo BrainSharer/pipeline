@@ -7,9 +7,11 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 import shutil
+import json
 
 import cv2
 from PIL import Image
+
 Image.MAX_IMAGE_PIXELS = None
 from matplotlib import pyplot as plt
 
@@ -21,7 +23,7 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
-PIPELINE_ROOT = Path('./src').absolute()
+PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -33,11 +35,16 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 from library.controller.structure_com_controller import StructureCOMController
 from library.database_model.annotation_points import AnnotationType, PolygonSequence
 from library.registration.brain_structure_manager import BrainStructureManager
-from library.mask_utilities.mask_class import MaskDataset, StructureDataset, get_transform
+from library.mask_utilities.mask_class import (
+    MaskDataset,
+    StructureDataset,
+    get_transform,
+)
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
 
-class MaskPrediction():
+
+class MaskPrediction:
     def __init__(self, animal, structures, num_classes, epochs, debug=False):
         self.animal = animal
         self.structures = structures
@@ -45,19 +52,28 @@ class MaskPrediction():
         self.epochs = epochs
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal)
-        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-        self.output = os.path.join(self.fileLocationManager.masks, 'C1', 'structures')
+        self.input = os.path.join(
+            self.fileLocationManager.prep, "C1", "thumbnail_aligned"
+        )
+        self.output = os.path.join(self.fileLocationManager.masks, "C1", "structures")
         os.makedirs(self.output, exist_ok=True)
-        self.modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/mask.model.pth" )
+        self.modelpath = os.path.join(
+            "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/mask.model.pth"
+        )
 
         if False:
             annotationSessionController = AnnotationSessionController(animal)
             structureController = StructureCOMController(animal)
             self.brainManager = BrainStructureManager(animal)
             self.sqlController = SqlController(animal)
-            FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=self.abbreviation)
-            self.annotation_session = annotationSessionController.get_annotation_session(self.animal, FK_brain_region_id, 1, AnnotationType.POLYGON_SEQUENCE)
-
+            FK_brain_region_id = structureController.structure_abbreviation_to_id(
+                abbreviation=self.abbreviation
+            )
+            self.annotation_session = (
+                annotationSessionController.get_annotation_session(
+                    self.animal, FK_brain_region_id, 1, AnnotationType.POLYGON_SEQUENCE
+                )
+            )
 
     def get_model_instance_segmentation(self):
         # load an instance segmentation model pre-trained pre-trained on COCO
@@ -75,24 +91,26 @@ class MaskPrediction():
         )
         return model
 
-
     def load_machine_learning_model(self):
         """Load the CNN model used to generate image masks"""
         if os.path.exists(self.modelpath):
-            self.model.load_state_dict(torch.load(self.modelpath, map_location=torch.device("cpu")))
+            self.model.load_state_dict(
+                torch.load(self.modelpath, map_location=torch.device("cpu"))
+            )
         else:
             print("no model to load")
             sys.exit()
 
-
     def mask_trainer(self):
-        ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
+        ROOT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks"
         if self.structures:
-            ROOT = os.path.join(ROOT, 'structures')
-            dataset = StructureDataset(ROOT, transforms = get_transform(train=True))
+            ROOT = os.path.join(ROOT, "structures")
+            dataset = StructureDataset(ROOT, transforms=get_transform(train=True))
             print(dataset[1])
         else:
-            dataset = MaskDataset(ROOT, self.animal, transforms = get_transform(train=True))
+            dataset = MaskDataset(
+                ROOT, self.animal, transforms=get_transform(train=True)
+            )
 
         indices = torch.randperm(len(dataset)).tolist()
 
@@ -105,26 +123,34 @@ class MaskPrediction():
 
         workers = 2
         batch_size = 4
-        torch.multiprocessing.set_sharing_strategy('file_system')
+        torch.multiprocessing.set_sharing_strategy("file_system")
 
-        if torch.cuda.is_available(): 
-            device = torch.device('cuda') 
-            print(f'Using Nvidia graphics card GPU with {workers} workers at a batch size of {batch_size}')
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            print(
+                f"Using Nvidia graphics card GPU with {workers} workers at a batch size of {batch_size}"
+            )
         else:
             warnings.filterwarnings("ignore")
-            device = torch.device('cpu')
-            print(f'Using CPU with {workers} workers at a batch size of {batch_size}')
+            device = torch.device("cpu")
+            print(f"Using CPU with {workers} workers at a batch size of {batch_size}")
 
         # define training and validation data loaders
         data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True, num_workers=workers,
-            collate_fn=collate_fn)
+            dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=workers,
+            collate_fn=collate_fn,
+        )
 
         n_files = len(dataset)
         print_freq = 10
         if n_files > 1000:
             print_freq = 100
-        print(f"We have: {n_files} images to train and printing loss info every {print_freq} iterations.")
+        print(
+            f"We have: {n_files} images to train and printing loss info every {print_freq} iterations."
+        )
         # our dataset has two classs, tissue or 'not tissue'
         # create logging file
         logpath = os.path.join(ROOT, "mask.logger.txt")
@@ -137,14 +163,18 @@ class MaskPrediction():
         model.to(device)
         # construct an optimizer
         params = [p for p in model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(params, lr=0.005,momentum=0.9, weight_decay=0.0005)
+        optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
         # and a learning rate scheduler which decreases the learning rate by # 10x every 3 epochs
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=3, gamma=0.1
+        )
         loss_list = []
         # original version with train_one_epoch
         for epoch in range(self.epochs):
             # train for one epoch, printing every 10 iterations
-            mlogger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=print_freq)
+            mlogger = train_one_epoch(
+                model, optimizer, data_loader, device, epoch, print_freq=print_freq
+            )
             loss_txt = str(mlogger.loss)
             x = loss_txt.split()
             loss = float(x[0])
@@ -155,32 +185,50 @@ class MaskPrediction():
             loss_list.append([loss, loss_mask])
             # update the learning rate
             lr_scheduler.step()
-        print(f'Saving model to {self.modelpath}')
+        print(f"Saving model to {self.modelpath}")
         return
         torch.save(model.state_dict(), self.modelpath)
 
         logfile.write(str(loss_list))
         logfile.write("\n")
-        print('Finished with masks')
+        print("Finished with masks")
         logfile.close()
-        print('Creating loss chart')
+        print("Creating loss chart")
 
         fig = plt.figure()
-        output_path = os.path.join(ROOT, 'loss_plot.png')
+        output_path = os.path.join(ROOT, "loss_plot.png")
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]
-        plt.plot(x, l1,  color='green', linestyle='dashed', marker='o', markerfacecolor='blue', markersize=5, label="Loss")
-        plt.plot(x, l2,  color='red', linestyle=':', marker='o', markerfacecolor='yellow', markersize=5, label="Mask loss")
+        plt.plot(
+            x,
+            l1,
+            color="green",
+            linestyle="dashed",
+            marker="o",
+            markerfacecolor="blue",
+            markersize=5,
+            label="Loss",
+        )
+        plt.plot(
+            x,
+            l2,
+            color="red",
+            linestyle=":",
+            marker="o",
+            markerfacecolor="yellow",
+            markersize=5,
+            label="Mask loss",
+        )
         plt.style.use("ggplot")
-        plt.xticks(np.arange(min(x), max(x)+1, 1.0))
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title(f'Loss over {len(x)} epochs with {len(dataset)} images')
+        plt.xticks(np.arange(min(x), max(x) + 1, 1.0))
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.title(f"Loss over {len(x)} epochs with {len(dataset)} images")
         plt.legend()
         plt.close()
         fig.savefig(output_path, bbox_inches="tight")
-        print('Finished with loss plot')
+        print("Finished with loss plot")
 
     def predict_masks(self):
         self.model = self.get_model_instance_segmentation()
@@ -190,11 +238,13 @@ class MaskPrediction():
         files = sorted(os.listdir(self.input))
         for file in tqdm(files):
             filepath = os.path.join(self.input, file)
-            mask_dest_file = (os.path.splitext(file)[0] + ".tif")  # colored mask images have .tif extension
+            mask_dest_file = (
+                os.path.splitext(file)[0] + ".tif"
+            )  # colored mask images have .tif extension
             maskpath = os.path.join(self.output, mask_dest_file)
             if os.path.exists(maskpath):
                 continue
-            
+
             img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
             pimg = Image.fromarray(img)
             img_transformed = transform(pimg)
@@ -219,21 +269,21 @@ class MaskPrediction():
             merged_img = merge_mask(img, mask)
             cv2.imwrite(maskpath, merged_img)
             """
-            print(prediction[0]['labels'])
-            
-            for i in range(len(prediction[0]['masks'])):
+            print(prediction[0]["labels"])
+
+            for i in range(len(prediction[0]["masks"])):
                 # iterate over masks
-                mask = (prediction[0]['masks'][i, 0] > 0.9)
+                mask = prediction[0]["masks"][i, 0] > 0.9
                 mask = mask.mul(255).byte().cpu().numpy()
                 contours, _ = cv2.findContours(
-                        mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+                    mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
+                )
                 cv2.drawContours(img, contours, -1, 255, 2, cv2.LINE_AA)
 
             cv2.imwrite(maskpath, img)
 
-
     def create_json_masks(self):
-        OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron'
+        OUTPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron"
         os.makedirs(OUTPUT, exist_ok=True)
 
         sqlController = SqlController(self.animal)
@@ -241,34 +291,44 @@ class MaskPrediction():
 
         structure_ids = [33]
         annotator_id = 1
+        structure_points = {}
 
         for structure_id in structure_ids:
-        
             df = polygon.get_volume(self.animal, annotator_id, structure_id)
             scale_xy = sqlController.scan_run.resolution
             z_scale = sqlController.scan_run.zresolution
             polygons = defaultdict(list)
-            
+
             for _, row in df.iterrows():
-                x = row['coordinate'][0]
-                y = row['coordinate'][1]
-                z = row['coordinate'][2]
-                xy = (x/scale_xy/SCALING_FACTOR, y/scale_xy/SCALING_FACTOR)
-                section = int(np.round(z/z_scale))
+                x = row["coordinate"][0]
+                y = row["coordinate"][1]
+                z = row["coordinate"][2]
+                xy = (x / scale_xy / SCALING_FACTOR, y / scale_xy / SCALING_FACTOR)
+                section = int(np.round(z / z_scale))
                 polygons[section].append(xy)
-                
-            
+
             for section, points in tqdm(polygons.items()):
                 file = str(section).zfill(3) + ".tif"
                 inpath = os.path.join(self.input, file)
                 filename = f"{self.animal}.{file}"
+
+                structure_points[filename] = {}
+                add_dict = self.dict_construct(filename, points)
+                structure_points[filename].update(add_dict)
+
                 img_outpath = os.path.join(OUTPUT, filename)
                 points = np.array(points).astype(np.int32)
                 if self.debug:
-                    print(f'animal={self.animal}, file={file} structure_id={structure_id} points shape={points.shape}')
+                    print(
+                        f"animal={self.animal}, file={file} structure_id={structure_id} points shape={points.shape}"
+                    )
 
                 if not os.path.exists(img_outpath):
-                    shutil.copyfile(inpath, img_outpath) # only needs to be done once
+                    shutil.copyfile(inpath, img_outpath)  # only needs to be done once
+
+        JSON_OUTFILE = os.path.join(OUTPUT, "via_region_data.json")
+        with open(JSON_OUTFILE, "w") as outfile:
+            json.dump(structure_points, outfile, sort_keys=True, indent=4)
 
 
     def get_insert_mask_points(self):
@@ -300,29 +360,41 @@ class MaskPrediction():
             point_count = []
             if len(ids) > 1:
                 _, thresh = cv2.threshold(mask, 254, 255, 0)
-                contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                contours, _ = cv2.findContours(
+                    thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+                )
                 for i, c in enumerate(contours):
                     area = cv2.contourArea(c)
                     areaArray.append(area)
 
-                #first sort the array by area
-                sorteddata = sorted(zip(areaArray, contours), key=lambda x: x[0], reverse=True)
-                largest_contour = sorteddata[0][1]    
-                approx = cv2.approxPolyDP(largest_contour, 0.0009 * cv2.arcLength(largest_contour, True), True)
+                # first sort the array by area
+                sorteddata = sorted(
+                    zip(areaArray, contours), key=lambda x: x[0], reverse=True
+                )
+                largest_contour = sorteddata[0][1]
+                approx = cv2.approxPolyDP(
+                    largest_contour, 0.0009 * cv2.arcLength(largest_contour, True), True
+                )
                 for j in range(approx.shape[0]):
                     x = approx[j][0][0] * SCALING_FACTOR * xy_resolution
                     y = approx[j][0][1] * SCALING_FACTOR * xy_resolution
                     z = float(section) * z_resolution
                     polygon_index = z
                     point_order = j
-                    polygon_sequence = PolygonSequence(x=x, y=y, z=z, source=source, 
-                                                    polygon_index=polygon_index, point_order=point_order, FK_session_id=self.annotation_session.id)
+                    polygon_sequence = PolygonSequence(
+                        x=x,
+                        y=y,
+                        z=z,
+                        source=source,
+                        polygon_index=polygon_index,
+                        point_order=point_order,
+                        FK_session_id=self.annotation_session.id,
+                    )
                     vlist.append(polygon_sequence)
                     point_count.append(len(vlist))
 
-
                 if self.debug:
-                    print(f'Finished creating {len(vlist)} points on section={section}')
+                    print(f"Finished creating {len(vlist)} points on section={section}")
                 else:
                     try:
                         self.brainManager.sqlController.session.bulk_save_objects(vlist)
@@ -333,9 +405,24 @@ class MaskPrediction():
                         self.brainManager.sqlController.session.rollback()
                     except Exception as e:
                         self.brainManager.sqlController.session.rollback()
-        if self.debug: 
-            action = "finding" 
-        else: 
+        if self.debug:
+            action = "finding"
+        else:
             action = "inserting"
-        print(f'Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}')
+        print(
+            f"Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}"
+        )
 
+    @staticmethod
+    def dict_construct(filename, points):
+        x, y = zip(*points)
+        new_dic = {
+            "fileref": "",
+            "size": 12345,
+            "filename": filename,
+            "base64_img_data": "",
+            "file_attributes": {},
+            "regions": {"0": {"shape_attributes": {"name": "polygon", "all_points_x": x, "all_points_y": y}, "region_attributes": {} }},
+        }
+
+        return new_dic
