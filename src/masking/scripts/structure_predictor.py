@@ -5,6 +5,8 @@ import warnings
 from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
+import shutil
 
 import cv2
 from PIL import Image
@@ -27,6 +29,7 @@ from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.utilities.utilities_process import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
+from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.structure_com_controller import StructureCOMController
 from library.database_model.annotation_points import AnnotationType, PolygonSequence
 from library.registration.brain_structure_manager import BrainStructureManager
@@ -153,6 +156,7 @@ class MaskPrediction():
             # update the learning rate
             lr_scheduler.step()
         print(f'Saving model to {self.modelpath}')
+        return
         torch.save(model.state_dict(), self.modelpath)
 
         logfile.write(str(loss_list))
@@ -184,7 +188,7 @@ class MaskPrediction():
         transform = torchvision.transforms.ToTensor()
 
         files = sorted(os.listdir(self.input))
-        for file in tqdm(files[275:300]):
+        for file in tqdm(files):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")  # colored mask images have .tif extension
             maskpath = os.path.join(self.output, mask_dest_file)
@@ -193,16 +197,9 @@ class MaskPrediction():
             
             img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
             pimg = Image.fromarray(img)
-
-
             img_transformed = transform(pimg)
-
-
             img_transformed = img_transformed.unsqueeze(0)
             self.model.eval()
-
-
-
             with torch.no_grad():
                 prediction = self.model(img_transformed)
 
@@ -226,13 +223,53 @@ class MaskPrediction():
             
             for i in range(len(prediction[0]['masks'])):
                 # iterate over masks
-                mask = (prediction[0]['masks'][i, 0] > 0.75)
+                mask = (prediction[0]['masks'][i, 0] > 0.9)
                 mask = mask.mul(255).byte().cpu().numpy()
                 contours, _ = cv2.findContours(
                         mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-                cv2.drawContours(img, contours, -1, (255, 0, 0), 2, cv2.LINE_AA)
+                cv2.drawContours(img, contours, -1, 255, 2, cv2.LINE_AA)
 
             cv2.imwrite(maskpath, img)
+
+
+    def create_json_masks(self):
+        OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron'
+        os.makedirs(OUTPUT, exist_ok=True)
+
+        sqlController = SqlController(self.animal)
+        polygon = PolygonSequenceController(animal=self.animal)
+
+        structure_ids = [33]
+        annotator_id = 1
+
+        for structure_id in structure_ids:
+        
+            df = polygon.get_volume(self.animal, annotator_id, structure_id)
+            scale_xy = sqlController.scan_run.resolution
+            z_scale = sqlController.scan_run.zresolution
+            polygons = defaultdict(list)
+            
+            for _, row in df.iterrows():
+                x = row['coordinate'][0]
+                y = row['coordinate'][1]
+                z = row['coordinate'][2]
+                xy = (x/scale_xy/SCALING_FACTOR, y/scale_xy/SCALING_FACTOR)
+                section = int(np.round(z/z_scale))
+                polygons[section].append(xy)
+                
+            
+            for section, points in tqdm(polygons.items()):
+                file = str(section).zfill(3) + ".tif"
+                inpath = os.path.join(self.input, file)
+                filename = f"{self.animal}.{file}"
+                img_outpath = os.path.join(OUTPUT, filename)
+                points = np.array(points).astype(np.int32)
+                if self.debug:
+                    print(f'animal={self.animal}, file={file} structure_id={structure_id} points shape={points.shape}')
+
+                if not os.path.exists(img_outpath):
+                    shutil.copyfile(inpath, img_outpath) # only needs to be done once
+
 
     def get_insert_mask_points(self):
         transform = torchvision.transforms.ToTensor()
