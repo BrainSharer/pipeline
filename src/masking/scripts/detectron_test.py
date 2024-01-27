@@ -77,11 +77,14 @@ def get_structure_dicts(img_dir):
     return dataset_dicts
 
 INPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/"
+def create_structure_metadata():
+    for d in ["train", "val"]:
+        DatasetCatalog.register(INPUT + d, lambda d=d: get_structure_dicts(INPUT + d))
+        MetadataCatalog.get(INPUT + d).set(thing_classes=["structure"])
+        return  MetadataCatalog.get("structure")
 
-for d in ["train", "val"]:
-    DatasetCatalog.register(INPUT + d, lambda d=d: get_structure_dicts(INPUT + d))
-    MetadataCatalog.get(INPUT + d).set(thing_classes=["structure"])
-structure_metadata = MetadataCatalog.get("structure")
+structure_metadata = create_structure_metadata()
+
 dataset_dicts = get_structure_dicts(INPUT + "train")
 """
 i = 1
