@@ -99,7 +99,7 @@ class StructureDataset(torch.utils.data.Dataset):
 
         mask = Image.open(mask_path) # 
         mask = np.array(mask)
-        # instances are encoded as different colors
+        # instances are encoded as different grayscale values (structure_id)
         obj_ids = np.unique(mask)
         # first id is the background, so remove it
         obj_ids = obj_ids[1:]
@@ -141,7 +141,7 @@ class StructureDataset(torch.utils.data.Dataset):
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         # suppose all instances are not crowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-
+        print(f'labels={labels}')
         target = {}
         target["boxes"] = boxes
         target["labels"] = torch.as_tensor(labels, dtype=torch.int64) 

@@ -28,7 +28,8 @@ if __name__ == "__main__":
 
     function_mapping = {
         "train": mask_predictor.mask_trainer,
-        "predict": mask_predictor.predict_masks
+        "predict": mask_predictor.predict_masks,
+        "json": mask_predictor.create_json_masks
     }
 
     if task in function_mapping:
