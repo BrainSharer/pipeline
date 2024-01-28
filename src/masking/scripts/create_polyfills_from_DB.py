@@ -75,7 +75,7 @@ def create_masks(animal, annotator_id, debug=False):
             if not os.path.exists(img_outpath):
                 shutil.copyfile(inpath, img_outpath) # only needs to be done once
             cv2.imwrite(mask_outpath, maskfile)
- 
+
             
 if __name__ == '__main__':
     
