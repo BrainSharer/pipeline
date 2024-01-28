@@ -459,7 +459,7 @@ class MaskPrediction:
             "segmentation": [poly],
             "image_id": image_id,
             "area": area,
-            "bbox": [x1, y1, x2, y2]
+            "bbox": [x1, y1, width, height]
         }
         return new_dic
 
