@@ -75,6 +75,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
     animal = args.animal
-    epochs = args.iterations
+    iterations = args.iterations
+    train_and_predict(animal, iterations, debug)
 
 
