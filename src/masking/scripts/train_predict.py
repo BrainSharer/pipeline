@@ -16,11 +16,11 @@ PREDICTED = os.path.join(DATA, 'predicted')
 os.makedirs(PREDICTED, exist_ok=True)
 train_data = os.path.join(DATA, 'train')
 train_json = os.path.join(DATA, 'structure_training.json')
-register_coco_instances(f"structure_train", {}, train_json, train_data)
+register_coco_instances("structure_train", {}, train_json, train_data)
 
 test_data = os.path.join(ROOT, 'pipeline_data/DK37/preps/C1/thumbnail_aligned')
 test_json = os.path.join(DATA, 'DK37_testing.json')
-register_coco_instances(f"structure_test", {}, test_json, test_data)
+register_coco_instances("structure_test", {}, test_json, test_data)
 
 cfg = get_cfg()
 if not torch.cuda.is_available(): 
