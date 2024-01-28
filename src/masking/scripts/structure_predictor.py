@@ -42,6 +42,7 @@ from library.mask_utilities.mask_class import (
 )
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
+
 ROOT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
 
 
@@ -53,21 +54,23 @@ class MaskPrediction:
         self.epochs = epochs
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal)
-        self.input = os.path.join(self.fileLocationManager.prep, "C1", "thumbnail_aligned")
+        self.input = os.path.join(
+            self.fileLocationManager.prep, "C1", "thumbnail_aligned"
+        )
         self.output = os.path.join(self.fileLocationManager.masks, "C1", "structures")
         os.makedirs(self.output, exist_ok=True)
         self.modelpath = os.path.join(
             "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/mask.model.pth"
         )
         OUTPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron"
-        self.training_path = os.path.join(OUTPUT, 'train')
-        self.validation = os.path.join(OUTPUT, 'validation')
+        self.training_path = os.path.join(OUTPUT, "train")
+        self.validation = os.path.join(OUTPUT, "validation")
         os.makedirs(self.validation, exist_ok=True)
-        self.structure_ids = {0:33, 1:21}
+        self.structure_ids = {0: 33, 1: 21}
         self.annotator_id = 1
         self.setup_training_directory()
         self.training_files = sorted(os.listdir(self.training_path))
-        self.image_ids = {k:v for v,k in enumerate(self.training_files)}
+        self.image_ids = {k: v for v, k in enumerate(self.training_files)}
 
         if False:
             annotationSessionController = AnnotationSessionController(animal)
@@ -290,9 +293,8 @@ class MaskPrediction:
             cv2.imwrite(maskpath, img)
 
     def setup_training_directory(self):
-        """Go through the training files, create coco json datasets
-        """
-        animals = ['MD585', 'MD589', 'MD594']
+        """Go through the training files, create coco json datasets"""
+        animals = ["MD585", "MD589", "MD594"]
         for animal in animals:
             sqlController = SqlController(animal)
             polygon = PolygonSequenceController(animal=animal)
@@ -311,14 +313,14 @@ class MaskPrediction:
                     inpath = os.path.join(self.input, file)
                     img_outpath = os.path.join(self.training_path, filename)
                     if not os.path.exists(img_outpath):
-                        shutil.copyfile(inpath, img_outpath)  # only needs to be done once
-
+                        shutil.copyfile(
+                            inpath, img_outpath
+                        )  # only needs to be done once
 
     def setup_training(self):
-        """Go through the training files, create coco json datasets
-        """
-        
-        animals = ['MD585', 'MD589', 'MD594']
+        """Go through the training files, create coco json datasets"""
+        id = 0
+        animals = ["MD585", "MD589", "MD594"]
         annotations = []
         for animal in animals:
             sqlController = SqlController(animal)
@@ -341,9 +343,14 @@ class MaskPrediction:
                 for section, points in tqdm(polygons.items()):
                     file = str(section).zfill(3) + ".tif"
                     filename = f"{animal}.{file}"
-                    anno_dict = self.construct_annotations(image_id=self.image_ids[filename], category_id=category_id, anno=points)
+                    anno_dict = self.construct_annotations(
+                        id=id, image_id=self.image_ids[filename],
+                        category_id=category_id,
+                        anno=points,
+                    )
                     annotations.append(anno_dict)
-                    
+                    id += 1
+
                     if False:
                         px = [a[0] for a in points]
                         py = [a[1] for a in points]
@@ -357,14 +364,13 @@ class MaskPrediction:
                         h = y2 - y1
 
                         img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-                        cv2.rectangle(img, (x1,y1), (x2,y2), 255, 2)
+                        cv2.rectangle(img, (x1, y1), (x2, y2), 255, 2)
                         points = np.array(points).astype(np.int32)
-                        cv2.fillPoly(img, pts=[points], color = 255)
+                        cv2.fillPoly(img, pts=[points], color=255)
                         val_outpath = os.path.join(self.validation, filename)
                         cv2.imwrite(val_outpath, img)
 
         self.add_images_to_coco(annotations, training=True)
-
 
     def get_insert_mask_points(self):
         transform = torchvision.transforms.ToTensor()
@@ -457,12 +463,32 @@ class MaskPrediction:
             "filename": filename,
             "base64_img_data": "",
             "file_attributes": {},
-            "regions": {"0": {"shape_attributes": {"name": "polygon", "all_points_x": x, "all_points_y": y}, "region_attributes": {} }},
+            "regions": {
+                "0": {
+                    "shape_attributes": {
+                        "name": "polygon",
+                        "all_points_x": x,
+                        "all_points_y": y,
+                    },
+                    "region_attributes": {},
+                }
+            },
         }
         return new_dic
-    
+
     @staticmethod
-    def construct_annotations(image_id, category_id, anno):
+    def construct_annotations(id, image_id, category_id, anno):
+        """Each dictionary contains a list of every individual object annotation 
+        from every image in the dataset. For example, if a brain has 64 SC polygons spread out across 100 images, there will be 64 SC
+        annotations (along with a ton of annotations for other object categories). Often there will be multiple structures on a section. 
+        This results in a new annotation item for each one.
+        Area is measured in pixels (e.g. a 10px by 20px box would have an area of 200).
+        Is Crowd specifies whether the segmentation is for a single object or for a group/cluster of objects.
+        The image id corresponds to a specific image in the dataset.
+        The COCO bounding box format is [top left x position, top left y position, width, height].
+        The category id corresponds to a single category specified in the categories section.
+        Each annotation also has an id (unique to all other annotations in the dataset).
+        """
         px = [a[0] for a in anno]
         py = [a[1] for a in anno]
         poly = [(x, y) for x, y in zip(px, py)]
@@ -472,16 +498,16 @@ class MaskPrediction:
         x2 = np.max(px)
         y2 = np.max(py)
         width = x2 - x1
-        height = y2 - y1        
+        height = y2 - y1
         area = width * height
         new_dic = {
-            "id": image_id,
+            "id": id,
             "category_id": category_id,
             "iscrowd": 0,
             "segmentation": [poly],
             "image_id": image_id,
             "area": area,
-            "bbox": [x1, y1, width, height]
+            "bbox": [x1, y1, width, height],
         }
         return new_dic
 
@@ -492,20 +518,12 @@ class MaskPrediction:
             coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/structure_testing.json"
 
         coco = {
-            "images": [ ],
-            "annotations": [ ],
+            "images": [],
+            "annotations": [],
             "categories": [
-                {
-                    "id": 0,
-                    "name": "SC",
-                    "supercategory": "SC"
-                },
-                {
-                    "id": 1,
-                    "name": "IC",
-                    "supercategory": "IC"
-                }
-            ]
+                {"id": 0, "name": "SC", "supercategory": "SC"},
+                {"id": 1, "name": "IC", "supercategory": "IC"},
+            ],
         }
 
         # images info
@@ -522,9 +540,9 @@ class MaskPrediction:
             }
             im.close()
             images.append(image_details)
-        coco['images'] = images
+        coco["images"] = images
         if training:
-            coco['annotations'] = annotations
+            coco["annotations"] = annotations
 
-        with open(coco_filename, 'w') as coco_file:
-            json.dump(coco, coco_file, indent = 4)
+        with open(coco_filename, "w") as coco_file:
+            json.dump(coco, coco_file, indent=4)
