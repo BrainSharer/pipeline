@@ -63,7 +63,9 @@ class MaskPrediction:
         self.training_path = os.path.join(OUTPUT, 'train')
         self.validation = os.path.join(OUTPUT, 'validation')
         os.makedirs(self.validation, exist_ok=True)
-
+        self.structure_ids = {0:33, 1:21}
+        self.annotator_id = 1
+        self.setup_training_directory()
         self.training_files = sorted(os.listdir(self.training_path))
         self.image_ids = {k:v for v,k in enumerate(self.training_files)}
 
@@ -287,59 +289,79 @@ class MaskPrediction:
 
             cv2.imwrite(maskpath, img)
 
+    def setup_training_directory(self):
+        """Go through the training files, create coco json datasets
+        """
+        animals = ['MD585', 'MD589', 'MD594']
+        for animal in animals:
+            sqlController = SqlController(animal)
+            polygon = PolygonSequenceController(animal=animal)
+
+            for _, structure_id in self.structure_ids.items():
+                df = polygon.get_volume(animal, self.annotator_id, structure_id)
+                z_scale = sqlController.scan_run.zresolution
+                sections = []
+
+                for _, row in df.iterrows():
+                    z = row["coordinate"][2]
+                    section = int(np.round(z / z_scale))
+                    sections.append(section)
+                    file = str(section).zfill(3) + ".tif"
+                    filename = f"{animal}.{file}"
+                    inpath = os.path.join(self.input, file)
+                    img_outpath = os.path.join(self.training_path, filename)
+                    if not os.path.exists(img_outpath):
+                        shutil.copyfile(inpath, img_outpath)  # only needs to be done once
+
+
     def setup_training(self):
         """Go through the training files, create coco json datasets
         """
         
-        sqlController = SqlController(self.animal)
-        polygon = PolygonSequenceController(animal=self.animal)
-
-        structure_ids = {0:33}
-        annotator_id = 1
+        animals = ['MD585', 'MD589', 'MD594']
         annotations = []
-        for category_id, structure_id in structure_ids.items():
-            df = polygon.get_volume(self.animal, annotator_id, structure_id)
-            scale_xy = sqlController.scan_run.resolution
-            z_scale = sqlController.scan_run.zresolution
-            polygons = defaultdict(list)
+        for animal in animals:
+            sqlController = SqlController(animal)
+            polygon = PolygonSequenceController(animal=animal)
 
-            for _, row in df.iterrows():
-                x = row["coordinate"][0]
-                y = row["coordinate"][1]
-                z = row["coordinate"][2]
-                xy = (x / scale_xy / SCALING_FACTOR, y / scale_xy / SCALING_FACTOR)
-                section = int(np.round(z / z_scale))
-                polygons[section].append(xy)
+            for category_id, structure_id in self.structure_ids.items():
+                df = polygon.get_volume(animal, self.annotator_id, structure_id)
+                scale_xy = sqlController.scan_run.resolution
+                z_scale = sqlController.scan_run.zresolution
+                polygons = defaultdict(list)
 
-            for section, points in tqdm(polygons.items()):
-                file = str(section).zfill(3) + ".tif"
-                inpath = os.path.join(self.input, file)
-                filename = f"{self.animal}.{file}"
-                anno_dict = self.construct_annotations(image_id=self.image_ids[filename], category_id=category_id, anno=points)
-                annotations.append(anno_dict)
+                for _, row in df.iterrows():
+                    x = row["coordinate"][0]
+                    y = row["coordinate"][1]
+                    z = row["coordinate"][2]
+                    xy = (x / scale_xy / SCALING_FACTOR, y / scale_xy / SCALING_FACTOR)
+                    section = int(np.round(z / z_scale))
+                    polygons[section].append(xy)
 
-                img_outpath = os.path.join(self.training_path, filename)
-                if not os.path.exists(img_outpath):
-                    shutil.copyfile(inpath, img_outpath)  # only needs to be done once
-                
-                if False:
-                    px = [a[0] for a in points]
-                    py = [a[1] for a in points]
-                    poly = [(x, y) for x, y in zip(px, py)]
-                    poly = [p for x in poly for p in x]
-                    x1 = int(np.min(px))
-                    y1 = int(np.min(py))
-                    x2 = int(np.max(px))
-                    y2 = int(np.max(py))
-                    w = x2 - x1
-                    h = y2 - y1
+                for section, points in tqdm(polygons.items()):
+                    file = str(section).zfill(3) + ".tif"
+                    filename = f"{animal}.{file}"
+                    anno_dict = self.construct_annotations(image_id=self.image_ids[filename], category_id=category_id, anno=points)
+                    annotations.append(anno_dict)
+                    
+                    if False:
+                        px = [a[0] for a in points]
+                        py = [a[1] for a in points]
+                        poly = [(x, y) for x, y in zip(px, py)]
+                        poly = [p for x in poly for p in x]
+                        x1 = int(np.min(px))
+                        y1 = int(np.min(py))
+                        x2 = int(np.max(px))
+                        y2 = int(np.max(py))
+                        w = x2 - x1
+                        h = y2 - y1
 
-                    img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-                    cv2.rectangle(img, (x1,y1), (x2,y2), 255, 2)
-                    points = np.array(points).astype(np.int32)
-                    cv2.fillPoly(img, pts=[points], color = 255)
-                    val_outpath = os.path.join(self.validation, filename)
-                    cv2.imwrite(val_outpath, img)
+                        img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+                        cv2.rectangle(img, (x1,y1), (x2,y2), 255, 2)
+                        points = np.array(points).astype(np.int32)
+                        cv2.fillPoly(img, pts=[points], color = 255)
+                        val_outpath = os.path.join(self.validation, filename)
+                        cv2.imwrite(val_outpath, img)
 
         self.add_images_to_coco(annotations, training=True)
 
@@ -465,9 +487,9 @@ class MaskPrediction:
 
     def add_images_to_coco(self, annotations, training=True):
         if training:
-            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/{self.animal}_training.json"
+            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/structure_training.json"
         else:
-            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/{self.animal}_testing.json"
+            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/structure_testing.json"
 
         coco = {
             "images": [ ],
