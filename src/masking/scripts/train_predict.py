@@ -15,7 +15,7 @@ DATA = os.path.join(ROOT, 'brains_info', 'masks', 'structures', 'detectron')
 PREDICTED = os.path.join(DATA, 'predicted')
 os.makedirs(PREDICTED, exist_ok=True)
 train_data = os.path.join(DATA, 'train')
-train_json = os.path.join(DATA, 'MD589_training.json')
+train_json = os.path.join(DATA, 'structure_training.json')
 register_coco_instances(f"structure_train", {}, train_json, train_data)
 
 test_data = os.path.join(ROOT, 'pipeline_data/DK37/preps/C1/thumbnail_aligned')
@@ -46,7 +46,8 @@ cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
 cfg.DATASETS.TEST = ("structure_test", )
 predictor = DefaultPredictor(cfg)
 
-test_path = os.path.join(ROOT, 'pipeline_data/MD585/preps/C1/thumbnail_aligned')
+animal = "DK37"
+test_path = os.path.join(ROOT, f'pipeline_data/{animal}/preps/C1/thumbnail_aligned')
 files = sorted(os.listdir(test_path))
 for file in files:
     test_file = os.path.join(test_path, file)
@@ -54,10 +55,12 @@ for file in files:
     outputs = predictor(img)
     v = Visualizer(img[:, :, ::-1],
                 metadata=MetadataCatalog.get(cfg.DATASETS.TEST[0]), 
-                scale=1.0, 
+                scale=1.0,
+                instance_mode=ColorMode.IMAGE_BW
     )
     v = v.draw_instance_predictions(outputs["instances"].to("cpu"))
     img = cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB)
+    filename = f'{animal}.{file}'
     outpath = os.path.join(PREDICTED, file)
     cv2.imwrite(outpath, img)
 
