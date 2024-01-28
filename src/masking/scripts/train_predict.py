@@ -7,7 +7,7 @@ from detectron2 import model_zoo
 from detectron2.utils.visualizer import ColorMode
 from detectron2.utils.visualizer import Visualizer
 
-import random
+import torch
 import cv2
 
 ROOT = '/net/birdstore/Active_Atlas_Data/data_root/'
@@ -23,7 +23,9 @@ test_json = os.path.join(DATA, 'DK37_testing.json')
 register_coco_instances(f"structure_test", {}, test_json, test_data)
 
 cfg = get_cfg()
-cfg.MODEL.DEVICE = "cpu"
+if not torch.cuda.is_available(): 
+    cfg.MODEL.DEVICE = "cpu"
+
 cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
 cfg.DATASETS.TRAIN = ("structure_train",)
 cfg.DATASETS.TEST = ()
