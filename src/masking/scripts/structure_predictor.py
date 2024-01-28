@@ -42,6 +42,7 @@ from library.mask_utilities.mask_class import (
 )
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
+ROOT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
 
 
 class MaskPrediction:
@@ -52,14 +53,19 @@ class MaskPrediction:
         self.epochs = epochs
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal)
-        self.input = os.path.join(
-            self.fileLocationManager.prep, "C1", "thumbnail_aligned"
-        )
+        self.input = os.path.join(self.fileLocationManager.prep, "C1", "thumbnail_aligned")
         self.output = os.path.join(self.fileLocationManager.masks, "C1", "structures")
         os.makedirs(self.output, exist_ok=True)
         self.modelpath = os.path.join(
             "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/mask.model.pth"
         )
+        OUTPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron"
+        self.training_path = os.path.join(OUTPUT, 'train')
+        self.validation = os.path.join(OUTPUT, 'validation')
+        os.makedirs(self.validation, exist_ok=True)
+
+        self.training_files = sorted(os.listdir(self.training_path))
+        self.image_ids = {k:v for v,k in enumerate(self.training_files)}
 
         if False:
             annotationSessionController = AnnotationSessionController(animal)
@@ -102,7 +108,6 @@ class MaskPrediction:
             sys.exit()
 
     def mask_trainer(self):
-        ROOT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks"
         if self.structures:
             ROOT = os.path.join(ROOT, "structures")
             dataset = StructureDataset(ROOT, transforms=get_transform(train=True))
@@ -282,18 +287,17 @@ class MaskPrediction:
 
             cv2.imwrite(maskpath, img)
 
-    def create_json_masks(self):
-        OUTPUT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron"
-        os.makedirs(OUTPUT, exist_ok=True)
-
+    def setup_training(self):
+        """Go through the training files, create coco json datasets
+        """
+        
         sqlController = SqlController(self.animal)
         polygon = PolygonSequenceController(animal=self.animal)
 
-        structure_ids = [33]
+        structure_ids = {0:33}
         annotator_id = 1
-        structure_points = {}
-
-        for structure_id in structure_ids:
+        annotations = []
+        for category_id, structure_id in structure_ids.items():
             df = polygon.get_volume(self.animal, annotator_id, structure_id)
             scale_xy = sqlController.scan_run.resolution
             z_scale = sqlController.scan_run.zresolution
@@ -311,24 +315,33 @@ class MaskPrediction:
                 file = str(section).zfill(3) + ".tif"
                 inpath = os.path.join(self.input, file)
                 filename = f"{self.animal}.{file}"
+                anno_dict = self.construct_annotations(image_id=self.image_ids[filename], category_id=category_id, anno=points)
+                annotations.append(anno_dict)
 
-                structure_points[filename] = {}
-                add_dict = self.dict_construct(filename, points)
-                structure_points[filename].update(add_dict)
-
-                img_outpath = os.path.join(OUTPUT, filename)
-                points = np.array(points).astype(np.int32)
-                if self.debug:
-                    print(
-                        f"animal={self.animal}, file={file} structure_id={structure_id} points shape={points.shape}"
-                    )
-
+                img_outpath = os.path.join(self.training_path, filename)
                 if not os.path.exists(img_outpath):
                     shutil.copyfile(inpath, img_outpath)  # only needs to be done once
+                
+                if False:
+                    px = [a[0] for a in points]
+                    py = [a[1] for a in points]
+                    poly = [(x, y) for x, y in zip(px, py)]
+                    poly = [p for x in poly for p in x]
+                    x1 = int(np.min(px))
+                    y1 = int(np.min(py))
+                    x2 = int(np.max(px))
+                    y2 = int(np.max(py))
+                    w = x2 - x1
+                    h = y2 - y1
 
-        JSON_OUTFILE = os.path.join(OUTPUT, "via_region_data.json")
-        with open(JSON_OUTFILE, "w") as outfile:
-            json.dump(structure_points, outfile, sort_keys=True, indent=4)
+                    img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+                    cv2.rectangle(img, (x1,y1), (x2,y2), 255, 2)
+                    points = np.array(points).astype(np.int32)
+                    cv2.fillPoly(img, pts=[points], color = 255)
+                    val_outpath = os.path.join(self.validation, filename)
+                    cv2.imwrite(val_outpath, img)
+
+        self.add_images_to_coco(annotations, training=True)
 
 
     def get_insert_mask_points(self):
@@ -424,5 +437,72 @@ class MaskPrediction:
             "file_attributes": {},
             "regions": {"0": {"shape_attributes": {"name": "polygon", "all_points_x": x, "all_points_y": y}, "region_attributes": {} }},
         }
-
         return new_dic
+    
+    @staticmethod
+    def construct_annotations(image_id, category_id, anno):
+        px = [a[0] for a in anno]
+        py = [a[1] for a in anno]
+        poly = [(x, y) for x, y in zip(px, py)]
+        poly = [p for x in poly for p in x]
+        x1 = np.min(px)
+        y1 = np.min(py)
+        x2 = np.max(px)
+        y2 = np.max(py)
+        width = x2 - x1
+        height = y2 - y1        
+        area = width * height
+        new_dic = {
+            "id": image_id,
+            "category_id": category_id,
+            "iscrowd": 0,
+            "segmentation": [poly],
+            "image_id": image_id,
+            "area": area,
+            "bbox": [x1, y1, x2, y2]
+        }
+        return new_dic
+
+    def add_images_to_coco(self, annotations, training=True):
+        if training:
+            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/{self.animal}_training.json"
+        else:
+            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/{self.animal}_testing.json"
+
+        coco = {
+            "images": [ ],
+            "annotations": [ ],
+            "categories": [
+                {
+                    "id": 0,
+                    "name": "SC",
+                    "supercategory": "SC"
+                },
+                {
+                    "id": 1,
+                    "name": "IC",
+                    "supercategory": "IC"
+                }
+            ]
+        }
+
+        # images info
+        images = []
+        for file in self.training_files:
+            filename = os.path.join(self.training_path, file)
+            im = Image.open(filename)
+            width, height = im.size
+            image_details = {
+                "id": self.image_ids[file],
+                "height": height,
+                "width": width,
+                "file_name": file,
+            }
+            im.close()
+            images.append(image_details)
+        coco['images'] = images
+        if training:
+            coco['annotations'] = annotations
+
+        with open(coco_filename, 'w') as coco_file:
+            json.dump(coco, coco_file, indent = 4)
