@@ -36,11 +36,10 @@ def train_and_predict(animal, iterations, debug):
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025
-    cfg.SOLVER.MAX_ITER = iterations
 
     cfg.SOLVER.WARMUP_ITERS = iterations
     cfg.SOLVER.MAX_ITER = int(iterations * 1.5)  #adjust up if val mAP is still rising, adjust down if overfit
-    cfg.SOLVER.STEPS = (iterations, int(iterations * 1.5))
+    #cfg.SOLVER.STEPS = (iterations, int(iterations * 1.5))
     cfg.SOLVER.GAMMA = 0.05
 
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 2
