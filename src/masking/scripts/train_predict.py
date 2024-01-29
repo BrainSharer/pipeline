@@ -45,7 +45,7 @@ def train_and_predict(animal, iterations, debug):
     trainer.train()
 
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.3
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.25
     cfg.DATASETS.TEST = ("structure_test", )
     predictor = DefaultPredictor(cfg)
 
