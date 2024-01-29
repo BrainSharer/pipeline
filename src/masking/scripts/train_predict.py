@@ -42,7 +42,7 @@ def train_and_predict(animal, iterations, debug):
     #cfg.SOLVER.STEPS = (iterations, int(iterations * 1.5))
     cfg.SOLVER.GAMMA = 0.05
 
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 2
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 6
     cfg.OUTPUT_DIR = os.path.join(DATA, 'output')
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     trainer = DefaultTrainer(cfg) 
