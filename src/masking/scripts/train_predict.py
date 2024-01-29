@@ -17,13 +17,13 @@ def train_and_predict(animal, iterations, debug):
     DATA = os.path.join(ROOT, 'brains_info', 'masks', 'structures', 'detectron')
     PREDICTED = os.path.join(DATA, 'predicted')
     os.makedirs(PREDICTED, exist_ok=True)
-    train_data = os.path.join(DATA, 'train')
+    train_path = os.path.join(DATA, 'train')
     train_json = os.path.join(DATA, 'structure_training.json')
-    register_coco_instances("structure_train", {}, train_json, train_data)
+    register_coco_instances("structure_train", {}, train_json, train_path)
 
-    test_data = os.path.join(ROOT, 'pipeline_data/DK37/preps/C1/thumbnail_aligned')
+    test_path = os.path.join(ROOT, f'pipeline_data/{animal}/preps/C1/thumbnail_aligned')
     test_json = os.path.join(DATA, 'DK37_testing.json')
-    register_coco_instances("structure_test", {}, test_json, test_data)
+    register_coco_instances("structure_test", {}, test_json, test_path)
 
     cfg = get_cfg()
     if not torch.cuda.is_available(): 
@@ -37,6 +37,12 @@ def train_and_predict(animal, iterations, debug):
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025
     cfg.SOLVER.MAX_ITER = iterations
+
+    cfg.SOLVER.WARMUP_ITERS = iterations
+    cfg.SOLVER.MAX_ITER = int(iterations * 1.5)  #adjust up if val mAP is still rising, adjust down if overfit
+    cfg.SOLVER.STEPS = (iterations, int(iterations * 1.5))
+    cfg.SOLVER.GAMMA = 0.05
+
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 2
     cfg.OUTPUT_DIR = os.path.join(DATA, 'output')
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
@@ -45,23 +51,21 @@ def train_and_predict(animal, iterations, debug):
     trainer.train()
 
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.25
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.15
     cfg.DATASETS.TEST = ("structure_test", )
     predictor = DefaultPredictor(cfg)
-
-    test_path = os.path.join(ROOT, f'pipeline_data/{animal}/preps/C1/thumbnail_aligned')
+    test_metadata = MetadataCatalog.get("structure_test")
     files = sorted(os.listdir(test_path))
     for file in files:
         test_file = os.path.join(test_path, file)
         img = cv2.imread(test_file)
         outputs = predictor(img)
         v = Visualizer(img[:, :, ::-1],
-                    metadata=MetadataCatalog.get(cfg.DATASETS.TEST[0]), 
-                    scale=1.0,
-                    instance_mode=ColorMode.IMAGE_BW
+                    metadata=test_metadata, 
+                    scale=1.0
         )
         v = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        img = cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB)
+        img = cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB)    
         filename = f'{animal}.{file}'
         outpath = os.path.join(PREDICTED, filename)
         cv2.imwrite(outpath, img)
