@@ -10,15 +10,11 @@ from library.mask_utilities.utils import reduce_dict, collate_fn
 import library.mask_utilities.transforms as T
 
 class MaskDataset(torch.utils.data.Dataset):
-    def __init__(self, root, animal=None, transforms=None):
+    def __init__(self, root, transforms=None):
         self.root = root
-        self.animal = animal
         self.transforms = transforms
         self.imgs = sorted(os.listdir(os.path.join(root, 'normalized')))
         self.masks = sorted(os.listdir(os.path.join(root, 'thumbnail_masked')))
-        if self.animal is not None:
-            self.imgs = sorted([img for img in self.imgs if img.startswith(animal)])
-            self.masks = sorted([img for img in self.masks if img.startswith(animal)])
 
     def __getitem__(self, idx):
         # load images and bounding boxes
@@ -141,7 +137,6 @@ class StructureDataset(torch.utils.data.Dataset):
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         # suppose all instances are not crowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-        print(f'labels={labels}')
         target = {}
         target["boxes"] = boxes
         target["labels"] = torch.as_tensor(labels, dtype=torch.int64) 

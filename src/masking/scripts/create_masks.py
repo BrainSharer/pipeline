@@ -1,3 +1,11 @@
+"""This program deals with mask training and prediction.
+
+- python src/pipeline/scripts/create_masks.py --animal DKXX --task 
+
+Explanation for the tasks:
+
+"""
+
 import argparse
 from pathlib import Path
 import sys
@@ -9,28 +17,25 @@ from masking.scripts.structure_predictor import MaskPrediction
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on masking")
-    parser.add_argument('--structures', help='true for structures', required=False, default='true', type=str)
-    parser.add_argument('--animal', help='animal', required=False, default='MD589', type=str)
+    parser.add_argument('--abbreviation', help='Enter structure abbreviation', required=False, default=None, type=str)
+    parser.add_argument('--animal', help='animal', required=False, default=None, type=str)
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
-    parser.add_argument('--num_classes', help='# of structures', required=False, default=2, type=int)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
 
     args = parser.parse_args()
-    structures = bool({'true': True, 'false': False}[args.structures.lower()])
+    abbreviation = args.abbreviation
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
     animal = args.animal
     epochs = args.epochs
-    num_classes = args.num_classes
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    mask_predictor = MaskPrediction(animal, structures, num_classes, epochs, debug)
+    mask_predictor = MaskPrediction(animal, abbreviation, epochs, debug)
 
     function_mapping = {
         "train": mask_predictor.mask_trainer,
         "predict": mask_predictor.predict_masks,
-        "setup_training": mask_predictor.setup_training,
-        "create_test": mask_predictor.add_images_to_coco
+        "create_polygons": mask_predictor.get_insert_mask_points
     }
 
     if task in function_mapping:
