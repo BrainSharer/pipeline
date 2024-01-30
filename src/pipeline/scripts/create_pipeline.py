@@ -1,11 +1,14 @@
 """This program will create everything.
 The only required argument is the animal and step. By default it will work on channel=1
-and downsample = True. Run them in this sequence:
+and downsample = True. Run them in this sequence for channel 1, when that is done, run
+them again for the remaining channels and then for the full resolution version:
 
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task status
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task mask
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
 
 Explanation for the tasks:
 

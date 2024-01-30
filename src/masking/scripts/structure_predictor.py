@@ -5,12 +5,10 @@ import warnings
 from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
-from collections import defaultdict
-import shutil
-import json
 
 import cv2
 from PIL import Image
+
 
 Image.MAX_IMAGE_PIXELS = None
 from matplotlib import pyplot as plt
@@ -26,12 +24,10 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_mask import combine_dims, merge_mask
+from library.utilities.utilities_mask import combine_dims
 from library.utilities.utilities_process import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.structure_com_controller import StructureCOMController
 from library.database_model.annotation_points import AnnotationType, PolygonSequence
 from library.registration.brain_structure_manager import BrainStructureManager
@@ -42,8 +38,8 @@ from library.mask_utilities.mask_class import (
 )
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
+from library.image_manipulation.filelocation_manager import FileLocationManager
 
-ROOT = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
 
 """bad structures
 MD585.229.tif
@@ -53,50 +49,31 @@ MD589.295.tif
 
 
 class MaskPrediction:
-    def __init__(self, testing_animal, structures, num_classes, epochs, debug=False):
+    def __init__(self, animal, abbreviation, epochs, debug=False):
+        self.mask_root = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
         self.pipeline_root = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/'
-        self.testing_animal = testing_animal
-        self.animals = sorted(["MD585", "MD589", "MD594"])
-        self.structures = structures
-        self.num_classes = num_classes
+        self.animal = animal
+        self.abbreviation = abbreviation
         self.epochs = epochs
         self.debug = debug
-        #self.fileLocationManager = FileLocationManager(testing_animal)
-        self.output = os.path.join(ROOT, "C1", "structures")
-        os.makedirs(self.output, exist_ok=True)
-        self.modelpath = os.path.join(ROOT, "structures/mask.model.pth")
-        OUTPUT = os.path.join(ROOT, "structures/detectron")
-        self.validation = os.path.join(OUTPUT, "validation")
-        os.makedirs(self.validation, exist_ok=True)
-        """
-        0:33 = SC
-        1:21 = IC
-        2:40 = Sp5I_L
-        3:40 = Sp5I_R
-        4:14 = 7n_L
-        5:15 = 7n_R
-        """
-        self.structure_ids = {0: 33, 1: 21, 2:40, 3:41, 4:14, 5:15}
+        self.num_classes = 2 # 1 class (person) + background. This is different then detectron2!
+        self.modelpath = os.path.join(self.mask_root, "structures/mask.model.pth")
         self.annotator_id = 1
-        self.training_path = os.path.join(OUTPUT, "train")
-        self.bad_files = ["MD585.229.tif", "MD585.253.tif", "MD589.295.tif"]
-        self.setup_training_directory()
-        self.training_files = sorted(os.listdir(self.training_path))
-        self.image_ids = {k: v for v, k in enumerate(self.training_files)}
 
-        if False:
-            annotationSessionController = AnnotationSessionController(animal)
-            structureController = StructureCOMController(animal)
-            self.brainManager = BrainStructureManager(animal)
-            self.sqlController = SqlController(animal)
-            FK_brain_region_id = structureController.structure_abbreviation_to_id(
-                abbreviation=self.abbreviation
-            )
-            self.annotation_session = (
-                annotationSessionController.get_annotation_session(
-                    self.testing_animal, FK_brain_region_id, 1, AnnotationType.POLYGON_SEQUENCE
-                )
-            )
+        if self.animal is not None:
+            self.fileLocationManager = FileLocationManager(animal)
+            self.input = self.fileLocationManager.get_thumbnail_aligned()
+
+
+        if self.abbreviation is not None:
+            abbreviation = str(self.abbreviation)
+            if abbreviation.endswith('_L') or abbreviation.endswith('_R'):
+                abbreviation = abbreviation[:-2] 
+            self.mask_root = os.path.join(self.mask_root, 'structures', abbreviation)
+            os.makedirs(self.mask_root, exist_ok=True)
+            self.modelpath = os.path.join(self.mask_root, "mask.model.pth")
+            self.output = os.path.join(self.fileLocationManager.masks, 'C1', abbreviation)
+            os.makedirs(self.output, exist_ok=True)
 
     def get_model_instance_segmentation(self):
         # load an instance segmentation model pre-trained pre-trained on COCO
@@ -123,21 +100,21 @@ class MaskPrediction:
         else:
             print("no model to load")
             sys.exit()
+        if self.debug:
+            print(f'Loading model from: {self.modelpath}')
 
     def mask_trainer(self):
-        if self.structures:
-            ROOT = os.path.join(ROOT, "structures")
-            dataset = StructureDataset(ROOT, transforms=get_transform(train=True))
-            print(dataset[1])
+
+        if self.abbreviation is None:
+            dataset = MaskDataset(self.mask_root, transforms=get_transform(train=True))
         else:
-            dataset = MaskDataset(
-                ROOT, self.testing_animal, transforms=get_transform(train=True)
-            )
+            dataset = StructureDataset(self.mask_root, transforms=get_transform(train=True))
+
 
         indices = torch.randperm(len(dataset)).tolist()
 
         if self.debug:
-            test_cases = 50
+            test_cases = 12
             torch.manual_seed(1)
             dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
         else:
@@ -175,7 +152,7 @@ class MaskPrediction:
         )
         # our dataset has two classs, tissue or 'not tissue'
         # create logging file
-        logpath = os.path.join(ROOT, "mask.logger.txt")
+        logpath = os.path.join(self.mask_root, "mask.logger.txt")
         logfile = open(logpath, "w")
         logheader = f"Masking {datetime.now()} with {self.epochs} epochs\n"
         logfile.write(logheader)
@@ -208,7 +185,6 @@ class MaskPrediction:
             # update the learning rate
             lr_scheduler.step()
         print(f"Saving model to {self.modelpath}")
-        return
         torch.save(model.state_dict(), self.modelpath)
 
         logfile.write(str(loss_list))
@@ -216,9 +192,9 @@ class MaskPrediction:
         print("Finished with masks")
         logfile.close()
         print("Creating loss chart")
-
+        return
         fig = plt.figure()
-        output_path = os.path.join(ROOT, "loss_plot.png")
+        output_path = os.path.join(self.mask_root, "loss_plot.png")
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]
@@ -291,11 +267,10 @@ class MaskPrediction:
             merged_img = merge_mask(img, mask)
             cv2.imwrite(maskpath, merged_img)
             """
-            print(prediction[0]["labels"])
 
             for i in range(len(prediction[0]["masks"])):
                 # iterate over masks
-                mask = prediction[0]["masks"][i, 0] > 0.9
+                mask = prediction[0]["masks"][i, 0] > 0.5
                 mask = mask.mul(255).byte().cpu().numpy()
                 contours, _ = cv2.findContours(
                     mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
@@ -304,86 +279,26 @@ class MaskPrediction:
 
             cv2.imwrite(maskpath, img)
 
-    def setup_training_directory(self):
-        """Go through the training files, create coco json datasets"""
-        for animal in self.animals:
-            sqlController = SqlController(animal)
-            polygon = PolygonSequenceController(animal=animal)
-
-            for _, structure_id in self.structure_ids.items():
-                df = polygon.get_volume(animal, self.annotator_id, structure_id)
-                z_scale = sqlController.scan_run.zresolution
-                sections = []
-
-                for _, row in df.iterrows():
-                    z = row["coordinate"][2]
-                    section = int(np.round(z / z_scale))
-                    sections.append(section)
-                    file = str(section).zfill(3) + ".tif"
-                    filename = f"{animal}.{file}"
-                    if filename in self.bad_files:
-                        continue
-                    inpath = os.path.join(self.pipeline_root, animal, 'preps/C1/thumbnail_aligned', file)
-                    img_outpath = os.path.join(self.training_path, filename)
-                    if not os.path.exists(img_outpath):
-                        # only needs to be done once
-                        shutil.copyfile(inpath, img_outpath)
-
-    def setup_training(self):
-        """Go through the training files, create coco json datasets"""
-        id = 0
-        annotations = []
-        for animal in self.animals:
-            sqlController = SqlController(animal)
-            polygon = PolygonSequenceController(animal=animal)
-
-            for category_id, structure_id in self.structure_ids.items():
-                df = polygon.get_volume(animal, self.annotator_id, structure_id)
-                scale_xy = sqlController.scan_run.resolution
-                z_scale = sqlController.scan_run.zresolution
-                polygons = defaultdict(list)
-
-                for _, row in df.iterrows():
-                    x = row["coordinate"][0]
-                    y = row["coordinate"][1]
-                    z = row["coordinate"][2]
-                    xy = (x / scale_xy / SCALING_FACTOR, y / scale_xy / SCALING_FACTOR)
-                    section = int(np.round(z / z_scale))
-                    polygons[section].append(xy)
-
-                for section, points in tqdm(polygons.items()):
-                    file = str(section).zfill(3) + ".tif"
-                    filename = f"{animal}.{file}"
-                    if filename in self.bad_files:
-                        continue
-                    anno_dict = self.construct_annotations(
-                        id=id,
-                        image_id=self.image_ids[filename],
-                        category_id=category_id,
-                        anno=points,
-                    )
-                    annotations.append(anno_dict)
-                    id += 1
-
-                    if True:
-                        x1, x2, y1, y2, width, height = create_coords(points)
-
-                        inpath = os.path.join(
-                            f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_aligned/{file}"
-                        )
-                        val_outpath = os.path.join(self.validation, filename)
-                        if os.path.exists(val_outpath):
-                            img = cv2.imread(val_outpath, cv2.IMREAD_GRAYSCALE)
-                        else:
-                            img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-                        cv2.rectangle(img, (x1, y1), (x2, y2), 255, 2)
-                        points = np.array(points).astype(np.int32)
-                        cv2.fillPoly(img, pts=[points], color=255)
-                        cv2.imwrite(val_outpath, img)
-
-        self.add_images_to_coco(annotations, training=True)
-
     def get_insert_mask_points(self):
+        annotationSessionController = AnnotationSessionController(self.animal)
+        structureController = StructureCOMController(self.animal)
+        self.brainManager = BrainStructureManager(self.animal)
+        self.sqlController = SqlController(self.animal)
+        FK_brain_region_id = structureController.structure_abbreviation_to_id(
+            abbreviation=self.abbreviation)
+        if FK_brain_region_id is None:
+            print(f'Could not find database entry for structure={self.abbreviation}')
+            print('Exiting. Try again with a real structure abbreviation')
+            sys.exit()
+        
+        self.annotation_session = (
+            annotationSessionController.get_annotation_session(
+                self.animal, FK_brain_region_id, self.annotator_id, AnnotationType.POLYGON_SEQUENCE
+            )
+        )
+        self.model = self.get_model_instance_segmentation()
+        self.load_machine_learning_model()
+
         transform = torchvision.transforms.ToTensor()
         source = "NA"
         files = sorted(os.listdir(self.input))
@@ -398,6 +313,9 @@ class MaskPrediction:
             img_transformed = transform(pimg)
             img_transformed = img_transformed.unsqueeze(0)
             self.model.eval()
+
+
+
             with torch.no_grad():
                 pred = self.model(img_transformed)
             masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
@@ -451,111 +369,19 @@ class MaskPrediction:
                     try:
                         self.brainManager.sqlController.session.bulk_save_objects(vlist)
                         self.brainManager.sqlController.session.commit()
-                    except pymysql.err.IntegrityError as e:
+                    except pymysql.err.IntegrityError:
                         self.brainManager.sqlController.session.rollback()
-                    except exc.IntegrityError as e:
+                    except exc.IntegrityError:
                         self.brainManager.sqlController.session.rollback()
-                    except Exception as e:
+                    except Exception:
                         self.brainManager.sqlController.session.rollback()
         if self.debug:
             action = "finding"
         else:
             action = "inserting"
         print(
-            f"Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.testing_animal} with session ID={self.annotation_session.id}"
+            f"Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}"
         )
-
-    @staticmethod
-    def dict_construct(filename, points):
-        x, y = zip(*points)
-        new_dic = {
-            "fileref": "",
-            "size": 12345,
-            "filename": filename,
-            "base64_img_data": "",
-            "file_attributes": {},
-            "regions": {
-                "0": {
-                    "shape_attributes": {
-                        "name": "polygon",
-                        "all_points_x": x,
-                        "all_points_y": y,
-                    },
-                    "region_attributes": {},
-                }
-            },
-        }
-        return new_dic
-
-    @staticmethod
-    def construct_annotations(id, image_id, category_id, anno):
-        """Each dictionary contains a list of every individual object annotation
-        from every image in the dataset. For example, if a brain has 64 SC polygons spread out across 100 images, there will be 64 SC
-        annotations (along with a ton of annotations for other object categories). Often there will be multiple structures on a section.
-        This results in a new annotation item for each one.
-        Area is measured in pixels (e.g. a 10px by 20px box would have an area of 200).
-        Is Crowd specifies whether the segmentation is for a single object or for a group/cluster of objects.
-        The image id corresponds to a specific image in the dataset.
-        The COCO bounding box format is [top left x position, top left y position, width, height].
-        The category id corresponds to a single category specified in the categories section.
-        Each annotation also has an id (unique to all other annotations in the dataset).
-        """
-        px = [a[0] for a in anno]
-        py = [a[1] for a in anno]
-        poly = [(x, y) for x, y in zip(px, py)]
-        poly = [p for x in poly for p in x]
-        x1, x2, y1, y2, width, height = create_coords(anno)
-        area = width * height
-        new_dic = {
-            "id": id,
-            "category_id": category_id,
-            "iscrowd": 0,
-            "segmentation": [poly],
-            "image_id": image_id,
-            "area": area,
-            "bbox": [x1, y1, width, height],
-        }
-        return new_dic
-
-    def add_images_to_coco(self, annotations, training=True):
-        if training:
-            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/structure_training.json"
-        else:
-            coco_filename = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/detectron/structure_testing.json"
-
-        coco = {
-            "images": [],
-            "annotations": [],
-            "categories": [
-                {"id": 0, "name": "SC", "supercategory": "SC"},
-                {"id": 1, "name": "IC", "supercategory": "IC"},
-                {"id": 2, "name": "Sp5I_L", "supercategory": "Sp5I_L"},
-                {"id": 3, "name": "Sp5I_R", "supercategory": "Sp5I_R"},
-                {"id": 4, "name": "7n_L", "supercategory": "7n_L"},
-                {"id": 5, "name": "7n_R", "supercategory": "7n_R"},
-            ],
-        }
-
-        # images info
-        images = []
-        for file in self.training_files:
-            filename = os.path.join(self.training_path, file)
-            im = Image.open(filename)
-            width, height = im.size
-            image_details = {
-                "id": self.image_ids[file],
-                "height": height,
-                "width": width,
-                "file_name": file,
-            }
-            im.close()
-            images.append(image_details)
-        coco["images"] = images
-        if training:
-            coco["annotations"] = annotations
-
-        with open(coco_filename, "w") as coco_file:
-            json.dump(coco, coco_file, indent=4)
 
 
 def create_coords(points):
