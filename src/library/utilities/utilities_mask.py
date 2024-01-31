@@ -165,8 +165,9 @@ def clean_and_rotate_image(file_key):
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
 
-    if mask_image == FULL_MASK:
-        cleaned = crop_image(cleaned, mask)
+    # Cropping is not working 100% of the time
+    #if mask_image == FULL_MASK:
+    #    cleaned = crop_image(cleaned, mask)
     del img
     del mask
     if rotation > 0:
