@@ -65,7 +65,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
     # so 3000 is a good min size. I had to turn this down as we are using
     # blank images and they are small
     # min size on NTB is 8.8K
-    starting_size = 30
+    starting_size = 20
     min_size = starting_size * SCALING_FACTOR * 1000
     if downsample:
         min_size = starting_size
@@ -85,7 +85,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
         heights.add(int(height))
         size = os.path.getsize(filepath)
         if size < min_size:
-            error += f"{size} is less than min: {min_size} {filepath} \n"
+            error += f"File is too small. {size} is less than min: {min_size} {filepath} \n"
     # picked 100 as an arbitrary number. the min file count is usually around 380 or so
     if len(files) > 100:
         min_width = min(widths)

@@ -21,11 +21,13 @@ class ImageCleaner:
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
         debris
+        Note, as of 31 Jan 2024, I am taking out the cropping. This should be done at the last step.
         """
 
+
         if self.downsample:
-            if self.mask_image == FULL_MASK and self.channel == 1: 
-                self.get_crop_size()
+            #if self.mask_image == FULL_MASK and self.channel == 1: 
+            #    self.get_crop_size()
             self.create_cleaned_images_thumbnail(self.channel)            
         else:
             self.create_cleaned_images_full_resolution(self.channel)
