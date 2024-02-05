@@ -157,7 +157,7 @@ class Pipeline(
         print('Finished creating histograms.')
 
     def align(self):
-        """The number of iterations is set on the command line argument
+        """Perform the section to section alignment (registration)
         """
 
         print(self.TASK_ALIGN)
