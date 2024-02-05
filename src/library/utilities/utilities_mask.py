@@ -161,6 +161,7 @@ def clean_and_rotate_image(file_key):
     cleaned = apply_mask(img, mask, infile)
     cleaned = scaled(cleaned, mask)
     if channel == 1:
+        pass
         #cleaned = normalize_image(cleaned)
         cleaned = equalized(cleaned, cliplimit=2)
         #cleaned = normalize16(cleaned)
