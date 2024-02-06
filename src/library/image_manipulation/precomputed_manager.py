@@ -66,13 +66,16 @@ class NgPrecomputedMaker:
         For a large isotropic data set, Allen uses chunks = [128,128,128]
         """
 
-        if self.downsample or self.section_count < 100:
+        if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, 1]
             INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
             INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            if self.section_count < 100:
+                xy_chunk = int(XY_CHUNK//2)
+                chunks = [xy_chunk, xy_chunk, 1]
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
         os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -148,7 +151,7 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
-        if num_channels == 1999:
+        if num_channels == 1:
             print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
             tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, 
                                                          chunk_size=chunks, mip=0, fill_missing=True)
