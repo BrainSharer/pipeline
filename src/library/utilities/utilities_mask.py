@@ -139,6 +139,11 @@ def clean_and_rotate_image(file_key):
     surrounding debris. It also rotates the image to
     a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
     The hippocampus is facing up and the brainstem is facing down)
+    Normalization needs adjusting, for section 064 of DK101, the cells get an uwanted
+    outline that is far too bright. This happens with the scaled method.
+    An affected area on 064.tif full resolution is top left corner of 32180x19665, and
+    bottom right corner at: 33500x20400 on the full cleaned version
+    For the regular tif, look at 15812x43685, 16816x44463
 
     :param file_key: is a tuple of the following:
 
