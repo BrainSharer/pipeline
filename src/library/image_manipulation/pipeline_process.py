@@ -102,8 +102,15 @@ class Pipeline(
         self.multiple_slides = []
         self.channel = channel
 
-        super().__init__(self.fileLocationManager.get_logdir())
+        self.mips = 7 
+        if self.downsample:
+            self.mips = 4
 
+        super().__init__(self.fileLocationManager.get_logdir())
+        self.report_status()
+
+
+    def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
@@ -195,6 +202,7 @@ class Pipeline(
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
+        #self.create_neuroglancer_normalization()
         print('Finished creating neuroglancer data.')
 
     def cell_labels(self):

@@ -16,7 +16,6 @@ class NgPrecomputedMaker:
     neuroglancer format code from Seung lab
     """
 
-
     def get_scales(self):
         """returns the scanning resolution for a given animal.  
         The scan resolution and sectioning thickness are retrived from the database.
@@ -30,6 +29,9 @@ class NgPrecomputedMaker:
         resolution = int(db_resolution * 1000) 
         if self.downsample:
           resolution = int(db_resolution * 1000 * SCALING_FACTOR)
+          self.mips = 4
+        else:
+            self.mips = 7
  
         scales = (resolution, resolution, int(zresolution * 1000))
         return scales
@@ -129,13 +131,10 @@ class NgPrecomputedMaker:
 
 
         chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
-        mips = 7
-        if self.downsample or self.section_count < 100:
+        if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
-            mips = 4
 
-        
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
             print(f"DIR {OUTPUT_DIR} already exists and not performing any downsampling.")
@@ -160,7 +159,7 @@ class NgPrecomputedMaker:
             print(f'Finished sharded transfer transfer tasks with chunks={chunks}')
 
             cv = CloudVolume(outpath)
-            for mip in range(0, mips):
+            for mip in range(0, self.mips):
                 print(f'Creating downsampled shards at mip={mip}')
                 tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, 
                                                                mip=mip)
@@ -168,12 +167,12 @@ class NgPrecomputedMaker:
                 tq.execute()
         else:
             print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
-            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips,
+            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips,
                                              chunk_size=chunks, mip=0, skip_downsamples=True)
             tq.insert(tasks)
             tq.execute()
             print('Finished transfer tasks')
-            for mip in range(0, mips):
+            for mip in range(0, self.mips):
                 cv = CloudVolume(outpath, mip)
                 print(f'Creating downsample tasks at mip={mip}')
                 tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
@@ -182,23 +181,23 @@ class NgPrecomputedMaker:
                 tq.execute()
 
     def create_neuroglancer_normalization(self):
-        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer"""
+        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
+        """
+        
+        print(f'Running normalization tasks with MIPs={self.mips}')
         workers =self.get_nworkers()
-        mips = 8
-        if self.downsample:
-            mips = 4
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunck=True)
+        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         outpath = f"file://{OUTPUT_DIR}"
 
         tq = LocalTaskQueue(parallel=workers)
-        for mip in range(0, mips):
+        for mip in range(0, self.mips):
             # first pass: create per z-slice histogram
             cv = CloudVolume(outpath, mip)
             tasks = tc.create_luminance_levels_tasks(cv.layer_cloudpath, coverage_factor=0.01, mip=mip) 
             tq.insert(tasks)    
             tq.execute()
             # second pass: apply histogram equalization
-            tasks = tc.create_contrast_normalization_tasks(cv.layer_cloudpath, cv.layer_cloudpath, shape=None, mip=mip, clip_fraction=0.05, fill_missing=False, translate=(0,0,0))
+            tasks = tc.create_contrast_normalization_tasks(cv.layer_cloudpath, cv.layer_cloudpath, mip=mip)
             tq.insert(tasks)    
             tq.execute()
 
