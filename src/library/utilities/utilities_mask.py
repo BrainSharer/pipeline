@@ -164,7 +164,7 @@ def clean_and_rotate_image(file_key):
     img = read_image(infile)
     mask = read_image(maskfile)
     cleaned = apply_mask(img, mask, infile)
-    cleaned = scaled(cleaned, mask)
+    #cleaned = scaled(cleaned, mask)
     if channel == 1:
         pass
         #cleaned = normalize_image(cleaned)
