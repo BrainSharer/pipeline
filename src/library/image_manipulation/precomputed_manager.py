@@ -131,9 +131,9 @@ class NgPrecomputedMaker:
         if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
-        if self.section_count < 100:
-            z_chunk = int(xy_chunk)//2
-            chunks = [xy_chunk, xy_chunk, z_chunk]
+        #if self.section_count < 100:
+        #    z_chunk = int(XY_CHUNK)//2
+        #    chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
