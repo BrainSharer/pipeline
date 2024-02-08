@@ -75,9 +75,6 @@ class NgPrecomputedMaker:
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
             INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
-            if self.section_count < 100:
-                xy_chunk = int(XY_CHUNK//2)
-                chunks = [xy_chunk, xy_chunk, 1]
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
         os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -134,6 +131,9 @@ class NgPrecomputedMaker:
         if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
+        if self.section_count < 100:
+            z_chunk = int(xy_chunk)//2
+            chunks = [xy_chunk, xy_chunk, z_chunk]
 
         OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if os.path.exists(OUTPUT_DIR):
