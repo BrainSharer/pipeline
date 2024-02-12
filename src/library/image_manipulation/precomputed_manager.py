@@ -150,35 +150,21 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
-        if num_channels == 1 and self.section_count > 100:
-            print(f'Creating sharded transfer transfer tasks with chunks={chunks}')
-            tasks = tc.create_image_shard_transfer_tasks(cloudpath, dst_layer_path=outpath, 
-                                                         chunk_size=chunks, mip=0, fill_missing=True)
+        # 2024-02-12 I took out shards as normalization does not work with them and nginx is problematic
+        
+        print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
+        tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips,
+                                            chunk_size=chunks, mip=0, skip_downsamples=True)
+        tq.insert(tasks)
+        tq.execute()
+        print('Finished transfer tasks')
+        for mip in range(0, self.mips):
+            cv = CloudVolume(outpath, mip)
+            print(f'Creating downsample tasks at mip={mip}')
+            tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
+                                                    num_mips=1, compress=True)
             tq.insert(tasks)
             tq.execute()
-            print(f'Finished sharded transfer transfer tasks with chunks={chunks}')
-
-            cv = CloudVolume(outpath)
-            for mip in range(0, self.mips):
-                print(f'Creating downsampled shards at mip={mip}')
-                tasks = tc.create_image_shard_downsample_tasks(cloudpath=cv.layer_cloudpath, 
-                                                               mip=mip)
-                tq.insert(tasks)
-                tq.execute()
-        else:
-            print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
-            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips,
-                                             chunk_size=chunks, mip=0, skip_downsamples=True)
-            tq.insert(tasks)
-            tq.execute()
-            print('Finished transfer tasks')
-            for mip in range(0, self.mips):
-                cv = CloudVolume(outpath, mip)
-                print(f'Creating downsample tasks at mip={mip}')
-                tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
-                                                     num_mips=1, compress=True)
-                tq.insert(tasks)
-                tq.execute()
 
     def create_neuroglancer_normalization(self):
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
