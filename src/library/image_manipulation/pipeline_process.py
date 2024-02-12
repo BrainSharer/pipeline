@@ -202,7 +202,7 @@ class Pipeline(
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
-        #self.create_neuroglancer_normalization()
+        self.create_neuroglancer_normalization()
         print('Finished creating neuroglancer data.')
 
     def cell_labels(self):
