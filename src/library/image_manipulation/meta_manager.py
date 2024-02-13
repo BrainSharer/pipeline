@@ -79,7 +79,7 @@ class MetaUtilities:
             msg2 = "NO DUPLICATE FILES; CONTINUE"
         else:
             self.multiple_slides = list(set([i for i in slide_id if slide_id.count(i)>1]))
-            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S);"
+            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); multiple_slides={self.multiple_slides}"
             
         print(msg, msg2, sep="\n")
         self.logevent(msg)
