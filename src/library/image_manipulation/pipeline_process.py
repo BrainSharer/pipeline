@@ -172,7 +172,6 @@ class Pipeline(
         transformations = self.get_transformations()
         self.align_downsampled_images(transformations)
         self.align_full_size_image(transformations)
-
         self.create_web_friendly_sections()
         print('Finished aligning.')
 
@@ -202,7 +201,6 @@ class Pipeline(
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
-        self.create_neuroglancer_normalization()
         print('Finished creating neuroglancer data.')
 
     def cell_labels(self):
