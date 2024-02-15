@@ -82,22 +82,14 @@ def normalize_image(img):
     return img
 
 
-def scaled(img, mask, scale=30000):
+def scaled(img, scale=20000):
     """First we find really high values, which are the bright spots and turn them down
     """
     dtype = img.dtype
-    lower_e = 0.9
-    upper_e = 0.99
-    lower = int(np.quantile(img[img>0], lower_e)) # gets almost the max value of img
-    upper = int(np.quantile(img[img>0], upper_e)) # gets almost the max value of img
-    img[img > upper] = lower
-
-    #img = scale_img(img, scale=45000)
-    
-    _max = np.quantile(img[img>0], upper_e)
-    scaled = (img * (scale / _max)).astype(dtype) # scale the image from original values to e.g., 30000/10000
+    epsilon = 0.99    
+    _max = np.quantile(img[img>0], epsilon)
+    scaled = (img * (scale / _max)).astype(dtype) # scale the image from original values to a broader range of values
     del img
-
     return scaled
 
 
@@ -164,7 +156,7 @@ def clean_and_rotate_image(file_key):
     img = read_image(infile)
     mask = read_image(maskfile)
     cleaned = apply_mask(img, mask, infile)
-    #cleaned = scaled(cleaned, mask)
+    cleaned = scaled(cleaned)
     if channel == 1:
         pass
         #cleaned = normalize_image(cleaned)
