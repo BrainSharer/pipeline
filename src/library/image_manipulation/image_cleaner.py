@@ -24,65 +24,20 @@ class ImageCleaner:
         Note, as of 31 Jan 2024, I am taking out the cropping. This should be done at the last step.
         """
 
-
         if self.downsample:
-            #if self.mask_image == FULL_MASK and self.channel == 1: 
-            #    self.get_crop_size()
-            self.create_cleaned_images_thumbnail(self.channel)            
+            CLEANED = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
+            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
-            self.create_cleaned_images_full_resolution(self.channel)
+            CLEANED = self.fileLocationManager.get_full_cleaned(self.channel)
+            INPUT = self.fileLocationManager.get_full(self.channel)
+            MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
-    def get_crop_size(self):
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
-        maskfiles = sorted(os.listdir(MASKS))
-        widths = []
-        heights = []
-        for maskfile in maskfiles:
-            maskpath = os.path.join(MASKS, maskfile)
-            mask = read_image(maskpath)
-            x1, y1, x2, y2 = get_image_box(mask)
-            width = x2 - x1
-            height = y2 - y1
-            widths.append(width)
-            heights.append(height)
-        max_width = max(widths)
-        max_height = max(heights)
-        if self.debug:
-            print(f'Updating {self.animal} width={max_width} height={max_height}')
-        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
-        
-
-    def create_cleaned_images_thumbnail(self, channel):
-        """Clean the image using the masks for the downsampled version
-        """
-        
-        CLEANED = self.fileLocationManager.get_thumbnail_cleaned(channel)
-        INPUT = self.fileLocationManager.get_thumbnail(channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {INPUT}")
         starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"MASK FOLDER: {MASKS}")
-        starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {CLEANED}")
+        self.logevent(f"INPUT FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
         os.makedirs(CLEANED, exist_ok=True)
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
-
-    def create_cleaned_images_full_resolution(self, channel):
-        """Clean the image using the masks for the full resolution image
-        """
         
-        CLEANED = self.fileLocationManager.get_full_cleaned(channel)
-        os.makedirs(CLEANED, exist_ok=True)
-        INPUT = self.fileLocationManager.get_full(channel)
-        MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
-        starting_files = os.listdir(INPUT)
-        self.logevent(f"INPUT FOLDER: {INPUT}")
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"MASK FOLDER: {MASKS}")
-        self.logevent(f"OUTPUT FOLDER: {CLEANED}")
-        self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
     def parallel_create_cleaned(self, INPUT, CLEANED, MASKS):
         """Do the image cleaning in parallel
@@ -106,7 +61,7 @@ class ImageCleaner:
         file_keys = []
         for file in files:
             infile = os.path.join(INPUT, file)
-            outfile = os.path.join(CLEANED, file)  # regular-birdstore
+            outfile = os.path.join(CLEANED, file)
             if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(MASKS, file)
@@ -118,9 +73,7 @@ class ImageCleaner:
                     rotation,
                     flip,
                     max_width,
-                    max_height,
-                    self.channel,
-                    self.mask_image
+                    max_height
                 ]
             )
 
@@ -128,4 +81,23 @@ class ImageCleaner:
         # so we cut the workers in half here
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
+
+    def get_crop_size(self):
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        maskfiles = sorted(os.listdir(MASKS))
+        widths = []
+        heights = []
+        for maskfile in maskfiles:
+            maskpath = os.path.join(MASKS, maskfile)
+            mask = read_image(maskpath)
+            x1, y1, x2, y2 = get_image_box(mask)
+            width = x2 - x1
+            height = y2 - y1
+            widths.append(width)
+            heights.append(height)
+        max_width = max(widths)
+        max_height = max(heights)
+        if self.debug:
+            print(f'Updating {self.animal} width={max_width} height={max_height}')
+        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 
