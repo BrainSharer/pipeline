@@ -151,17 +151,12 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
+    infile, outpath, maskfile, rotation, flip, max_width, max_height = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
     cleaned = apply_mask(img, mask, infile)
     cleaned = scaled(cleaned)
-    if channel == 1:
-        pass
-        #cleaned = normalize_image(cleaned)
-        cleaned = equalized(cleaned, cliplimit=2)
-        #cleaned = normalize16(cleaned)
 
     # Cropping is not working 100% of the time
     #if mask_image == FULL_MASK:
