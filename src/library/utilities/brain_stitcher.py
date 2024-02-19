@@ -45,9 +45,6 @@ class BrainStitcher:
             outfile = str(file).replace('h5', 'tif')
             outpath = os.path.join(OUTPUT, outfile)
 
-            print(inpath)
-            print(outpath)
-            continue
 
             if os.path.exists(outpath):
                 continue
