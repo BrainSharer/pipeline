@@ -3,7 +3,7 @@ import os
 import h5py 
 from scipy.ndimage import zoom
 
-from library.controller.sql_controller import SqlController
+#from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import write_image
 
@@ -20,14 +20,15 @@ class BrainStitcher:
         """
         self.layer_path = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-003/preps/layers/00001'
         self.animal = animal
-        self.sqlController = SqlController(self.animal)
-        self.path = FileLocationManager(animal)
+        #self.sqlController = SqlController(self.animal)
+        #self.path = FileLocationManager(animal)
 
     def create_channel_volume_from_h5(self):
         INPUT = os.path.join(self.layer_path, 'h5')
         OUTPUT = os.path.join(self.layer_path, 'tif')
         os.makedirs(OUTPUT, exist_ok=True)
         files = sorted(os.listdir(INPUT))
+        print(f'Found {len(files)} h5 files')
         change_z = 1
         change_x = 10
         change_y = change_x
@@ -37,7 +38,11 @@ class BrainStitcher:
             if not os.path.exists(inpath):
                 print(f'Error, {inpath} does not exist')
                 continue
-            outpath = os.path.join(OUTPUT, file)
+            if not str(inpath).endswith('h5'):
+                print(f'Error, {inpath} is not a h5 file')
+                continue
+            outfile = str(file).replace('h5', 'tif')
+            outpath = os.path.join(OUTPUT, outfile)
             if os.path.exists(outpath):
                 continue
             with h5py.File(inpath, "r") as f:
