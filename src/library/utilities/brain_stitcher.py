@@ -31,10 +31,8 @@ class BrainStitcher:
         change_z = 1
         change_x = 10
         change_y = change_x
-
         for i, file in enumerate(files):
-            if i > 9:
-                continue
+            print(i,file, end="\t")
             inpath = os.path.join(INPUT, file)
             if not os.path.exists(inpath):
                 print(f'Error, {inpath} does not exist')
@@ -42,15 +40,13 @@ class BrainStitcher:
             outpath = os.path.join(OUTPUT, file)
             if os.path.exists(outpath):
                 continue
-
-            f = h5py.File(inpath, 'r')
-            ch1_key = f['CH1']
-            ch1_arr = ch1_key['raw'][()]
-            f.close()
-            print(file, ch1_arr.dtype, ch1_arr.shape, end="\t")
-            scaled_arr = zoom(ch1_arr, (change_z, change_x, change_y))
-            write_image(outpath, scaled_arr)
-            print('scaled', scaled_arr.dtype, scaled_arr.shape)
+            with h5py.File(inpath, "r") as f:
+                ch1_key = f['CH1']
+                ch1_arr = ch1_key['raw'][()]
+                print(ch1_arr.dtype, ch1_arr.shape, end="\t")
+                scaled_arr = zoom(ch1_arr, (change_z, change_x, change_y))
+                write_image(outpath, scaled_arr)
+                print('scaled', scaled_arr.dtype, scaled_arr.shape)
 
 
 
