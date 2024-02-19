@@ -51,7 +51,6 @@ class BrainStitcher:
 
             print(inpath)
             print(outpath)
-            continue
 
             with h5py.File(inpath, "r") as f:
                 ch1_key = f['CH1']
