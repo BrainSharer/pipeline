@@ -35,6 +35,9 @@ class BrainStitcher:
             if i > 9:
                 continue
             inpath = os.path.join(INPUT, file)
+            if not os.path.exists(inpath):
+                print(f'Error, {inpath} does not exist')
+                continue
             outpath = os.path.join(OUTPUT, file)
             if os.path.exists(outpath):
                 continue
