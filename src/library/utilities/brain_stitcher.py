@@ -1,8 +1,11 @@
 import numpy as np
 import os
 import h5py 
+from scipy.ndimage import zoom
+
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.utilities.utilities_process import write_image
 
 
 class BrainStitcher:
@@ -25,13 +28,22 @@ class BrainStitcher:
         OUTPUT = os.path.join(self.layer_path, 'tif')
         os.makedirs(OUTPUT, exist_ok=True)
         files = sorted(os.listdir(INPUT))
-
-        for file in files:
+        change_z = 1
+        change_x = 10
+        change_y = change_x
+        for i, file in enumerate(files):
+            if i > 9:
+                continue
             inpath = os.path.join(INPUT, file)
+            outpath = os.path.join(OUTPUT, file)
             with h5py.File(inpath, "r") as f:
                 ch1_key = f['CH1']
                 ch1_arr = ch1_key['raw'][()]
-                print(ch1_arr.dtype, ch1_arr.shape)
+                print(file, ch1_arr.dtype, ch1_arr.shape, end="\t")
+                scaled_arr = zoom(ch1_arr, (change_z, change_x, change_y))
+                write_image(outpath, scaled_arr)
+                print('scaled', scaled_arr.dtype, scaled_arr.shape)
+
 
 
 
