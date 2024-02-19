@@ -36,6 +36,8 @@ class BrainStitcher:
                 continue
             inpath = os.path.join(INPUT, file)
             outpath = os.path.join(OUTPUT, file)
+            if os.path.exists(outpath):
+                continue
             with h5py.File(inpath, "r") as f:
                 ch1_key = f['CH1']
                 ch1_arr = ch1_key['raw'][()]
