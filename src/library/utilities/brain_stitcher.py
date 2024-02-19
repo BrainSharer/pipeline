@@ -30,7 +30,7 @@ class BrainStitcher:
         files = sorted(os.listdir(INPUT))
         print(f'Found {len(files)} h5 files')
         change_z = 1
-        change_x = 10
+        change_x = 1/10
         change_y = change_x
 
         for file in files:
@@ -48,6 +48,11 @@ class BrainStitcher:
 
             if os.path.exists(outpath):
                 continue
+
+            print(inpath)
+            print(outpath)
+            continue
+
             with h5py.File(inpath, "r") as f:
                 ch1_key = f['CH1']
                 ch1_arr = ch1_key['raw'][()]
