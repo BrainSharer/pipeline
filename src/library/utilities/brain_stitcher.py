@@ -2,10 +2,10 @@ import numpy as np
 import os
 import h5py 
 from scipy.ndimage import zoom
+from tifffile import imwrite
 
 #from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_process import write_image
 
 
 class BrainStitcher:
@@ -49,15 +49,12 @@ class BrainStitcher:
             if os.path.exists(outpath):
                 continue
 
-            print(inpath)
-            print(outpath)
-
             with h5py.File(inpath, "r") as f:
                 ch1_key = f['CH1']
                 ch1_arr = ch1_key['raw'][()]
                 print(ch1_arr.dtype, ch1_arr.shape, end="\t")
                 scaled_arr = zoom(ch1_arr, (change_z, change_x, change_y))
-                write_image(outpath, scaled_arr)
+                imwrite(outpath, scaled_arr)
                 print('scaled', scaled_arr.dtype, scaled_arr.shape)
 
 
