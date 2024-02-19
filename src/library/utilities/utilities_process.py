@@ -191,7 +191,7 @@ def convert_size(size_bytes: int) -> str:
     return "%s %s" % (s, size_name[i])
 
 
-def write_image(file_path, data, message: str = "Error") -> None:
+def write_image(file_path:str, data, message: str = "Error") -> None:
     """Writes an image to the filesystem
     """
     
