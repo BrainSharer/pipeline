@@ -32,8 +32,9 @@ class BrainStitcher:
         change_z = 1
         change_x = 10
         change_y = change_x
-        for i, file in enumerate(files):
-            print(i,file, end="\t")
+
+        for file in files:
+            print(file, end="\t")
             inpath = os.path.join(INPUT, file)
             if not os.path.exists(inpath):
                 print(f'Error, {inpath} does not exist')
@@ -43,6 +44,11 @@ class BrainStitcher:
                 continue
             outfile = str(file).replace('h5', 'tif')
             outpath = os.path.join(OUTPUT, outfile)
+
+            print(inpath)
+            print(outpath)
+            continue
+
             if os.path.exists(outpath):
                 continue
             with h5py.File(inpath, "r") as f:
