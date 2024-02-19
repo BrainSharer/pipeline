@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
-import sys, socket
-from timeit import default_timer as timer
+import sys
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
