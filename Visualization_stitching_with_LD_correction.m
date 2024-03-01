@@ -82,6 +82,7 @@ for i_ch = 1 : num_ch
                 tmp_local_bbox_mm_ds_pxl(1) : tmp_local_bbox_xx_ds_pxl(1), ...
                 tmp_local_bbox_mm_ds_pxl(2) : tmp_local_bbox_xx_ds_pxl(2), ...
                 tmp_local_bbox_mm_ds_pxl(3) : tmp_local_bbox_xx_ds_pxl(3)), tmp_tile_data);
+                
             fprintf('Finish adding tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
         catch ME
             fprintf('Failed to add tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
