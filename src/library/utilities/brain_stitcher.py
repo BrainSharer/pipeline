@@ -30,8 +30,8 @@ class BrainStitcher:
         #self.path = FileLocationManager(animal)
 
     def create_channel_volume_from_h5(self):
-        INPUT = os.path.join(self.layer_path, self.layer, 'h5')
-        OUTPUT = os.path.join(self.layer_path, 'tif')
+        INPUT = os.path.join(self.layer_path,  'h5')
+        OUTPUT = os.path.join(self.layer_path, self.layer, 'tif')
         os.makedirs(OUTPUT, exist_ok=True)
         files = sorted(os.listdir(INPUT))
         print(f'Found {len(files)} h5 files')
