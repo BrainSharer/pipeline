@@ -16,7 +16,7 @@ class BrainStitcher:
     """Basic class for working with Xiangs data
     """
 
-    def __init__(self, animal, layer, channel):
+    def __init__(self, animal, layer, channel, debug=False):
         """Initiates the brain object
 
         Args:
