@@ -8,6 +8,7 @@ from tifffile import imwrite
 import math
 from skimage import io
 from pathlib import Path
+from shutil import copyfile
 
 
 # from library.controller.sql_controller import SqlController
@@ -33,13 +34,44 @@ class BrainStitcher:
         self.base_path = os.path.join(self.fileLocationManager.prep, self.channel, 'layers')
         self.layer_path = os.path.join(self.base_path, self.layer)
         self.registration_path = os.path.join(self.fileLocationManager.prep, self.channel, 'registration')
-        if not os.path.exists(self.layer_path):
-            print(f'Error: {self.layer_path} does not exist')
-            sys.exit()
         self.debug = debug
-        self.available_layers = [1,2,3]
-        self.all_info_files = self.parse_all_info()
+        self.available_layers = [1,2,3,4]
+        self.all_info_files = None
         self.scaling_factor = 1/10
+
+    def move_data(self):
+        """First make sure output dirs exist.
+        Then, get only the highest numbered subdir out of each dir and copy those h5 and json files to the new location       
+        """
+
+        outpath = os.path.join(self.layer_path)
+        os.makedirs(outpath, exist_ok=True)
+        tilepath = os.path.join(outpath, 'h5')
+        infopath = os.path.join(outpath, 'info')
+        os.makedirs(tilepath, exist_ok=True)
+        os.makedirs(infopath, exist_ok=True)
+        
+        vessel_path = '/net/birdstore/Vessel/WBIM/Acquisition/LifeCanvas/003_20240209'
+        vessel_layer_path = os.path.join(vessel_path, self.layer, 'Scan')
+        if not os.path.exists(vessel_layer_path):
+            print(f'Error missing dir: {vessel_layer_path}')
+            sys.exit()
+        dirs = sorted(os.listdir(vessel_layer_path))
+        for dir in dirs:
+            dir = os.path.join(vessel_layer_path, dir)
+            subdirs = sorted(os.listdir(dir))
+            active_dir = subdirs[-1]
+            infofile = os.path.join(vessel_layer_path, dir, active_dir, 'info.json')
+            tilefile = os.path.join(vessel_layer_path, dir, active_dir, 'tile.h5')
+            if os.path.exists(infofile) and os.path.exists(tilefile):
+                dir = os.path.basename(os.path.normpath(dir))
+                newinfofile = os.path.join(infopath, f'{dir}.json')
+                newtilefile = os.path.join(tilepath, f'{dir}.h5')
+                if not os.path.exists(newinfofile):
+                    copyfile(infofile, newinfofile)
+                if not os.path.exists(newtilefile):
+                    copyfile(tilefile, newtilefile)
+                
 
     def check_status(self):
         for layer in self.available_layers:
@@ -57,7 +89,7 @@ class BrainStitcher:
                     print(layer, info, tif)
 
     def parse_all_info(self):
-        all_info_files = {}
+        self.all_info_files = {}
         for layer in self.available_layers:
             layer = str(layer).zfill(5)
             infopath = os.path.join(self.base_path, layer, 'info')
@@ -68,9 +100,8 @@ class BrainStitcher:
                     d = json.load(json_data)
                     json_data.close()
                     infostem = Path(file).stem
-                    all_info_files[(layer, infostem)] = d
+                    self.all_info_files[(layer, infostem)] = d
 
-        return all_info_files
 
     def create_channel_volume_from_h5(self):
         INPUT = os.path.join(self.layer_path,  'h5')
@@ -104,6 +135,7 @@ class BrainStitcher:
                 print('scaled', scaled_arr.dtype, scaled_arr.shape)
 
     def stitch_tile(self):
+        self.parse_all_info()
         infopath = os.path.join(self.layer_path, 'info')
         if not os.path.exists(infopath):
             print(f'Error: {infopath} does not exist')

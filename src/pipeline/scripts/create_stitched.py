@@ -35,6 +35,7 @@ if __name__ == "__main__":
         "extract": pipeline.create_channel_volume_from_h5,
         "stitch": pipeline.stitch_tile,
         "status": pipeline.check_status,
+        "move": pipeline.move_data
     }
 
     if task in function_mapping:
