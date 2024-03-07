@@ -35,9 +35,10 @@ class BrainStitcher:
         self.layer_path = os.path.join(self.base_path, self.layer)
         self.registration_path = os.path.join(self.fileLocationManager.prep, self.channel, 'registration')
         self.debug = debug
-        self.available_layers = [1,2,3,4]
+        self.available_layers =  [layer for layer in sorted(os.listdir(self.base_path))]
         self.all_info_files = None
         self.scaling_factor = 1/10
+
 
     def move_data(self):
         """First make sure output dirs exist.
@@ -68,6 +69,7 @@ class BrainStitcher:
                 newinfofile = os.path.join(infopath, f'{dir}.json')
                 newtilefile = os.path.join(tilepath, f'{dir}.h5')
                 if not os.path.exists(newinfofile):
+                    print(f'Copy {dir} {os.path.basename(infofile)} to {newinfofile}')
                     copyfile(infofile, newinfofile)
                 if not os.path.exists(newtilefile):
                     copyfile(tilefile, newtilefile)
@@ -77,9 +79,22 @@ class BrainStitcher:
         for layer in self.available_layers:
             layer = str(layer).zfill(5)
             infopath = os.path.join(self.base_path, layer, 'info')
+            if not os.path.exists(infopath):
+                print(f'Error, missing: {infopath}')
+                sys.exit()     
             tifpath = os.path.join(self.base_path, layer, 'tif')
+            if not os.path.exists(tifpath):
+                print(f'Error, missing: {tifpath}')
+                sys.exit()
             infos = sorted(os.listdir(infopath))
             tifs = sorted(os.listdir(tifpath))
+            if len(tifs) == 0:
+                print(f'Error, no tifs in {tifpath}')
+                sys.exit()
+            if len(infos) == 0:
+                print(f'Error, no JSON in {infopath}')
+                sys.exit()
+
             print(f'Found {len(infos)} info.json files in layer={layer}')
             assert len(infos) == len(tifs), "Error, number of tiles does not equal number of json files"
             for info,tif in zip(infos, tifs):
@@ -104,16 +119,16 @@ class BrainStitcher:
 
 
     def create_channel_volume_from_h5(self):
-        INPUT = os.path.join(self.layer_path,  'h5')
-        OUTPUT = os.path.join(self.layer_path, 'tif')
-        os.makedirs(OUTPUT, exist_ok=True)
-        files = sorted(os.listdir(INPUT))
+        tilepath = os.path.join(self.layer_path,  'h5')
+        tifpath = os.path.join(self.layer_path, 'tif')
+        os.makedirs(tifpath, exist_ok=True)
+        files = sorted(os.listdir(tilepath))
         print(f'Found {len(files)} h5 files')
         change_z = 1
 
         for file in files:
             print(file, end="\t")
-            inpath = os.path.join(INPUT, file)
+            inpath = os.path.join(tilepath, file)
             if not os.path.exists(inpath):
                 print(f'Error, {inpath} does not exist')
                 continue
@@ -121,7 +136,7 @@ class BrainStitcher:
                 print(f'Error, {inpath} is not a h5 file')
                 continue
             outfile = str(file).replace('h5', 'tif')
-            outpath = os.path.join(OUTPUT, outfile)
+            outpath = os.path.join(tifpath, outfile)
 
             if os.path.exists(outpath):
                 continue
@@ -135,11 +150,8 @@ class BrainStitcher:
                 print('scaled', scaled_arr.dtype, scaled_arr.shape)
 
     def stitch_tile(self):
+        self.check_status()
         self.parse_all_info()
-        infopath = os.path.join(self.layer_path, 'info')
-        if not os.path.exists(infopath):
-            print(f'Error: {infopath} does not exist')
-            sys.exit()
         # Parameters
         stitch_voxel_size_um = [0.375/self.scaling_factor, 0.375/self.scaling_factor, 1];
         first_element = next(iter(self.all_info_files.values()))
@@ -202,6 +214,9 @@ class BrainStitcher:
 
         # save
         outfile = 'layers.' +  '.'.join(map(str, self.available_layers)) + '.tif'
+        max_layer = max([int(layer) for layer in sorted(os.listdir(self.base_path))])
+        outfile = 'layers.1-' + str(max_layer)  + '.tif'
+
         outpath = os.path.join(self.registration_path, outfile)
         io.imsave(outpath, tmp_stitch_data)
         print(f'dtype={tmp_stitch_data.dtype} shape={tmp_stitch_data.shape}')
