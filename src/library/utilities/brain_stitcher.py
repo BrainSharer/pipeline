@@ -35,10 +35,40 @@ class BrainStitcher:
         self.layer_path = os.path.join(self.base_path, self.layer)
         self.registration_path = os.path.join(self.fileLocationManager.prep, self.channel, 'registration')
         self.debug = debug
-        self.available_layers =  [layer for layer in sorted(os.listdir(self.base_path))]
+        self.available_layers = []
         self.all_info_files = None
+        self.check_status()
         self.scaling_factor = 1/10
 
+
+    def check_status(self):
+        if len(self.available_layers) > 0:
+            return
+        all_layers = [layer for layer in sorted(os.listdir(self.base_path))]
+        for layer in all_layers:
+            infopath = os.path.join(self.base_path, layer, 'info')
+            if not os.path.exists(infopath):
+                continue
+            tifpath = os.path.join(self.base_path, layer, 'tif')
+            if not os.path.exists(tifpath):
+                continue
+            infos = sorted(os.listdir(infopath))
+            tifs = sorted(os.listdir(tifpath))
+            if len(tifs) == 0:
+                continue
+            if len(infos) == 0:
+                continue
+            if len(infos) != len(tifs):
+                continue
+            print(f'Found {len(infos)} tifs and JSON files in layer={layer}')
+            for info,tif in zip(infos, tifs):
+                infostem = Path(info).stem
+                tifstem = Path(tif).stem
+                if infostem != tifstem:
+                    print(f'Error: files do not match:{layer} {info} {tif}')
+                    sys.exit()
+
+            self.available_layers.append(layer)
 
     def move_data(self):
         """First make sure output dirs exist.
@@ -75,34 +105,6 @@ class BrainStitcher:
                     copyfile(tilefile, newtilefile)
                 
 
-    def check_status(self):
-        for layer in self.available_layers:
-            layer = str(layer).zfill(5)
-            infopath = os.path.join(self.base_path, layer, 'info')
-            if not os.path.exists(infopath):
-                print(f'Error, missing: {infopath}')
-                sys.exit()     
-            tifpath = os.path.join(self.base_path, layer, 'tif')
-            if not os.path.exists(tifpath):
-                print(f'Error, missing: {tifpath}')
-                sys.exit()
-            infos = sorted(os.listdir(infopath))
-            tifs = sorted(os.listdir(tifpath))
-            if len(tifs) == 0:
-                print(f'Error, no tifs in {tifpath}')
-                sys.exit()
-            if len(infos) == 0:
-                print(f'Error, no JSON in {infopath}')
-                sys.exit()
-
-            print(f'Found {len(infos)} info.json files in layer={layer}')
-            assert len(infos) == len(tifs), "Error, number of tiles does not equal number of json files"
-            for info,tif in zip(infos, tifs):
-                infostem = Path(info).stem
-                tifstem = Path(tif).stem
-                if infostem != tifstem:
-                    print(layer, info, tif)
-
     def parse_all_info(self):
         self.all_info_files = {}
         for layer in self.available_layers:
@@ -118,7 +120,7 @@ class BrainStitcher:
                     self.all_info_files[(layer, infostem)] = d
 
 
-    def create_channel_volume_from_h5(self):
+    def extract(self):
         tilepath = os.path.join(self.layer_path,  'h5')
         if not os.path.exists(tilepath):
             print(f'Error, missing {tilepath}')
@@ -127,6 +129,10 @@ class BrainStitcher:
         tifpath = os.path.join(self.layer_path, 'tif')
         os.makedirs(tifpath, exist_ok=True)
         files = sorted(os.listdir(tilepath))
+        if len(files) == 0:
+            print('No h5 files to work with.')
+            sys.exit()
+
         print(f'Found {len(files)} h5 files')
         change_z = 1
 

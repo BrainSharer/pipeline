@@ -31,7 +31,7 @@ if __name__ == "__main__":
     pipeline = BrainStitcher(animal, layer, channel, debug=False)
 
     function_mapping = {
-        "extract": pipeline.create_channel_volume_from_h5,
+        "extract": pipeline.extract,
         "stitch": pipeline.stitch_tile,
         "status": pipeline.check_status,
         "move": pipeline.move_data
