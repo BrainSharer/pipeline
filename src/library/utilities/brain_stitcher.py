@@ -120,6 +120,10 @@ class BrainStitcher:
 
     def create_channel_volume_from_h5(self):
         tilepath = os.path.join(self.layer_path,  'h5')
+        if not os.path.exists(tilepath):
+            print(f'Error, missing {tilepath}')
+            sys.exit()
+
         tifpath = os.path.join(self.layer_path, 'tif')
         os.makedirs(tifpath, exist_ok=True)
         files = sorted(os.listdir(tilepath))
