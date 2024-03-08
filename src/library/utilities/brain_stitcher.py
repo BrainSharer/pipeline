@@ -10,12 +10,11 @@ from skimage import io
 from pathlib import Path
 from shutil import copyfile
 
-
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.parallel_manager import ParallelManager
 
-
-class BrainStitcher:
+class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
     """
 
@@ -136,9 +135,9 @@ class BrainStitcher:
 
         print(f'Found {len(files)} h5 files')
         change_z = 1
+        file_keys = []
 
         for file in files:
-            print(file, end="\t")
             inpath = os.path.join(tilepath, file)
             if not os.path.exists(inpath):
                 print(f'Error, {inpath} does not exist')
@@ -148,17 +147,16 @@ class BrainStitcher:
                 continue
             outfile = str(file).replace('h5', 'tif')
             outpath = os.path.join(tifpath, outfile)
-
             if os.path.exists(outpath):
                 continue
 
-            with h5py.File(inpath, "r") as f:
-                channel_key = f[self.channel_source]
-                channel_arr = channel_key['raw'][()]
-                print(channel_arr.dtype, channel_arr.shape, end="\t")
-                scaled_arr = zoom(channel_arr, (change_z, self.scaling_factor, self.scaling_factor))
-                imwrite(outpath, scaled_arr)
-                print('scaled', scaled_arr.dtype, scaled_arr.shape)
+            file_keys.append([inpath, self.channel_source, change_z, self.scaling_factor, outpath])
+
+        # Cleaning images takes up around 20-25GB per full resolution image
+        # so we cut the workers in half here
+        workers = 5
+        self.run_commands_concurrently(extract_tif, file_keys, workers)
+
 
     def stitch_tile(self):
         self.check_status()
@@ -233,3 +231,14 @@ class BrainStitcher:
         io.imsave(outpath, tmp_stitch_data)
         print(f'dtype={tmp_stitch_data.dtype} shape={tmp_stitch_data.shape}')
         print('saved', outpath)
+
+def extract_tif(file_key):
+    inpath, channel_source, change_z, scaling_factor, outpath = file_key
+    
+    with h5py.File(inpath, "r") as f:
+        channel_key = f[channel_source]
+        channel_arr = channel_key['raw'][()]
+        print(channel_arr.dtype, channel_arr.shape, end="\t")
+        scaled_arr = zoom(channel_arr, (change_z, scaling_factor, scaling_factor))
+        imwrite(outpath, scaled_arr)
+        print('scaled', scaled_arr.dtype, scaled_arr.shape)
