@@ -228,6 +228,7 @@ class BrainStitcher:
         outfile = 'layers.1-' + str(max_layer)  + '.tif'
 
         outpath = os.path.join(self.registration_path, outfile)
+        os.makedirs(self.registration_path, exist_ok=True)
         io.imsave(outpath, tmp_stitch_data)
         print(f'dtype={tmp_stitch_data.dtype} shape={tmp_stitch_data.shape}')
         print('saved', outpath)
