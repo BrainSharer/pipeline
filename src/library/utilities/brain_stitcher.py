@@ -224,7 +224,7 @@ class BrainStitcher:
 
         # save
         outfile = 'layers.' +  '.'.join(map(str, self.available_layers)) + '.tif'
-        max_layer = max([int(layer) for layer in sorted(os.listdir(self.base_path))])
+        max_layer = max([int(layer) for layer in self.available_layers])
         outfile = 'layers.1-' + str(max_layer)  + '.tif'
 
         outpath = os.path.join(self.registration_path, outfile)
