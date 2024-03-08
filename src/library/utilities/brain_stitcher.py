@@ -102,7 +102,8 @@ class BrainStitcher:
                     print(f'Copy {dir} {os.path.basename(infofile)} to {newinfofile}')
                     copyfile(infofile, newinfofile)
                 if not os.path.exists(newtilefile):
-                    copyfile(tilefile, newtilefile)
+                    # copying takes way too long. lets try a symlink instead
+                    os.symlink(tilefile, newtilefile)
                 
 
     def parse_all_info(self):
