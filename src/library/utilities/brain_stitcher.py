@@ -18,7 +18,7 @@ class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
     """
 
-    def __init__(self, animal, layer, channel, debug=False):
+    def __init__(self, animal, layer, channel, debug):
         """Initiates the brain object
 
         Args:
@@ -108,7 +108,6 @@ class BrainStitcher(ParallelManager):
     def parse_all_info(self):
         self.all_info_files = {}
         for layer in self.available_layers:
-            layer = str(layer).zfill(5)
             infopath = os.path.join(self.base_path, layer, 'info')
             infos = sorted(os.listdir(infopath))
             for file in sorted(infos):
@@ -162,12 +161,14 @@ class BrainStitcher(ParallelManager):
         self.check_status()
         self.parse_all_info()
         # Parameters
-        stitch_voxel_size_um = [0.375/self.scaling_factor, 0.375/self.scaling_factor, 1];
+        stitch_voxel_size_um = [0.375/self.scaling_factor, 0.375/self.scaling_factor, 1]
+        stitch_voxel_size_um = [2, 2, 2]
+
         first_element = next(iter(self.all_info_files.values()))
         stack_size_um = first_element['stack_size_um']
-        print('stack_size_um', stack_size_um)
         ds_stack_size = [round(stack/stitch) for stack,stitch in zip(stack_size_um, stitch_voxel_size_um)]
         if self.debug:
+            print('stack_size_um', stack_size_um)
             print('ds_stack_size', ds_stack_size)
 
         min_z = min(st['layer_z_um'] for st in self.all_info_files.values())
@@ -187,12 +188,18 @@ class BrainStitcher(ParallelManager):
             print('vol_bbox_ll_um', vol_bbox_ll_um)
         ds_bbox_ll = (np.array(vol_bbox_ll_um) / stitch_voxel_size_um)
         ds_bbox_ll = [math.ceil(a) for a in ds_bbox_ll]
-        ds_bbox_ll[2] = 250
+        #ds_bbox_ll[2] = 250
         b = ds_bbox_ll
         ds_bbox_ll = [b[2], b[0], b[1]]
-    
-        tmp_stitch_data = np.zeros(ds_bbox_ll, dtype=np.uint16)
+
+        try:
+            tmp_stitch_data = np.zeros(ds_bbox_ll, dtype=np.uint16)
+        except:
+            print(f'Could not create a big box with shape={ds_bbox_ll}')
+            sys.exit()
+
         print(f'Big box shape={tmp_stitch_data.shape}')
+        return
 
         for (layer, position), info in self.all_info_files.items():
             tile = f"{position}.tif"
@@ -206,8 +213,8 @@ class BrainStitcher(ParallelManager):
             tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
             tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
             tmp_tile_ll_ds_pxl = [round(bbox/voxel) for bbox,voxel in zip(tmp_tile_bbox_ll_um, stitch_voxel_size_um)]
-            print(f'{layer} {position} shape= {tif.shape}', end="\t" )
-            print('bounding box', tmp_tile_ll_ds_pxl, end="\t")
+            #print(f'{layer} {position} shape= {tif.shape}', end="\t" )
+            #print('bounding box', tmp_tile_ll_ds_pxl, end="\t")
 
             # Local bounding box
             tmp_local_bbox_um = [a_i - b_i for a_i, b_i in zip(tmp_tile_bbox_mm_um, vol_bbox_mm_um)]
@@ -218,10 +225,15 @@ class BrainStitcher(ParallelManager):
             start_col = tmp_local_bbox_mm_ds_pxl[1]
             end_row = tif.shape[1] + start_row
             end_col = tif.shape[2] + start_col
-            print(start_row, end_row, start_col, end_col)
-            tmp_stitch_data[0:, start_row:end_row, start_col:end_col] += tif
-
+            print(f'{layer} whole brain shape={ds_bbox_ll} shape={tif.shape} start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col}')
+            
+            try:
+                tmp_stitch_data[0:, start_row:end_row, start_col:end_col] += tif
+            except Exception as e:
+                print(f'Error: {e}')
+            
         # save
+        return
         outfile = 'layers.' +  '.'.join(map(str, self.available_layers)) + '.tif'
         max_layer = max([int(layer) for layer in self.available_layers])
         outfile = 'layers.1-' + str(max_layer)  + '.tif'
