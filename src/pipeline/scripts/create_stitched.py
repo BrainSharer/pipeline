@@ -28,7 +28,7 @@ if __name__ == "__main__":
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
 
-    pipeline = BrainStitcher(animal, layer, channel, debug=False)
+    pipeline = BrainStitcher(animal, layer, channel, debug)
 
     function_mapping = {
         "extract": pipeline.extract,
