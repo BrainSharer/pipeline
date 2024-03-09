@@ -6,7 +6,7 @@ exp_group = 'LifeCanvas';
 exp_name = '003_20240209';
 tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
 % vis_folder = fullfile(DataManager.fp_experiment(exp_group, exp_name), 'visualization', 'Stitched');
-vis_folder = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-003/preps/C1/registration/'
+vis_folder = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-003/preps/C1/registration/';
 write_stitched_data_Q = false;
 %% Parameters
 stitch_voxel_size_um = [10, 10, 10];

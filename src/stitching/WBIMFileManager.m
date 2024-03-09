@@ -375,7 +375,7 @@ classdef WBIMFileManager < handle
                 obj
                 exp_group
                 exp_name
-                acq_mode_list (1, :) WBIMMicroscopeMode = [WBIMMicroscopeMode.Scan]
+                acq_mode_list (1, :) WBIMMicroscopeMode = [WBIMMicroscopeMode.Explore, WBIMMicroscopeMode.Scan]
             end
             exp_root_folder = obj.fp_experiment(exp_group, exp_name);
             layer_folder_list = dir(exp_root_folder);
