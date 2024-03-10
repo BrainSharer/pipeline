@@ -24,7 +24,7 @@ from library.controller.sql_controller import SqlController
 from library.utilities.utilities_mask import normalize16
 
 
-def create_precomputed(animal, volume_file, um):
+def create_precomputed(animal, volume_file, scale):
     chunk = 64
     chunks = (chunk, chunk, chunk)
     fileLocationManager = FileLocationManager(animal)
@@ -42,11 +42,8 @@ def create_precomputed(animal, volume_file, um):
     outpath = outpath.split('.')[0]
     ext = outpath.split('.')[0]
     IMAGE_OUTPUT = os.path.join(fileLocationManager.neuroglancer_data, f'{outpath}')
-    #scale = um * 1000
-    #scales = (scale, scale, scale)
 
-    xy *=  10
-    scales = (int(xy), int(xy), int(z))
+    scales = (int(xy*scale), int(xy*scale), int(z*scale))
     print(f'scales={scales}')
 
     if 'mothra' in get_hostname() and os.path.exists(IMAGE_OUTPUT):
@@ -91,11 +88,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
     parser.add_argument('--volume', help='Enter the name of the volume file', required=False, default='result.tif')
-    parser.add_argument('--um', help="size of volume in micrometers", required=False, default=10, type=int)
+    parser.add_argument('--scale', help="downsampled size", required=False, default=10, type=int)
     args = parser.parse_args()
     animal = args.animal
     volume = args.volume
-    um = args.um
+    scale = args.scale
     
-    create_precomputed(animal, volume, um)
+    create_precomputed(animal, volume, scale)
 

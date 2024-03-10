@@ -268,14 +268,13 @@ class BrainStitcher(ParallelManager):
             tif_rows = tif.shape[1]
             tif_cols = tif.shape[2]
 
-            print(f'Box start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col} start_z={start_z} end_z={end_z}', end="\t")
+            print(f'{layer} start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col} start_z={start_z} end_z={end_z}', end="\t")
             print(f'available/tif rows={available_rows} {tif_rows} available/tif cols={available_cols} {tif_cols}')
 
             try:
                 tmp_stitch_data[start_z:end_z, start_row:end_row, start_col:end_col] += tif
             except Exception as e:
                 print(f'Error, could not put tif shape={tif.shape} {e}')
-                sys.exit()
             
         print(f'Big box shape={tmp_stitch_data.shape}')
         # save
