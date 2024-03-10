@@ -42,6 +42,12 @@ classdef WBIMFileManager < handle
                     obj.SCRATCH_ROOT_PATH = '/scratch/Vessel/WBIM';
                     obj.SERVER_ROOT_PATH = '/net/birdstore/Vessel/WBIM';
                     obj.SERVER_SCRIPT_PATH = fullfile(obj.SERVER_ROOT_PATH, 'Script', 'WBIM');                    
+                case {'godzilla', 'godzilla.eddyod.com'}
+                    obj.DATA_ROOT_PATH = '/net/birdstore/Vessel/WBIM';
+                    obj.SCRIPT_PATH = '/home/eddyod/programming/pipeline/src/stitching';
+                    obj.SCRATCH_ROOT_PATH = '/scratch/Vessel/WBIM';
+                    obj.SERVER_ROOT_PATH = '/net/birdstore/Vessel/WBIM';
+                    obj.SERVER_SCRIPT_PATH = fullfile(obj.SERVER_ROOT_PATH, 'Script', 'WBIM');                    
                 case {'muralis', 'muralis.dk.ucsd.edu'}
                     obj.DATA_ROOT_PATH = '/net/birdstore/Vessel/WBIM';
                     obj.SCRIPT_PATH = '/home/eodonnell/programming/pipeline/src/stitching';
