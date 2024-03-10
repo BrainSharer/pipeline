@@ -37,7 +37,7 @@ class BrainStitcher(ParallelManager):
         self.available_layers = []
         self.all_info_files = None
         self.check_status()
-        self.scaling_factor = 1/10
+        self.scaling_factor = 1/5
 
 
     def check_status(self):
@@ -133,7 +133,6 @@ class BrainStitcher(ParallelManager):
             sys.exit()
 
         print(f'Found {len(files)} h5 files')
-        change_z = 1
         file_keys = []
 
         for file in files:
@@ -149,7 +148,7 @@ class BrainStitcher(ParallelManager):
             if os.path.exists(outpath):
                 continue
 
-            file_keys.append([inpath, self.channel_source, change_z, self.scaling_factor, outpath])
+            file_keys.append([inpath, self.channel_source, self.scaling_factor, outpath])
 
         # Cleaning images takes up around 20-25GB per full resolution image
         # so we cut the workers in half here
@@ -158,11 +157,12 @@ class BrainStitcher(ParallelManager):
 
 
     def stitch_tile(self):
+        # matlab is yxz
+        # numpy is zyx
         self.check_status()
         self.parse_all_info()
         # Parameters
-        stitch_voxel_size_um = [0.375/self.scaling_factor, 0.375/self.scaling_factor, 1]
-        stitch_voxel_size_um = [2, 2, 2]
+        stitch_voxel_size_um = [1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor]
 
         first_element = next(iter(self.all_info_files.values()))
         stack_size_um = first_element['stack_size_um']
@@ -188,7 +188,6 @@ class BrainStitcher(ParallelManager):
             print('vol_bbox_ll_um', vol_bbox_ll_um)
         ds_bbox_ll = (np.array(vol_bbox_ll_um) / stitch_voxel_size_um)
         ds_bbox_ll = [math.ceil(a) for a in ds_bbox_ll]
-        #ds_bbox_ll[2] = 250
         b = ds_bbox_ll
         ds_bbox_ll = [b[2], b[0], b[1]]
 
@@ -199,7 +198,6 @@ class BrainStitcher(ParallelManager):
             sys.exit()
 
         print(f'Big box shape={tmp_stitch_data.shape}')
-        return
 
         for (layer, position), info in self.all_info_files.items():
             tile = f"{position}.tif"
@@ -212,28 +210,75 @@ class BrainStitcher(ParallelManager):
             tmp_tile_bbox_mm_um.append(info['layer_z_um'])
             tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
             tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-            tmp_tile_ll_ds_pxl = [round(bbox/voxel) for bbox,voxel in zip(tmp_tile_bbox_ll_um, stitch_voxel_size_um)]
+            #####tmp_tile_ll_ds_pxl = [round(bbox/voxel) for bbox,voxel in zip(tmp_tile_bbox_ll_um, stitch_voxel_size_um)]
             #print(f'{layer} {position} shape= {tif.shape}', end="\t" )
             #print('bounding box', tmp_tile_ll_ds_pxl, end="\t")
 
             # Local bounding box
-            tmp_local_bbox_um = [a_i - b_i for a_i, b_i in zip(tmp_tile_bbox_mm_um, vol_bbox_mm_um)]
+            #####tmp_local_bbox_um = [a_i - b_i for a_i, b_i in zip(tmp_tile_bbox_mm_um, vol_bbox_mm_um)]
             # tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
-            tmp_local_bbox_mm_ds_pxl = [round(a/b) for a,b in zip(tmp_local_bbox_um, stitch_voxel_size_um)]
+            #####tmp_local_bbox_mm_ds_pxl = [round(a/b) for a,b in zip(tmp_local_bbox_um, stitch_voxel_size_um)]
             # print(tmp_local_bbox_mm_ds_pxl)
+            #tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
+            #####tmp_local_bbox_xx_ds_pxl = [a_i + b_i for a_i, b_i in zip(tmp_local_bbox_mm_ds_pxl, tmp_tile_ll_ds_pxl)]
+            #####tmp_local_bbox_xx_ds_pxl = [a+1 for a in tmp_tile_ll_ds_pxl]
+
+            """
+            start_z = tmp_local_bbox_mm_ds_pxl[0]
+            end_z = tmp_local_bbox_xx_ds_pxl[0]
             start_row = tmp_local_bbox_mm_ds_pxl[0]
             start_col = tmp_local_bbox_mm_ds_pxl[1]
             end_row = tif.shape[1] + start_row
             end_col = tif.shape[2] + start_col
-            print(f'{layer} whole brain shape={ds_bbox_ll} shape={tif.shape} start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col}')
-            
+            """
+            tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
+            tmp_tile_bbox_mm_um.append(info['layer_z_um'])
+            tmp_tile_bbox_mm_um = np.array(tmp_tile_bbox_mm_um)
+            tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
+            tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
+            tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
+
+            #####REPLACED tmp_tile_bbox_mm_um = [tmp_tile.tile_mmxx_um(1:2), tmp_tile.layer_z_um];
+            #####REPLACED tmp_tile_bbox_ll_um = [tmp_tile.tile_mmll_um(3:4), tmp_tile.stack_size_um(3)];
+            tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
+            """ Downsample image stack - need smoothing? """
+            #####REPLACED tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
+            change_z = tmp_tile_ll_ds_pxl[2] / tif.shape[0]
+            change_rows = tmp_tile_ll_ds_pxl[0] / tif.shape[1]
+            change_cols = tmp_tile_ll_ds_pxl[1] / tif.shape[2]
+            tif = zoom(tif, (change_z, change_rows, change_cols))
+            #print(f'tif shape={tif.shape} fit to={tmp_tile_ll_ds_pxl}')
+            """ Local bounding box """ 
+            tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
+            #####REPLACED tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
+            tmp_local_bbox_mm_ds_pxl = np.round(tmp_local_bbox_um / stitch_voxel_size_um)
+            """ Deal with edge: """ 
+            tmp_local_bbox_mm_ds_pxl = np.maximum(tmp_local_bbox_mm_ds_pxl, 1)
+            tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
+
+            start_row = int(round(tmp_local_bbox_mm_ds_pxl[0])) - 1
+            end_row = int(round(tmp_local_bbox_xx_ds_pxl[0]))
+            start_col = int(round(tmp_local_bbox_mm_ds_pxl[1])) - 1
+            end_col = int(round(tmp_local_bbox_xx_ds_pxl[1]))
+            start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
+            end_z = int(round(tmp_local_bbox_xx_ds_pxl[2])) 
+
+            available_rows = end_row - start_row
+            available_cols = end_col - start_col
+            tif_rows = tif.shape[1]
+            tif_cols = tif.shape[2]
+
+            print(f'Box start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col} start_z={start_z} end_z={end_z}', end="\t")
+            print(f'available/tif rows={available_rows} {tif_rows} available/tif cols={available_cols} {tif_cols}')
+
             try:
-                tmp_stitch_data[0:, start_row:end_row, start_col:end_col] += tif
+                tmp_stitch_data[start_z:end_z, start_row:end_row, start_col:end_col] += tif
             except Exception as e:
-                print(f'Error: {e}')
+                print(f'Error, could not put tif shape={tif.shape} {e}')
+                sys.exit()
             
+        print(f'Big box shape={tmp_stitch_data.shape}')
         # save
-        return
         outfile = 'layers.' +  '.'.join(map(str, self.available_layers)) + '.tif'
         max_layer = max([int(layer) for layer in self.available_layers])
         outfile = 'layers.1-' + str(max_layer)  + '.tif'
@@ -245,12 +290,11 @@ class BrainStitcher(ParallelManager):
         print('saved', outpath)
 
 def extract_tif(file_key):
-    inpath, channel_source, change_z, scaling_factor, outpath = file_key
+    inpath, channel_source, scaling_factor, outpath = file_key
     
     with h5py.File(inpath, "r") as f:
         channel_key = f[channel_source]
         channel_arr = channel_key['raw'][()]
         print(channel_arr.dtype, channel_arr.shape, end="\t")
-        scaled_arr = zoom(channel_arr, (change_z, scaling_factor, scaling_factor))
+        scaled_arr = zoom(channel_arr, (scaling_factor, scaling_factor, scaling_factor))
         imwrite(outpath, scaled_arr)
-        print('scaled', scaled_arr.dtype, scaled_arr.shape)

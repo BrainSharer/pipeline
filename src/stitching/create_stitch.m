@@ -1,5 +1,6 @@
 % Stitching with static lens deformation correction 
 clc;clear;close all;
+cd('/home/eddyod/programming/pipeline/src/stitching');
 DataManager = WBIMFileManager;
 %%
 exp_group = 'LifeCanvas';
@@ -9,7 +10,7 @@ tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
 vis_folder = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-003/preps/C1/registration/';
 write_stitched_data_Q = false;
 %% Parameters
-stitch_voxel_size_um = [10, 10, 10];
+stitch_voxel_size_um = [1, 1, 1];
 zero_num_sec = 0;
 zero_last_section_Q = true;
 medfilt_Q = false;
@@ -20,11 +21,11 @@ t_tic = tic;
 
 stitch_set = WBIMMicroscopeMode.Scan;
 stitch_tiles = tile_str.(char(stitch_set));
-layer_list = 1:21;
+layer_list = 1:1;
 % layer_list = 1 : numel(stitch_tiles);
 stitch_tiles = cat(1, stitch_tiles{layer_list});
 % ch_list = stitch_tiles(1).channel;
-ch_list = 1
+ch_list = 1;
 num_ch = numel(ch_list);
 num_tiles = numel(stitch_tiles);
 % Compute overall bounding box
@@ -43,9 +44,9 @@ vol_bbox_xx_um = [max(bbox_mmxx_um(:, 3:4), [], 1), vol_bbox_z_mx_um(2)];
 vol_bbox_ll_um = vol_bbox_xx_um - vol_bbox_mm_um + 1;
 
 ds_bbox_ll = round(vol_bbox_ll_um ./ stitch_voxel_size_um);
-
 tile_data = cell(1, num_ch);
-% This process is dominated by reading H5 file (0.3 second per tile)
+% yxz
+fprintf('Box shape is: %d %d %d\n',ds_bbox_ll)
 for i_ch = 1 : num_ch
     tmp_ch = ch_list(i_ch);
     tmp_stitch_data = zeros(ds_bbox_ll, 'uint16');
@@ -55,12 +56,6 @@ for i_ch = 1 : num_ch
             tmp_tile_data = tmp_tile.load_tile(tmp_ch);
             tmp_tile_data = tmp_tile_data{1};
             % Apply lens deformation correction 
-            if medfilt_Q
-                tmp_tile_data = medfilt3(tmp_tile_data);
-            end
-            if zero_num_sec && (tmp_tile.layer > 1)
-                tmp_tile_data(:, :, 1:zero_num_sec) = 0;
-            end
             if zero_last_section_Q
                 tmp_tile_data(:, :, end) = 0;
             end
@@ -77,6 +72,25 @@ for i_ch = 1 : num_ch
             tmp_local_bbox_mm_ds_pxl = max(tmp_local_bbox_mm_ds_pxl, 1);
             tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
             % Max - rendering
+            start_row = tmp_local_bbox_mm_ds_pxl(1);
+            end_row = tmp_local_bbox_xx_ds_pxl(1);
+            start_col = tmp_local_bbox_mm_ds_pxl(2);
+            end_col = tmp_local_bbox_xx_ds_pxl(2);
+            start_z = tmp_local_bbox_mm_ds_pxl(3);
+            end_z = tmp_local_bbox_xx_ds_pxl(3);
+            available_rows = end_row - start_row;
+            available_cols = end_col - start_col;
+            [tif_rows,tif_cols, z] = size(tmp_tile_data);
+
+            fprintf('Box start_row is:%d', start_row);
+            fprintf('\tend_row is:%d', end_row);
+            fprintf('\tstart_col is:%d', start_col);
+            fprintf('\tend_col is:%d', end_col);
+            fprintf('\tstart_z is:%d', start_z);
+            fprintf('\tend_z is:%d\n', end_z);
+            fprintf('available/tif rows=%d %d available/tif cols=%d %d\n', available_rows, tif_rows, available_cols, tif_cols);
+
+
             tmp_stitch_data(tmp_local_bbox_mm_ds_pxl(1) : tmp_local_bbox_xx_ds_pxl(1), ...
                 tmp_local_bbox_mm_ds_pxl(2) : tmp_local_bbox_xx_ds_pxl(2), ...
                 tmp_local_bbox_mm_ds_pxl(3) : tmp_local_bbox_xx_ds_pxl(3)) = max(tmp_stitch_data(...
@@ -84,16 +98,24 @@ for i_ch = 1 : num_ch
                 tmp_local_bbox_mm_ds_pxl(2) : tmp_local_bbox_xx_ds_pxl(2), ...
                 tmp_local_bbox_mm_ds_pxl(3) : tmp_local_bbox_xx_ds_pxl(3)), tmp_tile_data);
                 
-            fprintf('Finish adding tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
+            % fprintf('Finish adding tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
         catch ME
             fprintf('Failed to add tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
+            fprintf(1,'The identifier was:\n%s', ME.identifier);
+            fprintf(1,'There was an error! The message was:\n%s', ME.message);
         end
     end
+    fprintf('Box shape is: %d %d %d\n',ds_bbox_ll)
     tile_data{i_ch} = tmp_stitch_data;
     % Write to tiff stack? 
-    stack_fp = fullfile(vis_folder, sprintf('%s_%s_stitched_stack_CH_%d.tif', ...
-        exp_group, exp_name, i_ch));
-    DataManager.write_tiff_stack(tile_data{i_ch}, stack_fp);
-    fprintf('Finish processing channel %d. Elapsed time is %.2f seconds\n', ...
-        i_ch, toc(t_tic));
+    dowrite = false;
+    if dowrite
+        stack_fp = fullfile(vis_folder, sprintf('%s_%s_stitched_stack_CH_%d.tif', ...
+            exp_group, exp_name, i_ch));
+        DataManager.write_tiff_stack(tile_data{i_ch}, stack_fp);
+        fprintf('Finish processing channel %d. Elapsed time is %.2f seconds\n', ...
+            i_ch, toc(t_tic));
+    end
 end
+
+
