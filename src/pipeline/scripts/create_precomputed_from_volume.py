@@ -34,7 +34,6 @@ def create_precomputed(animal, volume_file, scale):
     z = sqlController.scan_run.zresolution * 1000
     scales = (int(xy*scale), int(xy*scale), int(z*scale))
     print(f'scales={scales}')
-    return
     INPUT = os.path.join(fileLocationManager.prep, 'C1', 'registration')
     volumepath = os.path.join(INPUT, volume_file)
     if not os.path.exists(volumepath):
