@@ -7,18 +7,21 @@ from scipy.ndimage import zoom
 from tifffile import imwrite
 import math
 from skimage import io
+from skimage.transform import resize
 from pathlib import Path
 from shutil import copyfile
+from timeit import default_timer as timer
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
+from library.utilities.utilities_process import write_image
 
 class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
     """
 
-    def __init__(self, animal, layer, channel, debug):
+    def __init__(self, animal, layer, channel, scale, debug):
         """Initiates the brain object
 
         Args:
@@ -26,18 +29,23 @@ class BrainStitcher(ParallelManager):
         """
         self.animal = animal
         self.layer = str(layer).zfill(5)
-        self.channel = 'C' + str(channel)
+        self.channel = channel
         channel_dict = {1: "CH1", 2: "CH2", 4: "CH4"}
-        self.channel_source = channel_dict[channel]
+        try:
+            self.channel_source = channel_dict[channel]
+        except KeyError as ke:
+            print(f'Error: key {channel} is not in {str(channel_dict)}')
+            sys.exit()
+
         self.fileLocationManager = FileLocationManager(animal)
-        self.base_path = os.path.join(self.fileLocationManager.prep, self.channel, 'layers')
+        self.base_path = os.path.join(self.fileLocationManager.prep, 'layers')
         self.layer_path = os.path.join(self.base_path, self.layer)
-        self.registration_path = os.path.join(self.fileLocationManager.prep, self.channel, 'registration')
+        self.registration_path = os.path.join(self.fileLocationManager.prep,  'registration')
         self.debug = debug
         self.available_layers = []
         self.all_info_files = None
         self.check_status()
-        self.scaling_factor = 1/5
+        self.scaling_factor = 1/scale
 
 
     def check_status(self):
@@ -48,24 +56,25 @@ class BrainStitcher(ParallelManager):
             infopath = os.path.join(self.base_path, layer, 'info')
             if not os.path.exists(infopath):
                 continue
-            tifpath = os.path.join(self.base_path, layer, 'tif')
-            if not os.path.exists(tifpath):
+            h5path = os.path.join(self.base_path, layer, 'h5')
+            if not os.path.exists(h5path):
                 continue
             infos = sorted(os.listdir(infopath))
-            tifs = sorted(os.listdir(tifpath))
-            if len(tifs) == 0:
+            h5s = sorted(os.listdir(h5path))
+            if len(h5s) == 0:
                 continue
             if len(infos) == 0:
                 continue
-            if len(infos) != len(tifs):
+            if len(infos) != len(h5s):
                 continue
-            print(f'Found {len(infos)} tifs and JSON files in layer={layer}')
-            for info,tif in zip(infos, tifs):
+            print(f'Found {len(infos)} h5s and JSON files in layer={layer}')
+            for info,h5 in zip(infos, h5s):
                 infostem = Path(info).stem
-                tifstem = Path(tif).stem
-                if infostem != tifstem:
-                    print(f'Error: files do not match:{layer} {info} {tif}')
+                h5stem = Path(h5).stem
+                if infostem != h5stem:
+                    print(f'Error: files do not match:{layer} {info} {h5}')
                     sys.exit()
+
 
             self.available_layers.append(layer)
 
@@ -156,7 +165,15 @@ class BrainStitcher(ParallelManager):
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
 
+    def fetch_tif(self, inpath):        
+        with h5py.File(inpath, "r") as f:
+            channel_key = f[self.channel_source]
+            arr = channel_key['raw'][()]
+        return arr
+
     def stitch_tile(self):
+        start_time = timer()
+
         # matlab is yxz
         # numpy is zyx
         self.check_status()
@@ -166,11 +183,6 @@ class BrainStitcher(ParallelManager):
 
         first_element = next(iter(self.all_info_files.values()))
         stack_size_um = first_element['stack_size_um']
-        ds_stack_size = [round(stack/stitch) for stack,stitch in zip(stack_size_um, stitch_voxel_size_um)]
-        if self.debug:
-            print('stack_size_um', stack_size_um)
-            print('ds_stack_size', ds_stack_size)
-
         min_z = min(st['layer_z_um'] for st in self.all_info_files.values())
         max_z = max(st['layer_z_um'] for st in self.all_info_files.values())
 
@@ -183,13 +195,11 @@ class BrainStitcher(ParallelManager):
 
         vol_bbox_ll_um = [a_i - b_i for a_i, b_i in zip(vol_bbox_xx_um, vol_bbox_mm_um)]
         vol_bbox_ll_um = [a+1 for a in vol_bbox_ll_um]
-
-        if self.debug:
-            print('vol_bbox_ll_um', vol_bbox_ll_um)
         ds_bbox_ll = (np.array(vol_bbox_ll_um) / stitch_voxel_size_um)
         ds_bbox_ll = [math.ceil(a) for a in ds_bbox_ll]
         b = ds_bbox_ll
         ds_bbox_ll = [b[2], b[0], b[1]]
+        print(f'Big box shape={ds_bbox_ll} composed of {len(self.all_info_files.values())} files')
 
         try:
             tmp_stitch_data = np.zeros(ds_bbox_ll, dtype=np.uint16)
@@ -197,40 +207,26 @@ class BrainStitcher(ParallelManager):
             print(f'Could not create a big box with shape={ds_bbox_ll}')
             sys.exit()
 
-        print(f'Big box shape={tmp_stitch_data.shape}')
 
         for (layer, position), info in self.all_info_files.items():
-            tile = f"{position}.tif"
-            tifpath = os.path.join(self.base_path, layer, 'tif', tile)
-            if not os.path.exists(tifpath):
-                print(f'Error: missing {tifpath}')
+            position_start_time = timer()
+            h5file = f"{position}.h5"
+            h5path = os.path.join(self.base_path, layer, 'h5', h5file)
+            if not os.path.exists(h5path):
+                print(f'Error: missing {h5path}')
                 sys.exit()
-            tif = io.imread(tifpath)            
+
+            fetch_start_time = timer()
+            if not self.debug:
+                tif = self.fetch_tif(h5path)
+            fetch_end_time = timer()
+            fetch_elapsed_time = round((fetch_end_time - fetch_start_time), 2)
+            print(f'Time to load h5 file: {fetch_elapsed_time} seconds.', end="\t")
+
             tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
             tmp_tile_bbox_mm_um.append(info['layer_z_um'])
             tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
             tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-            #####tmp_tile_ll_ds_pxl = [round(bbox/voxel) for bbox,voxel in zip(tmp_tile_bbox_ll_um, stitch_voxel_size_um)]
-            #print(f'{layer} {position} shape= {tif.shape}', end="\t" )
-            #print('bounding box', tmp_tile_ll_ds_pxl, end="\t")
-
-            # Local bounding box
-            #####tmp_local_bbox_um = [a_i - b_i for a_i, b_i in zip(tmp_tile_bbox_mm_um, vol_bbox_mm_um)]
-            # tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
-            #####tmp_local_bbox_mm_ds_pxl = [round(a/b) for a,b in zip(tmp_local_bbox_um, stitch_voxel_size_um)]
-            # print(tmp_local_bbox_mm_ds_pxl)
-            #tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
-            #####tmp_local_bbox_xx_ds_pxl = [a_i + b_i for a_i, b_i in zip(tmp_local_bbox_mm_ds_pxl, tmp_tile_ll_ds_pxl)]
-            #####tmp_local_bbox_xx_ds_pxl = [a+1 for a in tmp_tile_ll_ds_pxl]
-
-            """
-            start_z = tmp_local_bbox_mm_ds_pxl[0]
-            end_z = tmp_local_bbox_xx_ds_pxl[0]
-            start_row = tmp_local_bbox_mm_ds_pxl[0]
-            start_col = tmp_local_bbox_mm_ds_pxl[1]
-            end_row = tif.shape[1] + start_row
-            end_col = tif.shape[2] + start_col
-            """
             tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
             tmp_tile_bbox_mm_um.append(info['layer_z_um'])
             tmp_tile_bbox_mm_um = np.array(tmp_tile_bbox_mm_um)
@@ -238,49 +234,67 @@ class BrainStitcher(ParallelManager):
             tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
             tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
 
-            #####REPLACED tmp_tile_bbox_mm_um = [tmp_tile.tile_mmxx_um(1:2), tmp_tile.layer_z_um];
-            #####REPLACED tmp_tile_bbox_ll_um = [tmp_tile.tile_mmll_um(3:4), tmp_tile.stack_size_um(3)];
             tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
             """ Downsample image stack - need smoothing? """
-            #####REPLACED tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
-            change_z = tmp_tile_ll_ds_pxl[2] / tif.shape[0]
-            change_rows = tmp_tile_ll_ds_pxl[0] / tif.shape[1]
-            change_cols = tmp_tile_ll_ds_pxl[1] / tif.shape[2]
-            tif = zoom(tif, (change_z, change_rows, change_cols))
-            #print(f'tif shape={tif.shape} fit to={tmp_tile_ll_ds_pxl}')
+            if not self.debug:
+                change_z = tmp_tile_ll_ds_pxl[2] / tif.shape[0]
+                change_rows = tmp_tile_ll_ds_pxl[0] / tif.shape[1]
+                change_cols = tmp_tile_ll_ds_pxl[1] / tif.shape[2]
+                zoom_start_time = timer()
+                tif = zoom(tif, (change_z, change_rows, change_cols))
+                zoom_end_time = timer()
+                zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
+                print(f'Time to zoom file: {zoom_elapsed_time} seconds.')
+
             """ Local bounding box """ 
             tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
-            #####REPLACED tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
             tmp_local_bbox_mm_ds_pxl = np.round(tmp_local_bbox_um / stitch_voxel_size_um)
             """ Deal with edge: """ 
             tmp_local_bbox_mm_ds_pxl = np.maximum(tmp_local_bbox_mm_ds_pxl, 1)
             tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
+            
+            if self.debug:
+                print(f'tmp_local_bbox_xx_ds_pxl={tmp_local_bbox_xx_ds_pxl}')
+                continue
 
             start_row = int(round(tmp_local_bbox_mm_ds_pxl[0])) - 1
-            end_row = int(round(tmp_local_bbox_xx_ds_pxl[0]))
+            end_row = int(round(tmp_local_bbox_xx_ds_pxl[0])) 
             start_col = int(round(tmp_local_bbox_mm_ds_pxl[1])) - 1
             end_col = int(round(tmp_local_bbox_xx_ds_pxl[1]))
             start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
-            end_z = int(round(tmp_local_bbox_xx_ds_pxl[2])) 
+            end_z = int(round(tmp_local_bbox_xx_ds_pxl[2]))
 
-            available_rows = end_row - start_row
-            available_cols = end_col - start_col
-            tif_rows = tif.shape[1]
-            tif_cols = tif.shape[2]
+            position_end_time = timer()
+            positions_elapsed_time = round((position_end_time - position_start_time), 2)
+            print(f'layer={layer} position={position}', end=" ") 
+            print(f'tmp_stitch_data[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}]', end="\t")
+            print(f'row height is:{end_row - start_row} column width={end_col - start_col}', end="\t")
 
-            print(f'{layer} start_row={start_row} end_row={end_row} start_col={start_col} end_col={end_col} start_z={start_z} end_z={end_z}', end="\t")
-            print(f'available/tif rows={available_rows} {tif_rows} available/tif cols={available_cols} {tif_cols}')
-
-            try:
-                tmp_stitch_data[start_z:end_z, start_row:end_row, start_col:end_col] += tif
-            except Exception as e:
-                print(f'Error, could not put tif shape={tif.shape} {e}')
+            if not self.debug:
+                try:
+                    tmp_stitch_data[start_z:end_z, start_row:end_row, start_col:end_col] += tif
+                except Exception as e:
+                    print(f'Error: {e}')
+                    sys.exit()
+                    
             
-        print(f'Big box shape={tmp_stitch_data.shape}')
+            print(f'adding tif shape={tif.shape} took {positions_elapsed_time} seconds.')
+        
+        if self.debug:
+            return
+        outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
+        os.makedirs(outpath, exist_ok=True)
+        for i in range(tmp_stitch_data.shape[0]):
+            section = tmp_stitch_data[i, :, :]
+            outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
+            write_image(outfile, section)
+ 
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f'\nTotal time: {total_elapsed_time} seconds.\n')
         # save
-        outfile = 'layers.' +  '.'.join(map(str, self.available_layers)) + '.tif'
         max_layer = max([int(layer) for layer in self.available_layers])
-        outfile = 'layers.1-' + str(max_layer)  + '.tif'
+        outfile = f'{self.channel_source}.layers.1-' + str(max_layer)  + '.tif'
 
         outpath = os.path.join(self.registration_path, outfile)
         os.makedirs(self.registration_path, exist_ok=True)
@@ -293,7 +307,7 @@ def extract_tif(file_key):
     
     with h5py.File(inpath, "r") as f:
         channel_key = f[channel_source]
-        channel_arr = channel_key['raw'][()]
-        print(channel_arr.dtype, channel_arr.shape, end="\t")
-        scaled_arr = zoom(channel_arr, (scaling_factor, scaling_factor, scaling_factor))
-        imwrite(outpath, scaled_arr)
+        arr = channel_key['raw'][()]
+        if scaling_factor < 1:
+            arr = zoom(arr, (scaling_factor, scaling_factor, scaling_factor))
+        imwrite(outpath, arr)

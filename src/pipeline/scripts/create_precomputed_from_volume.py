@@ -1,6 +1,7 @@
 """
 Creates a 3D Mesh
 """
+import numpy as np
 import argparse
 import os
 import sys
@@ -8,7 +9,6 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 import shutil
 from pathlib import Path
-import numpy as np
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import nrrd
@@ -78,7 +78,7 @@ def create_precomputed(animal, volume_file, scale):
     ng.precomputed_vol.cache.flush()
     tq = LocalTaskQueue(parallel=4)
     cloudpath = f"file://{IMAGE_OUTPUT}"
-    tasks = tc.create_downsampling_tasks(cloudpath, num_mips=2)
+    tasks = tc.create_downsampling_tasks(cloudpath, num_mips=5)
     tq.insert(tasks)
     tq.execute()
     print("Done!")
