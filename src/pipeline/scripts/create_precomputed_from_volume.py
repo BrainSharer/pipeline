@@ -32,6 +32,9 @@ def create_precomputed(animal, volume_file, scale):
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
     z = sqlController.scan_run.zresolution * 1000
+    scales = (int(xy*scale), int(xy*scale), int(z*scale))
+    print(f'scales={scales}')
+    return
     INPUT = os.path.join(fileLocationManager.prep, 'C1', 'registration')
     volumepath = os.path.join(INPUT, volume_file)
     if not os.path.exists(volumepath):
@@ -43,8 +46,6 @@ def create_precomputed(animal, volume_file, scale):
     ext = outpath.split('.')[0]
     IMAGE_OUTPUT = os.path.join(fileLocationManager.neuroglancer_data, f'{outpath}')
 
-    scales = (int(xy*scale), int(xy*scale), int(z*scale))
-    print(f'scales={scales}')
 
     if 'mothra' in get_hostname() and os.path.exists(IMAGE_OUTPUT):
         print(f'Cleaning {IMAGE_OUTPUT}')
@@ -86,7 +87,7 @@ def create_precomputed(animal, volume_file, scale):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--animal', help='Enter the animal', required=True)
+    parser.add_argument('--animal', help='Enter the animal', required=False, default='DK20230126-003')
     parser.add_argument('--volume', help='Enter the name of the volume file', required=False, default='result.tif')
     parser.add_argument('--scale', help="downsampled size", required=False, default=10, type=int)
     args = parser.parse_args()
