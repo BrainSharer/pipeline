@@ -47,8 +47,8 @@ ds_bbox_ll = round(vol_bbox_ll_um ./ stitch_voxel_size_um);
 tile_data = cell(1, num_ch);
 % yxz
 fprintf('Box shape is: %d %d %d\n',ds_bbox_ll)
-% select channel below as an index of the list
-i_ch = 3;
+% select channel below as an index of the list %%%%%%%%%%%%%
+i_ch = 1;
 tmp_ch = ch_list(i_ch);
 tmp_stitch_data = zeros(ds_bbox_ll, 'uint16');
 for i = 1 : num_tiles
@@ -90,7 +90,7 @@ for i = 1 : num_tiles
         fprintf(1,'There was an error! The message was:\n%s', ME.message);
     end
 end
-fprintf('Finish processing channel %d. Elapsed time is %.2f seconds\n', ...
+fprintf('Finish putting subvolumes into volume for channel %d. Elapsed time is %.2f seconds\n', ...
     tmp_ch, toc(t_tic));
 
 fprintf('Stitched box shape is: %d %d %d\n',ds_bbox_ll)
@@ -104,6 +104,4 @@ for i = 1 : sections
     filepath = fullfile(outpath, num2str(tmp_ch,'C%d'), 'full_aligned', filename);
     imwrite(section, filepath);
 end
-fprintf('Finish writing %d sections\n', sections));
-
-
+fprintf('Finish writing %d sections\n', sections);
