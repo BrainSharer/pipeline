@@ -14,7 +14,6 @@ if __name__ == "__main__":
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--channel", help="Enter 1, 2, or 4", required=False, default=1, type=int)
     parser.add_argument("--layer", help="Enter layer", required=False, default=1, type=int)
-    parser.add_argument("--scale", help="Enter scale", required=False, default=5, type=int)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: extract|stitch|move|status",
@@ -26,14 +25,12 @@ if __name__ == "__main__":
     animal = args.animal
     channel = args.channel
     layer = args.layer
-    scale = args.scale
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
 
-    pipeline = BrainStitcher(animal, layer, channel, scale, debug)
+    pipeline = BrainStitcher(animal, layer, channel, debug)
 
     function_mapping = {
-        "extract": pipeline.extract,
         "stitch": pipeline.stitch_tile,
         "status": pipeline.check_status,
         "move": pipeline.move_data

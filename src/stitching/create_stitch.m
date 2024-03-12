@@ -1,14 +1,14 @@
 % Stitching with static lens deformation correction 
 clc;clear;close all;
-cd('/home/eodonnell/programming/pipeline/src/stitching');
+cd('/home/eddyod/programming/pipeline/src/stitching');
 DataManager = WBIMFileManager;
 %%
 exp_group = 'LifeCanvas';
 exp_name = '003_20240209';
 tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
 %% Parameters
-scaling_factor = 2;
-stitch_voxel_size_um = [0.375*scaling_factor, 0.375*scaling_factor, 1*scaling_factor];
+% scaling_factor = 2;
+stitch_voxel_size_um = [0.375, 0.375, 1];
 zero_last_section_Q = true;
 %% Load all the tiles 
 mip_str = struct;
@@ -61,8 +61,8 @@ for i = 1 : num_tiles
         tmp_tile_bbox_ll_um = [tmp_tile.tile_mmll_um(3:4), tmp_tile.stack_size_um(3)];
         tmp_tile_ll_ds_pxl = round(tmp_tile_bbox_ll_um ./ stitch_voxel_size_um);
         % Downsample image stack - need smoothing? 
-        tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
-        tmp_tile.clear_buffer();
+        % tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
+        % tmp_tile.clear_buffer();
         % Local bounding box 
         tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
         tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
@@ -101,4 +101,4 @@ for i = 1 : sections
     filepath = fullfile(outpath, num2str(tmp_ch,'C%d'), 'full_aligned', filename);
     imwrite(section, filepath);
 end
-fprintf('Finish writing %d sections\n', sections);
+fprintf('Finish writing %d sections. Elapsed time is %.2f seconds\n', sections, toc(t_tic));
