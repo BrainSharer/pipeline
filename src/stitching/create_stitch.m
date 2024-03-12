@@ -7,7 +7,8 @@ exp_group = 'LifeCanvas';
 exp_name = '003_20240209';
 tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
 %% Parameters
-stitch_voxel_size_um = [0.375, 0.375, 1];
+scaling_factor = 2;
+stitch_voxel_size_um = [0.375*scaling_factor, 0.375*scaling_factor, 1*scaling_factor];
 zero_last_section_Q = true;
 %% Load all the tiles 
 mip_str = struct;
@@ -17,7 +18,7 @@ t_tic = tic;
 stitch_set = WBIMMicroscopeMode.Scan;
 stitch_tiles = tile_str.(char(stitch_set));
 % Set number of layers you want %%%%%%%%%%%%%%%%%
-layer_list = 1:21;
+layer_list = 1:1;
 % layer_list = 1 : numel(stitch_tiles);
 stitch_tiles = cat(1, stitch_tiles{layer_list});
 ch_list = stitch_tiles(1).channel;

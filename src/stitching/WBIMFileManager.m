@@ -376,12 +376,11 @@ classdef WBIMFileManager < handle
             end            
         end
         
-        function tile_str = load_tile_in_experiment(obj, exp_group, exp_name, acq_mode_list)
+        function tile_str = load_tile_in_experiment(obj, exp_group, exp_name)
             arguments
                 obj
                 exp_group
                 exp_name
-                acq_mode_list (1, :) WBIMMicroscopeMode = [WBIMMicroscopeMode.Explore, WBIMMicroscopeMode.Scan]
             end
             exp_root_folder = obj.fp_experiment(exp_group, exp_name);
             layer_folder_list = dir(exp_root_folder);
@@ -391,25 +390,18 @@ classdef WBIMFileManager < handle
             layer_list = layer_list(isfinite(layer_list));
             num_layer = numel(layer_list);
             tile_str = struct;
-            num_mode = numel(acq_mode_list);
-            for i = 1 : num_mode
-                acq_mode = acq_mode_list(i);
-                tmp_data = cell(1, max(layer_list));
-                wb_hdl = waitbar(0, 'Loading...', 'Name', sprintf('Loading %s tiles', acq_mode));
-                for iter_layer = 1 : num_layer
-                    tmp_layer_idx = layer_list(iter_layer);
-                    tmp_data{tmp_layer_idx} = obj.load_tile_in_layer(exp_group, exp_name, ...
-                        tmp_layer_idx, acq_mode);
-                    waitbar(iter_layer / num_layer, wb_hdl, sprintf('Loading layer %d', ...
-                        tmp_layer_idx));
-                end
-                delete(wb_hdl);
-                if num_mode > 1
-                    tile_str.(string(acq_mode)) = tmp_data;
-                else
-                    tile_str = tmp_data;
-                end
+            acq_mode = WBIMMicroscopeMode.Scan;
+            tmp_data = cell(1, max(layer_list));
+            wb_hdl = waitbar(0, 'Loading...', 'Name', sprintf('Loading %s tiles', acq_mode));
+            for iter_layer = 1 : num_layer
+                tmp_layer_idx = layer_list(iter_layer);
+                tmp_data{tmp_layer_idx} = obj.load_tile_in_layer(exp_group, exp_name, ...
+                    tmp_layer_idx, acq_mode);
+                waitbar(iter_layer / num_layer, wb_hdl, sprintf('Loading layer %d', ...
+                    tmp_layer_idx));
             end
+            delete(wb_hdl);
+            tile_str.(string(acq_mode)) = tmp_data;
         end        
     end
     %% Logging
