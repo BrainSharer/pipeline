@@ -192,7 +192,7 @@ class BrainStitcher(ParallelManager):
         # we can't create a true huge volume as it would take about 11TB of RAM
         volume_shape = [b[2], b[0], b[1]]
         print(f'Volume shape={volume_shape} composed of {len(self.all_info_files.values())} files')
-        zarrpath = os.path.join(self.base_path, 'myzarr.zarr')
+        zarrpath = os.path.join(self.base_path, f'C{self.channel}.zarr')
         try:
             volume = zarr.create(shape=(volume_shape), chunks=(1, 1536, 1024), dtype='int', store=zarrpath)
         except Exception as ex:
@@ -233,9 +233,8 @@ class BrainStitcher(ParallelManager):
         os.makedirs(outpath, exist_ok=True)
         for i in range(volume.shape[0]):
             section = volume[i, :, :]
-            print(type(section), section.dtype, section.shape)
             outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
-            imsave(outfile, section.astype(np.uint16))
+            imsave(outfile, section.astype(np.uint16), check_contrast=False)
  
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
