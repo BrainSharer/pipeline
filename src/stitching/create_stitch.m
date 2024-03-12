@@ -1,19 +1,14 @@
 % Stitching with static lens deformation correction 
 clc;clear;close all;
-cd('/home/eddyod/programming/pipeline/src/stitching');
+cd('/home/eodonnell/programming/pipeline/src/stitching');
 DataManager = WBIMFileManager;
 %%
 exp_group = 'LifeCanvas';
 exp_name = '003_20240209';
 tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
-% vis_folder = fullfile(DataManager.fp_experiment(exp_group, exp_name), 'visualization', 'Stitched');
-vis_folder = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-003/preps/registration/';
-write_stitched_data_Q = false;
 %% Parameters
 stitch_voxel_size_um = [0.375, 0.375, 1];
-zero_num_sec = 0;
 zero_last_section_Q = true;
-medfilt_Q = false;
 %% Load all the tiles 
 mip_str = struct;
 [mip_str.yx, mip_str.zx, mip_str.zy] = deal(cell(1, 2));
@@ -21,7 +16,8 @@ t_tic = tic;
 
 stitch_set = WBIMMicroscopeMode.Scan;
 stitch_tiles = tile_str.(char(stitch_set));
-layer_list = 1:1;
+% Set number of layers you want %%%%%%%%%%%%%%%%%
+layer_list = 1:21;
 % layer_list = 1 : numel(stitch_tiles);
 stitch_tiles = cat(1, stitch_tiles{layer_list});
 ch_list = stitch_tiles(1).channel;
