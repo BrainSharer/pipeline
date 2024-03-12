@@ -3,14 +3,13 @@ import os
 import sys
 import h5py 
 import json
-from scipy.ndimage import zoom
-from tifffile import imwrite
 import math
-from skimage import io
-from skimage.transform import resize
 from pathlib import Path
 from shutil import copyfile
 from timeit import default_timer as timer
+from skimage.io import imsave
+import tifffile
+import zarr
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -132,15 +131,43 @@ class BrainStitcher(ParallelManager):
             channel_key = f[self.channel_source]
             arr = channel_key['raw'][()]
         return arr
+    
+    def compute_bbox(self, info, vol_bbox_mm_um, stitch_voxel_size_um, rows, columns, pages):
+        tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
+        tmp_tile_bbox_mm_um.append(info['layer_z_um'])
+        tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
+        tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
+        tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
+        tmp_tile_bbox_mm_um.append(info['layer_z_um'])
+        tmp_tile_bbox_mm_um = np.array(tmp_tile_bbox_mm_um)
+        tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
+        tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
+        tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
+
+        # tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
+        """ Downsample image stack - need smoothing? """
+
+        """ Local bounding box """ 
+        tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
+        tmp_local_bbox_mm_ds_pxl = np.round(tmp_local_bbox_um / stitch_voxel_size_um)
+        """ Deal with edge: """ 
+        tmp_local_bbox_mm_ds_pxl = np.maximum(tmp_local_bbox_mm_ds_pxl, 1)
+        
+        start_row = int(round(tmp_local_bbox_mm_ds_pxl[0])) - 1
+        end_row = start_row + rows
+        start_col = int(round(tmp_local_bbox_mm_ds_pxl[1])) - 1
+        end_col = start_col + columns
+        start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
+        end_z = start_z + pages
+        return start_row, end_row, start_col, end_col, start_z, end_z
+
 
     def stitch_tile(self):
-        start_time = timer()
-
         # matlab is yxz
         # numpy is zyx
+        start_time = timer()
         self.check_status()
         self.parse_all_info()
-        # Parameters
         stitch_voxel_size_um = [0.375, 0.375, 1];
         xy_overlap = 60
 
@@ -161,86 +188,54 @@ class BrainStitcher(ParallelManager):
         ds_bbox_ll = (np.array(vol_bbox_ll_um) / stitch_voxel_size_um)
         ds_bbox_ll = [math.ceil(a) for a in ds_bbox_ll]
         b = ds_bbox_ll
-        ds_bbox_ll = [b[2], b[0], b[1]]
-        print(f'Big box shape={ds_bbox_ll} composed of {len(self.all_info_files.values())} files')
-
+        del ds_bbox_ll
+        # we can't create a true huge volume as it would take about 11TB of RAM
+        volume_shape = [b[2], b[0], b[1]]
+        print(f'Volume shape={volume_shape} composed of {len(self.all_info_files.values())} files')
+        zarrpath = os.path.join(self.base_path, 'myzarr.zarr')
         try:
-            tmp_stitch_data = np.zeros(ds_bbox_ll, dtype=np.uint16)
+            volume = zarr.create(shape=(volume_shape), chunks=(1, 1536, 1024), dtype='int', store=zarrpath)
         except Exception as ex:
-            print(f'Could not create a big box with shape={ds_bbox_ll}')
+            print(f'Could not create a volume with shape={volume_shape}')
             print(ex)
             sys.exit()
-
         num_tiles = len(self.all_info_files.items())
         i = 1
         for (layer, position), info in self.all_info_files.items():
-            position_start_time = timer()
             h5file = f"{position}.h5"
             h5path = os.path.join(self.base_path, layer, 'h5', h5file)
             if not os.path.exists(h5path):
                 print(f'Error: missing {h5path}')
                 sys.exit()
 
-            if not self.debug:
-                tif = self.fetch_tif(h5path)
-
-            tif[-1, :, :] = 0
-            tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
-            tmp_tile_bbox_mm_um.append(info['layer_z_um'])
-            tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
-            tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-            tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
-            tmp_tile_bbox_mm_um.append(info['layer_z_um'])
-            tmp_tile_bbox_mm_um = np.array(tmp_tile_bbox_mm_um)
-            tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
-            tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-            tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
-
-            # tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
-            """ Downsample image stack - need smoothing? """
-
-            """ Local bounding box """ 
-            tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
-            tmp_local_bbox_mm_ds_pxl = np.round(tmp_local_bbox_um / stitch_voxel_size_um)
-            """ Deal with edge: """ 
-            tmp_local_bbox_mm_ds_pxl = np.maximum(tmp_local_bbox_mm_ds_pxl, 1)
-            # tmp_local_bbox_xx_ds_pxl = tmp_local_bbox_mm_ds_pxl + tmp_tile_ll_ds_pxl - 1;
-            
-            start_row = int(round(tmp_local_bbox_mm_ds_pxl[0])) - 1
-            # end_row = int(round(tmp_local_bbox_xx_ds_pxl[0])) 
-            end_row = start_row + tif.shape[1]
-            start_col = int(round(tmp_local_bbox_mm_ds_pxl[1])) - 1
-            #end_col = int(round(tmp_local_bbox_xx_ds_pxl[1]))
-            end_col = start_col + tif.shape[2]
-            start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
-            #end_z = int(round(tmp_local_bbox_xx_ds_pxl[2]))
-            end_z = start_z + tif.shape[0]
-            position_end_time = timer()
-            positions_elapsed_time = round((position_end_time - position_start_time), 2)
+            subvolume = self.fetch_tif(h5path)
+            subvolume[-1, :, :] = 0
+            start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
+                                                                                       rows=subvolume.shape[1], 
+                                                                                       columns=subvolume.shape[2], 
+                                                                                       pages=subvolume.shape[0])
+    
             print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
-            print(f'tmp_stitch_data[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={tif.shape}', end=" ")
-            # print(f'row height is:{end_row - start_row} column width={end_col - start_col}', end=" ")
-            # deal with overlap
-            tif[:,:,0:xy_overlap] = 0
-
+            print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
+            #subvolume[:,:,0:xy_overlap] = 0
+    
             try:
-                tmp_stitch_data[start_z:end_z, start_row:end_row, start_col:end_col] += tif
+                volume[start_z:end_z, start_row:end_row, start_col:end_col] = subvolume
             except Exception as e:
                 print(f'Error: {e}')
                 sys.exit()
-                    
-            
-            print(f'#{i} took {positions_elapsed_time} seconds to fetch and stuff', end=" ")
-            print(f'@ {round(( (i/num_tiles) * 100),2)}% completed.')
+                                
+            #print(f'#{i} took {positions_elapsed_time} seconds to fetch and stuff', end=" ")
+            print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% completed.')
             i += 1
-        if self.debug:
-            return
+
         outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
         os.makedirs(outpath, exist_ok=True)
-        for i in range(tmp_stitch_data.shape[0]):
-            section = tmp_stitch_data[i, :, :]
+        for i in range(volume.shape[0]):
+            section = volume[i, :, :]
+            print(type(section), section.dtype, section.shape)
             outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
-            write_image(outfile, section)
+            imsave(outfile, section.astype(np.uint16))
  
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
