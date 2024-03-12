@@ -166,8 +166,9 @@ class BrainStitcher(ParallelManager):
 
         try:
             tmp_stitch_data = np.zeros(ds_bbox_ll, dtype=np.uint16)
-        except:
+        except Exception as ex:
             print(f'Could not create a big box with shape={ds_bbox_ll}')
+            print(ex)
             sys.exit()
 
         num_tiles = len(self.all_info_files.items())
