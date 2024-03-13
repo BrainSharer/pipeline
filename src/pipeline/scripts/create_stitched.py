@@ -31,6 +31,7 @@ if __name__ == "__main__":
     pipeline = BrainStitcher(animal, layer, channel, debug)
 
     function_mapping = {
+        "extract": pipeline.extract,
         "stitch": pipeline.stitch_tile,
         "status": pipeline.check_status,
         "move": pipeline.move_data
