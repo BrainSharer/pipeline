@@ -223,18 +223,19 @@ class BrainStitcher(ParallelManager):
             i = 1
             for (layer, position), info in self.all_info_files.items():
                 h5file = f"{position}.h5"
-                tif_file = f"{position},tif"
-                tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', tif_file)
+                tif_file = f"{position}.tif"
+                tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}', tif_file)
                 if os.path.exists(tifpath):
-                    print(f'found {tifpath}')
                     subvolume = read_image(tifpath)
                 else:
+                    print(f'missing {tifpath}')
+                    sys.exit()
                     h5path = os.path.join(self.base_path, layer, 'h5', h5file)
                     if not os.path.exists(h5path):
                         print(f'Error: missing {h5path}')
                         sys.exit()
-
                     subvolume = self.fetch_tif(h5path)
+
                 tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
                 tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
                 tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
@@ -311,7 +312,7 @@ class BrainStitcher(ParallelManager):
 
             file_keys.append([inpath, self.scaling_factor, outpath, outfile])
 
-        workers = 3
+        workers = 2
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
 def extract_tif(file_key):
