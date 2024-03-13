@@ -159,10 +159,19 @@ class BrainStitcher(ParallelManager):
         end_col = start_col + columns
         start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
         end_z = start_z + pages
+        xy_overlap = 0
+        if start_col > 0:
+            start_col += xy_overlap
+            end_col += xy_overlap
+
+
         return start_row, end_row, start_col, end_col, start_z, end_z
 
 
     def stitch_tile(self):
+        #Chunks=[125, 768, 512] total time: 861.33 seconds. writing took 66.15 seconds #7 @ 50.0% done.
+        #Chunks=True total time: 620.54 seconds. writing took 217.37 seconds #9
+        #Chunks=(31, 192, 128) total time: 155.5 seconds.writing took 10.13 seconds
         # matlab is yxz
         # numpy is zyx
         start_time = timer()
@@ -189,52 +198,63 @@ class BrainStitcher(ParallelManager):
         ds_bbox_ll = [math.ceil(a) for a in ds_bbox_ll]
         b = ds_bbox_ll
         del ds_bbox_ll
-        # we can't create a true huge volume as it would take about 11TB of RAM
         volume_shape = [b[2], b[0], b[1]]
         print(f'Volume shape={volume_shape} composed of {len(self.all_info_files.values())} files')
-        zarrpath = os.path.join(self.base_path, f'C{self.channel}.zarr')
-        try:
-            volume = zarr.create(shape=(volume_shape), chunks=(1, 1536, 1024), dtype='int', store=zarrpath)
-        except Exception as ex:
-            print(f'Could not create a volume with shape={volume_shape}')
-            print(ex)
-            sys.exit()
-        num_tiles = len(self.all_info_files.items())
-        i = 1
-        for (layer, position), info in self.all_info_files.items():
-            h5file = f"{position}.h5"
-            h5path = os.path.join(self.base_path, layer, 'h5', h5file)
-            if not os.path.exists(h5path):
-                print(f'Error: missing {h5path}')
-                sys.exit()
-
-            subvolume = self.fetch_tif(h5path)
-            subvolume[-1, :, :] = 0
-            start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
-                                                                                       rows=subvolume.shape[1], 
-                                                                                       columns=subvolume.shape[2], 
-                                                                                       pages=subvolume.shape[0])
-    
-            print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
-            print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
-            #subvolume[:,:,0:xy_overlap] = 0
-    
+        os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
+        zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr')
+        if os.path.exists(zarrpath):
+            print(f'Using existing {zarrpath}')
+            volume = zarr.open(zarrpath, mode='a')
+        else:
+            print(f'Creating {zarrpath}')
+            tile_shape=np.array([250, 1536, 1024])
+            chunks = (tile_shape // 8).tolist()
             try:
-                volume[start_z:end_z, start_row:end_row, start_col:end_col] = subvolume
-            except Exception as e:
-                print(f'Error: {e}')
+                volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath)
+                print(volume.info)
+            except Exception as ex:
+                print(f'Could not create a volume with shape={volume_shape}')
+                print(ex)
                 sys.exit()
-                                
-            #print(f'#{i} took {positions_elapsed_time} seconds to fetch and stuff', end=" ")
-            print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% completed.')
-            i += 1
+            num_tiles = len(self.all_info_files.items())
+            i = 1
+            for (layer, position), info in self.all_info_files.items():
+                h5file = f"{position}.h5"
+                h5path = os.path.join(self.base_path, layer, 'h5', h5file)
+                if not os.path.exists(h5path):
+                    print(f'Error: missing {h5path}')
+                    sys.exit()
+
+                subvolume = self.fetch_tif(h5path)
+                #subvolume[-1, :, :] = 0
+                start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
+                                                                                        rows=subvolume.shape[1], 
+                                                                                        columns=subvolume.shape[2], 
+                                                                                        pages=subvolume.shape[0])
+                print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
+                print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
+                #subvolume[:,:,0:xy_overlap] = 0
+        
+                write_start_time = timer()
+                try:
+                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = subvolume
+                except Exception as e:
+                    print(f'Error: {e}')
+                    sys.exit()
+                write_end_time = timer()
+                                    
+                write_elapsed_time = round((write_end_time - write_start_time), 2)
+                print(f'writing took {write_elapsed_time} seconds', end=" ")
+                print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
+                i += 1
 
         outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
         os.makedirs(outpath, exist_ok=True)
         for i in range(volume.shape[0]):
             section = volume[i, :, :]
             outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
-            imsave(outfile, section.astype(np.uint16), check_contrast=False)
+            #imsave(outfile, section, check_contrast=False)
+            write_image(outfile, section)
  
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
