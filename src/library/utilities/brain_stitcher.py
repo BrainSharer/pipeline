@@ -61,7 +61,7 @@ class BrainStitcher(ParallelManager):
             h5path = os.path.join(self.base_path, layer, 'h5')
             if os.path.exists(h5path):
                 len_h5 = len(os.listdir(h5path))
-            tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}')
+            tifpath = os.path.join(self.base_path, 'layer', 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}')
             if os.path.exists(tifpath):
                 len_tif = len(os.listdir(tifpath))
             print(f'Found {len_info} JSON, {len_h5} H5, and {len_tif} TIFS files in layer={tifpath}')
