@@ -41,10 +41,10 @@ class BrainStitcher(ParallelManager):
         self.base_path = os.path.join(self.fileLocationManager.prep, 'layers')
         self.layer_path = os.path.join(self.base_path, self.layer)
         self.debug = debug
+        self.scaling_factor = 10
         self.available_layers = []
         self.all_info_files = None
         self.check_status()
-        self.scaling_factor = 10
 
 
     def check_status(self):
@@ -58,21 +58,21 @@ class BrainStitcher(ParallelManager):
             h5path = os.path.join(self.base_path, layer, 'h5')
             if not os.path.exists(h5path):
                 continue
+            tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}')
+            if not os.path.exists(tifpath):
+                continue
             infos = sorted(os.listdir(infopath))
             h5s = sorted(os.listdir(h5path))
+            tifs = sorted(os.listdir(tifpath))
+            if len(tifs) == 0:
+                continue
             if len(h5s) == 0:
                 continue
             if len(infos) == 0:
                 continue
-            if len(infos) != len(h5s):
+            if len(infos) != (len(h5s) or len(tifs)):
                 continue
-            print(f'Found {len(infos)} h5s and JSON files in layer={layer}')
-            for info,h5 in zip(infos, h5s):
-                infostem = Path(info).stem
-                h5stem = Path(h5).stem
-                if infostem != h5stem:
-                    print(f'Error: files do not match:{layer} {info} {h5}')
-                    sys.exit()
+            print(f'Found {len(infos)} JSON, {len(h5s)} H5, and {len(tifs)} TIFS files in layer={layer}')
 
 
             self.available_layers.append(layer)
@@ -228,25 +228,24 @@ class BrainStitcher(ParallelManager):
                 if os.path.exists(tifpath):
                     subvolume = read_image(tifpath)
                 else:
-                    print(f'missing {tifpath}')
-                    sys.exit()
                     h5path = os.path.join(self.base_path, layer, 'h5', h5file)
                     if not os.path.exists(h5path):
                         print(f'Error: missing {h5path}')
                         sys.exit()
                     subvolume = self.fetch_tif(h5path)
 
-                tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
-                tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-                tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
-                tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
-                change_z = tmp_tile_ll_ds_pxl[2] / subvolume.shape[0]
-                change_rows = tmp_tile_ll_ds_pxl[0] / subvolume.shape[1]
-                change_cols = tmp_tile_ll_ds_pxl[1] / subvolume.shape[2]          
-                zoom_start_time = timer()
-                subvolume = zoom(subvolume, (change_z, change_rows, change_cols))
-                zoom_end_time = timer()
-                zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
+                    tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
+                    tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
+                    tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
+                    tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
+                    change_z = tmp_tile_ll_ds_pxl[2] / subvolume.shape[0]
+                    change_rows = tmp_tile_ll_ds_pxl[0] / subvolume.shape[1]
+                    change_cols = tmp_tile_ll_ds_pxl[1] / subvolume.shape[2]          
+                    zoom_start_time = timer()
+                    subvolume = zoom(subvolume, (change_z, change_rows, change_cols))
+                    zoom_end_time = timer()
+                    zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
+                    print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
                 start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
                                                                                         rows=subvolume.shape[1], 
                                                                                         columns=subvolume.shape[2], 
@@ -263,7 +262,6 @@ class BrainStitcher(ParallelManager):
 
                 write_end_time = timer()          
                 write_elapsed_time = round((write_end_time - write_start_time), 2)
-                print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
                 print(f'writing took {write_elapsed_time} seconds', end=" ")
                 print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
                 i += 1
