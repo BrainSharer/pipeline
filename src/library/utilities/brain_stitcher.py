@@ -52,22 +52,22 @@ class BrainStitcher(ParallelManager):
             return
         all_layers = [layer for layer in sorted(os.listdir(self.base_path))]
         for layer in all_layers:
+            len_tif = 0
+            len_h5 = 0
+            len_info = 0
             infopath = os.path.join(self.base_path, layer, 'info')
-            if not os.path.exists(infopath):
-                continue
+            if os.path.exists(infopath):
+                len_info = len(os.listdir(infopath))
             h5path = os.path.join(self.base_path, layer, 'h5')
-            if not os.path.exists(h5path):
-                continue
+            if os.path.exists(h5path):
+                len_h5 = len(os.listdir(h5path))
             tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}')
-            if not os.path.exists(tifpath):
-                continue
-            infos = sorted(os.listdir(infopath))
-            h5s = sorted(os.listdir(h5path))
-            tifs = sorted(os.listdir(tifpath))
-            print(f'Found {len(infos)} JSON, {len(h5s)} H5, and {len(tifs)} TIFS files in layer={layer}')
+            if os.path.exists(tifpath):
+                len_tif = len(os.listdir(tifpath))
+            print(f'Found {len_info} JSON, {len_h5} H5, and {len_tif} TIFS files in layer={layer}')
 
-
-            self.available_layers.append(layer)
+            if (len_tif > 0 and len_h5 > 0):
+                self.available_layers.append(layer)
 
     def move_data(self):
         """First make sure output dirs exist.
