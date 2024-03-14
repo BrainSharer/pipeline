@@ -64,14 +64,6 @@ class BrainStitcher(ParallelManager):
             infos = sorted(os.listdir(infopath))
             h5s = sorted(os.listdir(h5path))
             tifs = sorted(os.listdir(tifpath))
-            if len(tifs) == 0:
-                continue
-            if len(h5s) == 0:
-                continue
-            if len(tifs) == 0:
-                continue
-            if len(infos) != (len(h5s) or len(tifs)):
-                continue
             print(f'Found {len(infos)} JSON, {len(h5s)} H5, and {len(tifs)} TIFS files in layer={layer}')
 
 
