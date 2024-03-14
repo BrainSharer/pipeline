@@ -68,7 +68,7 @@ class BrainStitcher(ParallelManager):
                 continue
             if len(h5s) == 0:
                 continue
-            if len(infos) == 0:
+            if len(tifs) == 0:
                 continue
             if len(infos) != (len(h5s) or len(tifs)):
                 continue
