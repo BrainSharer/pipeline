@@ -301,15 +301,11 @@ def merge_mask(image, mask):
     :return: merged numpy array
     """
     b = mask
-    print(f'image dtype={image.dtype} shape={image.shape} ndim={image.ndim}')
 
     if image.ndim == 3:     
-        # image = image[:, :, 0]
-        #image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) 
         g = image[:,:,1]
         r = np.zeros_like(image[:,:,0]).astype(np.uint8)
     else:
-
         g = image
         r = np.zeros_like(image).astype(np.uint8)
     merged = np.stack([r, g, b], axis=2)
