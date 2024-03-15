@@ -27,7 +27,10 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-def place_image(img, file: str, max_width, max_height, bgcolor=None):
+
+
+def place_image(file_key):
+
     """Places the image in a padded one size container with the correct background
 
     :param img: image we are working on.
@@ -37,6 +40,9 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
     :param bgcolor: background color of image, 0 for NTB, white for thionin
     :return: placed image centered in the correct size.
     """
+    infile, max_width, max_height = file_key
+    img = read_image(infile)
+    bgcolor = 0
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -50,25 +56,30 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
         bottom_rows = img[start_bottom:img.shape[0], :]
         avg = np.mean(bottom_rows)
         bgcolor = int(round(avg))
-    new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
-    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
+    placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
+    #print(f'Resizing {file} from {img.shape} to {placed_img.shape}')
     if img.ndim == 2:
         try:
-            new_img[startr:endr, startc:endc] = img
+            placed_img[startr:endr, startc:endc] = img
         except:
             ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
-            #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
-            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
+            #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            print(f'Could not place {infile} with shape:{img.shape} in {max_height}x{max_width}')
     if img.ndim == 3:
         try:
-            new_img = np.zeros([max_height, max_width, 3]) + bgcolor
-            new_img[startr:endr, startc:endc,0] = img[:,:,0]
-            new_img[startr:endr, startc:endc,1] = img[:,:,1]
-            new_img[startr:endr, startc:endc,2] = img[:,:,2]
+            placed_img = np.zeros([max_height, max_width, 3]) + bgcolor
+            placed_img[startr:endr, startc:endc,0] = img[:,:,0]
+            placed_img[startr:endr, startc:endc,1] = img[:,:,1]
+            placed_img[startr:endr, startc:endc,2] = img[:,:,2]
         except:
-            print(f'Could not place 3DIM {file} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+            print(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
     del img
-    return new_img.astype(dt)
+
+    #print(placed_img.shape, placed_img.dtype, placed_img.ndim)
+    message = f'Error in saving {infile} with shape {placed_img.shape} img type {placed_img.dtype}'
+    write_image(infile, placed_img.astype(dt), message=message)
+
+    return
 
 
 def normalize_image(img):
@@ -151,16 +162,16 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height = file_key
+    infile, outpath, maskfile, rotation, flip, max_width, max_height, mask_image = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
     cleaned = apply_mask(img, mask, infile)
-    cleaned = scaled(cleaned)
+    if cleaned.ndim == 2:
+        cleaned = scaled(cleaned)
 
-    # Cropping is not working 100% of the time
-    #if mask_image == FULL_MASK:
-    #    cleaned = crop_image(cleaned, mask)
+    if mask_image == FULL_MASK:
+        cleaned = crop_image(cleaned, mask)
     del img
     del mask
     if rotation > 0:
@@ -169,13 +180,11 @@ def clean_and_rotate_image(file_key):
         cleaned = np.flip(cleaned)
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
-    cleaned = place_image(cleaned, infile, max_width, max_height, bgcolor=0)
 
     message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
     write_image(outpath, cleaned, message=message)
         
     return
-
 
 def apply_mask(img, mask, infile):
     """Apply image mask to image.
@@ -205,7 +214,7 @@ def crop_image(img, mask):
     """
 
     x1, y1, x2, y2 = get_image_box(mask)
-    img = np.ascontiguousarray(img, dtype=np.uint16)
+    img = np.ascontiguousarray(img, dtype=img.dtype)
     cropped = img[y1:y2, x1:x2]
     return cropped
 
@@ -291,10 +300,18 @@ def merge_mask(image, mask):
     :param mask: numpy array of the mask
     :return: merged numpy array
     """
-
     b = mask
-    g = image
-    r = np.zeros_like(image).astype(np.uint8)
+    print(f'image dtype={image.dtype} shape={image.shape} ndim={image.ndim}')
+
+    if image.ndim == 3:     
+        # image = image[:, :, 0]
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) 
+        g = image[:,:,1]
+        r = np.zeros_like(image[:,:,0]).astype(np.uint8)
+    else:
+
+        g = image
+        r = np.zeros_like(image).astype(np.uint8)
     merged = np.stack([r, g, b], axis=2)
     return merged
 

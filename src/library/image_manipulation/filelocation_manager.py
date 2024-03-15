@@ -63,7 +63,9 @@ class FileLocationManager(object):
 
     def get_full_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full_cleaned")
-
+    
+    def get_full_cropped(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "full_cropped")
 
     def get_full_aligned(self, channel=1):
         if isinstance(channel, int):
@@ -92,6 +94,9 @@ class FileLocationManager(object):
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
+    
+    def get_thumbnail_cropped(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "thumbnail_cropped")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")

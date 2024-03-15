@@ -14,12 +14,11 @@ class PrepCreater:
     to image stack
     """
 
-    def update_scanrun(self):
+    def update_scanrun(self, INPUT):
         """This is where the scan run table gets updated so the width and 
         height are correct.
         """
         if self.channel == 1 and self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
             files = sorted(os.listdir(INPUT))
             widths = []
             heights = []
@@ -54,7 +53,10 @@ class PrepCreater:
         self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
         os.makedirs(OUTPUT, exist_ok=True)
-        sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
+        try:
+            sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
+        except:
+            return
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)
             input_path = os.path.join(INPUT, infile)

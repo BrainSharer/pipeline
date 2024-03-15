@@ -144,7 +144,8 @@ class Pipeline(
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC()
-        self.update_scanrun()
+        INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
+        self.update_scanrun(INPUT)
         self.create_normalized_image()
         self.create_mask()
         print('Finished masking.')
