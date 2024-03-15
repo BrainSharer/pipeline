@@ -248,7 +248,8 @@ class BrainStitcher(ParallelManager):
         
                 write_start_time = timer()
                 try:
-                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = subvolume
+                    max_vol = np.maximum(volume[start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
+                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = max_vol
                 except Exception as e:
                     print(f'Error: {e}')
 
@@ -268,6 +269,7 @@ class BrainStitcher(ParallelManager):
             section = volume[i, :, :]
             outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
             #imsave(outfile, section, check_contrast=False)
+            print(f'Save: {outfile}')
             write_image(outfile, section)
  
         end_time = timer()

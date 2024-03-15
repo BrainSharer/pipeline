@@ -7,8 +7,8 @@ exp_group = 'LifeCanvas';
 exp_name = '003_20240209';
 tile_str = DataManager.load_tile_in_experiment(exp_group, exp_name);
 %% Parameters
-% scaling_factor = 2;
-stitch_voxel_size_um = [0.375, 0.375, 1];
+scaling_factor = 10;
+stitch_voxel_size_um = [0.375*scaling_factor, 0.375*scaling_factor, 1*scaling_factor];
 zero_last_section_Q = true;
 %% Load all the tiles 
 mip_str = struct;
@@ -45,7 +45,7 @@ tile_data = cell(1, num_ch);
 % yxz
 fprintf('Box shape is: %d %d %d\n',ds_bbox_ll)
 % select channel below as an index of the list %%%%%%%%%%%%%
-i_ch = 1;
+i_ch = 2;
 tmp_ch = ch_list(i_ch);
 tmp_stitch_data = zeros(ds_bbox_ll, 'uint16');
 for i = 1 : num_tiles
@@ -61,8 +61,8 @@ for i = 1 : num_tiles
         tmp_tile_bbox_ll_um = [tmp_tile.tile_mmll_um(3:4), tmp_tile.stack_size_um(3)];
         tmp_tile_ll_ds_pxl = round(tmp_tile_bbox_ll_um ./ stitch_voxel_size_um);
         % Downsample image stack - need smoothing? 
-        % tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
-        % tmp_tile.clear_buffer();
+        tmp_tile_data = imresize3(tmp_tile_data, tmp_tile_ll_ds_pxl);
+        tmp_tile.clear_buffer();
         % Local bounding box 
         tmp_local_bbox_um = tmp_tile_bbox_mm_um - vol_bbox_mm_um;
         tmp_local_bbox_mm_ds_pxl = round(tmp_local_bbox_um ./ stitch_voxel_size_um);
@@ -77,8 +77,10 @@ for i = 1 : num_tiles
         start_z = tmp_local_bbox_mm_ds_pxl(3);
         end_z = tmp_local_bbox_xx_ds_pxl(3);
 
-        tmp_stitch_data(start_row:end_row, start_col:end_col, start_z:end_z) = ... 
-        max(tmp_stitch_data(start_row:end_row, start_col:end_col, start_z:end_z), tmp_tile_data);
+        % tmp_stitch_data(start_row:end_row, start_col:end_col, start_z:end_z) = ... 
+        % max(tmp_stitch_data(start_row:end_row, start_col:end_col, start_z:end_z), tmp_tile_data);
+
+        tmp_stitch_data(start_row:end_row, start_col:end_col, start_z:end_z) = tmp_tile_data;
                 
         fprintf('Finish adding tile %d (%.3f %%)\n', i, (i/num_tiles) * 100);
     catch ME
@@ -98,7 +100,7 @@ outpath = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK20230126-0
 for i = 1 : sections
     section = tmp_stitch_data(:,:,i);
     filename = strcat(num2str(i,'%03.f'), '.tif'); 
-    filepath = fullfile(outpath, num2str(tmp_ch,'C%d'), 'full_aligned', filename);
+    filepath = fullfile(outpath, num2str(tmp_ch,'C%d'), 'matlab', filename);
     imwrite(section, filepath);
 end
 fprintf('Finish writing %d sections. Elapsed time is %.2f seconds\n', sections, toc(t_tic));
