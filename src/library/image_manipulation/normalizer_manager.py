@@ -30,8 +30,10 @@ class Normalizer:
                     continue
                 
                 img = read_image(infile)
+                print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
 
                 if img.dtype == np.uint16:
                     img = (img / 256).astype(np.uint8)
-                img = equalized(img)
+                if img.ndim == 1:
+                    img = equalized(img)
                 cv2.imwrite(outpath, img.astype(np.uint8))
