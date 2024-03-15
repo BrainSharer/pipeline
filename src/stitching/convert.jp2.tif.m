@@ -1,5 +1,5 @@
 clc;clear;close all;
-cd('/home/eodonnell/programming/pipeline/src/stitching');
+% cd('/home/eodonnell/programming/pipeline/src/stitching');
 
 % nohup matlab -nodisplay -nosplash -r "run('convert.jp2.tif.m'); exit" > output.log 2>&1 &
 % Specify the folder where the files live.
@@ -22,3 +22,4 @@ for k = 1 : length(theFiles)
   fprintf(1, 'Writing to %s\n', filepath);  
   imwrite(img, filepath );
 end
+exit;
