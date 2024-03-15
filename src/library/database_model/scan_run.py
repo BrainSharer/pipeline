@@ -19,7 +19,7 @@ class ScanRun(Base, AtlasModel):
     id =  Column(Integer, primary_key=True, nullable=False)
     FK_prep_id = Column("FK_prep_id", String, ForeignKey('animal.prep_id'), nullable=False)
     rescan_number = Column(Integer, default=0)
-    machine = Column(Enum("Axioscan I", "Axioscan II"))
+    machine = Column(Enum("Axioscan I", "Axioscan II", "Nanozoomer"))
     objective = Column(Enum("60X", "40X", "20X", "10X"))
     resolution = Column(Float, default=0)
     zresolution = Column(Float, default=20)

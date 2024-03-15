@@ -29,7 +29,7 @@ class Histology(Base, AtlasModel):
     orientation = Column(Enum("coronal", "horizontal", "sagittal", "oblique"))
     oblique_notes = Column(String)
     mounting = Column(Enum("every section", "2nd", "3rd", "4th", "5ft", "6th"))
-    counterstain = Column(Enum("thionin", "NtB", "NtFR", "DAPI", "Giemsa", "Syto41"))
+    counterstain = Column(Enum("thionin","NtB","NtFR","DAPI","Giemsa","Syto41","NTB/thionin", "NTB/PRV-eGFP", "NTB/PRV", "NTB/ChAT/ΔGRV", "NTB/ChAT/Ai14"))
     comments = Column(String)
 
     #def __repr__(self):
