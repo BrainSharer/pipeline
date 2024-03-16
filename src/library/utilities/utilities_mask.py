@@ -27,8 +27,6 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-
-
 def place_image(file_key):
 
     """Places the image in a padded one size container with the correct background
@@ -104,7 +102,6 @@ def scaled(img, scale=20000):
     return scaled
 
 
-
 def equalized(fixed, cliplimit=5):
     """Takes an image that has already been scaled and uses opencv adaptive histogram
     equalization. This cases uses 5 as the clip limit and splits the image into rows
@@ -162,13 +159,15 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, mask_image = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
     cleaned = apply_mask(img, mask, infile)
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
+    else:
+        pass
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
@@ -181,9 +180,9 @@ def clean_and_rotate_image(file_key):
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
 
-    message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
-    write_image(outpath, cleaned, message=message)
-        
+    message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
+    write_image(outfile, cleaned, message=message)
+
     return
 
 def apply_mask(img, mask, infile):

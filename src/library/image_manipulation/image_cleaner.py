@@ -72,6 +72,7 @@ class ImageCleaner:
             if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(MASKS, file)
+
             file_keys.append(
                 [
                     infile,
@@ -79,10 +80,7 @@ class ImageCleaner:
                     maskfile,
                     rotation,
                     flip,
-                    max_width,
-                    max_height,
-                    self.mask_image
-                    
+                    self.mask_image                    
                 ]
             )
 
@@ -105,7 +103,6 @@ class ImageCleaner:
         :param MASKS: str of file location of masks
         """
 
-
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
         if self.downsample:
@@ -114,20 +111,11 @@ class ImageCleaner:
 
         test_dir(self.animal, CLEANED, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(CLEANED))
-        print(f'len cleaned={len(files)}')
 
         file_keys = []
         for file in files:
             infile = os.path.join(CLEANED, file)
-            #outfile = os.path.join(CROPPED, file)
-            outfile = infile
-            file_keys.append(
-                [
-                    infile,
-                    max_width,
-                    max_height,
-                ]
-            )
+            file_keys.append([infile, max_width, max_height])
 
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(place_image, file_keys, workers)

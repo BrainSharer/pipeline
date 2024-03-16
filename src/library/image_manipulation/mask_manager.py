@@ -7,6 +7,7 @@ import os
 import numpy as np
 import torch
 from PIL import Image
+from skimage import color
 Image.MAX_IMAGE_PIXELS = None
 import cv2
 import torchvision
@@ -92,12 +93,17 @@ class MaskManager:
     def create_mask(self):
         """Helper method to call either full resolition of downsampled.
         Create the images masks for extracting the tissue from the surrounding 
-        debris using a CNN based machine learning algorithm
+        debris using a CNN based machine learning algorithm.
+        If the images are from the MDXXX brains, they are 3 dimenions so the masks
+        need to be done differently
         """
         
         if self.channel == 1:
             if self.downsample:
-                self.create_downsampled_mask()
+                if self.sqlController.scan_run.image_dimensions == 3:
+                    self.create_contour_mask()
+                else:
+                    self.create_downsampled_mask()
             else:
                 self.create_full_resolution_mask()
 
@@ -152,6 +158,40 @@ class MaskManager:
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(self.resize_tif, file_keys, workers)
+
+    def create_contour_mask(self):
+        """Create masks for the downsampled images using contours
+        The input files are the files that have not been normalized
+        The output files are the colored merged files. 
+        """
+        
+        INPUT = self.fileLocationManager.get_thumbnail(self.channel)
+        OUTPUT = self.fileLocationManager.get_thumbnail_masked(channel=1)
+        os.makedirs(OUTPUT, exist_ok=True)
+        
+        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
+        files = os.listdir(INPUT)
+        for file in files:
+            infile = os.path.join(INPUT, file)
+            mask_dest_file = (os.path.splitext(file)[0] + ".tif")
+            maskpath = os.path.join(OUTPUT, mask_dest_file)
+
+            if os.path.exists(maskpath):
+                continue
+
+            img = read_image(infile)
+            new_img = color.rgb2gray(img)
+            new_img *= 255 # or any coefficient
+            new_img = new_img.astype(np.uint8)
+            new_img[(new_img > 200)] = 0
+            lowerbound = 0
+            upperbound = 255
+            #all pixels value above lowerbound will  be set to upperbound 
+            _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+            thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
+            mask = cv2.bitwise_not(thresh)            
+            cv2.imwrite(maskpath, mask.astype(np.uint8))
 
     def create_downsampled_mask(self):
         """Create masks for the downsampled images using a machine learning algorithm.
