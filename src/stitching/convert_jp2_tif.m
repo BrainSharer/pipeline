@@ -5,6 +5,10 @@ if ~isfolder(INPUT)
   fprintf('Directory missing %.s\n', INPUT);
   return;
 end
+if ~isfolder(OUTPUT)
+  fprintf('Directory missing %.s\n', OUTPUT);
+  return;
+end
 % Get a list of all files in the folder with the desired file name pattern.
 filePattern = fullfile(INPUT, '*.jp2'); % Change to whatever pattern you need.
 theFiles = dir(filePattern);
