@@ -222,7 +222,6 @@ class BrainStitcher(ParallelManager):
                     subvolume = read_image(tifpath)
                 else:
                     print(f'missing {tifpath}')
-                    sys.exit()
                     h5path = os.path.join(self.base_path, layer, 'h5', h5file)
                     if not os.path.exists(h5path):
                         print(f'Error: missing {h5path}')
