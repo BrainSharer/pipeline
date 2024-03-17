@@ -16,7 +16,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
-from library.utilities.utilities_process import read_image, test_dir, get_image_size
+from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
 
 class MaskManager:
@@ -66,7 +66,7 @@ class MaskManager:
                 lastrow = whiterows[-1]
                 lastcol = max(white[1])
                 mask[firstrow:lastrow, 0:lastcol] = 255
-                cv2.imwrite(maskfillpath, mask.astype(np.uint8))
+                write_image(maskfillpath, mask.astype(np.uint8))
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -100,10 +100,7 @@ class MaskManager:
         
         if self.channel == 1:
             if self.downsample:
-                if self.sqlController.scan_run.image_dimensions == 3:
-                    self.create_contour_mask()
-                else:
-                    self.create_downsampled_mask()
+                self.create_downsampled_mask()
             else:
                 self.create_full_resolution_mask()
 

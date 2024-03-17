@@ -1,11 +1,8 @@
 import os
-import cv2
-import sys
 import numpy as np
-from skimage import io
 
 from library.utilities.utilities_mask import equalized
-from library.utilities.utilities_process import read_image
+from library.utilities.utilities_process import read_image, write_image
 
 class Normalizer:
     """Single method to normlize images
@@ -25,8 +22,8 @@ class Normalizer:
 
             for file in files:
                 infile = os.path.join(INPUT, file)
-                outpath = os.path.join(OUTPUT, file)
-                if os.path.exists(outpath):
+                outfile = os.path.join(OUTPUT, file)
+                if os.path.exists(outfile):
                     continue
                 
                 img = read_image(infile)
@@ -37,7 +34,4 @@ class Normalizer:
                     img = (img / 256).astype(np.uint8)
                 if img.ndim == 2:
                     img = equalized(img)
-                cv2.imwrite(outpath, img.astype(np.uint8))
-
-    def mask_with_contours(self, img):
-        pass
+                write_image(outfile, img.astype(np.uint8))

@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from skimage.exposure import rescale_intensity
 from library.database_model.scan_run import FULL_MASK
+from skimage import color
 
 from library.utilities.utilities_process import read_image, write_image
 
@@ -49,11 +50,7 @@ def place_image(file_key):
     startc = zmidc - (img.shape[1] // 2)
     endc = startc + img.shape[1]
     dt = img.dtype
-    if bgcolor == None:
-        start_bottom = img.shape[0] - 5
-        bottom_rows = img[start_bottom:img.shape[0], :]
-        avg = np.mean(bottom_rows)
-        bgcolor = int(round(avg))
+
     placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
     #print(f'Resizing {file} from {img.shape} to {placed_img.shape}')
     if img.ndim == 2:
@@ -100,6 +97,25 @@ def scaled(img, scale=20000):
     scaled = (img * (scale / _max)).astype(dtype) # scale the image from original values to a broader range of values
     del img
     return scaled
+
+def mask_with_contours(img):
+
+        new_img = color.rgb2gray(img)
+        new_img *= 255 # or any coefficient
+        new_img = new_img.astype(np.uint8)
+        new_img[(new_img > 200)] = 0
+        lowerbound = 0
+        upperbound = 255
+        #all pixels value above lowerbound will  be set to upperbound 
+        _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+        thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
+        thresh_i = cv2.bitwise_not(thresh)
+        r = cv2.bitwise_not(img[:,:,0], mask=thresh_i)
+        g = cv2.bitwise_not(img[:,:,1], mask=thresh_i)
+        b = cv2.bitwise_not(img[:,:,2], mask=thresh_i)
+        return np.stack([r, g, b], axis=2)
+
 
 
 def equalized(fixed, cliplimit=5):
@@ -163,11 +179,20 @@ def clean_and_rotate_image(file_key):
 
     img = read_image(infile)
     mask = read_image(maskfile)
-    cleaned = apply_mask(img, mask, infile)
+
+    try:
+        cleaned = cv2.bitwise_and(img, img, mask=mask)
+    except:
+        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+        print("Are the shapes exactly the same?")
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
     else:
         pass
+        #cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
@@ -184,24 +209,6 @@ def clean_and_rotate_image(file_key):
     write_image(outfile, cleaned, message=message)
 
     return
-
-def apply_mask(img, mask, infile):
-    """Apply image mask to image.
-
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :param infile: path to file
-    :return: numpy array of cleaned image
-    """
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-    return cleaned
 
 
 def crop_image(img, mask):

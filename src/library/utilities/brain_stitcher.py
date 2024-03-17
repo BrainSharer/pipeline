@@ -66,8 +66,9 @@ class BrainStitcher(ParallelManager):
                 len_tif = len(os.listdir(tifpath))
             print(f'Found {len_info} JSON, {len_h5} H5, and {len_tif} TIFS files in layer={layer}')
 
-            if (len_tif > 0 and len_h5 > 0):
+            if ((len_tif > 0 and len_info > 0) and (len_tif == len_info)):
                 self.available_layers.append(layer)
+        print(f'Available layers={self.available_layers}')
 
     def move_data(self):
         """First make sure output dirs exist.
@@ -216,10 +217,12 @@ class BrainStitcher(ParallelManager):
             for (layer, position), info in self.all_info_files.items():
                 h5file = f"{position}.h5"
                 tif_file = f"{position}.tif"
-                tifpath = os.path.join(self.layer_path, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}', tif_file)
+                tifpath = os.path.join(self.base_path, layer, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}', tif_file)
                 if os.path.exists(tifpath):
                     subvolume = read_image(tifpath)
                 else:
+                    print(f'missing {tifpath}')
+                    sys.exit()
                     h5path = os.path.join(self.base_path, layer, 'h5', h5file)
                     if not os.path.exists(h5path):
                         print(f'Error: missing {h5path}')
