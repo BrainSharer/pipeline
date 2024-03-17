@@ -21,44 +21,40 @@ class ImageCleaner:
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
         debris
+        1. Set up the mask, input and output directories
+        2. 
         """
 
         if self.downsample:
-            CLEANED = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            CROPPED = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+            OUTPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
             INPUT = self.fileLocationManager.get_thumbnail(self.channel)
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
-            CLEANED = self.fileLocationManager.get_full_cleaned(self.channel)
-            CROPPED = self.fileLocationManager.get_full_cropped(self.channel)
+            OUTPUT = self.fileLocationManager.get_full_cleaned(self.channel)
             INPUT = self.fileLocationManager.get_full(self.channel)
             MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
         starting_files = os.listdir(INPUT)
         self.logevent(f"INPUT FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
-        os.makedirs(CLEANED, exist_ok=True)
+        os.makedirs(OUTPUT, exist_ok=True)
 
-        self.setup_parallel_create_cleaned(INPUT, CLEANED, MASKS)
-        if self.mask_image == FULL_MASK:
-            print(f'Updating scan run again')
-            self.update_scanrun(self.fileLocationManager.get_thumbnail_cleaned(channel=1))
+        self.setup_parallel_create_cleaned(INPUT, OUTPUT, MASKS)
+        print(f'Updating scan run.')
+        self.update_scanrun(self.fileLocationManager.get_thumbnail_cleaned(channel=1))
 
-        self.setup_parallel_place_images(CLEANED)
+        if self.sqlController.scan_run.image_dimensions == 3444:
+            #pass
+            self.mask_with_contours()
+        self.setup_parallel_place_images(OUTPUT)
         
 
-    def setup_parallel_create_cleaned(self, INPUT, CLEANED, MASKS):
+    def setup_parallel_create_cleaned(self, INPUT, OUTPUT, MASKS):
         """Do the image cleaning in parallel
 
         :param INPUT: str of file location input
-        :param CLEANED: str of file location output
+        :param OUTPUT: str of file location output
         :param MASKS: str of file location of masks
         """
-
-        max_width = self.sqlController.scan_run.width
-        max_height = self.sqlController.scan_run.height
-        if self.downsample:
-            max_width = int(max_width / SCALING_FACTOR)
-            max_height = int(max_height / SCALING_FACTOR)
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
@@ -68,7 +64,7 @@ class ImageCleaner:
         file_keys = []
         for file in files:
             infile = os.path.join(INPUT, file)
-            outfile = os.path.join(CLEANED, file)
+            outfile = os.path.join(OUTPUT, file)
             if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(MASKS, file)
@@ -86,20 +82,18 @@ class ImageCleaner:
 
         # Cleaning images takes up around 20-25GB per full resolution image
         # so we cut the workers in half here
-        # First clean the image.
-        # Crop images and save in cleaned dir
-        # Get new width and height from stack of cleaned images
-        # Update the DB with the new width and height
-        # Place images into the new width and height and save into cropped dir
+        # The method below will clean and crop. It will also rotate and flip if necessary
+        # It then writes the files to the clean dir. They are not padded at this point.
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
 
 
-    def setup_parallel_place_images(self, CLEANED):
-        """Do the image cleaning in parallel
+    def setup_parallel_place_images(self, OUTPUT):
+        """Do the image placing in parallel. Cleaning and cropping has already taken place.
+        We first need to get all the correct image sizes and then update the DB.
 
         :param INPUT: str of file location input
-        :param CLEANED: str of file location output
+        :param OUTPUT: str of file location output
         :param MASKS: str of file location of masks
         """
 
@@ -109,14 +103,15 @@ class ImageCleaner:
             max_width = int(max_width / SCALING_FACTOR)
             max_height = int(max_height / SCALING_FACTOR)
 
-        test_dir(self.animal, CLEANED, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(CLEANED))
+        test_dir(self.animal, OUTPUT, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(OUTPUT))
 
         file_keys = []
         for file in files:
-            infile = os.path.join(CLEANED, file)
+            infile = os.path.join(OUTPUT, file)
             file_keys.append([infile, max_width, max_height])
 
+        print(f'len of file keys in place={len(file_keys)}')
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(place_image, file_keys, workers)
 

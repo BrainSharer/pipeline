@@ -139,16 +139,16 @@ class Pipeline(
         #self.correct_multiples()
         self.extract_tiffs_from_czi()
         self.create_web_friendly_image()
-        print('Finished extracting.')
+        print(f'Finished {self.TASK_EXTRACT}.')
 
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC()
-        INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
-        self.update_scanrun(INPUT)
+        #INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
+        #self.update_scanrun(INPUT)
         self.create_normalized_image()
         self.create_mask()
-        print('Finished masking.')
+        print(f'Finished {self.TASK_MASK}.')
     
     def clean(self):
         print(self.TASK_CLEAN)
@@ -156,13 +156,13 @@ class Pipeline(
             self.apply_user_mask_edits()
             
         self.create_cleaned_images()
-        print('Finished cleaning')
+        print(f'Finished {self.TASK_CLEAN}.')
     
     def histogram(self):
         print(self.TASK_HISTOGRAM)
         self.make_histogram()
         self.make_combined_histogram()
-        print('Finished creating histograms.')
+        print(f'Finished {self.TASK_HISTOGRAM}.')
 
     def align(self):
         """Perform the section to section alignment (registration)
@@ -174,7 +174,7 @@ class Pipeline(
         self.align_downsampled_images(transformations)
         self.align_full_size_image(transformations)
         self.create_web_friendly_sections()
-        print('Finished aligning.')
+        print(f'Finished {self.TASK_ALIGN}.')
 
 
     def extra_channel(self):
@@ -184,8 +184,6 @@ class Pipeline(
         TODO fix for channel variable name
         """
         print(self.TASK_EXTRA_CHANNEL)
-        i = 2
-        print(f'Starting iteration {i}')
         self.iteration = i
         if self.downsample:
             self.create_normalized_image()
@@ -197,12 +195,13 @@ class Pipeline(
             self.create_full_resolution_mask(channel=self.channel)
             self.create_cleaned_images_full_resolution(channel=self.channel)
             self.apply_full_transformations(channel=self.channel)
+        print(f'Finished {self.TASK_EXTRA_CHANNEL}.')
 
     def neuroglancer(self):
         print(self.TASK_NEUROGLANCER)
         self.create_neuroglancer()
         self.create_downsamples()
-        print('Finished creating neuroglancer data.')
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
 
     def cell_labels(self):
         """
@@ -216,7 +215,7 @@ class Pipeline(
         #ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
         
         self.start_labels()
-        print('Finished automatic cell labeling.')
+        print(f'Finished {self.TASK_CELL_LABELS}.')
 
         #ADD CLEANUP OF SCRATCH FOLDER
 
