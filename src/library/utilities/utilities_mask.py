@@ -7,6 +7,7 @@ import numpy as np
 from skimage.exposure import rescale_intensity
 from library.database_model.scan_run import FULL_MASK
 from skimage import color
+from scipy.ndimage import binary_fill_holes
 
 from library.utilities.utilities_process import read_image, write_image
 
@@ -106,11 +107,13 @@ def mask_with_contours(img):
     upperbound = 255
     #all pixels value above lowerbound will  be set to upperbound 
     _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(50,50))
     thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
-    thresh_i = cv2.bitwise_not(thresh)
-    return cv2.bitwise_and(img,img, mask=thresh_i)    
-
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8,8))
+    smoothed = cv2.morphologyEx(thresh, cv2.MORPH_ERODE, kernel)
+    inverted_thresh = cv2.bitwise_not(smoothed)
+    filled_thresh = binary_fill_holes(inverted_thresh).astype(np.uint8)
+    return cv2.bitwise_and(img,img, mask=filled_thresh)
 
 def equalized(fixed, cliplimit=5):
     """Takes an image that has already been scaled and uses opencv adaptive histogram
@@ -185,8 +188,8 @@ def clean_and_rotate_image(file_key):
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
     else:
-        pass
-        #cleaned = mask_with_contours(cleaned)
+        #pass
+        cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
