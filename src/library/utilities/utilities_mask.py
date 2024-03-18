@@ -52,7 +52,6 @@ def place_image(file_key):
     dt = img.dtype
 
     placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
-    #print(f'Resizing {file} from {img.shape} to {placed_img.shape}')
     if img.ndim == 2:
         try:
             placed_img[startr:endr, startc:endc] = img
@@ -70,7 +69,6 @@ def place_image(file_key):
             print(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
     del img
 
-    #print(placed_img.shape, placed_img.dtype, placed_img.ndim)
     message = f'Error in saving {infile} with shape {placed_img.shape} img type {placed_img.dtype}'
     write_image(infile, placed_img.astype(dt), message=message)
 
@@ -100,22 +98,18 @@ def scaled(img, scale=20000):
 
 def mask_with_contours(img):
 
-        new_img = color.rgb2gray(img)
-        new_img *= 255 # or any coefficient
-        new_img = new_img.astype(np.uint8)
-        new_img[(new_img > 200)] = 0
-        lowerbound = 0
-        upperbound = 255
-        #all pixels value above lowerbound will  be set to upperbound 
-        _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
-        thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
-        thresh_i = cv2.bitwise_not(thresh)
-        r = cv2.bitwise_not(img[:,:,0], mask=thresh_i)
-        g = cv2.bitwise_not(img[:,:,1], mask=thresh_i)
-        b = cv2.bitwise_not(img[:,:,2], mask=thresh_i)
-        return np.stack([r, g, b], axis=2)
-
+    new_img = color.rgb2gray(img)
+    new_img *= 255 # or any coefficient
+    new_img = new_img.astype(np.uint8)
+    new_img[(new_img > 200)] = 0
+    lowerbound = 0
+    upperbound = 255
+    #all pixels value above lowerbound will  be set to upperbound 
+    _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+    thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
+    thresh_i = cv2.bitwise_not(thresh)
+    return cv2.bitwise_and(img,img, mask=thresh_i)    
 
 
 def equalized(fixed, cliplimit=5):

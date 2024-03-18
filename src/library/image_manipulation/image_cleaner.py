@@ -22,7 +22,10 @@ class ImageCleaner:
         extract the tissue image from the surrounding
         debris
         1. Set up the mask, input and output directories
-        2. 
+        2. clean images
+        3. Crop images if mask is set to FULL_MASK
+        4. Get biggest box size from all contours from all files and update DB with that info
+        5. Place images in new cropped image size
         """
 
         if self.downsample:
@@ -39,8 +42,10 @@ class ImageCleaner:
         os.makedirs(OUTPUT, exist_ok=True)
 
         self.setup_parallel_create_cleaned(INPUT, OUTPUT, MASKS)
-        print(f'Updating scan run.')
-        self.update_scanrun(self.fileLocationManager.get_thumbnail_cleaned(channel=1))
+        # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
+        if self.debug:
+            print(f'Updating scan run.')
+        self.set_crop_size()
 
         if self.sqlController.scan_run.image_dimensions == 3444:
             #pass
@@ -111,11 +116,12 @@ class ImageCleaner:
             infile = os.path.join(OUTPUT, file)
             file_keys.append([infile, max_width, max_height])
 
-        print(f'len of file keys in place={len(file_keys)}')
+        if self.debug:
+            print(f'len of file keys in place={len(file_keys)}')
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(place_image, file_keys, workers)
 
-    def get_crop_size(self):
+    def set_crop_size(self):
         MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(MASKS))
         widths = []

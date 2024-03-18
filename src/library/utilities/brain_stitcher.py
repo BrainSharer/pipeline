@@ -46,6 +46,8 @@ class BrainStitcher(ParallelManager):
         self.all_info_files = None
         self.check_status()
 
+    def dummy_method(self):
+        pass
 
     def check_status(self):
         if len(self.available_layers) > 0:
@@ -203,8 +205,8 @@ class BrainStitcher(ParallelManager):
         else:
             print(f'Creating {zarrpath}')
             tile_shape=np.array([250, 1536, 1024])
-            #chunks = (tile_shape // self.scaling_factor / 2).tolist()
-            chunks = (25,25,25)
+            chunks = (tile_shape // self.scaling_factor / 2).tolist()
+            chunks = (25, tile_shape[1] // self.scaling_factor, tile_shape[2] // self.scaling_factor)
             try:
                 volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath)
                 print(volume.info)
@@ -214,6 +216,8 @@ class BrainStitcher(ParallelManager):
                 sys.exit()
             num_tiles = len(self.all_info_files.items())
             i = 1
+            create_volume_start_time = timer()
+
             for (layer, position), info in self.all_info_files.items():
                 h5file = f"{position}.h5"
                 tif_file = f"{position}.tif"
@@ -237,16 +241,17 @@ class BrainStitcher(ParallelManager):
                     change_cols = tmp_tile_ll_ds_pxl[1] / subvolume.shape[2]          
                     zoom_start_time = timer()
                     subvolume = zoom(subvolume, (change_z, change_rows, change_cols))
-                    zoom_end_time = timer()
-                    zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
-                    print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
+                    if self.debug:
+                        zoom_end_time = timer()
+                        zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
+                        print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
                 start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
                                                                                         rows=subvolume.shape[1], 
                                                                                         columns=subvolume.shape[2], 
                                                                                         pages=subvolume.shape[0])
-                print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
-                print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
-                #subvolume[:,:,0:xy_overlap] = 0
+                if self.debug:
+                    print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
+                    print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
         
                 write_start_time = timer()
                 try:
@@ -255,12 +260,18 @@ class BrainStitcher(ParallelManager):
                 except Exception as e:
                     print(f'Error: {e}')
 
-                write_end_time = timer()          
-                write_elapsed_time = round((write_end_time - write_start_time), 2)
-                print(f'writing took {write_elapsed_time} seconds', end=" ")
-                print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
+                if self.debug:
+                    write_end_time = timer()          
+                    write_elapsed_time = round((write_end_time - write_start_time), 2)
+                    print(f'writing took {write_elapsed_time} seconds', end=" ")
+                    print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
                 i += 1
-        
+
+        # now write individual sections out
+        create_volume_end_time = timer()
+        create_volume_elapsed_time = round((create_volume_end_time - create_volume_start_time), 2)
+        print(f'Creating/fetching volume took {create_volume_elapsed_time} seconds')
+
         if self.scaling_factor > 1:
             outpath = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         else:
@@ -268,10 +279,13 @@ class BrainStitcher(ParallelManager):
 
         os.makedirs(outpath, exist_ok=True)
         for i in range(volume.shape[0]):
+            read_start_time = timer()
             section = volume[i, :, :]
             outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
-            #imsave(outfile, section, check_contrast=False)
-            print(f'Save: {outfile}')
+            if self.debug:
+                read_end_time = timer()          
+                read_elapsed_time = round((read_end_time - read_start_time), 2)           
+                print(f'Reading took {read_elapsed_time} seconds. Save: {outfile}')
             write_image(outfile, section)
  
         end_time = timer()
