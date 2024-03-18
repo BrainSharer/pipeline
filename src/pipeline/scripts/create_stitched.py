@@ -33,7 +33,7 @@ if __name__ == "__main__":
     function_mapping = {
         "extract": pipeline.extract,
         "stitch": pipeline.stitch_tile,
-        "status": pipeline.check_status,
+        "status": pipeline.dummy_method,
         "move": pipeline.move_data
     }
 

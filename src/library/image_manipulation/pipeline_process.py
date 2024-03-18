@@ -65,7 +65,7 @@ class Pipeline(
 
 
     def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
-                 task='status', debug=False):
+                 task='status', scaling_factor=SCALING_FACTOR, debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
@@ -101,6 +101,7 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
+        self.scaling_factor = scaling_factor
 
         self.mips = 7 
         if self.downsample:
@@ -116,7 +117,7 @@ class Pipeline(
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
-            20), f"@ {str(SCALING_FACTOR)}".ljust(20))
+            20), f"@ {str(self.scaling_factor)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
@@ -144,8 +145,6 @@ class Pipeline(
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC()
-        #INPUT = self.fileLocationManager.get_thumbnail(channel=1) # usually channel=1
-        #self.update_scanrun(INPUT)
         self.create_normalized_image()
         self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
