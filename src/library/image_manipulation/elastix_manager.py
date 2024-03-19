@@ -19,7 +19,7 @@ from scipy.ndimage import affine_transform
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import get_image_size, read_image
-from library.utilities.utilities_mask import equalized, get_box_corners, normalize8, normalize_image
+from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
     align_elastix,
     align_image_to_affine,
@@ -352,7 +352,7 @@ class ElastixManager(FileLogger):
             INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
-            self.logevent(f"FILE COUNT: {len(starting_files)}")
+            self.logevent(f"FILE COUNT: {len(starting_files)} with {len(transforms)} transforms")
             self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
             self.align_images(INPUT, OUTPUT, transforms)
 
@@ -407,6 +407,8 @@ class ElastixManager(FileLogger):
 
         workers = self.get_nworkers() // 2
         start_time = timer()
+        if self.debug:
+            print(f'def align_images has {len(file_keys)} file keys')
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)

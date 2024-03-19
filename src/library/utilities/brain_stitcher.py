@@ -21,7 +21,7 @@ class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
     """
 
-    def __init__(self, animal, layer, channel, debug):
+    def __init__(self, animal, layer, channel, scaling_factor, debug):
         """Initiates the brain object
 
         Args:
@@ -41,7 +41,7 @@ class BrainStitcher(ParallelManager):
         self.base_path = os.path.join(self.fileLocationManager.prep, 'layers')
         self.layer_path = os.path.join(self.base_path, self.layer)
         self.debug = debug
-        self.scaling_factor = 10
+        self.scaling_factor = scaling_factor
         self.available_layers = []
         self.all_info_files = None
         self.check_status()
@@ -68,7 +68,7 @@ class BrainStitcher(ParallelManager):
                 len_tif = len(os.listdir(tifpath))
             print(f'Found {len_info} JSON, {len_h5} H5, and {len_tif} TIFS files in layer={layer}')
 
-            if ((len_tif > 0 and len_info > 0) and (len_tif == len_info)):
+            if ((len_h5 > 0 and len_info > 0) and (len_h5 == len_info)):
                 self.available_layers.append(layer)
         print(f'Available layers={self.available_layers}')
 
@@ -123,10 +123,15 @@ class BrainStitcher(ParallelManager):
 
 
 
-    def fetch_tif(self, inpath):        
-        with h5py.File(inpath, "r") as f:
-            channel_key = f[self.channel_source]
-            arr = channel_key['raw'][()]
+    def fetch_tif(self, inpath):
+        try:
+            with h5py.File(inpath, "r") as f:
+                channel_key = f[self.channel_source]
+                arr = channel_key['raw'][()]
+        except Exception as ex:
+            print(f'Cannot open {inpath}')
+            print(ex)
+            raise
         return arr
     
     def compute_bbox(self, info, vol_bbox_mm_um, stitch_voxel_size_um, rows, columns, pages):
@@ -156,11 +161,6 @@ class BrainStitcher(ParallelManager):
         end_col = start_col + columns
         start_z = int(round(tmp_local_bbox_mm_ds_pxl[2])) - 1
         end_z = start_z + pages
-        xy_overlap = 0
-        if start_col > 0:
-            start_col += xy_overlap
-            end_col += xy_overlap
-
 
         return start_row, end_row, start_col, end_col, start_z, end_z
 
@@ -205,7 +205,6 @@ class BrainStitcher(ParallelManager):
         else:
             print(f'Creating {zarrpath}')
             tile_shape=np.array([250, 1536, 1024])
-            chunks = (tile_shape // self.scaling_factor / 2).tolist()
             chunks = (25, tile_shape[1] // self.scaling_factor, tile_shape[2] // self.scaling_factor)
             try:
                 volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath)
@@ -216,7 +215,6 @@ class BrainStitcher(ParallelManager):
                 sys.exit()
             num_tiles = len(self.all_info_files.items())
             i = 1
-            create_volume_start_time = timer()
 
             for (layer, position), info in self.all_info_files.items():
                 h5file = f"{position}.h5"
@@ -225,7 +223,6 @@ class BrainStitcher(ParallelManager):
                 if os.path.exists(tifpath):
                     subvolume = read_image(tifpath)
                 else:
-                    print(f'missing {tifpath}')
                     h5path = os.path.join(self.base_path, layer, 'h5', h5file)
                     if not os.path.exists(h5path):
                         print(f'Error: missing {h5path}')
@@ -245,6 +242,9 @@ class BrainStitcher(ParallelManager):
                         zoom_end_time = timer()
                         zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
                         print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
+                # deal with overlap
+                overlap_size = np.array([60,60,25])
+
                 start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
                                                                                         rows=subvolume.shape[1], 
                                                                                         columns=subvolume.shape[2], 
@@ -269,7 +269,7 @@ class BrainStitcher(ParallelManager):
 
         # now write individual sections out
         create_volume_end_time = timer()
-        create_volume_elapsed_time = round((create_volume_end_time - create_volume_start_time), 2)
+        create_volume_elapsed_time = round((create_volume_end_time - start_time), 2)
         print(f'Creating/fetching volume took {create_volume_elapsed_time} seconds')
 
         if self.scaling_factor > 1:
