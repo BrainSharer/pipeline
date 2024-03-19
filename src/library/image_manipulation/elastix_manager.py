@@ -21,7 +21,6 @@ from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import get_image_size, read_image
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
-    align_elastix,
     align_image_to_affine,
     create_downsampled_transforms,
     create_rigid_parameters,
