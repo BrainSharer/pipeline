@@ -319,6 +319,9 @@ class ElastixManager(FileLogger):
 
         transformations = {}
 
+        if self.debug:
+            print(f'elastix_manager::get_transformations #files={len(files)} #transformation_to_previous_sec={len(transformation_to_previous_sec)}')
+
         for moving_index in range(len(files)):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == midpoint:
@@ -347,7 +350,7 @@ class ElastixManager(FileLogger):
         :param transforms: (dict): dictionary of transformations that are index by the id of moving sections
         """
         if not self.downsample:
-            transforms = create_downsampled_transforms(transforms, downsample=False)
+            transforms = create_downsampled_transforms(transforms, downsample=False, scaling_factor=self.scaling_factor)
             INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
             self.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
