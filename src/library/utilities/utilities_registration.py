@@ -112,7 +112,7 @@ def create_rigid_parameters(elastixImageFilter):
     return rigid_params
 
 
-def create_downsampled_transforms(transforms: dict, downsample: bool) -> dict:
+def create_downsampled_transforms(transforms: dict, downsample: bool, scaling_factor: float) -> dict:
     """Changes the dictionary of transforms to the correct resolution
 
 
@@ -125,7 +125,7 @@ def create_downsampled_transforms(transforms: dict, downsample: bool) -> dict:
     if downsample:
         transforms_scale_factor = 1
     else:
-        transforms_scale_factor = SCALING_FACTOR
+        transforms_scale_factor = scaling_factor
 
     tf_mat_mult_factor = np.array([[1, 1, transforms_scale_factor], [1, 1, transforms_scale_factor]])
 
