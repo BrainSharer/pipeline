@@ -320,7 +320,7 @@ class ElastixManager(FileLogger):
         transformations = {}
 
         if self.debug:
-            print(f'elastix_manager::get_transformations #files={len(files)} in {INPUT}', end=" ")
+            print(f'elastix_manager::get_transformations #files={len(files)} in {INPUT}')
             print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
 
         for moving_index in range(len(files)):

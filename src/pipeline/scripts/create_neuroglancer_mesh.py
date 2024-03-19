@@ -126,6 +126,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)
         tq.execute()
 
+    """
     print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks}')
     if sharded:
         for mip in range(0, 4):
@@ -139,7 +140,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
             layer_path, mip=0, num_mips=2, compress=True)
         tq.insert(tasks)
         tq.execute()
-
+    """
     
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
@@ -172,7 +173,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
     #
-    LOD = 0
+    LOD = 12
     if sharded:
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
     else:

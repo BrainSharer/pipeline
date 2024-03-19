@@ -126,7 +126,7 @@ class Pipeline(
     def get_section_count(self):
         section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
         if section_count == 0:
-            INPUT = self.fileLocationManager.get_full_aligned()
+            INPUT = self.fileLocationManager.get_thumbnail(channel=1)
             if os.path.exists(INPUT):
                 section_count = len(os.listdir(INPUT))
 
