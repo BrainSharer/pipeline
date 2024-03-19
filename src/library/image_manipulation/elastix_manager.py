@@ -320,7 +320,8 @@ class ElastixManager(FileLogger):
         transformations = {}
 
         if self.debug:
-            print(f'elastix_manager::get_transformations #files={len(files)} #transformation_to_previous_sec={len(transformation_to_previous_sec)}')
+            print(f'elastix_manager::get_transformations #files={len(files)} in {INPUT}', end=" ")
+            print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
 
         for moving_index in range(len(files)):
             filename = str(moving_index).zfill(3) + ".tif"
