@@ -105,6 +105,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
             len(files),
         )
         error += f"Number of files in {directory} is incorrect.\n"
+        error += "If there are no slides in the DB, section count comes from the preps/C1/thumbnail dir. Make sure that is correct.\n"
     if min_width != max_width and min_width > 0 and same_size:
         error += f"Widths are not of equal size, min is {min_width} and max is {max_width}.\n"
     if min_height != max_height and min_height > 0 and same_size:
@@ -127,6 +128,7 @@ def get_cpus():
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
     cpus["ratto"] = (4, 8)
+    cpus["tobor"] = (6, 14)
     hostname = get_hostname()
     if hostname in cpus.keys():
         usecpus = cpus[hostname]

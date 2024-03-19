@@ -19,6 +19,7 @@ from library.utilities.utilities_process import read_image, write_image
 
 class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
+    There are 11,176 h5 files in this dataset
     """
 
     def __init__(self, animal, layer, channel, scaling_factor, debug):
@@ -46,8 +47,8 @@ class BrainStitcher(ParallelManager):
         self.all_info_files = None
         self.check_status()
 
-    def dummy_method(self):
-        pass
+    def __call__(self):
+        self.check_status()
 
     def check_status(self):
         if len(self.available_layers) > 0:
