@@ -17,6 +17,7 @@ regarding one particular parameter.
 
 """
 import os
+import sys
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -110,7 +111,8 @@ def create_rigid_parameters(elastixImageFilter):
 
     return rigid_params
 
-
+'''
+Needs to be fixed
 def align_elastix(fixed, moving):
     """This takes the moving and fixed images runs Elastix on them. Note
     the huge list of parameters Elastix uses here.
@@ -151,7 +153,6 @@ def align_elastix(fixed, moving):
 
 
 
-
     elastixImageFilter.LogToConsoleOff()
     elastixImageFilter.Execute()
     
@@ -164,6 +165,7 @@ def align_elastix(fixed, moving):
     #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
     #R, x, y = rigid
     return float(R), float(x), float(y)
+'''
 
 
 def create_downsampled_transforms(transforms: dict, downsample: bool) -> dict:
@@ -200,8 +202,6 @@ def create_scaled_transform(T):
     return Ts
 
 
-
-
 def convert_2d_transform_forms(arr):
     """Helper method used by create_downsampled_transforms
 
@@ -221,7 +221,6 @@ def align_image_to_affine(file_key):
     :param file_key: tuple of file input and output
     :return: nothing
     """
-    import sys
     infile, outfile, T = file_key
     try:
         im1 = Image.open(infile)
