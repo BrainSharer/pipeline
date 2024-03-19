@@ -63,9 +63,8 @@ class Pipeline(
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
 
-
-    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
-                 task='status', scaling_factor=SCALING_FACTOR, debug=False):
+    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR,  
+                 task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
             pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)

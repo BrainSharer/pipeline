@@ -111,62 +111,6 @@ def create_rigid_parameters(elastixImageFilter):
 
     return rigid_params
 
-'''
-Needs to be fixed
-def align_elastix(fixed, moving):
-    """This takes the moving and fixed images runs Elastix on them. Note
-    the huge list of parameters Elastix uses here.
-
-    :param fixed: sitk float array for the fixed image (the image behind the moving).
-    :param moving: sitk float array for the moving image.
-    :return: the Elastix transformation results that get parsed into the rigid transformation
-    """
-    elastixImageFilter = sitk.ElastixImageFilter()
-    elastixImageFilter.SetFixedImage(fixed)
-    elastixImageFilter.SetMovingImage(moving)
-    translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-
-    rigid_params = create_rigid_parameters(elastixImageFilter)
-    elastixImageFilter.SetParameterMap(translationMap)
-    elastixImageFilter.AddParameterMap(rigid_params)
-
-
-    if os.path.exists(self.fixed_point_file) and os.path.exists(self.moving_point_file):
-        with open(self.fixed_point_file, 'r') as fp:
-            fixed_count = len(fp.readlines())
-        with open(self.moving_point_file, 'r') as fp:
-            moving_count = len(fp.readlines())
-        assert fixed_count == moving_count, \
-            f'Error, the number of fixed points in {self.fixed_point_file} \
-            do not match {self.moving_point_file}'
-
-        elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-        elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-        elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric for each resolution
-        elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
-
-        elastixImageFilter.SetFixedPointSetFileName(self.fixed_point_file)
-        elastixImageFilter.SetMovingPointSetFileName(self.moving_point_file)
-    else:
-        print('No point files')
-
-
-
-
-    elastixImageFilter.LogToConsoleOff()
-    elastixImageFilter.Execute()
-    
-    translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-    rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-    x1, y1 = translations
-    R, x2, y2 = rigid
-    x = float(x1) + float(x2)
-    y = float(y1) + float(y2)
-    #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-    #R, x, y = rigid
-    return float(R), float(x), float(y)
-'''
-
 
 def create_downsampled_transforms(transforms: dict, downsample: bool) -> dict:
     """Changes the dictionary of transforms to the correct resolution
