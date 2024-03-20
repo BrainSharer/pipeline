@@ -147,6 +147,7 @@ def normalize16(img):
         img = ((img - mn)/mx) * 2**16 - 1
         return np.round(img).astype(np.uint16) 
 
+
 def clean_and_rotate_image(file_key):
     """The main function that uses the user edited mask to crop out the tissue from 
     surrounding debris. It also rotates the image to
@@ -172,7 +173,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image = file_key
+    infile, outfile, maskfile, rotation, flip, downsample, mask_image = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -187,8 +188,7 @@ def clean_and_rotate_image(file_key):
 
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
-    else:
-        #pass
+    if cleaned.ndim == 3 and downsample:
         cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
@@ -206,7 +206,6 @@ def clean_and_rotate_image(file_key):
     write_image(outfile, cleaned, message=message)
 
     return
-
 
 def crop_image(img, mask):
     """Crop image to remove parts of image not in mask

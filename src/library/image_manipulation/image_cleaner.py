@@ -5,7 +5,6 @@ import os
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
-from library.database_model.scan_run import FULL_MASK
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, place_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
 
@@ -38,7 +37,7 @@ class ImageCleaner:
             MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
         starting_files = os.listdir(INPUT)
-        self.logevent(f"INPUT FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        self.logevent(f"image_cleaner::create_cleaned_images INPUT FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
         os.makedirs(OUTPUT, exist_ok=True)
 
         self.setup_parallel_create_cleaned(INPUT, OUTPUT, MASKS)
@@ -46,10 +45,6 @@ class ImageCleaner:
         if self.debug:
             print(f'Updating scan run.')
         self.set_crop_size()
-
-        if self.sqlController.scan_run.image_dimensions == 3444:
-            #pass
-            self.mask_with_contours()
         self.setup_parallel_place_images(OUTPUT)
         
 
@@ -81,7 +76,8 @@ class ImageCleaner:
                     maskfile,
                     rotation,
                     flip,
-                    self.mask_image                    
+                    self.downsample,
+                    self.mask_image
                 ]
             )
 
@@ -91,6 +87,7 @@ class ImageCleaner:
         # It then writes the files to the clean dir. They are not padded at this point.
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
+
 
 
     def setup_parallel_place_images(self, OUTPUT):

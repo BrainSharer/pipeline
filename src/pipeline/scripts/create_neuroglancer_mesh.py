@@ -126,21 +126,19 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)
         tq.execute()
 
-    """
-    print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks}')
+    print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips=1')
     if sharded:
-        for mip in range(0, 4):
-            tasks = tc.create_image_shard_downsample_tasks(
-                layer_path, mip=mip)
-            tq.insert(tasks)
-            tq.execute()
+        tasks = tc.create_image_shard_downsample_tasks(
+            layer_path, mip=0)
+        tq.insert(tasks)
+        tq.execute()
 
     else:
         tasks = tc.create_downsampling_tasks(
-            layer_path, mip=0, num_mips=2, compress=True)
+            layer_path, mip=0, num_mips=1, compress=True)
         tq.insert(tasks)
         tq.execute()
-    """
+    
     
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
@@ -173,11 +171,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # lod=2: 176M 0.shard
     # lod=10, 102M 0.shard, with draco=10
     #
-    LOD = 12
+    LOD = 10
     if sharded:
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
     else:
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD, vertex_quantization_bits=10)
 
     print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
     tq.insert(tasks)    
