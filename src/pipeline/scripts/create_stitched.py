@@ -34,9 +34,10 @@ if __name__ == "__main__":
 
     function_mapping = {
         "extract": pipeline.extract,
-        "stitch": pipeline.stitch_tile,
+        "stitch": pipeline.stitch_master_volumes,
         "status": pipeline.check_status,
-        "move": pipeline.move_data
+        "move": pipeline.move_data,
+        "write": pipeline.write_sections_from_volume
     }
 
     if task in function_mapping:

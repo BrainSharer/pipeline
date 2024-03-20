@@ -31,11 +31,11 @@ class BrainStitcher(ParallelManager):
         self.animal = animal
         self.layer = str(layer).zfill(5)
         self.channel = channel
-        channel_dict = {1: "CH1", 2: "CH2", 4: "CH4"}
+        self.channel_dict = {1: "CH1", 2: "CH2", 4: "CH4"}
         try:
-            self.channel_source = channel_dict[channel]
+            self.channel_source = self.channel_dict[channel]
         except KeyError as ke:
-            print(f'Error: key {channel} is not in {str(channel_dict)}')
+            print(f'Error: key {channel} is not in {str(self.channel_dict)}')
             sys.exit()
 
         self.fileLocationManager = FileLocationManager(animal)
@@ -127,13 +127,20 @@ class BrainStitcher(ParallelManager):
     def fetch_tif(self, inpath):
         try:
             with h5py.File(inpath, "r") as f:
-                channel_key = f[self.channel_source]
-                arr = channel_key['raw'][()]
+                channel1_key = f['CH1']
+                channel1_arr = channel1_key['raw'][()]
+
+                channel2_key = f['CH2']
+                channel2_arr = channel2_key['raw'][()]
+                
+                channel4_key = f['CH4']
+                channel4_arr = channel4_key['raw'][()]
+
         except Exception as ex:
             print(f'Cannot open {inpath}')
             print(ex)
             raise
-        return arr
+        return channel1_arr, channel2_arr, channel4_arr
     
     def compute_bbox(self, info, vol_bbox_mm_um, stitch_voxel_size_um, rows, columns, pages):
         tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
@@ -166,7 +173,7 @@ class BrainStitcher(ParallelManager):
         return start_row, end_row, start_col, end_col, start_z, end_z
 
 
-    def stitch_tile(self):
+    def stitch_master_volumes(self):
         #Chunks=[125, 768, 512] total time: 861.33 seconds. writing took 66.15 seconds #7 @ 50.0% done.
         #Chunks=True total time: 620.54 seconds. writing took 217.37 seconds #9
         #Chunks=(31, 192, 128) total time: 155.5 seconds.writing took 10.13 seconds
@@ -176,7 +183,7 @@ class BrainStitcher(ParallelManager):
         self.check_status()
         self.parse_all_info()
         stitch_voxel_size_um = [0.375*self.scaling_factor, 0.375*self.scaling_factor, 1*self.scaling_factor];
-        xy_overlap = 60
+        overlap_size = np.array([60,60,25])
 
         first_element = next(iter(self.all_info_files.values()))
         stack_size_um = first_element['stack_size_um']
@@ -199,99 +206,90 @@ class BrainStitcher(ParallelManager):
         volume_shape = [b[2], b[0], b[1]]
         print(f'Volume shape={volume_shape} composed of {len(self.all_info_files.values())} files')
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
-        zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.scale.{self.scaling_factor}.zarr')
-        if os.path.exists(zarrpath):
-            print(f'Using existing {zarrpath}')
-            volume = zarr.open(zarrpath, mode='a')
-        else:
-            print(f'Creating {zarrpath}')
-            tile_shape=np.array([250, 1536, 1024])
-            chunks = (25, tile_shape[1] // self.scaling_factor, tile_shape[2] // self.scaling_factor)
-            try:
-                volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath)
-                print(volume.info)
-            except Exception as ex:
-                print(f'Could not create a volume with shape={volume_shape}')
-                print(ex)
-                sys.exit()
-            num_tiles = len(self.all_info_files.items())
-            i = 1
 
-            for (layer, position), info in self.all_info_files.items():
-                h5file = f"{position}.h5"
-                tif_file = f"{position}.tif"
-                tifpath = os.path.join(self.base_path, layer, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}', tif_file)
-                if os.path.exists(tifpath):
-                    subvolume = read_image(tifpath)
-                else:
-                    h5path = os.path.join(self.base_path, layer, 'h5', h5file)
-                    if not os.path.exists(h5path):
-                        print(f'Error: missing {h5path}')
-                        sys.exit()
-                    subvolume = self.fetch_tif(h5path)
-
-                    tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
-                    tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-                    tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
-                    tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
-                    change_z = tmp_tile_ll_ds_pxl[2] / subvolume.shape[0]
-                    change_rows = tmp_tile_ll_ds_pxl[0] / subvolume.shape[1]
-                    change_cols = tmp_tile_ll_ds_pxl[1] / subvolume.shape[2]          
-                    zoom_start_time = timer()
-                    subvolume = zoom(subvolume, (change_z, change_rows, change_cols))
-                    if self.debug:
-                        zoom_end_time = timer()
-                        zoom_elapsed_time = round((zoom_end_time - zoom_start_time), 2)
-                        print(f'zooming took {zoom_elapsed_time} seconds', end=" ")
-                # deal with overlap
-                overlap_size = np.array([60,60,25])
-
-                start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
-                                                                                        rows=subvolume.shape[1], 
-                                                                                        columns=subvolume.shape[2], 
-                                                                                        pages=subvolume.shape[0])
-                if self.debug:
-                    print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
-                    print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume.shape}', end=" ")
+        volume1 = self.create_zarr_volume(volume_shape, "1")
+        volume2 = self.create_zarr_volume(volume_shape, "2")
+        volume4 = self.create_zarr_volume(volume_shape, "4")
         
+        num_tiles = len(self.all_info_files.items())
+        i = 1
+
+        for (layer, position), info in self.all_info_files.items():
+            h5file = f"{position}.h5"
+            readh5_start_time = timer()
+            h5path = os.path.join(self.base_path, layer, 'h5', h5file)
+            if not os.path.exists(h5path):
+                print(f'Error: missing {h5path}')
+                sys.exit()
+            subvolume1, subvolume2, subvolume4 = self.fetch_tif(h5path)
+            readh5_end_time = timer()
+            readh5_elapsed_time = round((readh5_end_time - readh5_start_time), 2)
+            if self.debug:
+                print(f'reading h5 took {readh5_elapsed_time} seconds', end=" ")
+
+            #tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
+            #tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
+            #tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
+            #tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
+
+            start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
+                                                                                    rows=subvolume1.shape[1], 
+                                                                                    columns=subvolume1.shape[2], 
+                                                                                    pages=subvolume1.shape[0])
+            if self.debug:
+                print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
+                print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume1.shape}', end=" ")        
                 write_start_time = timer()
+
+
+            volumes = [volume1, volume2, volume4]
+            subvolumes = [subvolume1, subvolume2, subvolume4]
+
+            for subvolume,volume in zip(subvolumes, volumes):
                 try:
-                    max_vol = np.maximum(volume[start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
-                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = max_vol
+                    #subvolume[:,:,0:30] = 0
+                    max_subvolume = np.maximum(volume[start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
+                    # deal with overlap
+                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
                 except Exception as e:
                     print(f'Error: {e}')
 
-                if self.debug:
-                    write_end_time = timer()          
-                    write_elapsed_time = round((write_end_time - write_start_time), 2)
-                    print(f'writing took {write_elapsed_time} seconds', end=" ")
-                    print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
-                i += 1
+
+            if self.debug:
+                write_end_time = timer()          
+                write_elapsed_time = round((write_end_time - write_start_time), 2)
+                print(f'writing took {write_elapsed_time} seconds', end=" ")
+                print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
+            i += 1
 
         # now write individual sections out
-        create_volume_end_time = timer()
-        create_volume_elapsed_time = round((create_volume_end_time - start_time), 2)
-        print(f'Creating/fetching volume took {create_volume_elapsed_time} seconds')
+                
+    def write_sections_from_volume(self):
+        channels = [1,2,4]
+        for channel in channels:
+            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
+            print(f'Using existing {zarrpath}')
+            volume = zarr.open(zarrpath, mode='r')
 
-        if self.scaling_factor > 1:
-            outpath = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        else:
-            outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            writing_sections_start_time = timer()
 
-        os.makedirs(outpath, exist_ok=True)
-        for i in range(volume.shape[0]):
-            read_start_time = timer()
-            section = volume[i, :, :]
-            outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
-            if self.debug:
-                read_end_time = timer()          
-                read_elapsed_time = round((read_end_time - read_start_time), 2)           
-                print(f'Reading took {read_elapsed_time} seconds. Save: {outfile}')
-            write_image(outfile, section)
- 
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f'\nTotal time: {total_elapsed_time} seconds.\n')
+            if self.scaling_factor > 1:
+                outpath = self.fileLocationManager.get_thumbnail_aligned(channel=channel)
+            else:
+                outpath = self.fileLocationManager.get_full_aligned(channel=channel)
+
+            writing_sections_start_time = timer()
+            os.makedirs(outpath, exist_ok=True)
+            for i in range(volume.shape[0]):
+                outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
+                if os.path.exists(outfile):
+                    continue
+                section = volume[i, :, :]
+                write_image(outfile, section)
+    
+            end_time = timer()
+            writing_sections_elapsed_time = round((end_time - writing_sections_start_time), 2)
+            print(f'writing {i+1} sections in C{channel} took {writing_sections_elapsed_time} seconds')
 
     def extract(self):
         tilepath = os.path.join(self.layer_path,  'h5')
@@ -324,6 +322,19 @@ class BrainStitcher(ParallelManager):
         workers = 2
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
+    def create_zarr_volume(self, volume_shape, channel):
+        zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
+        if os.path.exists(zarrpath):
+            print(f'Zarr exists {zarrpath}')
+        print(f'Creating {zarrpath}')
+        tile_shape=np.array([250, 1536, 1024])
+        chunks = (tile_shape[0] // self.scaling_factor // 4, 
+                  tile_shape[1] // self.scaling_factor // 4, 
+                  tile_shape[2] // self.scaling_factor // 4)
+        volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath, overwrite=True)
+        print(volume.info)
+        return volume
+
 def extract_tif(file_key):
     inpath, scaling_factor, outpath, outfile = file_key
     channel_keys = {'CH1': 'C1', 'CH2':'C2', 'CH4':'C4'}
@@ -340,3 +351,4 @@ def extract_tif(file_key):
             print(channel_file, scaled_arr.dtype, scaled_arr.shape)
             #write_image(outpath, scaled_arr)
             tifffile.imwrite(channel_file, scaled_arr, bigtiff=True)
+    
