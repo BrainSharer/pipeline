@@ -7,7 +7,6 @@ import math
 from pathlib import Path
 from shutil import copyfile
 from timeit import default_timer as timer
-from skimage.io import imsave
 import tifffile
 from scipy.ndimage import zoom
 import zarr
@@ -227,17 +226,13 @@ class BrainStitcher(ParallelManager):
             if self.debug:
                 print(f'reading h5 took {readh5_elapsed_time} seconds', end=" ")
 
-            #tmp_tile_bbox_ll_um = info['tile_mmll_um'][2:]
-            #tmp_tile_bbox_ll_um.append(info['stack_size_um'][2])
-            #tmp_tile_bbox_ll_um = np.array(tmp_tile_bbox_ll_um)
-            #tmp_tile_ll_ds_pxl = np.round(tmp_tile_bbox_ll_um / stitch_voxel_size_um)
 
             start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
                                                                                     rows=subvolume1.shape[1], 
                                                                                     columns=subvolume1.shape[2], 
                                                                                     pages=subvolume1.shape[0])
             if self.debug:
-                print(f'CH={self.channel} layer={layer} position={position}', end=" ") 
+                print(f'layer={layer} position={position}', end=" ") 
                 print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume1.shape}', end=" ")        
                 write_start_time = timer()
 
@@ -323,15 +318,16 @@ class BrainStitcher(ParallelManager):
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
     def create_zarr_volume(self, volume_shape, channel):
-        zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
-        if os.path.exists(zarrpath):
-            print(f'Zarr exists {zarrpath}')
-        print(f'Creating {zarrpath}')
+        storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
+        if os.path.exists(storepath):
+            print(f'Zarr exists {storepath}')
+        print(f'Creating {storepath}')
+        store = zarr.NestedDirectoryStore(storepath)
         tile_shape=np.array([250, 1536, 1024])
         chunks = (tile_shape[0] // self.scaling_factor // 4, 
                   tile_shape[1] // self.scaling_factor // 4, 
                   tile_shape[2] // self.scaling_factor // 4)
-        volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=zarrpath, overwrite=True)
+        volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=store, overwrite=True)
         print(volume.info)
         return volume
 
