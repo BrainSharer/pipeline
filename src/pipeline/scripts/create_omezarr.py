@@ -14,30 +14,9 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.utilities.utilities_process import SCALING_FACTOR
-from library.utilities.dask_utilities import imreads
+from library.utilities.dask_utilities import get_transformations, imreads, mean_dtype
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-
-def get_transformations(axis_names, resolution, n_levels) -> tuple[dict,dict]:
-    '''
-    GENERATES META-INFO FOR PYRAMID
-
-    :param axis_names:
-    :param resolution:
-    :param n_levels:
-    :return: list[dict,dict]
-    '''
-
-    transformations = []
-    for scale_level in range(n_levels):
-        scale = []
-        for ax in axis_names:
-            if ax in resolution:
-                scale.append(resolution[ax] * 2**scale_level)
-            else:
-                scale.append(resolution.get(ax, 1))
-        transformations.append([{"scale": scale, "type": "scale"}])
-    return transformations
 
 
 def create_omezarr(animal, downsample, debug):
@@ -46,11 +25,13 @@ def create_omezarr(animal, downsample, debug):
     xy_resolution = sqlController.scan_run.resolution
     z_resolution = sqlController.scan_run.zresolution
     if downsample:
+        storefile = 'C1T.zarr'
         scaling_factor = SCALING_FACTOR
         chunk_factor = 2
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         mips = 4
     else:
+        storefile = 'C1.zarr'
         scaling_factor = 1
         chunk_factor = 1
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full_aligned')
@@ -69,11 +50,24 @@ def create_omezarr(animal, downsample, debug):
             {'name': 'z', 'type': 'space', 'unit': 'micrometer'}]
     axis_names = [a['name'] for a in axes]
 
-    stacked = imreads(INPUT)
 
-    # like numpy.mean, but maintains dtype
-    def mean_dtype(arr, **kwargs):
-        return np.mean(arr, **kwargs).astype(arr.dtype)
+    stacked = imreads(INPUT)
+    """
+    scaling_factor = 10
+    z_resolution *= scaling_factor
+    zarrfile = f'C1.scale.10.zarr'
+    zarrpath = os.path.join(fileLocationManager.www, 'neuroglancer_data', zarrfile)
+    if not os.path.exists(zarrpath):
+        print(f'Missing: {zarrpath}')
+        sys.exit()
+    
+    stacked = da.from_zarr(url=zarrpath)
+    stacked = np.swapaxes(stacked, 0,2)
+    """
+
+
+    print(f'Shape of stacked is now: {stacked.shape} type={type(stacked)}')
+
 
     chunk_dict = {
         1: [128//chunk_factor, 128//chunk_factor, 64//chunk_factor],
@@ -84,19 +78,23 @@ def create_omezarr(animal, downsample, debug):
         6: [32//chunk_factor, 32//chunk_factor, 32//chunk_factor],
         7: [32//chunk_factor, 32//chunk_factor, 32//chunk_factor],
     }
-
-    stacked = stacked.rechunk((128//chunk_factor, 128//chunk_factor, 64))
-    downsampled_stack = [stacked]
     start_time = timer()
+    #stacked = stacked.rechunk((128//chunk_factor, 128//chunk_factor, 64))
+    stacked = stacked.rechunk('auto')
+    if debug:
+        print(f'Shape of downsampled stacked is now: {stacked.shape}')
+        print('stacked.chunksize')
+        print(stacked.chunksize)
+
+    downsampled_stack = [stacked]
     for mip in (range(1, mips)):
-        chunks = chunk_dict[mip]
         axis_dict = {0:2, 1:2, 2:2}
-        print(f'scaled {mip} chunks={chunks} axis_dict={axis_dict}')
-        scaled = da.coarsen(mean_dtype, downsampled_stack[-1], axis_dict, trim_excess=True).rechunk(chunks)
+        chunks = chunk_dict[mip]
+        scaled = da.coarsen(mean_dtype, downsampled_stack[-1], axis_dict, trim_excess=True).rechunk('auto')
+        chunks = scaled.chunksize
+        if debug:
+            print(f'scaled {mip} chunks={chunks} axis_dict={axis_dict}')
         downsampled_stack.append(scaled)
-    end_time = timer()
-    elapsed_time = round((end_time - start_time), 2)
-    print(f'Creating downsampled mip took {elapsed_time} seconds')
 
     n_levels = len(downsampled_stack)
     resolution = {'x': xy_resolution*scaling_factor, 'y': xy_resolution*scaling_factor, 'z': z_resolution}
@@ -105,7 +103,6 @@ def create_omezarr(animal, downsample, debug):
         print(f'transformations={transformations}')
 
     # Open the zarr group manually
-    storefile = 'C1.zarr'
     storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
     store = zarr.NestedDirectoryStore(storepath)
     root = zarr.group(store=store, overwrite=True)
@@ -115,7 +112,14 @@ def create_omezarr(animal, downsample, debug):
 
     # Use OME write multiscale; this actually computes the dask arrays but does so
     # in a memory-efficient way.
-    write_multiscale(downsampled_stack, group=root, axes=axes, coordinate_transformations=transformations)
+    write_start_time = timer()
+    write_multiscale(pyramid=downsampled_stack, group=root, axes=axes, coordinate_transformations=transformations)
+    write_end_time = timer()
+    write_elapsed_time = round((write_end_time - write_start_time), 2)
+    print(f'Writing {len(downsampled_stack)} stacks took {write_elapsed_time} seconds')
+
+    total_elapsed_time = round((write_end_time - start_time), 2)
+    print(f'Total time took {total_elapsed_time} seconds')
 
 
 if __name__ == '__main__':
