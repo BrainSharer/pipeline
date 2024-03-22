@@ -47,15 +47,40 @@ def imreads(root, pattern='*.tif'):
     n_leading_dim = len(leading_shape)
     first_file = imread(files[0])
     dtype = first_file.dtype
-    shape = first_file.shape
-    lagging_shape = shape
+    lagging_shape = first_file.shape
     files_array = np.array(list(files)).reshape(leading_shape)
     chunks = tuple((1,) * shp for shp in leading_shape) + lagging_shape
     stacked = da.map_blocks(
-            _load_block(n_leading_dim=n_leading_dim, load_func=imread),
-            files_array,
-            chunks=chunks,
-            dtype=dtype,
-            )
-    stacked = np.swapaxes(stacked, 0,2)
+        _load_block(n_leading_dim=n_leading_dim, load_func=imread),
+        files_array,
+        chunks=chunks,
+        dtype=dtype,
+    )
+    stacked = np.swapaxes(stacked, 0, 2)
     return stacked
+
+    
+def mean_dtype(arr, **kwargs):
+    return np.mean(arr, **kwargs).astype(arr.dtype)
+
+
+def get_transformations(axis_names, resolution, n_levels) -> tuple[dict,dict]:
+    '''
+    GENERATES META-INFO FOR PYRAMID
+
+    :param axis_names:
+    :param resolution:
+    :param n_levels:
+    :return: list[dict,dict]
+    '''
+
+    transformations = []
+    for scale_level in range(n_levels):
+        scale = []
+        for ax in axis_names:
+            if ax in resolution:
+                scale.append(resolution[ax] * 2**scale_level)
+            else:
+                scale.append(resolution.get(ax, 1))
+        transformations.append([{"scale": scale, "type": "scale"}])
+    return transformations

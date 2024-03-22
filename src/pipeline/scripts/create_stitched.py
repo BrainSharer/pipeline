@@ -37,7 +37,7 @@ if __name__ == "__main__":
         "stitch": pipeline.stitch_master_volumes,
         "status": pipeline.check_status,
         "move": pipeline.move_data,
-        "write": pipeline.write_sections_from_volume
+        "write": pipeline.write_sections_from_volume,
     }
 
     if task in function_mapping:

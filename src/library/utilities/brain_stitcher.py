@@ -14,7 +14,7 @@ import zarr
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
-from library.utilities.utilities_process import read_image, write_image
+from library.utilities.utilities_process import write_image
 
 class BrainStitcher(ParallelManager):
     """Basic class for working with Xiangs data
@@ -251,14 +251,13 @@ class BrainStitcher(ParallelManager):
 
 
             if self.debug:
-                write_end_time = timer()          
+                write_end_time = timer()     
                 write_elapsed_time = round((write_end_time - write_start_time), 2)
                 print(f'writing took {write_elapsed_time} seconds', end=" ")
                 print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
             i += 1
+        
 
-        # now write individual sections out
-                
     def write_sections_from_volume(self):
         channels = [1,2,4]
         for channel in channels:
@@ -329,7 +328,8 @@ class BrainStitcher(ParallelManager):
                   tile_shape[2] // self.scaling_factor // 4)
         volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=store, overwrite=True)
         print(volume.info)
-        return volume
+        return volume    
+        
 
 def extract_tif(file_key):
     inpath, scaling_factor, outpath, outfile = file_key
@@ -347,4 +347,3 @@ def extract_tif(file_key):
             print(channel_file, scaled_arr.dtype, scaled_arr.shape)
             #write_image(outpath, scaled_arr)
             tifffile.imwrite(channel_file, scaled_arr, bigtiff=True)
-    
