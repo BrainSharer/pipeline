@@ -9,6 +9,7 @@ import zarr
 from ome_zarr.writer import write_multiscale
 import zarr
 import dask.array as da
+import xarray as xr
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -133,3 +134,4 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
     create_omezarr(animal, downsample, debug)
+    #create_pyramid(animal, downsample, debug)
