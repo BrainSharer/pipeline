@@ -126,7 +126,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)
         tq.execute()
 
+
+      
     print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips=1')
+    """
     if sharded:
         tasks = tc.create_image_shard_downsample_tasks(
             layer_path, mip=0)
@@ -138,7 +141,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
             layer_path, mip=0, num_mips=1, compress=True)
         tq.insert(tasks)
         tq.execute()
-    
+    """
+    tasks = tc.create_downsampling_tasks(
+        layer_path, mip=0, num_mips=1, compress=True)
+    tq.insert(tasks)
+    tq.execute()
     
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
@@ -149,14 +156,15 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ##### first mesh task, create meshing tasks
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
+    # removing shape results in no 0.shard being created!!!
     # 256 does not work at scaling_factor=7 or 4
     # 128 works at scaling_factor=4 and at 10
     # 448 does not work at scaling_factor=10,
 
     shape = chunks
-    mip=0 # Segmentations only use the 1st mip
+    mip=1 # Segmentations only use the 1st mip
     print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=shape) # The first phase of creating mesh
+    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=chunks, max_simplification_error=40) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
