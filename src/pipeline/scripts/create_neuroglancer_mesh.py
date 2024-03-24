@@ -67,7 +67,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
 
-    if scaling_factor > 10:    
+    if scaling_factor >= 10:    
         chunk = 64
     else:
         chunk = 128
@@ -129,23 +129,18 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
 
       
     print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips=1')
-    """
     if sharded:
-        tasks = tc.create_image_shard_downsample_tasks(
-            layer_path, mip=0)
-        tq.insert(tasks)
-        tq.execute()
+        for mip in range(0,1):
+            tasks = tc.create_image_shard_downsample_tasks(
+                layer_path, mip=mip)
+            tq.insert(tasks)
+            tq.execute()
 
     else:
         tasks = tc.create_downsampling_tasks(
             layer_path, mip=0, num_mips=1, compress=True)
         tq.insert(tasks)
         tq.execute()
-    """
-    tasks = tc.create_downsampling_tasks(
-        layer_path, mip=0, num_mips=1, compress=True)
-    tq.insert(tasks)
-    tq.execute()
     
     ##### add segment properties
     cloudpath = CloudVolume(layer_path, 0)
@@ -157,14 +152,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
     # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
     # removing shape results in no 0.shard being created!!!
-    # 256 does not work at scaling_factor=7 or 4
-    # 128 works at scaling_factor=4 and at 10
-    # 448 does not work at scaling_factor=10,
+    # at scale=5, shape=128 did not work but 128*2 did
 
-    shape = chunks
-    mip=1 # Segmentations only use the 1st mip
+    mip=1 # Segmentations only use one mip
+    s = int(chunk*2)
+    shape = [s,s,s]
     print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=chunks, max_simplification_error=40) # The first phase of creating mesh
+    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=shape, max_simplification_error=100) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
@@ -183,7 +177,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     if sharded:
         tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
     else:
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD, vertex_quantization_bits=10)
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
 
     print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
     tq.insert(tasks)    
