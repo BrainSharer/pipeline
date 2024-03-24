@@ -130,7 +130,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
       
     print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips=1')
     if sharded:
-        for mip in range(0,1):
+        for mip in range(0,1,2):
             tasks = tc.create_image_shard_downsample_tasks(
                 layer_path, mip=mip)
             tq.insert(tasks)
