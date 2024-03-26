@@ -24,6 +24,9 @@ for k = 1 : length(theFiles)
   % File does not exist.
   fprintf(1, 'Writing to %s\n', filepath);  
   img = imread(fullFileName);
-  imwrite(img, filepath );
+  % imwrite(img, filepath );
+  t = Tiff(filepath, 'w');
+  write(t, img);
+  close(t);
   end
 end
