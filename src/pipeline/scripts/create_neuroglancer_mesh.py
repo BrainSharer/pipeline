@@ -121,7 +121,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
 
 
       
-    mip = 1
+    mesh_mip = 1
     cloudpath = CloudVolume(layer_path, 0)
     mesh_path = os.path.join(MESH_DIR, cloudpath.meta.info['mesh'])
     if not os.path.exists(mesh_path):        
@@ -139,7 +139,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         
 
     ##### add segment properties
-    cloudpath = CloudVolume(layer_path, mip)
+    cloudpath = CloudVolume(layer_path, mesh_mip)
     segment_properties = {str(id): str(id) for id in ids}
 
     print('Creating segment properties')
@@ -152,8 +152,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
 
     s = int(chunk*1)
     shape = [s,s,s]
-    print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded) # The first phase of creating mesh
+    print(f'Creating mesh with shape={shape} at mip={mesh_mip} with shards={str(sharded)}')
+    tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, compress=True, sharded=sharded, max_simplification_error=100) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
