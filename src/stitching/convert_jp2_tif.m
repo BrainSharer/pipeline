@@ -1,5 +1,5 @@
-INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD590/preps/jp2';
-OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD590/preps/tif';
+INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD595/preps/jp2';
+OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD595/preps/tif';
 % Check to make sure that folder actually exists.  Warn user if it doesn't.
 if ~isfolder(INPUT)
   fprintf('Directory missing %.s\n', INPUT);
@@ -26,6 +26,14 @@ for k = 1 : length(theFiles)
   img = imread(fullFileName);
   % imwrite(img, filepath );
   t = Tiff(filepath, 'w');
+  tagstruct.ImageLength = size(img, 1);
+  tagstruct.ImageWidth = size(img, 2);
+  tagstruct.Photometric = Tiff.Photometric.RGB;
+  tagstruct.BitsPerSample = 8;
+  tagstruct.SamplesPerPixel = 3;
+  tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
+  tagstruct.Software = 'MATLAB';
+  setTag(t, tagstruct);
   write(t, img);
   close(t);
   end
