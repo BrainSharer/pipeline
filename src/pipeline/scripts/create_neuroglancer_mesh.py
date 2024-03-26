@@ -42,16 +42,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     MESH_INPUT_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_input_{scaling_factor}')
     MESH_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
     PROGRESS_DIR = os.path.join(fileLocationManager.neuroglancer_data, 'progress', f'mesh_{scaling_factor}')
-    
     xy *=  scaling_factor
     z *= scaling_factor
-
     scales = (int(xy), int(xy), int(z))
-    if 'tobor' in get_hostname():
-        print(f'Cleaning {MESH_DIR}')
-        if os.path.exists(MESH_DIR):
-            shutil.rmtree(MESH_DIR)
-
     files = sorted(os.listdir(INPUT))
 
     os.makedirs(MESH_INPUT_DIR, exist_ok=True)
@@ -112,9 +105,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     _, cpus = get_cpus()
     chunks = [chunk, chunk, chunk]
     tq = LocalTaskQueue(parallel=cpus)
+    layer_path = f'file://{MESH_DIR}'
     if not os.path.exists(MESH_DIR):
         os.makedirs(MESH_DIR, exist_ok=True)
-        layer_path = f'file://{MESH_DIR}'
         if sharded: 
             tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
                                                          layer_path, mip=0, 
@@ -128,22 +121,25 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
 
 
       
-    print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips=1')
-    if sharded:
-        for mip in range(0,1,2):
-            tasks = tc.create_image_shard_downsample_tasks(
-                layer_path, mip=mip)
+    mip = 1
+    cloudpath = CloudVolume(layer_path, 0)
+    mesh_path = os.path.join(MESH_DIR, cloudpath.meta.info['mesh'])
+    if not os.path.exists(mesh_path):        
+        print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={mip}')
+        if sharded:
+            for mip in range(0,1,2):
+                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip)
+                tq.insert(tasks)
+                tq.execute()
+
+        else:
+            tasks = tc.create_downsampling_tasks(layer_path, mip=0, num_mips=1, compress=True)
             tq.insert(tasks)
             tq.execute()
+        
 
-    else:
-        tasks = tc.create_downsampling_tasks(
-            layer_path, mip=0, num_mips=1, compress=True)
-        tq.insert(tasks)
-        tq.execute()
-    
     ##### add segment properties
-    cloudpath = CloudVolume(layer_path, 0)
+    cloudpath = CloudVolume(layer_path, mip)
     segment_properties = {str(id): str(id) for id in ids}
 
     print('Creating segment properties')
@@ -154,7 +150,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # removing shape results in no 0.shard being created!!!
     # at scale=5, shape=128 did not work but 128*2 did
 
-    mip=1 # Segmentations only use one mip
     s = int(chunk*2)
     shape = [s,s,s]
     print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
