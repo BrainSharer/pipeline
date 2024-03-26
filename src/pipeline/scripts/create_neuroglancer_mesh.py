@@ -150,10 +150,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # removing shape results in no 0.shard being created!!!
     # at scale=5, shape=128 did not work but 128*2 did
 
-    s = int(chunk*2)
+    s = int(chunk*1)
     shape = [s,s,s]
     print(f'Creating mesh with shape={shape} at mip={mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded, shape=shape, max_simplification_error=100) # The first phase of creating mesh
+    tasks = tc.create_meshing_tasks(layer_path, mip=mip, compress=True, sharded=sharded) # The first phase of creating mesh
     tq.insert(tasks)
     tq.execute()
 
