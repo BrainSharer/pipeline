@@ -139,7 +139,6 @@ def create_omezarr(animal, downsample, debug):
     root.attrs['omero'] = {}
     if debug:
         print(root.info)
-        return
 
     # Use OME write multiscale; this actually computes the dask arrays but does so
     # in a memory-efficient way.
