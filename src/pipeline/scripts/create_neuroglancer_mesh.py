@@ -124,10 +124,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     mesh_mip = 1
     cloudpath = CloudVolume(layer_path, 0)
     mesh_path = os.path.join(MESH_DIR, cloudpath.meta.info['mesh'])
+    mips = [0,1,2]
     if not os.path.exists(mesh_path):        
-        print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={mip}')
+        print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
         if sharded:
-            for mip in range(0,1,2):
+            for mip in mips:
                 tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip)
                 tq.insert(tasks)
                 tq.execute()
