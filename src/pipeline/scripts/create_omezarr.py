@@ -3,14 +3,14 @@ import os
 import sys
 from pathlib import Path
 from timeit import default_timer as timer
+from datetime import datetime
 
-import numpy as np
 import zarr
 from ome_zarr.writer import write_multiscale
 import zarr
 import dask.array as da
-import xarray as xr
-from datetime import datetime, timedelta
+import webknossos as wk
+
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -18,14 +18,6 @@ from library.utilities.utilities_process import SCALING_FACTOR
 from library.utilities.dask_utilities import get_transformations, imreads, mean_dtype
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
-
-def sizeof_fmt(num, suffix="B"):
-    #ref: https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
-    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
-        if abs(num) < 1024.0:
-            return f"{num:3.1f}{unit}{suffix}"
-        num /= 1024.0
-    return f"{num:.1f}Yi{suffix}"
 
 
 def get_meta_data(axes, transformations, transformation_method: str, description, perf_lab):
@@ -37,35 +29,27 @@ def get_meta_data(axes, transformations, transformation_method: str, description
     now = datetime.now()  # datetime object containing current date and time
     dt_string = now.strftime("%m-%d-%Y %H:%M:%S")
     processing_meta = {'description': description, 'method': transformation_method, 'owners': perf_lab,
-            'processing': {'date': dt_string}, 'kwargs': {'multichannel': True}}
+            'processing': {'date': dt_string}, 'kwargs': {'multichannel': False}}
 
     meta_multiscales = {'axes': axes, 'datasets': meta_datasets, 'metadata': processing_meta}
     return meta_multiscales
 
-def get_storage_opts(axis_names: tuple[str]) -> dict:
+def get_xy_chunk() -> int:
     '''
     CALCULATES OPTIMAL CHUNK SIZE FOR IMAGE STACK (TARGET IS ~25MB EACH)
     N.B. CHUNK DIMENSION ORDER (XYZ) SHOULD CORRESPOND TO DASK DIMENSION ORDER (XYZ)
     
     ref: https://forum.image.sc/t/deciding-on-optimal-chunk-size/63023/7
 
-    :param axis_names: tuple[str]
-    :return: dict
+    :return: int: xy chunk
     '''
 
     z_section_chunk = 20
     byte_per_pixel = 2
     target_chunk_size_mb = 25
-    chunk_dim = (target_chunk_size_mb*10**6 / byte_per_pixel / z_section_chunk)**(1/2) #1MB / BYTES PER PIXEL / kui_constant, SPLIT (SQUARE ROOT) BETWEEN LAST 2 DIMENSIONS
-    
-    if len(axis_names) > 2:
-        new_chunks = (int(chunk_dim), int(chunk_dim), z_section_chunk)
-        print(F'EACH CHUNK MEM SIZE: {sizeof_fmt(new_chunks[0] * new_chunks[1] * new_chunks[2] * byte_per_pixel)}')
-    else:
-        new_chunks = (int(chunk_dim), int(chunk_dim))    
-        print(F'EACH CHUNK MEM SIZE: {sizeof_fmt(new_chunks[0] * new_chunks[1] * byte_per_pixel)}')
+    xy_chunk = (target_chunk_size_mb*10**6 / byte_per_pixel / z_section_chunk)**(1/2) #1MB / BYTES PER PIXEL / kui_constant, SPLIT (SQUARE ROOT) BETWEEN LAST 2 DIMENSIONS
 
-    return {"chunks": new_chunks}
+    return int(xy_chunk)
 
 def create_omezarr(animal, downsample, debug):
     sqlController = SqlController(animal)
@@ -75,13 +59,13 @@ def create_omezarr(animal, downsample, debug):
     if downsample:
         storefile = 'C1T.zarr'
         scaling_factor = SCALING_FACTOR
-        chunk_factor = 2
+        chunks = [64, 64, 64]
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         mips = 4
     else:
         storefile = 'C1.zarr'
         scaling_factor = 1
-        chunk_factor = 1
+        chunks = [128, 128, 64]
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full_aligned')
         mips = 4
     if not os.path.exists(INPUT):
@@ -116,16 +100,7 @@ def create_omezarr(animal, downsample, debug):
 
     print(f'Shape of stacked is now: {stacked.shape} type={type(stacked)}')
 
-
-    chunk_dict = {
-        1: [128//chunk_factor, 128//chunk_factor, 64//chunk_factor],
-        2: [64//chunk_factor, 64//chunk_factor, 64//chunk_factor],
-        3: [64//chunk_factor, 64//chunk_factor, 64//chunk_factor],
-        4: [64//chunk_factor, 64//chunk_factor, 64//chunk_factor],
-        5: [32//chunk_factor, 32//chunk_factor, 32//chunk_factor],
-        6: [32//chunk_factor, 32//chunk_factor, 32//chunk_factor],
-        7: [32//chunk_factor, 32//chunk_factor, 32//chunk_factor],
-    }
+    
     start_time = timer()
     #stacked = stacked.rechunk((128//chunk_factor, 128//chunk_factor, 64))
     stacked = stacked.rechunk('auto')
@@ -135,28 +110,22 @@ def create_omezarr(animal, downsample, debug):
         print(stacked.chunksize)
 
     downsampled_stack = [stacked]
-    rechunks = [] # better chunk size to serve via neuroglancer
     for mip in (range(1, mips)):
         axis_dict = {0:2, 1:2, 2:2}
-        chunks = chunk_dict[mip]
         scaled = da.coarsen(mean_dtype, downsampled_stack[-1], axis_dict, trim_excess=True).rechunk('auto')
-        chunks = scaled.chunksize
-        rechunk = chunk_dict[mip]
-        rechunks.append(rechunk)
         if debug:
-            print(f'scaled {mip} chunks={chunks} axis_dict={axis_dict}')
+            print(f'scaled {mip} chunks={scaled.chunksize} axis_dict={axis_dict}')
         downsampled_stack.append(scaled)
 
     n_levels = len(downsampled_stack)
     resolution = {'x': xy_resolution*scaling_factor, 'y': xy_resolution*scaling_factor, 'z': z_resolution}
     transformations = get_transformations(axis_names, resolution, n_levels)
-    storage_opts = get_storage_opts(axis_names=axis_names)
-    #storage_opts = {'chunks': [512, 512, 20]}
+    storage_opts = {'chunks': chunks}
     meta_data = get_meta_data(
         transformations=transformations, 
         axes=axes, 
         transformation_method='mean',
-        description='Image stack to OME Zarr',
+        description=f'Image stack for {animal} to OME Zarr',
         perf_lab='UCSD')
 
     if debug:
@@ -171,6 +140,7 @@ def create_omezarr(animal, downsample, debug):
     root.attrs['omero'] = {}
     if debug:
         print(root.info)
+        return
 
     # Use OME write multiscale; this actually computes the dask arrays but does so
     # in a memory-efficient way.
@@ -188,6 +158,29 @@ def create_omezarr(animal, downsample, debug):
     total_elapsed_time = round((write_end_time - start_time), 2)
     print(f'Total time took {total_elapsed_time} seconds')
 
+def create_webk(animal, downsample, debug):
+    start_time = timer()
+
+    sqlController = SqlController(animal)
+    fileLocationManager = FileLocationManager(animal)
+    xy_resolution = sqlController.scan_run.resolution
+    z_resolution = sqlController.scan_run.zresolution
+    storefile = 'webk.zarr'
+    scaling_factor = SCALING_FACTOR
+    chunks = [64, 64, 64]
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+    storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
+
+    mips = 4
+
+    ds = wk.Dataset.from_images(
+        INPUT, storepath, voxel_size=(10.4, 10.4, 20), data_format="zarr"
+    )
+    ds.compress()
+    ds.downsample()
+    write_end_time = timer()
+    total_elapsed_time = round((write_end_time - start_time), 2)
+    print(f'Total time took {total_elapsed_time} seconds')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -200,4 +193,4 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
     create_omezarr(animal, downsample, debug)
-    #create_pyramid(animal, downsample, debug)
+    #create_webk(animal, downsample, debug)
