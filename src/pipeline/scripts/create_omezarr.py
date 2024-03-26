@@ -9,7 +9,6 @@ import zarr
 from ome_zarr.writer import write_multiscale
 import zarr
 import dask.array as da
-import webknossos as wk
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -158,30 +157,6 @@ def create_omezarr(animal, downsample, debug):
     total_elapsed_time = round((write_end_time - start_time), 2)
     print(f'Total time took {total_elapsed_time} seconds')
 
-def create_webk(animal, downsample, debug):
-    start_time = timer()
-
-    sqlController = SqlController(animal)
-    fileLocationManager = FileLocationManager(animal)
-    xy_resolution = sqlController.scan_run.resolution
-    z_resolution = sqlController.scan_run.zresolution
-    storefile = 'webk.zarr'
-    scaling_factor = SCALING_FACTOR
-    chunks = [64, 64, 64]
-    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-    storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
-
-    mips = 4
-
-    ds = wk.Dataset.from_images(
-        INPUT, storepath, voxel_size=(10.4, 10.4, 20), data_format="zarr"
-    )
-    ds.compress()
-    ds.downsample()
-    write_end_time = timer()
-    total_elapsed_time = round((write_end_time - start_time), 2)
-    print(f'Total time took {total_elapsed_time} seconds')
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
@@ -193,4 +168,3 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
     create_omezarr(animal, downsample, debug)
-    #create_webk(animal, downsample, debug)
