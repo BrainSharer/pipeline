@@ -132,9 +132,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
             else:
                 tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True)
 
+            print(f'Creating downsamplings tasks (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} with mips={len(mips)}')
+            print(f'Creating {downsample_path}')
             tq.insert(tasks)
             tq.execute()
-            print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
 
 
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mips[-1]}_err_{max_simplification_error}')
