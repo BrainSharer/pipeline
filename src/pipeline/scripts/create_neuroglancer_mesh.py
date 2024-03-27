@@ -59,7 +59,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
-
+    mips = [0,1,2]
+    max_simplification_error=100
     if scaling_factor >= 10:    
         chunk = 64
     else:
@@ -120,70 +121,76 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.execute()
 
 
-      
-    mesh_mip = 1
+    
     cloudpath = CloudVolume(layer_path, 0)
-    mesh_path = os.path.join(MESH_DIR, cloudpath.meta.info['mesh'])
-    mips = [0,1,2]
-    if not os.path.exists(mesh_path):        
-        print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
-        if sharded:
-            for mip in mips:
+    for mip in mips:
+        downsample_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][mip]['key'])
+        if not os.path.exists(downsample_path):
+            
+            if sharded:
                 tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip)
-                tq.insert(tasks)
-                tq.execute()
+            else:
+                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True)
 
-        else:
-            tasks = tc.create_downsampling_tasks(layer_path, mip=0, num_mips=1, compress=True)
             tq.insert(tasks)
             tq.execute()
-        
+            print(f'Creating downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
 
-    ##### add segment properties
-    cloudpath = CloudVolume(layer_path, mesh_mip)
-    segment_properties = {str(id): str(id) for id in ids}
 
-    print('Creating segment properties')
-    ng.add_segment_properties(cloudpath, segment_properties)
-    ##### first mesh task, create meshing tasks
-    #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
-    # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
-    # removing shape results in no 0.shard being created!!!
-    # at scale=5, shape=128 did not work but 128*2 did
+    mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mips[-1]}_err_{max_simplification_error}')
 
-    s = int(chunk*1)
-    shape = [s,s,s]
-    print(f'Creating mesh with shape={shape} at mip={mesh_mip} with shards={str(sharded)}')
-    tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, compress=True, sharded=sharded, max_simplification_error=100) # The first phase of creating mesh
-    tq.insert(tasks)
-    tq.execute()
-
-          
-    # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
-    # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
-    
-    # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
-    # must return HTTP/1.1 206 Partial Content
-    # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
-    # lod=1: 129M 0.shard
-    # lod=2: 176M 0.shard
-    # lod=10, 102M 0.shard, with draco=10
-    #
-    LOD = 10
-    if sharded:
-        tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+    if os.path.exists(mesh_path):
+        print(f'Already created downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
+        print(f'at {mesh_path}')
+        print('Finished')
     else:
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+        ##### add segment properties
+        cloudpath = CloudVolume(layer_path, mips[-1])
+        downsample_path = cloudpath.meta.info['scales'][mips[-1]]['key']
+        print(f'Creating mesh from {downsample_path}', end=" ")
+        segment_properties = {str(id): str(id) for id in ids}
 
-    print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
-    tq.insert(tasks)    
-    tq.execute()
+        print('and creating segment properties')
+        ng.add_segment_properties(cloudpath, segment_properties)
+        ##### first mesh task, create meshing tasks
+        #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
+        # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
+        # removing shape results in no 0.shard being created!!!
+        # at scale=5, shape=128 did not work but 128*2 did
 
-    magnitude = 2
-    print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
-    tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
-    tq.insert(tasks)
-    tq.execute()
+        s = int(chunk*1)
+        shape = [s,s,s]
+        print(f'Creating mesh with shape={shape} at mip={mips[-1]} with shards={str(sharded)}')
+        tasks = tc.create_meshing_tasks(layer_path, mip=mips[-1], shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
+
+            
+        # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
+        # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
+        
+        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
+        # must return HTTP/1.1 206 Partial Content
+        # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
+        # lod=1: 129M 0.shard
+        # lod=2: 176M 0.shard
+        # lod=10, 102M 0.shard, with draco=10
+        #
+        LOD = 10
+        if sharded:
+            tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+        else:
+            tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+
+        print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
+        tq.insert(tasks)    
+        tq.execute()
+
+        magnitude = 2
+        print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
+        tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
 
 
     ##### skeleton
