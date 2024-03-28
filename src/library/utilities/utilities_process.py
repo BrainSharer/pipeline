@@ -123,11 +123,11 @@ def get_cpus():
     nmax = 4
     usecpus = (nmax, nmax)
     cpus = {}
-    cpus["mothra"] = (1, 1)
+    cpus["mothra"] = (4, 6)
     cpus["godzilla"] = (6, 6)
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
-    cpus["ratto"] = (4, 14)
+    cpus["ratto"] = (4, 12)
     cpus["tobor"] = (6, 14)
     hostname = get_hostname()
     if hostname in cpus.keys():
