@@ -1,5 +1,5 @@
-INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD595/preps/jp2';
-OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD595/preps/tif';
+INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD591/preps/jp2';
+OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD591/preps/tif';
 % Check to make sure that folder actually exists.  Warn user if it doesn't.
 if ~isfolder(INPUT)
   fprintf('Directory missing %.s\n', INPUT);
@@ -34,7 +34,12 @@ for k = 1 : length(theFiles)
   tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
   tagstruct.Software = 'MATLAB';
   setTag(t, tagstruct);
-  write(t, img);
+  try
+    write(t, img);
+  catch
+    warning('Problem using function.  Assigning a value of 0.');
+    fprintf(1, 'Writing %s failed\n', filepath);  
+  end
   close(t);
   end
 end
