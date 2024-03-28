@@ -114,12 +114,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
                                                          layer_path, mip=0, 
                                                          chunk_size=chunks, fill_missing=True)
         else:
-            tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, dest_layer_path=layer_path, mip=0, skip_downsamples=True, chunk_size=chunks)
+            tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
+                                             dest_layer_path=layer_path, mip=0, 
+                                             skip_downsamples=True, chunk_size=chunks, fill_missing=True)
 
         print(f'Creating transfer tasks (rechunking) with shards={sharded} with chunks={chunks}')
         tq.insert(tasks)
         tq.execute()
-
 
     
     cloudpath = CloudVolume(layer_path, 0)
@@ -165,7 +166,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tasks = tc.create_meshing_tasks(layer_path, mip=mips[-1], shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-
             
         # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
         # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
