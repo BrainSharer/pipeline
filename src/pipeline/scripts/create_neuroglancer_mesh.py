@@ -12,7 +12,7 @@ import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 import shutil
 import numpy as np
-#np.seterr(all=None, divide=None, over=None, under=None, invalid=None)
+# np.seterr(all=None, divide=None, over=None, under=None, invalid=None)
 np.seterr(all="ignore")
 from pathlib import Path
 
@@ -61,18 +61,18 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ids = ids.tolist()
     mips = [0,1,2]
     max_simplification_error=100
-    factors = [2,2,2]
-    if scaling_factor >= 10:    
+    factors = [2, 2, 2]
+    if scaling_factor >= 10:
         chunk = 64
     else:
-        chunk = 128
-    chunkZ = chunk
+        chunk = 256
+    chunkZ = int(chunk//2)
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
-        #chunkZ //= 2
+        # chunkZ //= 2
 
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
@@ -84,7 +84,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         data_type=MESHDTYPE, chunk_size=chunks)
 
     ng.init_precomputed(MESH_INPUT_DIR, volume_size)
-    
+
     file_keys = []
     index = 0
     for i in range(0, len_files, scaling_factor):
@@ -100,12 +100,12 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     with ProcessPoolExecutor(max_workers=cpus) as executor:
         executor.map(ng.process_image_mesh, sorted(file_keys), chunksize=1)
         executor.shutdown(wait=True)
-    
+
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
     _, cpus = get_cpus()
-    chunks = [chunk, chunk, chunk]
+    chunks = [chunk, chunk, chunkZ]
     tq = LocalTaskQueue(parallel=cpus)
     layer_path = f'file://{MESH_DIR}'
     if not os.path.exists(MESH_DIR):
@@ -123,12 +123,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)
         tq.execute()
 
-    
     cloudpath = CloudVolume(layer_path, 0)
+    downsample_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][0]['key'])
+    print(downsample_path)
+    return
     for mip in mips:
-        downsample_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][mip]['key'])
         if not os.path.exists(downsample_path):
-            
+
             if sharded:
                 tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
             else:
@@ -138,7 +139,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
             print(f'Creating {downsample_path}')
             tq.insert(tasks)
             tq.execute()
-
 
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mips[-1]}_err_{max_simplification_error}')
 
@@ -167,11 +167,11 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tasks = tc.create_meshing_tasks(layer_path, mip=mips[-1], shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-            
+
         # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
         # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
-        
-        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html 
+
+        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
         # must return HTTP/1.1 206 Partial Content
         # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
         # lod=1: 129M 0.shard
@@ -194,7 +194,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)
         tq.execute()
 
-
     ##### skeleton
     if skeleton:
         print('Creating skeletons')
@@ -204,7 +203,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tasks = tc.create_unsharded_skeleton_merge_tasks(layer_path)
         tq.insert(tasks)
         tq.execute()
-    
 
     print("Done!")
 
@@ -226,4 +224,3 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
     create_mesh(animal, limit, scaling_factor, skeleton, sharded, debug)
-
