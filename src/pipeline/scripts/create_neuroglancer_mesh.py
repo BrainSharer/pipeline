@@ -31,7 +31,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
-from library.utilities.utilities_process import get_cpus, get_hostname
+from library.utilities.utilities_process import get_cpus
 
 def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=False):
     sqlController = SqlController(animal)
@@ -61,6 +61,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     ids = ids.tolist()
     mips = [0,1,2]
     max_simplification_error=100
+    factors = [2,2,2]
     if scaling_factor >= 10:    
         chunk = 64
     else:
@@ -129,9 +130,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         if not os.path.exists(downsample_path):
             
             if sharded:
-                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip)
+                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
             else:
-                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True)
+                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
 
             print(f'Creating downsamplings tasks (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} with mips={len(mips)}')
             print(f'Creating {downsample_path}')

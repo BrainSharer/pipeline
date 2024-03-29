@@ -37,8 +37,7 @@ for k = 1 : length(theFiles)
   try
     write(t, img);
   catch
-    warning('Problem using function.  Assigning a value of 0.');
-    fprintf(1, 'Writing %s failed\n', filepath);  
+    fprintf(1, 'Error writing %s failed\n', filepath);  
   end
   close(t);
   end
