@@ -59,7 +59,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
-    mips = [0,1,2]
+    mips = [0,1]
     max_simplification_error=100
     factors = [2, 2, 2]
     if scaling_factor >= 10:
@@ -124,21 +124,22 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.execute()
 
     cloudpath = CloudVolume(layer_path, 0)
-    downsample_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][0]['key'])
-    print(downsample_path)
-    return
-    for mip in mips:
-        if not os.path.exists(downsample_path):
+    transfered_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][0]['key'])
+    if os.path.exists(transfered_path):
+        for mip in mips:
+            x,y,z = str(cloudpath.meta.info['scales'][0]['key']).split('_')
+            x1,y1,z1 = [ int(x) * factors[0] ** (mip+1), int(y) * factors[1] ** (mip+1), int(z) * factors[2] ** (mip+1)]
+            downsampled_path = os.path.join(MESH_DIR, "_".join([str(x1), str(y1), str(z1)]))
+            if not os.path.exists(downsampled_path):
 
-            if sharded:
-                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
-            else:
-                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
+                if sharded:
+                    tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
+                else:
+                    tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
 
-            print(f'Creating downsamplings tasks (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} with mips={len(mips)}')
-            print(f'Creating {downsample_path}')
-            tq.insert(tasks)
-            tq.execute()
+                print(f'Creating (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
+                tq.insert(tasks)
+                tq.execute()
 
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mips[-1]}_err_{max_simplification_error}')
 
