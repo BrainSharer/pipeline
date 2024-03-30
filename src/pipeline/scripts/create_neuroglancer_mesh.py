@@ -62,7 +62,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     mips = [0]
     mesh_mip = 1
     max_simplification_error=100
-    factors = [2, 2, 2]
+    factors = [2, 2, 1]
     if scaling_factor >= 10:
         chunk = 64
     else:
@@ -73,6 +73,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
+        factors = [2,2,1]
         # chunkZ //= 2
 
     chunks = (chunk, chunk, 1)
@@ -148,7 +149,6 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         else:
             print(f'Already created (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
 
-
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mesh_mip}_err_{max_simplification_error}')
 
     if os.path.exists(mesh_path):
@@ -170,7 +170,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
 
-        s = int(448//2)
+        s = 224
         shape = [s, s, s]
         print(f'Creating mesh with shape={shape} at mip={mesh_mip} with shards={str(sharded)}')
         tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
