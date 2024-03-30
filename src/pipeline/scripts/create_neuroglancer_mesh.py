@@ -189,7 +189,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tq.insert(tasks)    
         tq.execute()
 
-        magnitude = 2
+        magnitude = 3
         print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
         tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
         tq.insert(tasks)
