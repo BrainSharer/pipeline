@@ -59,7 +59,8 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     midfile = midfile.astype(MESHDTYPE)
     ids, counts = np.unique(midfile, return_counts=True)
     ids = ids.tolist()
-    mips = [0,1]
+    mips = [0]
+    mesh_mip = 1
     max_simplification_error=100
     factors = [2, 2, 2]
     if scaling_factor >= 10:
@@ -108,8 +109,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     chunks = [chunk, chunk, chunkZ]
     tq = LocalTaskQueue(parallel=cpus)
     layer_path = f'file://{MESH_DIR}'
-    if not os.path.exists(MESH_DIR):
-        os.makedirs(MESH_DIR, exist_ok=True)
+    os.makedirs(MESH_DIR, exist_ok=True)
+    xs = scales[0]
+    ys = scales[1]
+    zs = scales[2]
+    scale_dir = "_".join([str(xs), str(ys), str(zs)])
+    transfered_path = os.path.join(MESH_DIR, scale_dir)
+    if not os.path.exists(transfered_path):
         if sharded: 
             tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
                                                          layer_path, mip=0, 
@@ -119,38 +125,40 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
                                              dest_layer_path=layer_path, mip=0, 
                                              skip_downsamples=True, chunk_size=chunks, fill_missing=True)
 
-        print(f'Creating transfer tasks (rechunking) with shards={sharded} with chunks={chunks}')
+        print(f'Creating transfer tasks in {transfered_path} with shards={sharded} with chunks={chunks}')
         tq.insert(tasks)
         tq.execute()
+    else:
+        print(f'Already created transfer tasks in {transfered_path} with shards={sharded} with chunks={chunks}')
 
-    cloudpath = CloudVolume(layer_path, 0)
-    transfered_path = os.path.join(MESH_DIR, cloudpath.meta.info['scales'][0]['key'])
-    if os.path.exists(transfered_path):
-        for mip in mips:
-            x,y,z = str(cloudpath.meta.info['scales'][0]['key']).split('_')
-            x1,y1,z1 = [ int(x) * factors[0] ** (mip+1), int(y) * factors[1] ** (mip+1), int(z) * factors[2] ** (mip+1)]
-            downsampled_path = os.path.join(MESH_DIR, "_".join([str(x1), str(y1), str(z1)]))
-            if not os.path.exists(downsampled_path):
+    for mip in mips:
+        xm,ym,zm = [ xs * (factors[0] ** (mip+1)), ys * (factors[1] ** (mip+1)), zs * (factors[2] ** (mip+1))]
+        downsampled_path = os.path.join(MESH_DIR, "_".join([str(xm), str(ym), str(zm)]))
+        print(downsampled_path)
+        if not os.path.exists(downsampled_path):
+            print(f'Creating (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
 
-                if sharded:
-                    tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
-                else:
-                    tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
+            if sharded:
+                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
+            else:
+                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
 
-                print(f'Creating (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
-                tq.insert(tasks)
-                tq.execute()
+            tq.insert(tasks)
+            tq.execute()
+        else:
+            print(f'Already created (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
 
-    mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mips[-1]}_err_{max_simplification_error}')
+
+    mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mesh_mip}_err_{max_simplification_error}')
 
     if os.path.exists(mesh_path):
-        print(f'Already created downsamplings tasks (rechunking) with shards={sharded} with chunks={chunks} with mips={len(mips)}')
+        print(f'Already created mesh dir with shards={sharded} with chunks={chunks} with mips={len(mips)}')
         print(f'at {mesh_path}')
         print('Finished')
     else:
         ##### add segment properties
-        cloudpath = CloudVolume(layer_path, mips[-1])
-        downsample_path = cloudpath.meta.info['scales'][mips[-1]]['key']
+        cloudpath = CloudVolume(layer_path, mesh_mip)
+        downsample_path = cloudpath.meta.info['scales'][mesh_mip]['key']
         print(f'Creating mesh from {downsample_path}', end=" ")
         segment_properties = {str(id): str(id) for id in ids}
 
@@ -163,9 +171,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         # at scale=5, shape=128 did not work but 128*2 did
 
         s = int(chunk*2)
-        shape = [s,s,s]
-        print(f'Creating mesh with shape={shape} at mip={mips[-1]} with shards={str(sharded)}')
-        tasks = tc.create_meshing_tasks(layer_path, mip=mips[-1], shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
+        shape = [s, s, s]
+        print(f'Creating mesh with shape={shape} at mip={mesh_mip} with shards={str(sharded)}')
+        tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
@@ -194,6 +202,10 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
+
+    ng.precomputed_vol.commit_info()
+    ng.precomputed_vol.commit_provenance()
+
 
     ##### skeleton
     if skeleton:
