@@ -4,6 +4,7 @@ import dask.array as da
 import numpy as np
 import toolz as tz
 from skimage.io import imread
+from typing import List
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -56,7 +57,7 @@ def imreads(root, pattern='*.tif'):
         chunks=chunks,
         dtype=dtype,
     )
-    stacked = np.swapaxes(stacked, 0, 2)
+    #stacked = np.swapaxes(stacked, 0, 2)
     return stacked
 
     
@@ -64,23 +65,78 @@ def mean_dtype(arr, **kwargs):
     return np.mean(arr, **kwargs).astype(arr.dtype)
 
 
-def get_transformations(axis_names, resolution, n_levels) -> tuple[dict,dict]:
+def get_transformations(axes, n_levels) -> tuple[dict,dict]:
     '''
     GENERATES META-INFO FOR PYRAMID
 
     :param axis_names:
     :param resolution:
     :param n_levels:
-    :return: list[dict,dict]
+    :return: list[dict,dict] [{'scale': [10.4, 10.4, 20.0], 'type': 'scale'}]
     '''
 
     transformations = []
     for scale_level in range(n_levels):
-        scale = []
-        for ax in axis_names:
-            if ax in resolution:
-                scale.append(resolution[ax] * 2**scale_level)
-            else:
-                scale.append(resolution.get(ax, 1))
-        transformations.append([{"scale": scale, "type": "scale"}])
+        scales = []
+        for axis_dict in axes:
+            resolution = axis_dict['resolution']
+            coarsen = axis_dict['coarsen'] 
+            scales.append(resolution * coarsen**scale_level)
+        transformations.append([{"scale": scales, "type": "scale"}])
     return transformations
+
+
+
+def aligned_coarse_chunks(chunks: List[int], multiple: int) -> List[int]:
+    """ Returns a new chunking aligned with the coarsening multiple"""
+
+    def choose_new_size(multiple, q, left):
+        """ 
+        See if multiple * q is a good choice when 'left' elements are remaining.
+        Else return multiple * (q-1)
+        """
+        possible = multiple * q
+        if (left - possible) > 0:
+            return possible
+        else:
+            return multiple * (q - 1)
+
+    # print(chunks)
+    # print(sum(chunks))
+    newchunks = []
+    left = sum(chunks) - sum(newchunks)
+    chunkgen = (c for c in chunks)
+    while left > 0:
+        if left < multiple:
+            newchunks.append(left)
+            break
+
+        chunk_size = next(chunkgen, 0)
+        if chunk_size == 0:
+            chunk_size = multiple
+
+        q, r = divmod(chunk_size, multiple)
+        # print(c0, left, q, r)
+        if q == 0:
+            continue
+        elif r == 0:
+            newchunks.append(chunk_size)
+        elif r >= 5:
+            newchunks.append(choose_new_size(multiple, q + 1, left))
+        else:
+            newchunks.append(choose_new_size(multiple, q, left))
+
+        left = sum(chunks) - sum(newchunks)
+        # print(newchunks, left)
+
+    print(f"{chunks} → {newchunks}")
+
+    # checks
+    assert sum(chunks) == sum(newchunks)
+    if sum(chunks) % multiple == 0:
+        lastind = None
+    else:
+        lastind = -1
+    assert all(c % multiple == 0 for c in newchunks[slice(lastind)])
+
+    return tuple(newchunks)
