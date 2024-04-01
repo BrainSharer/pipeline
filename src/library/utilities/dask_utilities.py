@@ -89,54 +89,29 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
 
 def aligned_coarse_chunks(chunks: List[int], multiple: int) -> List[int]:
     """ Returns a new chunking aligned with the coarsening multiple"""
+    
+    def round_down(num, divisor):
+        return num - (num%divisor)
 
-    def choose_new_size(multiple, q, left):
-        """ 
-        See if multiple * q is a good choice when 'left' elements are remaining.
-        Else return multiple * (q-1)
-        """
-        possible = multiple * q
-        if (left - possible) > 0:
-            return possible
-        else:
-            return multiple * (q - 1)
+    z = chunks[0]
+    y = round_down(chunks[1], multiple)
+    x = round_down(chunks[2], multiple)
+    return [z, y, x]
 
-    # print(chunks)
-    # print(sum(chunks))
-    newchunks = []
-    left = sum(chunks) - sum(newchunks)
-    chunkgen = (c for c in chunks)
-    while left > 0:
-        if left < multiple:
-            newchunks.append(left)
-            break
 
-        chunk_size = next(chunkgen, 0)
-        if chunk_size == 0:
-            chunk_size = multiple
+def get_xy_chunk() -> int:
+    '''
+    CALCULATES OPTIMAL CHUNK SIZE FOR IMAGE STACK (TARGET IS ~25MB EACH)
+    N.B. CHUNK DIMENSION ORDER (XYZ) SHOULD CORRESPOND TO DASK DIMENSION ORDER (XYZ)
+    
+    ref: https://forum.image.sc/t/deciding-on-optimal-chunk-size/63023/7
 
-        q, r = divmod(chunk_size, multiple)
-        # print(c0, left, q, r)
-        if q == 0:
-            continue
-        elif r == 0:
-            newchunks.append(chunk_size)
-        elif r >= 5:
-            newchunks.append(choose_new_size(multiple, q + 1, left))
-        else:
-            newchunks.append(choose_new_size(multiple, q, left))
+    :return: int: xy chunk
+    '''
 
-        left = sum(chunks) - sum(newchunks)
-        # print(newchunks, left)
+    z_section_chunk = 20
+    byte_per_pixel = 2
+    target_chunk_size_mb = 25
+    xy_chunk = (target_chunk_size_mb*10**6 / byte_per_pixel / z_section_chunk)**(1/2) #1MB / BYTES PER PIXEL / kui_constant, SPLIT (SQUARE ROOT) BETWEEN LAST 2 DIMENSIONS
 
-    print(f"{chunks} → {newchunks}")
-
-    # checks
-    assert sum(chunks) == sum(newchunks)
-    if sum(chunks) % multiple == 0:
-        lastind = None
-    else:
-        lastind = -1
-    assert all(c % multiple == 0 for c in newchunks[slice(lastind)])
-
-    return tuple(newchunks)
+    return int(xy_chunk)

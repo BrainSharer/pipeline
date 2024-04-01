@@ -46,7 +46,7 @@ def get_meta_data(axes, transformations, transformation_method: str, description
     meta_multiscales = {'axes': axes, 'datasets': meta_datasets, 'metadata': processing_meta}
     return meta_multiscales
 
-def create_manual_omezarr(animal, downsample, debug):
+def create_omezarr(animal, downsample, debug):
     sqlController = SqlController(animal)
     fileLocationManager = FileLocationManager(animal)
     xy_resolution = sqlController.scan_run.resolution
@@ -54,15 +54,13 @@ def create_manual_omezarr(animal, downsample, debug):
     if downsample:
         storefile = 'C1T.zarr'
         scaling_factor = SCALING_FACTOR
-        chunks = [64, 64, 64]
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         mips = [0,1,2,3]
     else:
         storefile = 'C1.zarr'
         scaling_factor = 1
-        chunks = [128, 128, 64]
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full_aligned')
-        mips = [0,1,2,3,4]
+        mips = [0,1]
     if not os.path.exists(INPUT):
         print(f'Missing: {INPUT}')
         sys.exit()
@@ -96,29 +94,27 @@ def create_manual_omezarr(animal, downsample, debug):
     ]
     axis_scales = [a["coarsen"] for a in axes]
     stacked = imreads(INPUT)
-    print(f'Shape of stacked: {stacked.shape} type={type(stacked)}')
+    print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
 
     start_time = timer()
     downscale_start_time = timer()
     old_shape = stacked.shape
     trimto = 8
     new_shape = aligned_coarse_chunks(old_shape, trimto)
-    print(old_shape)
-    print(new_shape)
+    print('new shape', new_shape)
     stacked = stacked[:, 0:new_shape[1], 0:new_shape[2]]
-    #stacked = stacked.rechunk([old_shape[0], new_shape[1]//trimto, new_shape[2]//trimto])
     oldchunk_size = stacked.chunksize
     #stacked = stacked.rechunk('auto')
+    axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2]}
     if debug:
         print(f'stacked original chunksize={oldchunk_size}')
         print(f'Shape of downsampled stacked is now: {stacked.shape}')
         print('stacked.chunksize', stacked.chunksize, type(stacked))
+        print(f'axis dict={axis_dict}')
     downsampled_stack = [stacked]
-    axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2]}
     for mip in mips:
-        #scaled = da.coarsen(mean_dtype, downsampled_stack[-1], axis_dict, trim_excess=True).rechunk([old_shape[0], new_shape[1]//trimto*(mip+1), new_shape[2]//trimto*(mip+1)])
         scaled = da.coarsen(mean_dtype, downsampled_stack[-1], axis_dict, trim_excess=True)
-        print(f'scaled {mip} chunks={scaled.chunksize} axis_dict={axis_dict} type={type(stacked)}')
+        print(f'scaled {mip} chunks={scaled.chunksize} shape={scaled.shape} type={type(stacked)}')
         downsampled_stack.append(scaled)
 
     downscale_end_time = timer()
@@ -127,7 +123,14 @@ def create_manual_omezarr(animal, downsample, debug):
 
     n_levels = len(downsampled_stack)
     transformations = get_transformations(axes, n_levels)
-    storage_opts = {'chunks': [old_shape[0], new_shape[1]//trimto, new_shape[2]//trimto]}
+    if downsample:
+        trimto = trimto
+    else:
+        trimto = int(SCALING_FACTOR)
+    trimto = 1
+    storage_opts = {'chunks': [1, 1040, 1792]}
+    storage_opts = {'chunks': [1, 790, 790]}
+    
     meta_data = get_meta_data(
         transformations=transformations, 
         axes=axes,
@@ -138,6 +141,9 @@ def create_manual_omezarr(animal, downsample, debug):
     if debug:
         for t in transformations:
             print(f'transformation={t}')
+        print(f'storage opts={storage_opts}')
+        print(f'metadata={meta_data}')
+
 
     # Open the zarr group manually
     storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
@@ -160,109 +166,6 @@ def create_manual_omezarr(animal, downsample, debug):
     total_elapsed_time = round((write_end_time - start_time), 2)
     print(f'Total time using coarsen took {total_elapsed_time} seconds')
 
-
-def create_omezarr(animal, downsample, debug):
-    sqlController = SqlController(animal)
-    fileLocationManager = FileLocationManager(animal)
-    xy_resolution = sqlController.scan_run.resolution
-    z_resolution = sqlController.scan_run.zresolution
-    if downsample:
-        storefile = 'C1T.zarr'
-        scaling_factor = SCALING_FACTOR
-        chunks = [64, 64, 64]
-        INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-        mips = [0,1,2,3]
-    else:
-        storefile = 'C1.zarr'
-        scaling_factor = 1
-        chunks = [128, 128, 64]
-        INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full_aligned')
-        mips = [0,1,2,3,4]
-    if not os.path.exists(INPUT):
-        print(f'Missing: {INPUT}')
-        sys.exit()
-    files = os.listdir(INPUT)
-    if len(files) < 5:
-        print(f'Not enough files in: {INPUT}')
-        sys.exit()
-
-    axes = [
-        {
-            "name": "z",
-            "type": "space",
-            "unit": "micrometer",
-            "coarsen": 1,
-            "resolution": z_resolution,
-        },
-        {
-            "name": "y",
-            "type": "space",
-            "unit": "micrometer",
-            "coarsen": 2,
-            "resolution": xy_resolution * scaling_factor,
-        },
-        {
-            "name": "x",
-            "type": "space",
-            "unit": "micrometer",
-            "coarsen": 2,
-            "resolution": xy_resolution * scaling_factor,
-        },
-    ]
-    stacked = imreads(INPUT)
-    print(f'Shape of stacked: {stacked.shape} type={type(stacked)}')
-
-    start_time = timer()
-    if debug:
-        print(f'Shape of downsampled stacked is now: {stacked.shape}')
-        print('stacked.chunksize', stacked.chunksize)
-
-    # downscale
-    downscale_start_time = timer()
-    scaler = ome_zarr.scale.Scaler()
-    downsampled_stack = scaler.nearest(stacked)
-    downscale_end_time = timer()
-    downscale_elapsed_time = round((downscale_end_time - downscale_start_time), 2)
-    print(f'Downsampling {len(downsampled_stack)} stacks took {downscale_elapsed_time} seconds')
-    for d in downsampled_stack:
-        print(d.shape, type(d))
-
-    n_levels = len(downsampled_stack)
-    transformations = get_transformations(axes, n_levels)
-    storage_opts = {'chunks': chunks}
-    meta_data = get_meta_data(
-        transformations=transformations, 
-        axes=axes, 
-        transformation_method='mean',
-        description=f'Image stack for {animal} to OME Zarr',
-        perf_lab='UCSD')
-
-    if debug:
-        for t in transformations:
-            print(f'transformation={t}')
-
-    # Open the zarr group manually
-    storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
-    store = zarr.NestedDirectoryStore(storepath)
-    root = zarr.group(store=store, overwrite=True)
-    root.attrs['omero'] = {}
-
-    write_start_time = timer()
-    write_multiscale(pyramid=downsampled_stack, 
-                     group=root, 
-                     storage_options=storage_opts, 
-                     axes=axes, 
-                     coordinate_transformations=transformations,
-                     metadata=meta_data, 
-                     compute=True)
-    write_end_time = timer()
-    write_elapsed_time = round((write_end_time - write_start_time), 2)
-    print(f'Writing {len(downsampled_stack)} stacks took {write_elapsed_time} seconds')
-
-    total_elapsed_time = round((write_end_time - start_time), 2)
-    print(f'Total time using Scalar took {total_elapsed_time} seconds')
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
@@ -273,5 +176,4 @@ if __name__ == '__main__':
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
-    #create_omezarr(animal, downsample, debug)
-    create_manual_omezarr(animal, downsample, debug)
+    create_omezarr(animal, downsample, debug)
