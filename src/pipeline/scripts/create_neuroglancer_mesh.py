@@ -114,7 +114,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     if not os.path.exists(transfered_path):
         tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
                                                         layer_path, mip=0, 
-                                                        chunk_size=chunks, fill_missing=True)
+                                                        chunk_size=chunks)
 
         print(f'Creating transfer tasks in {transfered_path} with shards and chunks={chunks}')
         tq.insert(tasks)
@@ -129,7 +129,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
         if not os.path.exists(downsampled_path):
             print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
 
-            tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
+            tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors, chunk_size=chunks)
 
             tq.insert(tasks)
             tq.execute()
