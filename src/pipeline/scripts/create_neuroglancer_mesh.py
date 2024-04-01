@@ -33,7 +33,7 @@ from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
 from library.utilities.utilities_process import get_cpus
 
-def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=False):
+def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     sqlController = SqlController(animal)
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
@@ -62,26 +62,21 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     mips = [0]
     mesh_mip = 1
     max_simplification_error=100
-    factors = [2, 2, 1]
-    if scaling_factor >= 10:
-        chunk = 64
-    else:
-        chunk = 256
-    chunkZ = int(chunk//2)
+    factors = [2, 2, 2]
+    chunk = 64
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
         factors = [2,2,1]
-        # chunkZ //= 2
 
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
     volume_size = (width//scaling_factor, height//scaling_factor, len_files // scaling_factor) # neuroglancer is width, height
     print(f'\nMidfile: {infile} dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
     print(f'Scaling factor={scaling_factor}, volume size={volume_size} with dtype={MESHDTYPE}, scales={scales}')
-    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunk},{chunk},{chunkZ})\n')
+    print(f'Initial chunks at {chunks} and chunks for downsampling=({chunk},{chunk},{chunk})\n')
     ng = NumpyToNeuroglancer(animal, None, scales, layer_type='segmentation', 
         data_type=MESHDTYPE, chunk_size=chunks)
 
@@ -107,7 +102,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
     _, cpus = get_cpus()
-    chunks = [chunk, chunk, chunkZ]
+    chunks = [chunk, chunk, chunk]
     tq = LocalTaskQueue(parallel=cpus)
     layer_path = f'file://{MESH_DIR}'
     os.makedirs(MESH_DIR, exist_ok=True)
@@ -117,42 +112,34 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
     scale_dir = "_".join([str(xs), str(ys), str(zs)])
     transfered_path = os.path.join(MESH_DIR, scale_dir)
     if not os.path.exists(transfered_path):
-        if sharded: 
-            tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
-                                                         layer_path, mip=0, 
-                                                         chunk_size=chunks, fill_missing=True)
-        else:
-            tasks = tc.create_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
-                                             dest_layer_path=layer_path, mip=0, 
-                                             skip_downsamples=True, chunk_size=chunks, fill_missing=True)
+        tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
+                                                        layer_path, mip=0, 
+                                                        chunk_size=chunks, fill_missing=True)
 
-        print(f'Creating transfer tasks in {transfered_path} with shards={sharded} with chunks={chunks}')
+        print(f'Creating transfer tasks in {transfered_path} with shards and chunks={chunks}')
         tq.insert(tasks)
         tq.execute()
     else:
-        print(f'Already created transfer tasks in {transfered_path} with shards={sharded} with chunks={chunks}')
+        print(f'Already created transfer tasks in {transfered_path} with shards and chunks={chunks}')
 
     for mip in mips:
         xm,ym,zm = [ xs * (factors[0] ** (mip+1)), ys * (factors[1] ** (mip+1)), zs * (factors[2] ** (mip+1))]
         downsampled_path = os.path.join(MESH_DIR, "_".join([str(xm), str(ym), str(zm)]))
         print(downsampled_path)
         if not os.path.exists(downsampled_path):
-            print(f'Creating (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
+            print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
 
-            if sharded:
-                tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
-            else:
-                tasks = tc.create_downsampling_tasks(layer_path, mip=mip, num_mips=1, compress=True, factor=factors)
+            tasks = tc.create_image_shard_downsample_tasks(layer_path, mip=mip, factor=factors)
 
             tq.insert(tasks)
             tq.execute()
         else:
-            print(f'Already created (rechunking) at mip={mip} with shards={sharded} with chunks={chunks} in {downsampled_path}')
+            print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
 
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mesh_mip}_err_{max_simplification_error}')
-
+    
     if os.path.exists(mesh_path):
-        print(f'Already created mesh dir with shards={sharded} with chunks={chunks} with mips={len(mips)}')
+        print(f'Already created mesh dir with shards, chunks={chunks} and factors={factors} with mips={len(mips)}')
         print(f'at {mesh_path}')
         print('Finished')
     else:
@@ -170,13 +157,12 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
 
-        s = 448
+        s = int(448*2)
         shape = [s, s, s]
-        print(f'Creating mesh with shape={shape} at mip={mesh_mip} with shards={str(sharded)}')
-        tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, shape=shape, compress=True, sharded=sharded, max_simplification_error=max_simplification_error) # The first phase of creating mesh
+        print(f'Creating mesh with shape={shape} at mip={mesh_mip} without shards')
+        tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, shape=shape, compress=True, sharded=False, max_simplification_error=max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-
         # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
         # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
 
@@ -188,12 +174,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, sharded=True, debug=Fal
         # lod=10, 102M 0.shard, with draco=10
         #
         LOD = 10
-        if sharded:
-            tasks = tc.create_sharded_multires_mesh_tasks(layer_path, num_lod=LOD)
-        else:
-            tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
 
-        print(f'Creating multires task with shards={str(sharded)} with LOD={LOD}')
+        print(f'Creating unsharded multires task with LOD={LOD}')
         tq.insert(tasks)    
         tq.execute()
 
@@ -226,14 +209,12 @@ if __name__ == '__main__':
     parser.add_argument('--limit', help='Enter the # of files to test', required=False, default=0)
     parser.add_argument('--scaling_factor', help='Enter an integer that will be the denominator', required=False, default=1)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
-    parser.add_argument("--sharded", help="Create multiple resolutions", required=False, default=False)
     parser.add_argument("--debug", help="debug", required=False, default=False)
     args = parser.parse_args()
     animal = args.animal
     limit = int(args.limit)
     scaling_factor = int(args.scaling_factor)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
-    sharded = bool({"true": True, "false": False}[str(args.sharded).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     
-    create_mesh(animal, limit, scaling_factor, skeleton, sharded, debug)
+    create_mesh(animal, limit, scaling_factor, skeleton, debug)
