@@ -385,8 +385,9 @@ class NumpyToNeuroglancer():
 
         try:
             self.precomputed_vol[:, :, index] = img
-        except:
+        except Exception as ex:
             print(f'could not set {infile} to precomputed, adding blank img')
+            print(ex)
             return
 
         touch(progress_file)

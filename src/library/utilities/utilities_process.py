@@ -127,8 +127,8 @@ def get_cpus():
     cpus["godzilla"] = (6, 6)
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
-    cpus["ratto"] = (4, 16)
-    cpus["tobor"] = (6, 14)
+    cpus["ratto"] = (4, 8)
+    cpus["tobor"] = (4, 12)
     hostname = get_hostname()
     if hostname in cpus.keys():
         usecpus = cpus[hostname]
