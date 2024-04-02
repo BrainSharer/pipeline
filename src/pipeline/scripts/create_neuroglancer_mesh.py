@@ -10,7 +10,6 @@ Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 from cloudvolume import CloudVolume
-import shutil
 import numpy as np
 # np.seterr(all=None, divide=None, over=None, under=None, invalid=None)
 np.seterr(all="ignore")
@@ -61,9 +60,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     ids = ids.tolist()
     mips = [0]
     mesh_mip = 1
-    max_simplification_error=100
+    max_simplification_error=50
     factors = [2, 2, 2]
-    chunk = 64
+    chunk = 96
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
@@ -97,7 +96,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     with ProcessPoolExecutor(max_workers=cpus) as executor:
         executor.map(ng.process_image_mesh, sorted(file_keys), chunksize=1)
         executor.shutdown(wait=True)
-
+    
+    return
+    
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
@@ -173,10 +174,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
         # lod=2: 176M 0.shard
         # lod=10, 102M 0.shard, with draco=10
         #
-        LOD = 10
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
-
+        LOD = 0
         print(f'Creating unsharded multires task with LOD={LOD}')
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
