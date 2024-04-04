@@ -127,9 +127,7 @@ def create_omezarr(animal, downsample, debug):
         trimto = trimto
     else:
         trimto = int(SCALING_FACTOR)
-    trimto = 1
-    storage_opts = {'chunks': [1, 1040, 1792]}
-    storage_opts = {'chunks': [1, 790, 790]}
+    storage_opts = {'chunks': [64,64,64]}
     
     meta_data = get_meta_data(
         transformations=transformations, 

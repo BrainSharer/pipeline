@@ -61,14 +61,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     mips = [0]
     mesh_mip = 1
     max_simplification_error=50
-    factors = [2, 2, 2]
-    chunk = 96
+    # start with big size chunks to cut down on the number of files created
+    chunk = 512
     if limit > 0:
         _start = midpoint - limit
         _end = midpoint + limit
         files = files[_start:_end]
         len_files = len(files)
-        factors = [2,2,1]
 
     chunks = (chunk, chunk, 1)
     height, width = midfile.shape
@@ -97,13 +96,13 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
         executor.map(ng.process_image_mesh, sorted(file_keys), chunksize=1)
         executor.shutdown(wait=True)
     
-    return
     
     ###### start cloudvolume tasks #####
     # This calls the igneous create_transfer_tasks
     # the input dir is now read and the rechunks are created in the final dir
     _, cpus = get_cpus()
-    chunks = [chunk, chunk, chunk]
+    # reset chunks to much smaller size for better neuroglancer experience
+    chunks = [64, 64, 64]
     tq = LocalTaskQueue(parallel=cpus)
     layer_path = f'file://{MESH_DIR}'
     os.makedirs(MESH_DIR, exist_ok=True)
@@ -123,6 +122,7 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
     else:
         print(f'Already created transfer tasks in {transfered_path} with shards and chunks={chunks}')
 
+    factors = [2,2,1]
     for mip in mips:
         xm,ym,zm = [ xs * (factors[0] ** (mip+1)), ys * (factors[1] ** (mip+1)), zs * (factors[2] ** (mip+1))]
         downsampled_path = os.path.join(MESH_DIR, "_".join([str(xm), str(ym), str(zm)]))
@@ -138,7 +138,9 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
             print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
 
     mesh_path = os.path.join(MESH_DIR, f'mesh_mip_{mesh_mip}_err_{max_simplification_error}')
-    
+
+    # Now do the mesh creation
+
     if os.path.exists(mesh_path):
         print(f'Already created mesh dir with shards, chunks={chunks} and factors={factors} with mips={len(mips)}')
         print(f'at {mesh_path}')
@@ -158,33 +160,29 @@ def create_mesh(animal, limit, scaling_factor, skeleton, debug=False):
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
 
-        s = int(448*2)
+        s = int(448*1)
         shape = [s, s, s]
         print(f'Creating mesh with shape={shape} at mip={mesh_mip} without shards')
         tasks = tc.create_meshing_tasks(layer_path, mip=mesh_mip, shape=shape, compress=True, sharded=False, max_simplification_error=max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-        # factor=5, limit=600, num_lod=0, dir=129M, 0.shard=37M
-        # factor=5, limit=600, num_lod=1, dir=129M, 0.shard=37M
 
         # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
         # must return HTTP/1.1 206 Partial Content
-        # du -sh = 301M	mesh_9/mesh_mip_0_err_40/
-        # lod=1: 129M 0.shard
-        # lod=2: 176M 0.shard
-        # lod=10, 102M 0.shard, with draco=10
         #
-        LOD = 0
-        print(f'Creating unsharded multires task with LOD={LOD}')
-        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
-        tq.insert(tasks)    
-        tq.execute()
 
         magnitude = 3
         print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
         tasks = tc.create_mesh_manifest_tasks(layer_path, magnitude=magnitude) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
+
+        LOD = 10
+        print(f'Creating unsharded multires task with LOD={LOD}')
+        tasks = tc.create_unsharded_multires_mesh_tasks(layer_path, num_lod=LOD)
+        tq.insert(tasks)    
+        tq.execute()
+
 
     ng.precomputed_vol.commit_info()
     ng.precomputed_vol.commit_provenance()
