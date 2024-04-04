@@ -43,8 +43,6 @@ class MeshPipeline():
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
-        self.layer_path = f'file://{self.mesh_dir}'
         self.mips = [0]
         self.mesh_mip = 1
         self.max_simplification_error = 50
@@ -56,14 +54,20 @@ class MeshPipeline():
         # start with big size chunks to cut down on the number of files created
         self.chunk = 512
         self.chunks = (self.chunk, self.chunk, 1)
+        self.volume_size = 0
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
             data_type=MESHDTYPE, chunk_size=self.chunks)
+
+        # dirs        
+        self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
+        self.layer_path = f'file://{self.mesh_dir}'
         self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_input_{self.scaling_factor}')
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scaling_factor}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
-        self.volume_size = 0
+        # make dirs
         os.makedirs(self.mesh_input_dir, exist_ok=True)
         os.makedirs(self.progress_dir, exist_ok=True)
+        # setup
         self.get_stack_info()
 
     def get_stack_info(self):
@@ -79,12 +83,16 @@ class MeshPipeline():
         self.ids = ids.tolist()
         height, width = midfile.shape
         self.volume_size = (width//self.scaling_factor, height//self.scaling_factor, len_files // self.scaling_factor) # neuroglancer is width, height
-
         self.files = files
         self.midpoint = midpoint
         self.midfile = midfile
         self.ids = ids
         self.counts = counts
+        self.xs = self.scales[0]
+        self.ys = self.scales[1]
+        self.zs = self.scales[2]
+        scale_dir = "_".join([str(self.xs), str(self.ys), str(self.zs)])
+        self.transfered_path = os.path.join(self.mesh_dir, scale_dir)
 
 
     def process_stack(self):
@@ -127,25 +135,20 @@ class MeshPipeline():
         chunks = [64, 64, 64]
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
-        xs = self.scales[0]
-        ys = self.scales[1]
-        zs = self.scales[2]
-        scale_dir = "_".join([str(xs), str(ys), str(zs)])
-        transfered_path = os.path.join(self.mesh_dir, scale_dir)
-        if not os.path.exists(transfered_path):
+        if not os.path.exists(self.transfered_path):
             tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, 
                                                             self.layer_path, mip=0, 
                                                             chunk_size=chunks)
 
-            print(f'Creating transfer tasks in {transfered_path} with shards and chunks={chunks}')
+            print(f'Creating transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
             tq.insert(tasks)
             tq.execute()
         else:
-            print(f'Already created transfer tasks in {transfered_path} with shards and chunks={chunks}')
+            print(f'Already created transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
 
         factors = [2,2,1]
         for mip in self.mips:
-            xm,ym,zm = [ xs * (factors[0] ** (mip+1)), ys * (factors[1] ** (mip+1)), zs * (factors[2] ** (mip+1))]
+            xm,ym,zm = [ self.xs * (factors[0] ** (mip+1)), self.ys * (factors[1] ** (mip+1)), self.zs * (factors[2] ** (mip+1))]
             downsampled_path = os.path.join(self.mesh_dir, "_".join([str(xm), str(ym), str(zm)]))
             print(downsampled_path)
             if not os.path.exists(downsampled_path):
@@ -228,6 +231,47 @@ class MeshPipeline():
 
     def check_status(self):
         print('Check status')
+        print(f'Number files in progress dir={len(os.listdir(self.progress_dir))}')
+
+
+        neuroglancer = self.fileLocationManager.neuroglancer_data
+        print(f'Checking directory status in {neuroglancer}')
+        section_count = len(self.files) // self.scaling_factor
+        print(f'Files to process={section_count}')
+        processed_count = len(os.listdir(self.progress_dir))
+        print(f'Files that have been processed={processed_count}')
+        if section_count == processed_count:
+            print('Stack is finished')
+        else:
+            print('Stack is not finished, run stack.')
+        mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
+        if os.path.exists(mesh_path):
+            print('Mesh is finished')
+        else:
+            print('Mesh is not finished, run mesh')
+
+        directories = [self.mesh_dir, self.mesh_input_dir, self.progress_dir, self.input, mesh_path, self.transfered_path]
+
+        for directory in directories:
+            if os.path.exists(directory):
+                print(f'Dir={directory} exists') 
+            else:
+                print(f'Non-existent dir={directory}')
+
+        result1 = os.path.join(mesh_path, '1')
+        result2 = os.path.join(mesh_path, '1.index')
+
+        results = [result1, result2]
+        for result in results:
+            if os.path.exists(result):
+                print(f'Result={result} exists') 
+            else:
+                print(f'Non-existent result={result}')
+
+        if os.path.exists(result1) and os.path.exists(result2):
+            print(f'Mesh creation is complete for animal={self.animal} at scale={scaling_factor}')
+
+        
 
 
 if __name__ == '__main__':
@@ -239,7 +283,7 @@ if __name__ == '__main__':
     parser.add_argument("--debug", help="debug", required=False, default=False)
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: stack|transfer|mesh|skeleton|status",
+        help="Enter the task you want to perform: stack -> transfer -> mesh",
         required=False,
         default="status",
         type=str,
