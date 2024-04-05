@@ -161,64 +161,73 @@ class MeshPipeline():
                 print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
 
     def process_mesh(self):
-        mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
+        _, cpus = get_cpus()
+        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        tq = LocalTaskQueue(parallel=cpus)
+
+        if not os.path.exists(self.transfered_path):
+            print('You need to run previous tasks first')
+            print(f'Missing {self.transfered_path}')
+            sys.exit()
+
+        ##### add segment properties
+        cloudpath = CloudVolume(self.layer_path, self.mesh_mip)
+        downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
+        print(f'Creating mesh from {downsample_path}', end=" ")
+        segment_properties = {str(id): str(id) for id in self.ids}
+
+        print('and creating segment properties', end=" ")
+        self.ng.add_segment_properties(cloudpath, segment_properties)
+        ##### first mesh task, create meshing tasks
+        #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
+        # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
+        # removing shape results in no 0.shard being created!!!
+        # at scale=5, shape=128 did not work but 128*2 did
+
+        s = int(448*1)
+        shape = [s, s, s]
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
+                                        shape=shape, 
+                                        compress=True, 
+                                        sharded=False, 
+                                        max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
+
+        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
+        # must return HTTP/1.1 206 Partial Content
+        # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
+
+        print(f'Creating meshing manifest tasks with {cpus} CPUs')
+        tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
+
+        #self.ng.precomputed_vol.commit_info()
+        #self.ng.precomputed_vol.commit_provenance()
+
+
+    def process_multires_mesh(self):
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         tq = LocalTaskQueue(parallel=cpus)
 
         # Now do the mesh creation
+        if not os.path.exists(self.transfered_path):
+            print('You need to run previous tasks first')
+            print(f'Missing {self.transfered_path}')
+            sys.exit()
 
-        if os.path.exists(mesh_path):
-            print(f'Already created mesh dir at {mesh_path}')
-            print('Finished')
-        else:
-            ##### add segment properties
-            cloudpath = CloudVolume(self.layer_path, self.mesh_mip)
-            downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
-            print(f'Creating mesh from {downsample_path}', end=" ")
-            segment_properties = {str(id): str(id) for id in self.ids}
+        LOD = self.mesh_mip
+        print(f'Creating unsharded multires task with LOD={LOD}')
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tq.insert(tasks)    
+        tq.execute()
 
-            print('and creating segment properties', end=" ")
-            self.ng.add_segment_properties(cloudpath, segment_properties)
-            ##### first mesh task, create meshing tasks
-            #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
-            # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
-            # removing shape results in no 0.shard being created!!!
-            # at scale=5, shape=128 did not work but 128*2 did
-
-            s = int(448*1)
-            shape = [s, s, s]
-            print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
-            tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
-                                            shape=shape, 
-                                            compress=True, 
-                                            sharded=False, 
-                                            max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
-            tq.insert(tasks)
-            tq.execute()
-
-            # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
-            # must return HTTP/1.1 206 Partial Content
-            # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
-
-            print(f'Creating meshing manifest tasks with {cpus} CPUs')
-            tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
-            tq.insert(tasks)
-            tq.execute()
-
-            magnitude = 5
-            LOD = 10
-            print(f'Creating unsharded multires task with LOD={LOD} with mag={magnitude}')
-            tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=magnitude)
-            tq.insert(tasks)    
-            tq.execute()
-
-        self.ng.precomputed_vol.commit_info()
-        self.ng.precomputed_vol.commit_provenance()
-
-        ##### skeleton
 
     def process_skeleton(self):
+        ##### skeleton
         print('Creating skeletons')
         tasks = tc.create_skeletonizing_tasks(self.layer_path, mip=0)
         tq = LocalTaskQueue(parallel=self.cpus)
@@ -232,13 +241,14 @@ class MeshPipeline():
         section_count = len(self.files) // self.scaling_factor
         processed_count = len(os.listdir(self.progress_dir))
         if section_count != processed_count and section_count > 0:
-            dothis += "run stack\n"
+            dothis = "File count does not equal processed file count\n"
         mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
 
 
         directories = {
-            self.transfered_path: "Run transfer",
-            mesh_path: "Run mesh",
+            self.progress_dir: f"\nRun stack",
+            self.transfered_path: "\nRun transfer",
+            mesh_path: "\nRun mesh",
         }
 
         for directory, message in directories.items():
@@ -255,6 +265,8 @@ class MeshPipeline():
 
         if os.path.exists(result1) and os.path.exists(result2):
             print(f'Mesh creation is complete for animal={self.animal} at scale={scaling_factor}')
+        else:
+            print('Mesh is not complete.')
 
 
 if __name__ == '__main__':
@@ -266,7 +278,7 @@ if __name__ == '__main__':
     parser.add_argument("--debug", help="debug", required=False, default=False)
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: stack -> transfer -> mesh",
+        help="Enter the task you want to perform: stack -> transfer -> mesh -> multi",
         required=False,
         default="status",
         type=str,
@@ -280,15 +292,13 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     
-    #create_mesh(animal, limit, scaling_factor, skeleton, debug)
-
-
     pipeline = MeshPipeline(animal, scaling_factor, debug=debug)
 
     function_mapping = {
         "stack": pipeline.process_stack,
         "transfer": pipeline.process_transfer,
         "mesh": pipeline.process_mesh,
+        "multi": pipeline.process_multires_mesh,
         "skeleton": pipeline.process_skeleton,
         "status": pipeline.check_status,
     }
