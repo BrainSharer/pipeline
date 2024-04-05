@@ -58,7 +58,7 @@ class MeshPipeline():
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
             data_type=MESHDTYPE, chunk_size=self.chunks)
 
-        # dirs        
+        # dirs
         self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
         self.layer_path = f'file://{self.mesh_dir}'
         self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_input_{self.scaling_factor}')
@@ -93,7 +93,6 @@ class MeshPipeline():
         self.zs = self.scales[2]
         scale_dir = "_".join([str(self.xs), str(self.ys), str(self.zs)])
         self.transfered_path = os.path.join(self.mesh_dir, scale_dir)
-
 
     def process_stack(self):
         len_files = len(self.files)
@@ -161,7 +160,6 @@ class MeshPipeline():
             else:
                 print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
 
-
     def process_mesh(self):
         mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
         _, cpus = get_cpus()
@@ -202,15 +200,16 @@ class MeshPipeline():
             # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
             # must return HTTP/1.1 206 Partial Content
             # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
-            magnitude = 1
-            LOD = 10
 
-            print(f'Creating meshing manifest tasks with {cpus} CPUs with magnitude={magnitude}')
-            tasks = tc.create_mesh_manifest_tasks(self.layer_path, magnitude=magnitude) # The second phase of creating mesh
+            print(f'Creating meshing manifest tasks with {cpus} CPUs')
+            tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
             tq.insert(tasks)
             tq.execute()
 
-            print(f'Creating unsharded multires task with LOD={LOD}')
+            tq = LocalTaskQueue(parallel=1)
+            magnitude = 1
+            LOD = 10
+            print(f'Creating unsharded multires task with LOD={LOD} with mag={magnitude} and 1 CPU')
             tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=magnitude)
             tq.insert(tasks)    
             tq.execute()
@@ -230,48 +229,33 @@ class MeshPipeline():
         tq.execute()
 
     def check_status(self):
-        print('Check status')
-        print(f'Number files in progress dir={len(os.listdir(self.progress_dir))}')
-
-
-        neuroglancer = self.fileLocationManager.neuroglancer_data
-        print(f'Checking directory status in {neuroglancer}')
+        dothis = ""
         section_count = len(self.files) // self.scaling_factor
-        print(f'Files to process={section_count}')
         processed_count = len(os.listdir(self.progress_dir))
-        print(f'Files that have been processed={processed_count}')
-        if section_count == processed_count:
-            print('Stack is finished')
-        else:
-            print('Stack is not finished, run stack.')
+        if section_count != processed_count and section_count > 0:
+            dothis += "run stack\n"
         mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
-        if os.path.exists(mesh_path):
-            print('Mesh is finished')
-        else:
-            print('Mesh is not finished, run mesh')
 
-        directories = [self.mesh_dir, self.mesh_input_dir, self.progress_dir, self.input, mesh_path, self.transfered_path]
 
-        for directory in directories:
-            if os.path.exists(directory):
-                print(f'Dir={directory} exists') 
-            else:
-                print(f'Non-existent dir={directory}')
+        directories = {
+            self.transfered_path: "Run transfer",
+            mesh_path: "Run mesh",
+        }
+
+        for directory, message in directories.items():
+            if not os.path.exists(directory) or len(os.listdir(directory)) == 0:
+                directory = directory.split("/")
+                directory = directory[-2:]
+                dothis += f'{message} as {"/".join(directory)} is missing.'
+
+        if len(dothis) > 0:
+            print(dothis)
 
         result1 = os.path.join(mesh_path, '1')
         result2 = os.path.join(mesh_path, '1.index')
 
-        results = [result1, result2]
-        for result in results:
-            if os.path.exists(result):
-                print(f'Result={result} exists') 
-            else:
-                print(f'Non-existent result={result}')
-
         if os.path.exists(result1) and os.path.exists(result2):
             print(f'Mesh creation is complete for animal={self.animal} at scale={scaling_factor}')
-
-        
 
 
 if __name__ == '__main__':
