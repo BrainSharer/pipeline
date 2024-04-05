@@ -206,10 +206,9 @@ class MeshPipeline():
             tq.insert(tasks)
             tq.execute()
 
-            tq = LocalTaskQueue(parallel=1)
-            magnitude = 1
+            magnitude = 5
             LOD = 10
-            print(f'Creating unsharded multires task with LOD={LOD} with mag={magnitude} and 1 CPU')
+            print(f'Creating unsharded multires task with LOD={LOD} with mag={magnitude}')
             tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=magnitude)
             tq.insert(tasks)    
             tq.execute()
