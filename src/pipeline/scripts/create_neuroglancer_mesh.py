@@ -221,7 +221,7 @@ class MeshPipeline():
 
         LOD = self.mesh_mip
         print(f'Creating unsharded multires task with LOD={LOD}')
-        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, min_chunk_size=[64, 64, 64])
         tq.insert(tasks)    
         tq.execute()
 
