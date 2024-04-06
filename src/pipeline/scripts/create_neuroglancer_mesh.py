@@ -221,7 +221,7 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = 1
+        LOD = 2
         print(f'Creating unsharded multires task with LOD={LOD}')
         tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
