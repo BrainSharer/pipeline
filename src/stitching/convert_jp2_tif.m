@@ -1,5 +1,5 @@
-INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD591/preps/jp2';
-OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD591/preps/tif';
+INPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD635/preps/jp2';
+OUTPUT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MD635/preps/tif';
 % Check to make sure that folder actually exists.  Warn user if it doesn't.
 if ~isfolder(INPUT)
   fprintf(1, 'Directory missing %.s\n', INPUT);
@@ -36,9 +36,10 @@ for k = 1 : length(theFiles)
   setTag(t, tagstruct);
   try
     write(t, img);
-  catch
+  catch e
     fprintf(1, 'Error writing %s failed\n', filepath);  
-  end
+    fprintf(1,'The identifier was:\n%s',e.identifier);
+    fprintf(1,'There was an error! The message was:\n%s',e.message);  end
   close(t);
   end
 end
