@@ -7,7 +7,7 @@ import os
 import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
-from taskqueue.taskqueue import LocalTaskQueue
+from taskqueue.taskqueue import LocalTaskQueue, TaskQueue
 import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 import numpy as np
@@ -43,7 +43,7 @@ class MeshPipeline():
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        self.mips = [0]
+        self.mips = [0,1,2]
         self.mesh_mip = 1
         self.max_simplification_error = 50
         xy = self.sqlController.scan_run.resolution * 1000
@@ -183,17 +183,19 @@ class MeshPipeline():
         # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
+        # larger shape results in less files
 
         s = int(448*1)
         shape = [s, s, s]
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
-                                        shape=shape, 
-                                        compress=True, 
-                                        sharded=False, 
-                                        max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
+        for mip in self.mips:
+            print(f'and mesh with shape={shape} at mip={mip} without shards')
+            tasks = tc.create_meshing_tasks(self.layer_path, mip=mip, 
+                                            shape=shape, 
+                                            compress=True, 
+                                            sharded=False,
+                                            max_simplification_error=40) # The first phase of creating mesh
+            tq.insert(tasks)
+            tq.execute()
 
         # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
         # must return HTTP/1.1 206 Partial Content
@@ -219,9 +221,10 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = 0
+        LOD = 1
         print(f'Creating unsharded multires task with LOD={LOD}')
-        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, min_chunk_size=[64, 64, 64])
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
