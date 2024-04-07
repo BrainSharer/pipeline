@@ -22,7 +22,7 @@ for k = 1 : length(theFiles)
     fprintf(1, 'File exists %s\n', filepath);  
   else
     % File does not exist so write
-    fprintf(1, 'Writing to %s\n', filepath);  
+    fprintf(1, 'Writing to %s\t', strcat(basename,'.tif'));  
     img = imread(fullFileName);
     try
       imwrite(img, filepath );
