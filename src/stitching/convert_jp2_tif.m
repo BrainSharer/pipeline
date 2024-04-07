@@ -28,6 +28,8 @@ for k = 1 : length(theFiles)
       imwrite(img, filepath );
     catch e1
       fprintf(1, 'Error writing %s failed\n', filepath);  
+      fprintf(1,'Error is 1st catch: %s\n',e1.message);  
+      fprintf(1,'1st identifier was: %s\n',e1.identifier);
       t = Tiff(filepath, 'w');
       tagstruct.ImageLength = size(img, 1);
       tagstruct.ImageWidth = size(img, 2);
@@ -41,8 +43,8 @@ for k = 1 : length(theFiles)
         write(t, img);
       catch e2
         fprintf(1, 'Error writing tif %s failed\n', filepath);  
-        fprintf(1,'The identifier was:\n%s',e.identifier);
-        fprintf(1,'There was an error! The message was:\n%s',e.message);  
+        fprintf(1,'Error is 2nd catch: %s\n',e2.message);  
+        fprintf(1,'2nd identifier was: %s\n',e2.identifier);
       end % end nested catch
       close(t);
     end

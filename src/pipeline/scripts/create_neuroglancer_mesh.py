@@ -197,6 +197,7 @@ class MeshPipeline():
         tq.insert(tasks)
         tq.execute()
 
+
         # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
         # must return HTTP/1.1 206 Partial Content
         # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
