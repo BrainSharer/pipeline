@@ -27,27 +27,29 @@ for k = 1 : length(theFiles)
     try
       imwrite(img, filepath );
     catch e1
-      fprintf(1, 'Error writing %s failed\n', filepath);  
-      fprintf(1,'Error is 1st catch: %s\n',e1.message);  
+      fprintf(1, 'imwrite error: %s\n', filepath);  
+      fprintf(1,'Error in 1st catch: %s\n',e1.message);  
       fprintf(1,'1st identifier was: %s\n',e1.identifier);
       t = Tiff(filepath, 'w');
       tagstruct.ImageLength = size(img, 1);
       tagstruct.ImageWidth = size(img, 2);
       tagstruct.Photometric = Tiff.Photometric.RGB;
       tagstruct.BitsPerSample = 16;
-      tagstruct.SamplesPerPixel = 3;
+      tagstruct.SamplesPerPixel = size(img, 3);
       tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
-      tagstruct.Software = 'MATLAB';
+      tagstruct.Compression = Tiff.Compression.LZW;
+      tagstruct.RowsPerStrip = 32;
       setTag(t, tagstruct);
       try
         write(t, img);
       catch e2
-        fprintf(1, 'Error writing tif %s failed\n', filepath);  
-        fprintf(1,'Error is 2nd catch: %s\n',e2.message);  
+        fprintf(1, 'tiff write error %s\n', filepath);  
+        fprintf(1,'Error in 2nd catch: %s\n',e2.message);  
         fprintf(1,'2nd identifier was: %s\n',e2.identifier);
       end % end nested catch
       close(t);
-    end
+    end % end 1st catch
+    fprintf(1, 'Wrote %s\n', filepath);  
   end % end if file exists
 
 end % end loop
