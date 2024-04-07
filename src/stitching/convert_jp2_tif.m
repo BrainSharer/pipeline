@@ -18,28 +18,34 @@ for k = 1 : length(theFiles)
   [~, basename, ~] = fileparts(fullFileName);
   filepath = fullfile(OUTPUT, strcat(basename,'.tif'));
   if isfile(filepath)
-    % File exists.
+    % File exists so do not write.
     fprintf(1, 'File exists %s\n', filepath);  
   else
-  % File does not exist.
-  fprintf(1, 'Writing to %s\n', filepath);  
-  img = imread(fullFileName);
-  % imwrite(img, filepath );
-  t = Tiff(filepath, 'w');
-  tagstruct.ImageLength = size(img, 1);
-  tagstruct.ImageWidth = size(img, 2);
-  tagstruct.Photometric = Tiff.Photometric.RGB;
-  tagstruct.BitsPerSample = 16;
-  tagstruct.SamplesPerPixel = 3;
-  tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
-  tagstruct.Software = 'MATLAB';
-  setTag(t, tagstruct);
-  try
-    write(t, img);
-  catch e
-    fprintf(1, 'Error writing %s failed\n', filepath);  
-    fprintf(1,'The identifier was:\n%s',e.identifier);
-    fprintf(1,'There was an error! The message was:\n%s',e.message);  end
-  close(t);
-  end
-end
+    % File does not exist so write
+    fprintf(1, 'Writing to %s\n', filepath);  
+    img = imread(fullFileName);
+    try
+      imwrite(img, filepath );
+    catch e1
+      fprintf(1, 'Error writing %s failed\n', filepath);  
+      t = Tiff(filepath, 'w');
+      tagstruct.ImageLength = size(img, 1);
+      tagstruct.ImageWidth = size(img, 2);
+      tagstruct.Photometric = Tiff.Photometric.RGB;
+      tagstruct.BitsPerSample = 16;
+      tagstruct.SamplesPerPixel = 3;
+      tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
+      tagstruct.Software = 'MATLAB';
+      setTag(t, tagstruct);
+      try
+        write(t, img);
+      catch e2
+        fprintf(1, 'Error writing tif %s failed\n', filepath);  
+        fprintf(1,'The identifier was:\n%s',e.identifier);
+        fprintf(1,'There was an error! The message was:\n%s',e.message);  
+      end % end nested catch
+      close(t);
+    end
+  end % end if file exists
+
+end % end loop

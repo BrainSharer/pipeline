@@ -187,15 +187,15 @@ class MeshPipeline():
 
         s = int(448*1)
         shape = [s, s, s]
-        for mip in self.mips:
-            print(f'and mesh with shape={shape} at mip={mip} without shards')
-            tasks = tc.create_meshing_tasks(self.layer_path, mip=mip, 
-                                            shape=shape, 
-                                            compress=True, 
-                                            sharded=False,
-                                            max_simplification_error=40) # The first phase of creating mesh
-            tq.insert(tasks)
-            tq.execute()
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip) # The first phase of creating mesh
+        bigtasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
+                                        shape=shape, 
+                                        compress=True, 
+                                        sharded=False,
+                                        max_simplification_error=40) # The first phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
 
         # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
         # must return HTTP/1.1 206 Partial Content
@@ -221,10 +221,9 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = 2
+        LOD = 0
         print(f'Creating unsharded multires task with LOD={LOD}')
         tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
