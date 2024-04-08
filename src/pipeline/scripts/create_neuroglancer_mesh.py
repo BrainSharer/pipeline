@@ -185,15 +185,14 @@ class MeshPipeline():
         # at scale=5, shape=128 did not work but 128*2 did
         # larger shape results in less files
 
-        s = int(448*1)
+        s = int(64*1)
         shape = [s, s, s]
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip) # The first phase of creating mesh
-        bigtasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
                                         sharded=False,
-                                        max_simplification_error=40) # The first phase of creating mesh
+                                        max_simplification_error=50) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
@@ -223,6 +222,7 @@ class MeshPipeline():
 
         LOD = 0
         print(f'Creating unsharded multires task with LOD={LOD}')
+
         tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
