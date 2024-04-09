@@ -73,6 +73,7 @@ function write3Dtiff(img, outpath)
   tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
   tagstruct.BitsPerSample = bitsPerSample;
   tagstruct.SampleFormat = sampleFormat;
+  tagstruct.RowsPerStrip = 32;
   
   if any(dims(3) == [3 4]) % assume these are RGB/RGBA
       tagstruct.Photometric = Tiff.Photometric.RGB;
