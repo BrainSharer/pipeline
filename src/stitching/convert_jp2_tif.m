@@ -73,8 +73,9 @@ function write3Dtiff(img, outpath)
   tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
   tagstruct.BitsPerSample = bitsPerSample;
   tagstruct.SampleFormat = sampleFormat;
-  tagstruct.RowsPerStrip = 32;
-  
+  % tagstruct.RowsPerStrip = 32;
+  tagstruct.TileLength = 256;
+  tagstruct.TileWidth = 256;  
   if any(dims(3) == [3 4]) % assume these are RGB/RGBA
       tagstruct.Photometric = Tiff.Photometric.RGB;
   else % otherwise assume it's I/IA or volumetric
@@ -91,11 +92,11 @@ function write3Dtiff(img, outpath)
   t.setTag(tagstruct);
   try
     write(t, img);
+    fprintf(1, 'Wrote %s\n', outpath);  
   catch write_exception
     fprintf(1, 'tiff write error %s\n', outpath);  
     fprintf(1,'Error in catch: %s\n', write_exception.message);  
     fprintf(1,'Error identifier: %s\n', write_exception.identifier);
   end % end write catch
   close(t);
-  fprintf(1, 'Wrote %s\n', outpath);  
 end
