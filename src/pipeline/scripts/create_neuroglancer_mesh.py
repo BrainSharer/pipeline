@@ -15,7 +15,7 @@ import numpy as np
 np.seterr(all="ignore")
 from pathlib import Path
 from timeit import default_timer as timer
-
+from shutil import move
 import faulthandler
 import signal
 faulthandler.register(signal.SIGUSR1.value)
@@ -185,13 +185,13 @@ class MeshPipeline():
         # at scale=5, shape=128 did not work but 128*2 did
         # larger shape results in less files
 
-        s = int(64*1)
+        s = int(128*1)
         shape = [s, s, s]
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
-                                        sharded=False,
+                                        sharded=True,
                                         max_simplification_error=50) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
@@ -220,10 +220,17 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = 0
-        print(f'Creating unsharded multires task with LOD={LOD}')
+        LOD = 10
+        print(f'Creating sharded multires task with LOD={LOD}')
+        #tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        #mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
+        #singleres_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_single')
+        multi_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_multi')
+        #move(mesh_path, singleres_path)
+        multi_path = f"file://{self.mesh_dir}"
 
-        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        #tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=self.layer_path, dest=self.layer_path, mip=self.mesh_mip, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
