@@ -10,6 +10,7 @@ import ome_zarr
 from ome_zarr.writer import write_multiscale
 import zarr
 import dask.array as da
+import numpy as np
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -60,7 +61,7 @@ def create_omezarr(animal, downsample, debug):
         storefile = 'C1.zarr'
         scaling_factor = 1
         INPUT = os.path.join(fileLocationManager.prep, 'C1', 'full_aligned')
-        mips = [0,1]
+        mips = [0,1,2,3,4]
     if not os.path.exists(INPUT):
         print(f'Missing: {INPUT}')
         sys.exit()
@@ -71,11 +72,11 @@ def create_omezarr(animal, downsample, debug):
 
     axes = [
         {
-            "name": "z",
+            "name": "x",
             "type": "space",
             "unit": "micrometer",
-            "coarsen": 1,
-            "resolution": z_resolution,
+            "coarsen": 2,
+            "resolution": xy_resolution * scaling_factor,
         },
         {
             "name": "y",
@@ -85,15 +86,16 @@ def create_omezarr(animal, downsample, debug):
             "resolution": xy_resolution * scaling_factor,
         },
         {
-            "name": "x",
+            "name": "z",
             "type": "space",
             "unit": "micrometer",
-            "coarsen": 2,
-            "resolution": xy_resolution * scaling_factor,
-        },
+            "coarsen": 1,
+            "resolution": z_resolution,
+        }
     ]
     axis_scales = [a["coarsen"] for a in axes]
     stacked = imreads(INPUT)
+    stacked = np.swapaxes(stacked, 0,2)
     print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
 
     start_time = timer()
@@ -102,7 +104,7 @@ def create_omezarr(animal, downsample, debug):
     trimto = 8
     new_shape = aligned_coarse_chunks(old_shape, trimto)
     print('new shape', new_shape)
-    stacked = stacked[:, 0:new_shape[1], 0:new_shape[2]]
+    stacked = stacked[0:new_shape[0], 0:new_shape[1], :]
     oldchunk_size = stacked.chunksize
     #stacked = stacked.rechunk('auto')
     axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2]}
@@ -123,10 +125,6 @@ def create_omezarr(animal, downsample, debug):
 
     n_levels = len(downsampled_stack)
     transformations = get_transformations(axes, n_levels)
-    if downsample:
-        trimto = trimto
-    else:
-        trimto = int(SCALING_FACTOR)
     storage_opts = {'chunks': [64,64,64]}
     
     meta_data = get_meta_data(

@@ -15,7 +15,7 @@ import numpy as np
 np.seterr(all="ignore")
 from pathlib import Path
 from timeit import default_timer as timer
-from shutil import move
+from shutil import move, rmtree
 import faulthandler
 import signal
 faulthandler.register(signal.SIGUSR1.value)
@@ -36,10 +36,10 @@ from library.utilities.utilities_process import get_cpus
 
 class MeshPipeline():
 
-    def __init__(self, animal, scaling_factor, debug):
+    def __init__(self, animal, scale, debug):
 
         self.animal = animal
-        self.scaling_factor = scaling_factor
+        self.scale = scale
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
@@ -48,8 +48,8 @@ class MeshPipeline():
         self.max_simplification_error = 50
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
-        xy *=  self.scaling_factor
-        z *= self.scaling_factor
+        xy *=  self.scale
+        z *= self.scale
         self.scales = (int(xy), int(xy), int(z))
         # start with big size chunks to cut down on the number of files created
         self.chunk = 512
@@ -59,10 +59,10 @@ class MeshPipeline():
             data_type=MESHDTYPE, chunk_size=self.chunks)
 
         # dirs
-        self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scaling_factor}')
+        self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scale}')
         self.layer_path = f'file://{self.mesh_dir}'
-        self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_input_{self.scaling_factor}')
-        self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scaling_factor}')
+        self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_input_{self.scale}')
+        self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
         # make dirs
         os.makedirs(self.mesh_input_dir, exist_ok=True)
@@ -82,7 +82,7 @@ class MeshPipeline():
         ids, counts = np.unique(midfile, return_counts=True)
         self.ids = ids.tolist()
         height, width = midfile.shape
-        self.volume_size = (width//self.scaling_factor, height//self.scaling_factor, len_files // self.scaling_factor) # neuroglancer is width, height
+        self.volume_size = (width//self.scale, height//self.scale, len_files // self.scale) # neuroglancer is width, height
         self.files = files
         self.midpoint = midpoint
         self.midfile = midfile
@@ -103,19 +103,19 @@ class MeshPipeline():
             len_files = len(files)
 
         print(f'\nMidfile: dtype={self.midfile.dtype}, shape={self.midfile.shape}, ids={self.ids}, counts={self.counts}')
-        print(f'Scaling factor={scaling_factor}, volume size={self.volume_size} with dtype={MESHDTYPE}, scales={self.scales}')
+        print(f'Scaling factor={scale}, volume size={self.volume_size} with dtype={MESHDTYPE}, scales={self.scales}')
         print(f'Initial chunks at {self.chunks} and chunks for downsampling=({self.chunk},{self.chunk},{self.chunk})\n')
 
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
 
         file_keys = []
         index = 0
-        for i in range(0, len_files, scaling_factor):
-            if index == len_files // scaling_factor:
+        for i in range(0, len_files, scale):
+            if index == len_files // scale:
                 print(f'breaking at index={index}')
                 break
             infile = os.path.join(self.input, self.files[i])            
-            file_keys.append([index, infile, (self.volume_size[1], self.volume_size[0]), self.progress_dir, self.scaling_factor])
+            file_keys.append([index, infile, (self.volume_size[1], self.volume_size[0]), self.progress_dir, self.scale])
             index += 1
 
         _, cpus = get_cpus()
@@ -185,13 +185,13 @@ class MeshPipeline():
         # at scale=5, shape=128 did not work but 128*2 did
         # larger shape results in less files
 
-        s = int(128*1)
+        s = int(64*1)
         shape = [s, s, s]
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
-                                        sharded=True,
+                                        sharded=False,
                                         max_simplification_error=50) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
@@ -223,17 +223,30 @@ class MeshPipeline():
         LOD = 10
         print(f'Creating sharded multires task with LOD={LOD}')
         #tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         #mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
         #singleres_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_single')
         multi_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_multi')
         #move(mesh_path, singleres_path)
-        multi_path = f"file://{self.mesh_dir}"
+        tmp_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'tmp')
+        if os.path.exists(tmp_dir):
+            print(f'Removing stale {tmp_dir}')
+            rmtree(tmp_dir)
+        tmp_path = f"file://{tmp_dir}"
 
-        #tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=self.layer_path, dest=self.layer_path, mip=self.mesh_mip, num_lod=LOD)
+        tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=self.layer_path, dest=tmp_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
+        # move tmp data to regular dir
+        mesh_path = f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}'
+        src = os.path.join(tmp_dir, mesh_path)
+        dst = os.path.join(self.mesh_dir, mesh_path)
+        rmtree(dst)
+        move(src, dst)
+
+                           
+                           
 
     def process_skeleton(self):
         ##### skeleton
@@ -247,7 +260,7 @@ class MeshPipeline():
 
     def check_status(self):
         dothis = ""
-        section_count = len(self.files) // self.scaling_factor
+        section_count = len(self.files) // self.scale
         processed_count = len(os.listdir(self.progress_dir))
         if section_count != processed_count and section_count > 0:
             dothis = "File count does not equal processed file count\n"
@@ -273,7 +286,7 @@ class MeshPipeline():
         result2 = os.path.join(mesh_path, '1.index')
 
         if os.path.exists(result1) and os.path.exists(result2):
-            print(f'Mesh creation is complete for animal={self.animal} at scale={scaling_factor}')
+            print(f'Mesh creation is complete for animal={self.animal} at scale={scale}')
         else:
             print('Mesh is not complete.')
 
@@ -282,7 +295,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
     parser.add_argument('--limit', help='Enter the # of files to test', required=False, default=0)
-    parser.add_argument('--scaling_factor', help='Enter an integer that will be the denominator', required=False, default=1)
+    parser.add_argument('--scale', help='Enter an integer that will be the denominator', required=False, default=1)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
     parser.add_argument("--debug", help="debug", required=False, default=False)
     parser.add_argument(
@@ -296,12 +309,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     animal = args.animal
     limit = int(args.limit)
-    scaling_factor = int(args.scaling_factor)
+    scale = int(args.scale)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     
-    pipeline = MeshPipeline(animal, scaling_factor, debug=debug)
+    pipeline = MeshPipeline(animal, scale, debug=debug)
 
     function_mapping = {
         "stack": pipeline.process_stack,
