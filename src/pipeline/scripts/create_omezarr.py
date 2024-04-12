@@ -16,7 +16,7 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.utilities.utilities_process import SCALING_FACTOR
-from library.utilities.dask_utilities import aligned_coarse_chunks, get_transformations, imreads, mean_dtype
+from library.utilities.dask_utilities import aligned_coarse_chunks, get_transformations, imreads, mean_dtype, load_stack
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 
@@ -94,10 +94,11 @@ def create_omezarr(animal, downsample, debug):
         }
     ]
     axis_scales = [a["coarsen"] for a in axes]
-    stacked = imreads(INPUT)
+    #stacked = imreads(INPUT)
+    stacked = load_stack(INPUT)
     stacked = np.swapaxes(stacked, 0,2)
     print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
-
+    
     start_time = timer()
     downscale_start_time = timer()
     old_shape = stacked.shape
