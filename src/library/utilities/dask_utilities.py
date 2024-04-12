@@ -7,7 +7,7 @@ import toolz as tz
 from skimage.io import imread
 from typing import List
 #import dask_image
-import dask_image.imread
+from dask import delayed
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -26,13 +26,28 @@ def _find_shape(file_sequence):
 
 
 def load_stack(INPUT):
+    lazyimread = delayed(imread, pure=True)  # Lazy version of imread
     files = sorted(os.listdir(INPUT))
     if len(files) == 0:
         raise ValueError(f'no files found at path {INPUT}.')
-    filename_pattern = f'{INPUT}/*.tif'
-    x = dask_image.imread.imread(filename_pattern)
-    #x = dask_image.imread.imread('raw/*.tif')
-    return x
+    
+    len_files = len(files)
+    midpoint = len_files // 2
+    infile = os.path.join(INPUT, files[midpoint])
+    midfile = imread(infile)
+
+    lazy_values = []
+    for file in files:
+        filepath = os.path.join(INPUT, file)
+        lazy_values.append(lazyimread(filepath))
+
+    arrays = [da.from_delayed(lazy_value,           # Construct a small Dask array
+                          dtype=midfile.dtype,   # for every lazy value
+                          shape=midfile.shape)
+          for lazy_value in lazy_values]
+
+    return da.stack(arrays, axis=0)  
+
 
 def imreads(root, pattern='*.tif'):
     """Read images from root (heh) folder.
