@@ -98,7 +98,6 @@ def create_omezarr(animal, downsample, debug):
     stacked = load_stack(INPUT)
     stacked = np.swapaxes(stacked, 0,2)
     print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
-    
     start_time = timer()
     downscale_start_time = timer()
     old_shape = stacked.shape
