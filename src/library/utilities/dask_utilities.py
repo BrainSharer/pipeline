@@ -8,6 +8,7 @@ from skimage.io import imread
 from typing import List
 #import dask_image
 from dask import delayed
+from tqdm import tqdm
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -37,7 +38,7 @@ def load_stack(INPUT):
     midfile = imread(infile)
 
     lazy_values = []
-    for file in files:
+    for file in tqdm(files):
         filepath = os.path.join(INPUT, file)
         lazy_values.append(lazyimread(filepath))
 
@@ -45,7 +46,12 @@ def load_stack(INPUT):
                           dtype=midfile.dtype,   # for every lazy value
                           shape=midfile.shape)
           for lazy_value in lazy_values]
-
+    
+    arrays = []
+    for lazy_value in tqdm(lazy_values):
+        arr = da.from_delayed(lazy_value, dtype=midfile.dtype, shape=midfile.shape)
+        arrays.append(arr)
+    print('Finished created dask stack')
     return da.stack(arrays, axis=0)  
 
 
