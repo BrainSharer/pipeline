@@ -1,10 +1,13 @@
 """Read nested directories of images into an n-dimensional array."""
+import os
 from pathlib import Path
 import dask.array as da
 import numpy as np
 import toolz as tz
 from skimage.io import imread
 from typing import List
+#import dask_image
+import dask_image.imread
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -21,6 +24,15 @@ def _find_shape(file_sequence):
     else:
         return _find_shape(parents) + (n_total // n_parents,)
 
+
+def load_stack(INPUT):
+    files = sorted(os.listdir(INPUT))
+    if len(files) == 0:
+        raise ValueError(f'no files found at path {INPUT}.')
+    filename_pattern = f'{INPUT}/*.tif'
+    x = dask_image.imread.imread(filename_pattern)
+    #x = dask_image.imread.imread('raw/*.tif')
+    return x
 
 def imreads(root, pattern='*.tif'):
     """Read images from root (heh) folder.
