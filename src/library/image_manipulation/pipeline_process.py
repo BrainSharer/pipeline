@@ -23,6 +23,7 @@ from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
+from library.omezarr.omezarr_manager import OmeZarrManager
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
 from library.database_model.scan_run import IMAGE_MASK
@@ -48,7 +49,8 @@ class Pipeline(
     ElastixManager,
     NgPrecomputedMaker,
     FileLogger,
-    CellMaker
+    CellMaker,
+    OmeZarrManager
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -62,6 +64,7 @@ class Pipeline(
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
+    TASK_OMEZARR = "Creating multiscaled ome zarr"
 
     def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR,  
                  task='status', debug=False):
@@ -200,6 +203,11 @@ class Pipeline(
         self.create_neuroglancer()
         self.create_downsamples()
         print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+    def omezarr(self):
+        print(self.TASK_OMEZARR)
+        self.create_omezarr()
+        print(f'Finished {self.TASK_OMEZARR}.')
 
     def cell_labels(self):
         """

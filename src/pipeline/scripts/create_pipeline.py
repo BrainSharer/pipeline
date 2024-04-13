@@ -135,6 +135,7 @@ if __name__ == "__main__":
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
         "cell_labels": pipeline.cell_labels,
+        "omezarr": pipeline.omezarr,
         "status": pipeline.check_status,
     }
 

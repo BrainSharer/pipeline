@@ -1,4 +1,5 @@
 """Read nested directories of images into an n-dimensional array."""
+import math
 import os
 from pathlib import Path
 import dask.array as da
@@ -8,7 +9,9 @@ from skimage.io import imread
 from typing import List
 #import dask_image
 from dask import delayed
-from tqdm import tqdm
+import zarr
+
+from library.utilities.tiff_manager import tiff_manager_3d
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -38,7 +41,7 @@ def load_stack(INPUT):
     midfile = imread(infile)
 
     lazy_values = []
-    for file in tqdm(files):
+    for file in files:
         filepath = os.path.join(INPUT, file)
         lazy_values.append(lazyimread(filepath))
 
@@ -47,10 +50,6 @@ def load_stack(INPUT):
                           shape=midfile.shape)
           for lazy_value in lazy_values]
     
-    arrays = []
-    for lazy_value in tqdm(lazy_values):
-        arr = da.from_delayed(lazy_value, dtype=midfile.dtype, shape=midfile.shape)
-        arrays.append(arr)
     print('Finished created dask stack')
     return da.stack(arrays, axis=0)  
 
