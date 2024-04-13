@@ -96,7 +96,6 @@ class tiff_manager_3d:
         assert isinstance(fileList, (list, tuple))
         self.fileList = fileList
         self.ext = os.path.splitext(fileList[0])[-1]
-
         img = self._get_tiff_zarr_array(0)        
         self.shape = img.shape
         self.nbytes = img.nbytes

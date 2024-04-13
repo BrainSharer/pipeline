@@ -80,11 +80,11 @@ class _builder_multiscale_generator:
     def write_resolution_0(self,client):
 
         print('Building Virtual Stack')
-        stack = []
+        channel_stack = []
         print(f'len fileslist={len(self.filesList)}')
 
-        for color in self.filesList:
-            s = self.organize_by_groups(color, self.originalChunkSize[2])
+        for channel in self.filesList:
+            s = self.organize_by_groups(channel, self.originalChunkSize[2])
             test_image = tiff_manager_3d(s[0])
             print(f'testimage type={type(test_image)}')
             print(f's0 type={type(s[0])}')
@@ -92,29 +92,38 @@ class _builder_multiscale_generator:
             optimum_chunks = optimize_chunk_shape_3d_2(
                 test_image.shape,
                 test_image.chunks,
-                self.originalChunkSize[2:],
+                #####self.originalChunkSize[2:],
+                self.originalChunkSize,
                 test_image.dtype,
                 self.res0_chunk_limit_GB,
             )
             test_image.chunks = optimum_chunks
             print('##########################')
+            print(f'test image shape={test_image.shape}  dtype={test_image.dtype}')
             print(f'optimum_chunks', optimum_chunks)
 
             s = [test_image.clone_manager_new_file_list(x) for x in s]
+            print('point 1')
             s = [
                 da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s
             ]
+            print('point 2')
             s = da.concatenate(s)
-            stack.append(s)
+            print(f'type s={type(s)} shape s={s.shape}')
+            print('point 3')
+            channel_stack.append(s)
+            print('point 4')
 
-        print(f'len stack after loop={len(stack)}')
-        import sys
-        sys.exit()
-        stack = da.stack(stack)
-        stack = stack[None, ...]
+        stack = da.concatenate(channel_stack)
+        #stack = stack[None, ...]
+        print('point 5')
+
+        print(f'stack shape={stack.shape} ndim={stack.ndim}')
+        #import sys
+        #sys.exit()
         store = self.get_store(0)
         z = zarr.zeros(
-            stack.shape,
+            [479, 1046, 1796],
             chunks=self.originalChunkSize,
             store=store,
             overwrite=True,
@@ -122,10 +131,13 @@ class _builder_multiscale_generator:
             dtype=stack.dtype,
         )
         to_store = da.store(stack, z, lock=False, compute=False)
+        print('point 7')
         to_store = client.compute(to_store)
+        print('point 8')
         if self.progress:
             progress(to_store)
         to_store = client.gather(to_store)
+        print('point 9')
 
     def down_samp(self,res,client, minmax=False):
 
