@@ -258,9 +258,12 @@ class _builder_utils:
 
         '''
         out_shape = self.shape_3d
-        chunk = self.originalChunkSize[2:]
-        final_chunk_size = self.finalChunkSize[2:]
-        resolution = self.geometry[2:]
+        #####chunk = self.originalChunkSize[2:]
+        #####final_chunk_size = self.finalChunkSize[2:]
+        #####resolution = self.geometry[2:]
+        chunk = self.originalChunkSize
+        final_chunk_size = self.finalChunkSize
+        resolution = self.geometry
         #resolution = self.geometry
         
 
@@ -270,7 +273,6 @@ class _builder_utils:
             print(k,v)
 
         
-
         # Make sure chunks are adjusted in the approriate way
         # ie getting bigger or smaller with each level
         # Assuming (z,y,x): z will change by fac of 4, y,x by fac of 2
