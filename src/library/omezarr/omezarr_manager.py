@@ -42,7 +42,7 @@ class OmeZarrManager():
         omezarr_builder = OmeZarrBuilder(
             INPUT,
             OUTPUT,
-            geometry=scales,
+            scales=scales,
             originalChunkSize=originalChunkSize,
             finalChunkSize=finalChunkSize,
             cpu_cores=cpu_cores,

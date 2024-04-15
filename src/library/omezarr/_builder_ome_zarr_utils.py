@@ -34,8 +34,6 @@ class _builder_ome_zarr_utils:
             ]
             
 
-        for k,v in self.pyramidMap.items():
-            print(k,v)
         datasets = [] 
         for res in self.pyramidMap:
             scale = {}

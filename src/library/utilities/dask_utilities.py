@@ -4,14 +4,19 @@ import os
 from pathlib import Path
 import dask.array as da
 import numpy as np
+import tifffile
 import toolz as tz
 from skimage.io import imread
 from typing import List
 #import dask_image
-from dask import delayed
 import zarr
+from dask.delayed import delayed
+import dask.array as da
+from distributed import Client, progress, performance_report
 
-from library.utilities.tiff_manager import tiff_manager_3d
+from library.omezarr.tiff_manager import tiff_manager_3d
+
+#from library.utilities.tiff_manager import tiff_manager_3d
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
@@ -147,3 +152,68 @@ def get_xy_chunk() -> int:
     xy_chunk = (target_chunk_size_mb*10**6 / byte_per_pixel / z_section_chunk)**(1/2) #1MB / BYTES PER PIXEL / kui_constant, SPLIT (SQUARE ROOT) BETWEEN LAST 2 DIMENSIONS
 
     return int(xy_chunk)
+
+    
+def write_mip_series(INPUT, store):
+    '''
+    Make downsampled versions of dataset based on pyramidMap
+    Requies that a dask.distribuited client be passed for parallel processing
+    '''
+    with Client(n_workers=8,threads_per_worker=4) as client:
+        write_first_mip(INPUT, store, client)
+
+def get_tiff_zarr_array(filepaths):
+    with tifffile.imread(filepaths, aszarr=True) as store:
+        return zarr.open(store)
+
+def open_store(res, mode="a"):
+    try:
+        return zarr.open(get_store(res, mode=mode))
+    except Exception as ex:
+        print('Exception opening zarr store')
+        print(ex)
+
+def get_store(storepath, res, mode="a"):
+    return get_store_from_path(os.path.join(storepath, f'scale{res}'), mode=mode)
+
+def get_store_from_path(path, mode="a"):
+    store = zarr.storage.NestedDirectoryStore(path)
+    return store
+
+
+def write_first_mip(INPUT, storepath, client):
+
+    print('Building Virtual Stack')
+    filepaths = []
+    files = sorted(os.listdir(INPUT))
+    for file in files:
+        filepath = os.path.join(INPUT, file)
+        filepaths.append(filepath)
+
+    s = get_tiff_zarr_array(filepaths)
+
+
+
+    # s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
+    print(f'Length of file list is {len(s)}')
+    # print(s[-3].chunks)
+    print('From_array')
+    print(s[0].dtype)
+    #s = [da.from_array(x,chunks=x.chunks,name=False,asarray=False) for x in s]
+    s = [da.from_array(x) for x in s]
+    #s = da.concatenate(s)
+    tiff_stack = da.stack(s)
+    #stack.append(s)
+    #stack = da.stack(s)
+    #stack = stack[None,...]
+
+
+    print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)}')
+    chunks = [64,64,64]
+    store = get_store(storepath, 0)
+    z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
+
+    # print(client.run(lambda: os.environ["HDF5_USE_FILE_LOCKING"]))
+    to_store = da.store(tiff_stack, z, lock=False, compute=False)
+    to_store = client.compute(to_store)
+    to_store = client.gather(to_store)

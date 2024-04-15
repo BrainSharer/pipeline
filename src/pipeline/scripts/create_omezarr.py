@@ -16,7 +16,7 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.utilities.utilities_process import SCALING_FACTOR
-from library.utilities.dask_utilities import aligned_coarse_chunks, get_transformations, imreads, mean_dtype, load_stack, write_resolution_0
+from library.utilities.dask_utilities import aligned_coarse_chunks, get_transformations, mean_dtype, write_mip_series
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 
@@ -71,7 +71,6 @@ def create_omezarr(animal, downsample, debug):
         sys.exit()
     # Open the zarr group manually
     storepath = os.path.join(fileLocationManager.www, 'neuroglancer_data', storefile)
-    store = zarr.NestedDirectoryStore(storepath)
 
     axes = [
         {
@@ -99,9 +98,10 @@ def create_omezarr(animal, downsample, debug):
     axis_scales = [a["coarsen"] for a in axes]
     #stacked = imreads(INPUT)
     #stacked = load_stack(INPUT)
-    stacked = write_resolution_0(INPUT, store)
+    write_mip_series(INPUT, storepath)
     #stacked = np.swapaxes(stacked, 0,2)
-    print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
+    #print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
+    print('Fini')
     return
     start_time = timer()
     downscale_start_time = timer()

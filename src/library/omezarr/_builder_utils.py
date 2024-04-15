@@ -158,10 +158,10 @@ class _builder_utils:
         out_shape = self.shape_3d
         chunk = self.originalChunkSize[2:]
         final_chunk_size = self.finalChunkSize[2:]
-        resolution = self.geometry[2:]
-        #TODOchunk = self.originalChunkSize
-        #TODOfinal_chunk_size = self.finalChunkSize
-        #TODOresolution = self.geometry
+        resolution = self.scales[2:]
+        # TODOchunk = self.originalChunkSize
+        # TODOfinal_chunk_size = self.finalChunkSize
+        # TODOresolution = self.scales
 
         # pyramidMap = {0:[out_shape,chunk]}
         pyramidMap = {0: [out_shape, chunk, resolution, (1, 1, 1)]}
@@ -215,7 +215,6 @@ class _builder_utils:
 
             pyramidMap[current_pyramid_level] = [out_shape,chunk,res,(2,2,2)]
 
-
             # stop if any shape dimension is below 1 then delete pyramid level
             if any([x<2 for x in out_shape]):
                 del pyramidMap[current_pyramid_level]
@@ -260,15 +259,13 @@ class _builder_utils:
         out_shape = self.shape_3d
         chunk = self.originalChunkSize[2:]
         final_chunk_size = self.finalChunkSize[2:]
-        resolution = self.geometry[2:]
-        #TODOchunk = self.originalChunkSize
-        #TODOfinal_chunk_size = self.finalChunkSize
-        #TODOresolution = self.geometry
+        resolution = self.scales[2:]
+        # TODOchunk = self.originalChunkSize
+        # TODOfinal_chunk_size = self.finalChunkSize
+        # TODOresolution = self.scales
 
         # pyramidMap = {res_lev:[shape,chunk_size,resolution,downsamp_factor]}
         pyramidMap = {0: [out_shape, chunk, resolution, (1, 1, 1)]}
-        for k, v in pyramidMap.items():
-            print(k, v)
 
         # Make sure chunks are adjusted in the approriate way
         # ie getting bigger or smaller with each level
@@ -276,7 +273,7 @@ class _builder_utils:
         chunk_change = []
         for idx,s,f in zip((0,1,2),chunk,final_chunk_size):
             if idx == 0:
-                fac = 2
+                fac = 1
             else:
                 fac = 1
             if s > f:
@@ -287,12 +284,12 @@ class _builder_utils:
                 chunk_change.append(1)
 
         chunk_change = tuple(chunk_change)
-        print(chunk_change)
+        print(f'chunk change={chunk_change}')
         # chunk_change = (4,0.5,0.5)
         # chunk_change = (2,2,2)
+        #chunk_change = (1,1,1)
 
         current_pyramid_level = 0
-        print((out_shape,chunk))
 
         last_level = False
         while True:
@@ -312,8 +309,8 @@ class _builder_utils:
             ratio_below_one = ratio_of_max < 1
             down_samp = []
             res = []
-            for idx,below_half,below_one in zip((0,1,2),ratio_below_half,ratio_below_one):
-                if all(ratio_of_max == 1) or all(np.logical_and(ratio_of_max<=1, ratio_of_max>0.5)):
+            for idx, below_half, below_one in zip((0, 1, 2), ratio_below_half, ratio_below_one):
+                if all(ratio_of_max == 1) or all(np.logical_and(ratio_of_max <= 1, ratio_of_max > 0.5)):
                     new_samp = 2
                     new_res = previous_resolution[idx] * 2
                 elif below_one:
@@ -330,7 +327,7 @@ class _builder_utils:
                     new_res = previous_resolution[idx]
                 down_samp.append(new_samp)
                 res.append(new_res)
-            print(f'down_samp={down_samp}')
+            print(f"down_samp={down_samp}")
 
             # out_shape = tuple([x//2 for x in out_shape])
             out_shape = np.array(previous_shape) / np.array(down_samp)
@@ -360,7 +357,7 @@ class _builder_utils:
                         )
             chunk = tuple(tmpChunk)
 
-            pyramidMap[current_pyramid_level] = [out_shape,chunk,tuple(res),tuple(down_samp)]
+            pyramidMap[current_pyramid_level] = [out_shape, chunk, tuple(res), tuple(down_samp)]
 
             print(f'out_shape={out_shape} chunk={chunk}')
 
@@ -378,11 +375,29 @@ class _builder_utils:
 
         pyramidMap_dict = {}
         keys = ['shape','chunk','resolution','downsamp']
+        print('Pyramid map')
         for key, value in pyramidMap.items():
-            print(key, value)
             pyramidMap_dict[key] = {}
             for nk,ii in zip(keys,value):
                 pyramidMap_dict[key][nk] = ii
+        for k, v in pyramidMap_dict.items():
+            print(k,v)
+
+        pyramidMap_dictXXX = {
+            0: {'shape': (479, 1046, 1796), 'chunk': (1, 64, 64), 'resolution': (20.0, 10.4, 10.4), 'downsamp': (1, 1, 1)},
+            1: {'shape': (239, 523, 898), 'chunk': (1, 64, 64), 'resolution': (20.0, 20.8, 20.8), 'downsamp': (1, 2, 2)},
+            2: {'shape': (119, 261, 449), 'chunk': (1, 64, 64), 'resolution': (20.0, 41.6, 41.6), 'downsamp': (1, 2, 2)},
+            3: {'shape': (59, 130, 224), 'chunk': (1, 64, 64), 'resolution': (20.0, 83.2, 83.2), 'downsamp': (1, 2, 2)},
+            4: {'shape': (29, 65, 112), 'chunk': (1, 64, 64), 'resolution': (20.0, 166.4, 166.4), 'downsamp': (1, 2, 2)},
+            5: {'shape': (14, 32, 56), 'chunk': (1, 64, 64), 'resolution': (20.0, 332.8, 332.8), 'downsamp': (1, 2, 2)},
+            6: {'shape': (7, 16, 28), 'chunk': (1, 64, 64), 'resolution': (20.0, 665.6, 665.6), 'downsamp': (1, 2, 2)},
+            7: {'shape': (3, 8, 14), 'chunk': (1, 64, 64), 'resolution': (20.0, 1331.2, 1331.2), 'downsamp': (1, 2, 2)}
+        }
+        for k, v in pyramidMap_dict.items():
+            print(k,v)
+
+        #import sys
+        #sys.exit()
 
         return pyramidMap_dict
 
