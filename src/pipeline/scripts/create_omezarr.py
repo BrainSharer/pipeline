@@ -96,8 +96,6 @@ def create_omezarr(animal, downsample, debug):
         }
     ]
     axis_scales = [a["coarsen"] for a in axes]
-    #stacked = imreads(INPUT)
-    #stacked = load_stack(INPUT)
     write_mip_series(INPUT, storepath)
     #stacked = np.swapaxes(stacked, 0,2)
     #print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
