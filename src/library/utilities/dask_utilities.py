@@ -159,7 +159,7 @@ def write_mip_series(INPUT, store):
     Make downsampled versions of dataset based on pyramidMap
     Requies that a dask.distribuited client be passed for parallel processing
     '''
-    with Client(n_workers=8,threads_per_worker=4) as client:
+    with Client(n_workers=8,threads_per_worker=1) as client:
         write_first_mip(INPUT, store, client)
 
 def get_tiff_zarr_array(filepaths):
@@ -196,9 +196,6 @@ def write_first_mip(INPUT, storepath, client):
 
     # s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
     print(f'Length of file list is {len(s)}')
-    # print(s[-3].chunks)
-    print('From_array')
-    print(s[0].dtype)
     #s = [da.from_array(x,chunks=x.chunks,name=False,asarray=False) for x in s]
     s = [da.from_array(x) for x in s]
     #s = da.concatenate(s)
@@ -206,9 +203,16 @@ def write_first_mip(INPUT, storepath, client):
     #stack.append(s)
     #stack = da.stack(s)
     #stack = stack[None,...]
+    old_shape = tiff_stack.shape
+    trimto = 8
+    new_shape = aligned_coarse_chunks(old_shape, trimto)
+    tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
+    tiff_stack = tiff_stack.rechunk('auto')
 
 
-    print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)}')
+
+
+    print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
     chunks = [64,64,64]
     store = get_store(storepath, 0)
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)

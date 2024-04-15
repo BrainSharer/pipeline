@@ -103,6 +103,7 @@ def create_omezarr(animal, downsample, debug):
     #print(f'Shape of stacked: {stacked.shape} type={type(stacked)} chunk size={stacked.chunksize}')
     print('Fini')
     return
+    
     start_time = timer()
     downscale_start_time = timer()
     old_shape = stacked.shape
