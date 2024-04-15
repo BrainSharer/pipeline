@@ -37,9 +37,15 @@ class _builder_downsample:
 
         zarray = zarr.open(zstore)
 
-        working = zarray[
+        working_full = zarray[
                   info['t'],
                   info['c'],
+                  info['z'][0][0]:info['z'][0][1],
+                  info['y'][0][0]:info['y'][0][1],
+                  info['x'][0][0]:info['x'][0][1]
+                  ]
+
+        working = zarray[
                   info['z'][0][0]:info['z'][0][1],
                   info['y'][0][0]:info['y'][0][1],
                   info['x'][0][0]:info['x'][0][1]
@@ -179,7 +185,7 @@ class _builder_downsample:
             return False,
         return False,
 
-    def local_mean_downsample(self, image,down_sample_ratio=(2,2,2)):
+    def local_mean_downsample(self, image, down_sample_ratio=(2,2,2)):
         '''
                 Inputs:
                 image: 3D numpy array
@@ -189,6 +195,9 @@ class _builder_downsample:
                 3D numpy array that has been down sampled using a local mean function at ratios 1x or 2x according to the 'down_sample_ratio'
         '''
         image = img_as_float32(image)
+        print('local_mean_downsample')
+        print(f'image shape={image.shape}')
+        return np.zeros((2, 3, 4))
         canvas = np.zeros(
             (image.shape[0] // down_sample_ratio[0],
              image.shape[1] // down_sample_ratio[1],

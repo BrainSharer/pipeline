@@ -30,32 +30,20 @@ class OmeZarrBuilder(_builder_downsample,
         self,
         in_location,
         out_location,
-        fileType="tif",
         geometry=(1, 1, 20.0, 10.4, 10.4),
         originalChunkSize=(1, 1, 1, 64, 64),
         finalChunkSize=(1, 1, 32, 32, 32),
         cpu_cores=os.cpu_count(),
-        sim_jobs=4,
         mem=int((psutil.virtual_memory().free / 1024**3) * 0.8),
-        compressor=Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE),
         zarr_store_type=zarr.storage.NestedDirectoryStore,
-        writeDirect=True,
         tmp_dir="/tmp",
-        verbose=False,
-        performance_report=False,
-        progress=False,
-        verify_zarr_write=False,
+        debug=False,
         omero_dict={},
-        skip=False,
         downSampType="mean",
-        directToFinalChunks=False,
-        buildTmpCopyDestination=False,
-        multi_scale_compressor=None,
     ):
 
         self.in_location = in_location
         self.out_location = out_location
-        self.fileType = fileType
         self.geometry = tuple(geometry)
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
@@ -63,32 +51,14 @@ class OmeZarrBuilder(_builder_downsample,
         self.sim_jobs = 1
         self.workers = int(self.cpu_cores / self.sim_jobs)
         self.mem = mem
-        self.compressor = compressor
         self.zarr_store_type = zarr_store_type
-        self.writeDirect = writeDirect
         self.tmp_dir = tmp_dir
-        self.verbose = verbose
-        self.performance_report = performance_report
-        self.progress = progress
-        self.verify_zarr_write = verify_zarr_write
+        self.debug = debug
         self.omero_dict = omero_dict
-        self.skip = skip
         self.downSampType = downSampType
-        self.directToFinalChunks = directToFinalChunks
-        self.buildTmpCopyDestination = buildTmpCopyDestination
 
         # Hack to build zarr in tmp location then copy to finalLocation (finalLocation is the original out_location)
         self.finalLocation = self.out_location
-        if self.buildTmpCopyDestination:
-            # Change out_location to tmp location so that build happens here.
-            self.out_location = os.path.join(self.tmp_dir,'build_location',os.path.split(self.out_location)[-1])
-
-        # Option to have a different compressor for multiscales defaults to self.compressor
-        if multi_scale_compressor is None:
-            self.multi_scale_compressor = self.compressor
-        else:
-            self.multi_scale_compressor = multi_scale_compressor
-
         self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
         self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
 
@@ -103,16 +73,12 @@ class OmeZarrBuilder(_builder_downsample,
         filesList = []
 
         ##  LIST ALL FILES TO BE CONVERTED  ##
-        filesList.append(
-            natsorted(glob.glob(os.path.join(self.in_location, '*.{}'.format(self.fileType))))
-        )
+        filesList.append(natsorted(glob.glob(os.path.join(self.in_location, '*.tif') ) ) )
         
 
         self.filesList = filesList
         self.Channels = len(self.filesList)
         self.TimePoints = 1
-        # print(self.Channels)
-        # print(self.filesList)
 
         testImage = tiff_manager(self.filesList[0][0])
         self.dtype = testImage.dtype

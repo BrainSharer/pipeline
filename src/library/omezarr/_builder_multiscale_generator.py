@@ -28,22 +28,24 @@ from library.omezarr.utils import get_size_GB, optimize_chunk_shape_3d_2
 class _builder_multiscale_generator:
 
     def write_resolution_series(self):
-        '''
+        """
         Make downsampled versions of dataset based on pyramidMap
         Requies that a dask.distribuited client be passed for parallel processing
-        '''
+        """
+        # for res in range(len(self.pyramidMap)):
+        #    with Client(n_workers=self.workers,threads_per_worker=self.sim_jobs) as client:
+        #        self.write_resolution(res,client)
         for res in range(len(self.pyramidMap)):
-            with Client(n_workers=self.workers,threads_per_worker=self.sim_jobs) as client:
-                self.write_resolution(res,client)
+            with Client(n_workers=1, threads_per_worker=1, processes=False) as client:
+                self.write_resolution(res, client)
 
-    def write_resolution(self,res,client):
+    def write_resolution(self, res, client):
 
-        if self.skip:
-            if os.path.exists(self.scale_name(res)):
-                print('Skipping Resolution Level {} because it already exists'.format(res))
-                return
         if res == 0:
             self.write_resolution_0(client)
+
+        if self.debug:
+            print('Writing 0th resolution and returning')
             return
 
         # During creation of res 1, the min and max is calculated for res 0 if values
@@ -77,7 +79,7 @@ class _builder_multiscale_generator:
             print('Setting OMERO Window')
             self.set_omero_window()
 
-    def write_resolution_0(self,client):
+    def write_resolution_0(self, client):
 
         print('Building Virtual Stack')
         channel_stack = []
@@ -103,43 +105,32 @@ class _builder_multiscale_generator:
             print(f'optimum_chunks', optimum_chunks)
 
             s = [test_image.clone_manager_new_file_list(x) for x in s]
-            print('point 1')
             s = [
                 da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s
             ]
-            print('point 2')
             s = da.concatenate(s)
             print(f'type s={type(s)} shape s={s.shape}')
-            print('point 3')
             channel_stack.append(s)
-            print('point 4')
 
         stack = da.concatenate(channel_stack)
-        #stack = stack[None, ...]
-        print('point 5')
+        #####stack = stack[None, ...]
 
         print(f'stack shape={stack.shape} ndim={stack.ndim}')
-        #import sys
-        #sys.exit()
+        # import sys
+        # sys.exit()
         store = self.get_store(0)
         z = zarr.zeros(
             [479, 1046, 1796],
             chunks=self.originalChunkSize,
             store=store,
             overwrite=True,
-            compressor=self.compressor,
             dtype=stack.dtype,
         )
         to_store = da.store(stack, z, lock=False, compute=False)
-        print('point 7')
         to_store = client.compute(to_store)
-        print('point 8')
-        if self.progress:
-            progress(to_store)
         to_store = client.gather(to_store)
-        print('point 9')
 
-    def down_samp(self,res,client, minmax=False):
+    def down_samp(self, res, client, minmax=False):
 
         out_location = self.scale_name(res)
         parent_location = self.scale_name(res-1)
@@ -152,8 +143,11 @@ class _builder_multiscale_generator:
         new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[res]['shape'])
         # print(new_shape)
         # new_chunks = (1, 1, 16, 512, 4096)
-        new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
-        # print(new_chunks)
+        #####new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
+        print('new chunks aaaaaaaaaaaaaaaaaa')
+        print(self.pyramidMap[res]['chunk'])
+        new_chunks = self.pyramidMap[res]['chunk']
+        print(new_chunks)
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.multi_scale_compressor,dtype=self.dtype)
         # print('new_array, {}, {}'.format(new_array.shape,new_array.chunks))
 
@@ -261,7 +255,7 @@ class _builder_multiscale_generator:
     '''
     ##############################################################################################################
 
-    def downsample_by_chunk(self, from_res, to_res, down_sample_ratio, from_slice, to_slice, minmax=False):
+    def downsample_by_chunk(self, from_res, to_res, down_sample_ratio, from_slice, to_slice, client, minmax=False):
 
         '''
         Slices are for dims (t,c,z,y,x), downsamp only works on 3 dims
@@ -277,54 +271,45 @@ class _builder_multiscale_generator:
 
         from_array = self.open_store(from_res, mode='r')
         to_array = self.open_store(to_res)
-
+        print('downample_by_chunk')
+        print(f'from array shape={from_array.shape}')
+        print(f'from slice={from_slice}')
+        print(f'to array shape={to_array.shape}')
         data = from_array[from_slice]
+        print(f'data shape1={data.shape}')
 
         # Calculate min/max of input data
         if minmax:
+            print('in min max in downsample_by_chunk')
             min, max = data.min(), data.max()
+        else:
+            print('Not in min max in downsample_by_chunk')
 
         data = data[0,0]
-        data = dsamp_method(data,down_sample_ratio=down_sample_ratio)
-        data = data[None, None, ...]
-        to_array[to_slice] = data
+        print(f'1 data shape[0,0]={data.shape}')
+        data = dsamp_method(data, down_sample_ratio=down_sample_ratio)
+        print(f'2 data type={type(data)} shape={data.shape}')
+
+        #####data = data[None, None, ...]
+        print(f'to_array={to_array}')
+        print(f'to_slice={to_slice}')
+        print(f'data={data}')
+        to_array = to_array[0, 0, ...]
+        try:
+            to_array[to_slice] = data
+        except Exception as ex:
+            print('Exception with putting data into to_array')
+            print(ex)
+            client.shutdown()
+        # import sys
+        # sys.exit()
+
         if minmax:
+            print(f'minmax is true min={min} max={max} from_slice[1].start={from_slice[1].start}')
             return True, (min, max, from_slice[1].start)
         else:
+            print('minmax is NOT true')
             return True,
-
-    # def chunk_increase_to_limit_3d(self,image_shape,starting_chunks,chunk_limit_in_GB):
-    #
-    #     # Determine chunk values to start at
-    #     z = starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #     y = starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #     x = starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #     previous_chunks = (z,y,x)
-    #     current_chunks = (z,y,x)
-    #
-    #     # Iterate 1 axis at a time increasing chunk size by increase_rate until the chunk_limit_in_MB is reached
-    #     idx=0
-    #     while True:
-    #         print(f'First chunks to try {current_chunks}')
-    #         if utils.get_size_GB(current_chunks,self.dtype) >= chunk_limit_in_GB:
-    #             current_chunks = previous_chunks
-    #             print(f'Final chunk to process {current_chunks}')
-    #             break
-    #         else:
-    #             previous_chunks = current_chunks
-    #
-    #         if idx%3 == 0:
-    #             z = z + starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #         if idx%3 == 1:
-    #             y = y + starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #         if idx%3 == 2:
-    #             x = x + starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #         current_chunks = (z,y,x)
-    #         idx+=1
-    #
-    #     return current_chunks
 
     def chunk_increase_to_limit_3d(self,image_shape,starting_chunks,chunk_limit_in_GB):
 
@@ -368,8 +353,9 @@ class _builder_multiscale_generator:
 
         return current_chunks
 
-    def chunk_slice_generator_for_downsample(self,from_array, to_array, down_sample_ratio=(2, 2, 2), length=False):
-        '''
+    def chunk_slice_generator_for_downsample(
+        self, from_array, to_array, down_sample_ratio=(2, 2, 2), length=False):
+        """
         Generate slice for each chunk in array for shape and chunksize
         Also generate slices for each chunk for an array of 2x size in each dim.
 
@@ -384,7 +370,7 @@ class _builder_multiscale_generator:
 
         Assume dims are (t,c,z,y,x)
         downsample ratio is a tuple if int (z,y,x)
-        '''
+        """
         if isinstance(to_array, tuple):
             chunksize = to_array[1]
             shape = to_array[0]
@@ -407,11 +393,11 @@ class _builder_multiscale_generator:
 
         # Chunks are calculated for to_array
         # optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:],chunksize[2:],self.res_chunk_limit_GB // math.prod(down_sample_ratio) // 1)
-        optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:], chunksize[2:],
-                                                         self.res_chunk_limit_GB)
-
-        chunksize = list(chunksize[:2]) + list(optimum_chunks)
-        print(f'Chunksize for processing downsampled array: {chunksize}')
+        #####optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:], chunksize[2:], self.res_chunk_limit_GB)
+        optimum_chunks = self.chunk_increase_to_limit_3d(shape, chunksize, self.res_chunk_limit_GB)
+        #####chunksize = list(chunksize[:2]) + list(optimum_chunks)
+        chunksize = list(chunksize) + list(optimum_chunks)
+        print(f"Chunksize for processing downsampled array: {chunksize}")
         # chunk_multiply = 2
         # chunksize = list(chunksize[:2]) + [x*chunk_multiply for x in chunksize[-3:]]
 
@@ -438,24 +424,16 @@ class _builder_multiscale_generator:
                 to_slices = [slice(x, y) for x, y in zip(start, stop)]
                 # print(to_slices)
 
-                start = [x * y for x,y in zip(start[:-2],reverse_downsample_ratio)] + start[-2:]
-                stop = [x * y for x,y in zip(stop[:-2],reverse_downsample_ratio)] + stop[-2:]
+                start = [
+                    x * y for x, y in zip(start[:-2], reverse_downsample_ratio)
+                ] + start[-2:]
+                stop = [
+                    x * y for x, y in zip(stop[:-2], reverse_downsample_ratio)
+                ] + stop[-2:]
                 stop = [x if x < y else y for x, y in zip(stop, reverse_from_shape)]
                 from_slices = [slice(x, y) for x, y in zip(start, stop)]
                 # print(slices[::-1])
                 yield tuple(from_slices[::-1]), tuple(to_slices[::-1])
-
-    # @staticmethod
-    # def compute_govenor(processing, num_at_once=70, complete=False):
-    #     while len(processing) >= num_at_once:
-    #         processing = [x for x in processing if x.status != 'finished']
-    #         time.sleep(0.1)
-    #     if complete:
-    #         while len(processing) > 0:
-    #             time.sleep(0.1)
-    #             print(f'{len(processing)} remaining')
-    #             processing = [x for x in processing if x.status != 'finished']
-    #     return processing
 
     @staticmethod
     def compute_govenor(processing, num_at_once=70, complete=False, keep_results=False):
@@ -495,29 +473,47 @@ class _builder_multiscale_generator:
         parent_array = self.open_store(res - 1, mode='r')
         new_array_store = self.get_store(res)
 
-        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[res]['shape'])
+        #####new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[res]['shape'])
         # new_chunks = (1, 1, 16, 512, 4096)
-        new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
+        # new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
+        #####new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
+        #                       compressor=self.multi_scale_compressor, dtype=self.dtype)
 
-        new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
-                               compressor=self.multi_scale_compressor, dtype=self.dtype)
-
+        """
+        #####
         from_array_shape_chunks = (
             (self.TimePoints,self.Channels,*self.pyramidMap[res-1]['shape']),
             (1,1,*self.pyramidMap[res-1]['chunk'])
         )
+        #####
         to_array_shape_chunks = (
             (self.TimePoints,self.Channels,*self.pyramidMap[res]['shape']),
             (1,1,*self.pyramidMap[res]['chunk'])
         )
+        """
+        from_array_shape_chunks = (
+            (self.pyramidMap[res-1]['shape']),
+            (self.pyramidMap[res-1]['chunk'])
+        )
+        to_array_shape_chunks = (
+            (self.pyramidMap[res]['shape']),
+            (self.pyramidMap[res]['chunk'])
+        )
+        print(f'from_array_shape_chunks={from_array_shape_chunks}')
+        print(f'to_array_shape_chunks={to_array_shape_chunks}')
 
+        print('point 1')
         down_sample_ratio = self.pyramidMap[res]['downsamp']
 
+        print('point 2')
         slices = self.chunk_slice_generator_for_downsample(from_array_shape_chunks, to_array_shape_chunks,
                                                       down_sample_ratio=down_sample_ratio, length=True)
+        print('point 3')
         total_slices = len(tuple(slices))
+        print('point 4')
         slices = self.chunk_slice_generator_for_downsample(from_array_shape_chunks, to_array_shape_chunks,
                                                       down_sample_ratio=down_sample_ratio, length=False)
+        print('point 5')
         num = 0
         processing = []
         start = time.time()
@@ -534,15 +530,29 @@ class _builder_multiscale_generator:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
             else:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
-            tmp = delayed(self.downsample_by_chunk)(res-1, res, down_sample_ratio, from_slice, to_slice, minmax=minmax)
-            tmp = client.compute(tmp)
+            try:
+                tmp = delayed(self.downsample_by_chunk)(res-1, res, down_sample_ratio, from_slice, to_slice, client, minmax=minmax)
+            except Exception as ex:
+                print('Exception in downsample by chunk delayed')
+                client.shutdown()
+            try:
+                tmp = client.compute(tmp)
+            except Exception as ex:
+                print('Danger Danger Danger Danger!')
+                print('Exception in downsample by chunk compute')
+                print(ex)
+                client.shutdown()
+
             processing.append(tmp)
             del tmp
             results, processing = self.compute_govenor(processing, num_at_once=round(self.cpu_cores*4), complete=False, keep_results=minmax)
 
             final_results = final_results + results
 
+        print('point 7')
+
         results, processing = self.compute_govenor(processing, num_at_once=round(self.cpu_cores*4), complete=True, keep_results=minmax)
+        print('point 8')
         final_results = final_results + results
 
         if minmax:

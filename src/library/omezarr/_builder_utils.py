@@ -153,9 +153,12 @@ class _builder_utils:
         Output is used to guide subsequent multiscales that are produced
         '''
         out_shape = self.shape_3d
-        chunk = self.originalChunkSize[2:]
-        final_chunk_size = self.finalChunkSize[2:]
-        resolution = self.geometry[2:]
+        #####chunk = self.originalChunkSize[2:]
+        #####final_chunk_size = self.finalChunkSize[2:]
+        #####resolution = self.geometry[2:]
+        chunk = self.originalChunkSize
+        final_chunk_size = self.finalChunkSize
+        resolution = self.geometry
         
         # pyramidMap = {0:[out_shape,chunk]}
         pyramidMap = {0: [out_shape, chunk, resolution, (1, 1, 1)]}
@@ -335,8 +338,7 @@ class _builder_utils:
                     new_res = previous_resolution[idx]
                 down_samp.append(new_samp)
                 res.append(new_res)
-            print(down_samp)
-            print(res)
+            print(f'down_samp={down_samp}')
 
             # out_shape = tuple([x//2 for x in out_shape])
             out_shape = np.array(previous_shape) / np.array(down_samp)
@@ -366,12 +368,10 @@ class _builder_utils:
                         chunk[idx]
                         )
             chunk = tuple(tmpChunk)
-            if self.directToFinalChunks:
-                chunk = final_chunk_size
 
             pyramidMap[current_pyramid_level] = [out_shape,chunk,tuple(res),tuple(down_samp)]
 
-            print((out_shape,chunk))
+            print(f'out_shape={out_shape} chunk={chunk}')
 
             # stop if any shape dimension is below 1 then delete pyramid level
             if any([x<2 for x in out_shape]):
@@ -389,11 +389,11 @@ class _builder_utils:
         pyramidMap_dict = {}
         keys = ['shape','chunk','resolution','downsamp']
         for key, value in pyramidMap.items():
+            print(key, value)
             pyramidMap_dict[key] = {}
             for nk,ii in zip(keys,value):
                 pyramidMap_dict[key][nk] = ii
 
-        print(pyramidMap_dict)
         return pyramidMap_dict
     
     

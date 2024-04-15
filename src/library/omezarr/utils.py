@@ -114,11 +114,9 @@ def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype
 
     return tuple of new chunk shape
     '''
-    print('1111111111111')
 
     y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
     x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
-    print('22222222222')
 
     original_chunks = (original_chunks[0], y, x)
 
