@@ -287,7 +287,7 @@ class tiff_manager_3d_to_5d:
         self.shape = (1, len(self.stack), *self.stack[0].shape)
         self.nbytes = self.stack[0].nbytes * len(self.stack)
         self.ndim = 5
-        #####self.chunks = (1, 1, 1, *self.stack[0].chunks)
+        self.chunks = (1, 1, 1, *self.stack[0].chunks)
         self.chunks = (1, *self.stack[0].chunks)
         self.dtype = self.stack[0].dtype
 

@@ -1,12 +1,8 @@
 import os
 import glob, time, shutil
-
-from numcodecs import Blosc
 import psutil
 import zarr
 import dask
-from zarr_stores.archived_nested_store import Archived_Nested_Store
-from zarr_stores.h5_nested_store import H5_Nested_Store
 
 from library.omezarr.omezarr_init import OmeZarrBuilder
 
@@ -21,19 +17,17 @@ class OmeZarrManager():
         print('Ome zarr manager setup')
         INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         OUTPUT = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', 'C1T.ome.zarr')
-        #####scales = (1, 1, 20.0, 10.4, 10.4)
-        #####originalChunkSize = (1, 1, 1, 64, 64)
-        #####finalChunkSize = (1, 1, 32, 64, 64)
-        scales = (20.0, 10.4, 10.4)
-        originalChunkSize = (1, 64, 64)
-        finalChunkSize = (64, 64, 64)
+        scales = (1, 1, 20.0, 10.4, 10.4)
+        originalChunkSize = (1, 1, 1, 64, 64)
+        finalChunkSize = (1, 1, 64, 64, 64)
+        #TODOscales = (20.0, 10.4, 10.4)
+        #TODOoriginalChunkSize = (64, 64, 64)
+        #TODOfinalChunkSize = (64, 64, 64)
         cpu_cores = os.cpu_count()
         mem=int((psutil.virtual_memory().free/1024**3)*.8)
         zarr_store_type=zarr.storage.NestedDirectoryStore
-        writeDirect=True
         tmp_dir='/tmp'
         debug=self.debug
-        verify_zarr_write=False
         omero = {}
         omero['channels'] = {}
         omero['channels']['color'] = None
@@ -61,8 +55,9 @@ class OmeZarrManager():
         )
 
         try:
-            with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir, #<<-Chance dask working directory
-                                  'logging.distributed': 'error'}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+            #with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir, #<<-Chance dask working directory
+            #                      'logging.distributed': 'error'}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+            with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
 
                 workers = omezarr_builder.workers
                 threads = omezarr_builder.sim_jobs
@@ -71,11 +66,11 @@ class OmeZarrManager():
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
                 os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
-                print('Buding OME Zarr with workers {}, threads {}, mem {}, chunk_size_limit {}'.format(workers, threads, omezarr_builder.mem, omezarr_builder.res0_chunk_limit_GB))
+                print('Building OME Zarr with workers {}, threads {}, mem {}, chunk_size_limit {}'.format(workers, threads, omezarr_builder.mem, omezarr_builder.res0_chunk_limit_GB))
                 omezarr_builder.write_resolution_series()
 
         except Exception as ex:
-            print('Exception')
+            print('Exception in running builder in omezarr_manager')
             print(ex)
 
 

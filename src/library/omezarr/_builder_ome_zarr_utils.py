@@ -23,6 +23,8 @@ class _builder_ome_zarr_utils:
         multiscales = {}
         multiscales["version"] = "0.5-dev"
         multiscales["name"] = self.omero_dict['name'] if self.omero_dict['name'] is not None else ""
+        
+        #TODO
         multiscales["axes"] = [
             {"name": "t", "type": "time", "unit": "millisecond"},
             {"name": "c", "type": "channel"},
@@ -40,11 +42,11 @@ class _builder_ome_zarr_utils:
             scale["path"] = 'scale{}'.format(res)
 
             z,y,x = self.pyramidMap[res]['resolution']
-                
+
+            #TODO     
             scale["coordinateTransformations"] = [{
                 "type": "scale",
-                "scale": [
-                    1, 1,
+                "scale": [ 1, 1,
                     round(z,3),
                     round(y,3),
                     round(x,3)
@@ -133,22 +135,7 @@ class _builder_ome_zarr_utils:
         r.attrs['omero'] = omero
         
         return
-    
-    def edit_omero_channels(self,channel_num,attr_name,new_value):
-        # store = self.zarr_store_type(self.out_location,verbose=1)
-        store = self.get_store_from_path(self.out_location)
-        r = zarr.open(store)
-        
-        omero = r.attrs['omero']
-        
-        channels = omero['channels']
-        
-        channels[channel_num][attr_name] = new_value
-        
-        omero['channels'] = channels
-        
-        r.attrs['omero'] = omero
-        
+            
     
     def get_omero_attr(self,attr_name):
         store = self.get_store_from_path(self.out_location)
@@ -166,18 +153,21 @@ class _builder_ome_zarr_utils:
     def set_omero_window(self):
         
         channels = self.get_omero_attr('channels')
-        print(channels)
-        for ch in range(self.Channels):
+        if self.debug:
+            print(f'Channels in set_omero_window: {channels}')
+        for channel_num in range(self.Channels):
             #set in write_resolution()
-            print(ch)
-            channel_dict = channels[ch]
-            print(channel_dict)
+            channel_dict = channels[channel_num]
             window = channel_dict['window']
-            print(window)
-            window['start'] = self.min[ch]
-            window['end'] = self.max[ch]
-            print(window)
-            self.edit_omero_channels(channel_num=ch,attr_name='window',new_value=window)
-        
-
-
+            window['start'] = self.min[channel_num]
+            window['end'] = self.max[channel_num]
+            #self.edit_omero_channels(channel_num=ch,attr_name='window',new_value=window)
+            # def edit_omero_channels(self,channel_num,attr_name,new_value):
+            # store = self.zarr_store_type(self.out_location,verbose=1)
+            store = self.get_store_from_path(self.out_location)
+            r = zarr.open(store)
+            omero = r.attrs['omero']
+            channels = omero['channels']
+            channels[channel_num]['window'] = window
+            omero['channels'] = channels
+            r.attrs['omero'] = omero
