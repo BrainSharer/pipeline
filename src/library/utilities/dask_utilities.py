@@ -190,16 +190,21 @@ def write_first_mip(INPUT, storepath, client):
         filepath = os.path.join(INPUT, file)
         filepaths.append(filepath)
 
-    s = get_tiff_zarr_array(filepaths)
-
-
-
-    # s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
+    #s = get_tiff_zarr_array(filepaths)
+    test_image = tiff_manager_3d(filepaths)
+    print(f'test_image type={type(test_image)}')
+    s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
     print(f'Length of file list is {len(s)}')
-    #s = [da.from_array(x,chunks=x.chunks,name=False,asarray=False) for x in s]
-    s = [da.from_array(x) for x in s]
+    print(f'1 s[0] type={type(s[0])} shape={s[0].shape}')
+    s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
+    print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunksize}')
     #s = da.concatenate(s)
     tiff_stack = da.stack(s)
+    print(f'2 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
+    tiff_stack = tiff_stack[None,...]
+    print(f'3 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
+
+    return
     #stack.append(s)
     #stack = da.stack(s)
     #stack = stack[None,...]
@@ -213,6 +218,7 @@ def write_first_mip(INPUT, storepath, client):
 
 
     print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
+    return
     chunks = [64,64,64]
     store = get_store(storepath, 0)
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
@@ -221,4 +227,4 @@ def write_first_mip(INPUT, storepath, client):
     to_store = da.store(tiff_stack, z, lock=False, compute=False)
     to_store = client.compute(to_store)
     to_store = client.gather(to_store)
-    client.shutdown()
+
