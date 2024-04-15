@@ -213,7 +213,7 @@ def write_first_mip(INPUT, storepath, client):
 
 
     print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    chunks = [64,64,64]
+    chunks = [1, 1040, 1792]
     store = get_store(storepath, 0)
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
