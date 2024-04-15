@@ -30,7 +30,7 @@ class OmeZarrBuilder(_builder_downsample,
         self,
         in_location,
         out_location,
-        geometry=(1, 1, 20.0, 10.4, 10.4),
+        scales=(1, 1, 20.0, 10.4, 10.4),
         originalChunkSize=(1, 1, 1, 64, 64),
         finalChunkSize=(1, 1, 32, 32, 32),
         cpu_cores=os.cpu_count(),
@@ -44,7 +44,7 @@ class OmeZarrBuilder(_builder_downsample,
 
         self.in_location = in_location
         self.out_location = out_location
-        self.geometry = tuple(geometry)
+        self.scales = tuple(scales)
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
         self.cpu_cores = cpu_cores
