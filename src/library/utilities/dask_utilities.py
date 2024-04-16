@@ -185,6 +185,7 @@ def write_first_mip(INPUT, storepath, client=None):
 
     print('Building Virtual Stack')
     filepaths = []
+    """
     files = sorted(os.listdir(INPUT))
     for file in files:
         filepath = os.path.join(INPUT, file)
@@ -204,9 +205,18 @@ def write_first_mip(INPUT, storepath, client=None):
     tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
     tiff_stack = tiff_stack.rechunk('auto')
     print(f'2 stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    chunks = [64,64,64]
+    """
+    tiff_stack = imreads(INPUT)
+    old_shape = tiff_stack.shape
+    trimto = 8
+    new_shape = aligned_coarse_chunks(old_shape, trimto)
+    tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
+    tiff_stack = tiff_stack.rechunk('auto')
+    print(f'tiff stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
+    chunks = [1, tiff_stack.shape[1]//trimto, tiff_stack.shape[2]//trimto]
+
     store = get_store(storepath, 0)
-    print('Setting up zarr store for main resolution')
+    print(f'Setting up zarr store for main resolution with chunks={chunks}')
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
     #to_store = da.store(tiff_stack, z, lock=False, compute=False)
