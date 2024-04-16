@@ -5,7 +5,7 @@ import zarr
 import dask
 
 from library.omezarr.omezarr_init import OmeZarrBuilder
-from library.utilities.dask_utilities import write_mip_series
+from library.utilities.dask_utilities import write_first_mip, write_mip_series
 from library.utilities.utilities_process import SCALING_FACTOR
 
 class OmeZarrManager():
@@ -60,6 +60,8 @@ class OmeZarrManager():
             }
         ]
         axis_scales = [a["coarsen"] for a in axes]
+        write_first_mip(INPUT, storepath)
+        return
         
         try:
             with dask.config.set():  #<<-Disable WARNING messages that are often not helpful (remove for debugging)

@@ -181,7 +181,7 @@ def get_store_from_path(path, mode="a"):
     return store
 
 
-def write_first_mip(INPUT, storepath, client):
+def write_first_mip(INPUT, storepath, client=None):
 
     print('Building Virtual Stack')
     filepaths = []
@@ -189,42 +189,30 @@ def write_first_mip(INPUT, storepath, client):
     for file in files:
         filepath = os.path.join(INPUT, file)
         filepaths.append(filepath)
-
-    #s = get_tiff_zarr_array(filepaths)
+    #lazyimread = delayed(imread, pure=True)  # Lazy version of imread
     test_image = tiff_manager_3d(filepaths)
     print(f'test_image type={type(test_image)}')
     s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
-    print(f'Length of file list is {len(s)}')
-    print(f'1 s[0] type={type(s[0])} shape={s[0].shape}')
-    s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-    print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunksize}')
-    #s = da.concatenate(s)
+    #s = [lazyimread(x) for x in filepaths]
+    #s = [da.from_array(x, chunks=(64,64), name=False, asarray=False) for x in readfiles]
+    print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunks}')
     tiff_stack = da.stack(s)
-    print(f'2 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    tiff_stack = tiff_stack[None,...]
-    print(f'3 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-
-    return
-    #stack.append(s)
-    #stack = da.stack(s)
-    #stack = stack[None,...]
+    print(f'1 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
     old_shape = tiff_stack.shape
     trimto = 8
     new_shape = aligned_coarse_chunks(old_shape, trimto)
     tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
     tiff_stack = tiff_stack.rechunk('auto')
-
-
-
-
-    print(f'stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    return
+    print(f'2 stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
     chunks = [64,64,64]
     store = get_store(storepath, 0)
+    print('Setting up zarr store for main resolution')
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
-    # print(client.run(lambda: os.environ["HDF5_USE_FILE_LOCKING"]))
-    to_store = da.store(tiff_stack, z, lock=False, compute=False)
-    to_store = client.compute(to_store)
-    to_store = client.gather(to_store)
+    #to_store = da.store(tiff_stack, z, lock=False, compute=False)
+    print('Running compute on store')
+    da.store(tiff_stack, z, lock=False, compute=True)
+    #to_store = client.compute(to_store)
+    #to_store = client.gather(to_store)
+    print('Finished doing zarr store for main resolution')
 
