@@ -60,8 +60,8 @@ class OmeZarrManager():
             }
         ]
         axis_scales = [a["coarsen"] for a in axes]
-        write_first_mip(INPUT, storepath)
-        return
+        #write_first_mip(INPUT, storepath)
+        #return
         
         try:
             with dask.config.set():  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
