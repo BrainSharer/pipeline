@@ -178,7 +178,7 @@ def write_mip_series(INPUT, store):
     Make downsampled versions of dataset based on pyramidMap
     Requies that a dask.distribuited client be passed for parallel processing
     '''
-    with Client(n_workers=8,threads_per_worker=4) as client:
+    with Client(n_workers=6,threads_per_worker=1) as client:
         write_first_mip(INPUT, store, client)
 
 def write_first_mip(INPUT, storepath, client=None):
