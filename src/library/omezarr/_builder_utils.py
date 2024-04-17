@@ -19,12 +19,6 @@ import zarr
 from skimage import io, img_as_uint, img_as_ubyte, img_as_float32, img_as_float64
 
 
-# Import custom zarr store types
-# from stack_to_multiscale_ngff.archived_nested_store import Archived_Nested_Store
-from zarr_stores.archived_nested_store import Archived_Nested_Store
-# from stack_to_multiscale_ngff.h5_nested_store4 import H5_Nested_Store
-from zarr_stores.h5_nested_store import H5_Nested_Store
-
 class _builder_utils:
 
     def open_store(self, res, mode="a"):
