@@ -8,11 +8,8 @@ import tifffile
 import toolz as tz
 from skimage.io import imread
 from typing import List
-#import dask_image
 import zarr
 from dask.delayed import delayed
-import dask.array as da
-from distributed import Client, progress, performance_report
 
 from library.omezarr.tiff_manager import tiff_manager_3d
 
@@ -60,7 +57,9 @@ def load_stack(INPUT):
 
 
 def imreads(root, pattern='*.tif'):
-    """Read images from root (heh) folder.
+    """Read tif images from the downsampled or full folder.
+    This function is specifically for Neuroglancer that wants x,y,z
+    Not z,y,z !!!!!
 
     Parameters
     ----------
@@ -84,17 +83,20 @@ def imreads(root, pattern='*.tif'):
     leading_shape = _find_shape(files)
     n_leading_dim = len(leading_shape)
     first_file = imread(files[0])
+    print(f'first file shape={first_file.shape}')
     dtype = first_file.dtype
     lagging_shape = first_file.shape
+    print(f'lagging shape={lagging_shape}')
     files_array = np.array(list(files)).reshape(leading_shape)
     chunks = tuple((1,) * shp for shp in leading_shape) + lagging_shape
+    #print('chunks', chunks)
     stacked = da.map_blocks(
         _load_block(n_leading_dim=n_leading_dim, load_func=imread),
         files_array,
         chunks=chunks,
         dtype=dtype,
     )
-    #stacked = np.swapaxes(stacked, 0, 2)
+    print(f'imreads stack shape={stacked.shape}')
     return stacked
 
     
@@ -119,7 +121,7 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
             resolution = axis_dict['resolution']
             coarsen = axis_dict['coarsen'] 
             scales.append(resolution * coarsen**scale_level)
-        transformations.append([{"scale": scales, "type": "scale"}])
+        transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
 
@@ -171,58 +173,4 @@ def get_store(storepath, res, mode="a"):
 def get_store_from_path(path, mode="a"):
     store = zarr.storage.NestedDirectoryStore(path)
     return store
-
-    
-def write_mip_series(INPUT, store):
-    '''
-    Make downsampled versions of dataset based on pyramidMap
-    Requies that a dask.distribuited client be passed for parallel processing
-    '''
-    with Client(n_workers=6,threads_per_worker=1) as client:
-        write_first_mip(INPUT, store, client)
-
-def write_first_mip(INPUT, storepath, client=None):
-
-    print('Building Virtual Stack')
-    filepaths = []
-    """
-    files = sorted(os.listdir(INPUT))
-    for file in files:
-        filepath = os.path.join(INPUT, file)
-        filepaths.append(filepath)
-    #lazyimread = delayed(imread, pure=True)  # Lazy version of imread
-    test_image = tiff_manager_3d(filepaths)
-    print(f'test_image type={type(test_image)}')
-    s = [test_image.clone_manager_new_file_list(x) for x in filepaths]
-    #s = [lazyimread(x) for x in filepaths]
-    #s = [da.from_array(x, chunks=(64,64), name=False, asarray=False) for x in readfiles]
-    print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunks}')
-    tiff_stack = da.stack(s)
-    print(f'1 stack shape  {tiff_stack.shape} type=tiff_stack={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    old_shape = tiff_stack.shape
-    trimto = 8
-    new_shape = aligned_coarse_chunks(old_shape, trimto)
-    tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-    tiff_stack = tiff_stack.rechunk('auto')
-    print(f'2 stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    """
-    tiff_stack = imreads(INPUT)
-    old_shape = tiff_stack.shape
-    trimto = 8
-    new_shape = aligned_coarse_chunks(old_shape, trimto)
-    tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-    tiff_stack = tiff_stack.rechunk('auto')
-    print(f'tiff stack shape  {tiff_stack.shape} type(tiff_stack)={type(tiff_stack)} chunks={tiff_stack.chunksize}')
-    chunks = [1, tiff_stack.shape[1]//trimto, tiff_stack.shape[2]//trimto]
-
-    store = get_store(storepath, 0)
-    print(f'Setting up zarr store for main resolution with chunks={chunks}')
-    z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
-
-    print('Running compute on store')
-    to_store = da.store(tiff_stack, z, lock=False, compute=False)
-    #da.store(tiff_stack, z, lock=False, compute=True)
-    to_store = client.compute(to_store)
-    to_store = client.gather(to_store)
-    print('Finished doing zarr store for main resolution')
 
