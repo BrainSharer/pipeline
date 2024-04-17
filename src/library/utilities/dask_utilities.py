@@ -153,14 +153,6 @@ def get_xy_chunk() -> int:
 
     return int(xy_chunk)
 
-    
-def write_mip_series(INPUT, store):
-    '''
-    Make downsampled versions of dataset based on pyramidMap
-    Requies that a dask.distribuited client be passed for parallel processing
-    '''
-    with Client(n_workers=8,threads_per_worker=1) as client:
-        write_first_mip(INPUT, store, client)
 
 def get_tiff_zarr_array(filepaths):
     with tifffile.imread(filepaths, aszarr=True) as store:
@@ -180,6 +172,14 @@ def get_store_from_path(path, mode="a"):
     store = zarr.storage.NestedDirectoryStore(path)
     return store
 
+    
+def write_mip_series(INPUT, store):
+    '''
+    Make downsampled versions of dataset based on pyramidMap
+    Requies that a dask.distribuited client be passed for parallel processing
+    '''
+    with Client(n_workers=8,threads_per_worker=4) as client:
+        write_first_mip(INPUT, store, client)
 
 def write_first_mip(INPUT, storepath, client=None):
 
@@ -219,10 +219,10 @@ def write_first_mip(INPUT, storepath, client=None):
     print(f'Setting up zarr store for main resolution with chunks={chunks}')
     z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
-    #to_store = da.store(tiff_stack, z, lock=False, compute=False)
     print('Running compute on store')
-    da.store(tiff_stack, z, lock=False, compute=True)
-    #to_store = client.compute(to_store)
-    #to_store = client.gather(to_store)
+    to_store = da.store(tiff_stack, z, lock=False, compute=False)
+    #da.store(tiff_stack, z, lock=False, compute=True)
+    to_store = client.compute(to_store)
+    to_store = client.gather(to_store)
     print('Finished doing zarr store for main resolution')
 
