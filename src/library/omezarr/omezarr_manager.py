@@ -72,7 +72,7 @@ class OmeZarrManager():
 
         
         try:
-            with dask.config.set():  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+            with dask.config.set({'distributed.scheduler.worker-ttl': None}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
 
                 print(f'Starting distributed dask with workers={self.workers}')
                 #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
@@ -118,7 +118,6 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape}')
         tiff_stack = tiff_stack.rechunk('auto')
-        #chunks = [1, tiff_stack.shape[1]//trimto, tiff_stack.shape[2]//trimto]
         chunks = [64, 64, 64]
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
