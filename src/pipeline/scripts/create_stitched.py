@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument("--animal", help="Enter the animal", required=False, default="DK20230126-003", type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--channel", help="Enter 1, 2, or 4", required=False, default=1, type=int)
-    parser.add_argument("--scaling_factor", help="Enter an integer", required=False, default=10, type=int)
+    parser.add_argument("--scaling_factor", help="Enter an integer", required=False, default=1, type=int)
     parser.add_argument("--layer", help="Enter layer", required=False, default=1, type=int)
     parser.add_argument(
         "--task",

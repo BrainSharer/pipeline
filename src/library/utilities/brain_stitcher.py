@@ -14,6 +14,7 @@ import zarr
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
+from library.utilities.dask_utilities import get_store
 from library.utilities.utilities_process import write_image
 
 class BrainStitcher(ParallelManager):
@@ -209,6 +210,7 @@ class BrainStitcher(ParallelManager):
         volume1 = self.create_zarr_volume(volume_shape, "1")
         volume2 = self.create_zarr_volume(volume_shape, "2")
         volume4 = self.create_zarr_volume(volume_shape, "4")
+        print(f'Volume 1 type={type(volume1)}')
         
         num_tiles = len(self.all_info_files.items())
         i = 1
@@ -317,16 +319,17 @@ class BrainStitcher(ParallelManager):
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
     def create_zarr_volume(self, volume_shape, channel):
-        storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
-        if os.path.exists(storepath):
-            print(f'Zarr exists {storepath}')
-        print(f'Creating {storepath}')
-        store = zarr.NestedDirectoryStore(storepath)
+        storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
+        store = get_store(storepath, 0)
+
         tile_shape=np.array([250, 1536, 1024])
         chunks = (tile_shape[0] // self.scaling_factor // 4, 
                   tile_shape[1] // self.scaling_factor // 4, 
                   tile_shape[2] // self.scaling_factor // 4)
-        volume = zarr.create(shape=(volume_shape), chunks=chunks, dtype='uint16', store=store, overwrite=True)
+
+        volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=True, dtype=np.uint16)
+
+
         print(volume.info)
         return volume    
         
