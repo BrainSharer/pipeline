@@ -18,8 +18,8 @@ class OmeZarrManager():
         """Set up variables
         """
         
-        self.workers = 4
-        self.jobs = 1
+        self.workers = 2
+        self.jobs = 4
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
@@ -74,7 +74,7 @@ class OmeZarrManager():
         try:
             with dask.config.set({'distributed.scheduler.worker-ttl': None}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
 
-                print(f'Starting distributed dask with workers={self.workers}')
+                print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs')
                 #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
