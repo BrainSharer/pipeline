@@ -1,15 +1,11 @@
 import os
-import glob, time, shutil
-import psutil
 import zarr
 import dask
 import dask.array as da
-from distributed import Client
-import numpy as np
+from distributed import Client, progress
 
-from library.omezarr.omezarr_init import OmeZarrBuilder
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
-from library.utilities.utilities_process import SCALING_FACTOR
+from library.utilities.utilities_process import SCALING_FACTOR, get_cpus
 
 class OmeZarrManager():
     """"""
@@ -17,8 +13,8 @@ class OmeZarrManager():
     def setup(self):
         """Set up variables
         """
-        
-        self.workers = 2
+        low, high = get_cpus()
+        self.workers = low
         self.jobs = 4
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
@@ -103,7 +99,7 @@ class OmeZarrManager():
                 self.write_mips(scale, client)
 
 
-    def write_first_mip(self, client=None):
+    def write_first_mip(self, client):
 
         store = get_store(self.storepath, 0)
         if os.path.exists(os.path.join(self.storepath, f'scale0')):
@@ -124,7 +120,7 @@ class OmeZarrManager():
 
         #tiff_stack = da.moveaxis(tiff_stack, 0, -1)
         to_store = da.store(tiff_stack, z, lock=False, compute=False)
-        to_store = client.compute(to_store)
+        to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
         print('Finished doing zarr store for main resolution\n')
 
@@ -149,15 +145,13 @@ class OmeZarrManager():
         print(f'New store with shape={scaled_stack.shape} chunks={scaled_stack.chunksize}')
         chunks = [64, 64, 64]
 
-        print(f'Writing mip with data to: {write_storepath}', end=" ")
         store = get_store(self.storepath, scale + 1)
-
         z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
-
         to_store = da.store(scaled_stack, z, lock=False, compute=False)
-        to_store = client.compute(to_store)
+        print(f'Writing mip with data to: {write_storepath}')
+        to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
-        print(f'and finished writing\n')
+        print()
 
     def build_zattrs(self, transformations):
         
@@ -176,7 +170,6 @@ class OmeZarrManager():
 
         datasets = [] 
         for mip, transformation in enumerate(transformations):
-            print(transformation)
             scale = {}
             x = transformation['scale'][2]
             y = transformation['scale'][1]
