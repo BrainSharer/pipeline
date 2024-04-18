@@ -14,7 +14,7 @@ class OmeZarrManager():
         """Set up variables
         """
         low, high = get_cpus()
-        self.workers = 2
+        self.workers = 1
         self.jobs = 16
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
