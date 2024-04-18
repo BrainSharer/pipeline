@@ -114,7 +114,8 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape}')
         tiff_stack = tiff_stack.rechunk('auto')
-        chunks = [64, 64, 64]
+        chunks = [128, 128, 128]
+        
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
