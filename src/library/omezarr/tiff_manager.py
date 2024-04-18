@@ -131,7 +131,7 @@ class tiff_manager_3d:
 
         del img
 
-        # self._conv_3d()
+        self._conv_3d()
 
     def _conv_3d(self):
         z_depth = len(self.fileList)
