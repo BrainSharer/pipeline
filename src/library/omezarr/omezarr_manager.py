@@ -19,7 +19,7 @@ class OmeZarrManager():
         """
         low, high = get_cpus()
         self.workers = 4
-        self.jobs = 4
+        self.jobs = 1
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
@@ -96,7 +96,7 @@ class OmeZarrManager():
         Requies that a dask.distribuited client be passed for parallel processing
         """
 
-        with Client(n_workers=self.workers, threads_per_worker=self.jobs) as client:
+        with Client(n_workers=self.workers, processes=True, threads_per_worker=self.jobs) as client:
             self.write_first_mip(client)
 
         for scale, _ in enumerate(transformations):
