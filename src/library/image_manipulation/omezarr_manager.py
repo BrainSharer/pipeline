@@ -6,23 +6,22 @@ distributed:
     # Fractions of worker memory at which we take action to avoid memory blowup
     # Set any of the lower three values to False to turn off the behavior entirely
     memory:
-      target: 0.70  # target fraction to stay below
-      spill: 0.80  # fraction at which we spill to disk
-      pause: 0.90  # fraction at which we pause worker threads
+      target: 0.50  # target fraction to stay below
+      spill: 0.60  # fraction at which we spill to disk
+      pause: 0.70  # fraction at which we pause worker threads
       terminate: False  # fraction at which we terminate the worker
 
 """
 import glob
 import os
 import shutil
-import time
 import zarr
 import dask
 import dask.array as da
 from distributed import Client, LocalCluster, progress
 
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
-from library.utilities.utilities_process import SCALING_FACTOR, get_cpus
+from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
 class OmeZarrManager():
     """"""
@@ -33,7 +32,8 @@ class OmeZarrManager():
         low, high = get_cpus()
         self.workers = low
         self.jobs = 1
-        self.tmp_dir = os.path.join('/data', f'{self.animal}')
+        tmp_dir = get_scratch_dir()
+        self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
@@ -41,12 +41,12 @@ class OmeZarrManager():
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 4
+            self.mips = 5
         else:
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
-            self.mips = 7
+            self.mips = 8
 
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
@@ -77,6 +77,8 @@ class OmeZarrManager():
     def create_omezarr(self):
         self.setup()
         transformations = get_transformations(self.axes, self.mips)
+        for transformation in transformations:
+            print(transformation)
 
         """
         self.write_first_mip(client=None)
@@ -217,8 +219,8 @@ class OmeZarrManager():
         multiscales["type"] = (1, 2, 2)
 
         # Define down sampling methods for inclusion in zattrs
-        description = '2x downsample of in up to 3 dimensions calculated using the local mean'
-        details = 'stack_to_multiscale_ngff._builder_img_processing.local_mean_downsample'
+        description = '(1,2,2) downsample of in up to 3 dimensions calculated using the local mean'
+        details = 'downsampling is done using dask coarsen and numpy mean'
 
 
         multiscales["metadata"] = {
@@ -257,28 +259,22 @@ class OmeZarrManager():
             new['inverted'] = False
             new['label'] = self.channel
             
-            '''
-            if self.dtype==np.dtype('uint8'):
-                end = mx = 255
-            elif self.dtype==np.dtype('uint16'):
-                end = mx = 2**16 - 1
-            else:
-                end = mx = 1
+            end = mx = 2**16 - 1
 
             new['window'] = {
-                "end": self.omero_dict['channels']['window'][chn]['end'] if self.omero_dict['channels']['window'] is not None else end,
-                "max": self.omero_dict['channels']['window'][chn]['max'] if self.omero_dict['channels']['window'] is not None else mx,
-                "min": self.omero_dict['channels']['window'][chn]['min'] if self.omero_dict['channels']['window'] is not None else 0,
-                "start": self.omero_dict['channels']['window'][chn]['start'] if self.omero_dict['channels']['window'] is not None else 0
+                "end": end,
+                "max": mx,
+                "min": 0,
+                "start": 0
                 }
-            '''
+            
             channels.append(new)
             
         omero['channels'] = channels
         
         omero['rdefs'] = {
             "defaultZ": 1,
-            "model": "color"                  # "color" or "greyscale"
+            "model": "greyscale"                  # "color" or "greyscale"
             }
         
         r.attrs['omero'] = omero
