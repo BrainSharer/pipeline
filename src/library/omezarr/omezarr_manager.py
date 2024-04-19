@@ -1,9 +1,13 @@
+import glob
 import os
+import shutil
+import psutil
 import zarr
 import dask
 import dask.array as da
 from distributed import Client, progress
 
+from library.omezarr.omezarr_init import OmeZarrBuilder
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus
 
@@ -14,8 +18,8 @@ class OmeZarrManager():
         """Set up variables
         """
         low, high = get_cpus()
-        self.workers = 1
-        self.jobs = 16
+        self.workers = 4
+        self.jobs = 4
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
@@ -68,7 +72,8 @@ class OmeZarrManager():
 
         
         try:
-            with dask.config.set({'distributed.scheduler.worker-ttl': None}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+            with dask.config.set({'distributed.scheduler.worker-ttl': None,
+                                  'logging.distributed': 'error'}):
 
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs')
                 #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
@@ -114,12 +119,11 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape}')
         tiff_stack = tiff_stack.rechunk('auto')
-        chunks = [128, 128, 128]
-        
+        #chunks = [128, 128, 128]
+        chunks = tiff_stack.chunksize
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
-        #tiff_stack = da.moveaxis(tiff_stack, 0, -1)
         to_store = da.store(tiff_stack, z, lock=False, compute=False)
         to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
@@ -140,11 +144,12 @@ class OmeZarrManager():
             return
 
         previous_stack = da.from_zarr(url=read_storepath)
-        print(f'Creating new store with shape={previous_stack.shape} chunks={previous_stack.chunksize}')
+        print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        print(f'New store with shape={scaled_stack.shape} chunks={scaled_stack.chunksize}')
-        chunks = [64, 64, 64]
+        scaled_stack.rechunk('auto')
+        chunks = scaled_stack.chunksize
+        print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
         z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
@@ -256,3 +261,103 @@ class OmeZarrManager():
             }
         
         r.attrs['omero'] = omero
+
+    def create_omezarrWATSON(self):
+        print('Ome zarr manager setup')
+        INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        OUTPUT = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', 'C1T.ome.zarr')
+        scales = (1, 1, 20.0, 10.4, 10.4)
+        originalChunkSize = (1, 1, 1, 1024, 1024)
+        finalChunkSize = (1, 1, 64, 64, 64)
+        #TODOscales = (20.0, 10.4, 10.4)
+        #TODOoriginalChunkSize = (64, 64, 64)
+        #TODOfinalChunkSize = (64, 64, 64)
+        cpu_cores = os.cpu_count()
+        mem=int((psutil.virtual_memory().free/1024**3)*.8)
+        zarr_store_type=zarr.storage.NestedDirectoryStore
+        tmp_dir='/tmp'
+        debug=self.debug
+        omero = {}
+        omero['channels'] = {}
+        omero['channels']['color'] = None
+        omero['channels']['label'] = None
+        omero['channels']['window'] = None
+        omero['name'] = self.animal
+        omero['rdefs'] = {}
+        omero['rdefs']['defaultZ'] = None
+
+        downSampleType='mean'
+
+        omezarr_builder = OmeZarrBuilder(
+            INPUT,
+            OUTPUT,
+            scales=scales,
+            originalChunkSize=originalChunkSize,
+            finalChunkSize=finalChunkSize,
+            cpu_cores=cpu_cores,
+            mem=mem,
+            tmp_dir=tmp_dir,
+            debug=debug,
+            zarr_store_type=zarr_store_type,
+            omero_dict=omero,
+            downSampType=downSampleType,
+        )
+
+        try:
+            #with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir, #<<-Chance dask working directory
+            #                      'logging.distributed': 'error'}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+            with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
+
+                workers = omezarr_builder.workers
+                threads = omezarr_builder.sim_jobs
+
+                #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
+                os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
+                os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
+                os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
+                print('Building OME Zarr with workers {}, threads {}, mem {}, chunk_size_limit {}'.format(workers, threads, omezarr_builder.mem, omezarr_builder.res0_chunk_limit_GB))
+                omezarr_builder.write_resolution_series()
+
+        except Exception as ex:
+            print('Exception in running builder in omezarr_manager')
+            print(ex)
+
+
+        #Cleanup
+        countKeyboardInterrupt = 0
+        countException = 0
+        print('Cleaning up tmp dir and orphaned lock files')
+        while True:
+            try:
+                #Remove any existing files in the temp_dir
+                filelist = glob.glob(os.path.join(omezarr_builder.tmp_dir, "**/*"), recursive=True)
+                for f in filelist:
+                    try:
+                        if os.path.isfile(f):
+                            os.remove(f)
+                        elif os.path.isdir(f):
+                            shutil.rmtree(f)
+                    except Exception:
+                        pass
+
+                #Remove any .lock files in the output directory (recursive)
+                lockList = glob.glob(os.path.join(omezarr_builder.out_location, "**/*.lock"), recursive=True)
+                for f in lockList:
+                    try:
+                        if os.path.isfile(f):
+                            os.remove(f)
+                        elif os.path.isdir(f):
+                            shutil.rmtree(f)
+                    except Exception:
+                        pass
+                break
+            except KeyboardInterrupt:
+                countKeyboardInterrupt += 1
+                if countKeyboardInterrupt == 4:
+                    break
+                pass
+            except Exception:
+                countException += 1
+                if countException == 100:
+                    break
+                pass
