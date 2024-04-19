@@ -134,6 +134,22 @@ def get_cpus():
         usecpus = cpus[hostname]
     return usecpus
 
+def get_scratch_dir():
+    """Helper method to return the scratch dir
+    Ratto can't use /scratch as it is not big enough
+    """
+
+    usedir = {}
+    usedir['ratto'] = "/data"
+
+    hostname = get_hostname()
+    if hostname in usedir.keys():
+        tmp_dir = usedir[hostname]
+    else:
+        tmp_dir = "/scratch"
+
+    return tmp_dir
+
 def convert(img, target_type_min, target_type_max, target_type):
     """Converts an image from one type to another and also resizes
 
