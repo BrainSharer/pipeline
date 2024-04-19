@@ -18,9 +18,10 @@ class OmeZarrManager():
         """Set up variables
         """
         low, high = get_cpus()
-        self.workers = high
+        self.workers = low
         self.jobs = 1
-        self.tmp_dir = '/scratch'
+        self.tmp_dir = os.path.join('/scratch', f'{self.animal}')
+        os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
@@ -76,7 +77,7 @@ class OmeZarrManager():
             with dask.config.set({'temporary_directory': self.tmp_dir,
                                   'logging.distributed': 'error'}):
 
-                print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs')
+                print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
                 #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
@@ -305,7 +306,7 @@ class OmeZarrManager():
                 if countException == 100:
                     break
                 pass
-
+        shutil.rmtree(self.tmp_dir)
     def create_omezarrWATSON(self):
         print('Ome zarr manager setup')
         INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
