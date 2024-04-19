@@ -23,7 +23,7 @@ from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
-from library.omezarr.omezarr_manager import OmeZarrManager
+from library.image_manipulation.omezarr_manager import OmeZarrManager
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
 from library.database_model.scan_run import IMAGE_MASK
