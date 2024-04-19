@@ -377,6 +377,7 @@ class _builder_utils:
         for k, v in pyramidMap_dict.items():
             print(k,v)
 
+        print()
         pyramidMap_dictXXX = {
             0: {'shape': (479, 1046, 1796), 'chunk': (1, 64, 64), 'resolution': (20.0, 10.4, 10.4), 'downsamp': (1, 1, 1)},
             1: {'shape': (239, 523, 898), 'chunk': (1, 64, 64), 'resolution': (20.0, 20.8, 20.8), 'downsamp': (1, 2, 2)},
