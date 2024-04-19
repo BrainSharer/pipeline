@@ -33,7 +33,7 @@ class OmeZarrManager():
         low, high = get_cpus()
         self.workers = low
         self.jobs = 1
-        self.tmp_dir = os.path.join('/scratch', f'{self.animal}')
+        self.tmp_dir = os.path.join('/data', f'{self.animal}')
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
@@ -119,7 +119,6 @@ class OmeZarrManager():
         with Client(cluster) as client:
             self.write_first_mip(client)
 
-        self.cleanup()        
 
         for scale, _ in enumerate(transformations):
             with Client(cluster) as client:
