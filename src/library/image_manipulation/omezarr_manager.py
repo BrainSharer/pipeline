@@ -1,13 +1,26 @@
+"""
+Place the yaml below in: ~/.config/dask/distributed.yaml
+
+distributed:
+  worker:
+    # Fractions of worker memory at which we take action to avoid memory blowup
+    # Set any of the lower three values to False to turn off the behavior entirely
+    memory:
+      target: 0.70  # target fraction to stay below
+      spill: 0.80  # fraction at which we spill to disk
+      pause: 0.90  # fraction at which we pause worker threads
+      terminate: False  # fraction at which we terminate the worker
+
+"""
 import glob
 import os
 import shutil
-import psutil
+import time
 import zarr
 import dask
 import dask.array as da
-from distributed import Client, progress
+from distributed import Client, LocalCluster, progress
 
-from library.omezarr.omezarr_init import OmeZarrBuilder
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus
 
@@ -71,18 +84,21 @@ class OmeZarrManager():
         for scale, transformation in enumerate(transformations):
             self.write_mips(scale, transformation, client=None)
         """
-
         
         try:
             with dask.config.set({'temporary_directory': self.tmp_dir,
                                   'logging.distributed': 'error'}):
 
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
+                print('With Dask memory config:')
+                print(dask.config.get("distributed.worker.memory"))
+                print()
                 #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
                 os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
                 self.write_mip_series(transformations)
+                self.cleanup()
                 
 
         except Exception as ex:
@@ -90,7 +106,6 @@ class OmeZarrManager():
             print(ex)
 
         self.build_zattrs(transformations)
-        self.cleanup()
 
     
     def write_mip_series(self, transformations):
@@ -99,18 +114,23 @@ class OmeZarrManager():
         Requies that a dask.distribuited client be passed for parallel processing
         """
 
-        with Client(n_workers=self.workers, processes=True, threads_per_worker=self.jobs) as client:
+        cluster = LocalCluster(ip='0.0.0.0', n_workers=self.workers, processes=True, threads_per_worker=self.jobs)
+
+        with Client(cluster) as client:
             self.write_first_mip(client)
 
+        self.cleanup()        
+
         for scale, _ in enumerate(transformations):
-            with Client(n_workers=self.workers, threads_per_worker=self.jobs) as client:
+            with Client(cluster) as client:
                 self.write_mips(scale, client)
 
+        cluster.close()
 
     def write_first_mip(self, client):
 
         store = get_store(self.storepath, 0)
-        if os.path.exists(os.path.join(self.storepath, f'scale0')):
+        if os.path.exists(os.path.join(self.storepath, 'scale0')):
             print('Initial store exists, continuing')            
             return
         print('Building Virtual Stack')
@@ -137,9 +157,9 @@ class OmeZarrManager():
         write_storepath = os.path.join(self.storepath, f'scale{scale + 1}')
         print(f'Checking if data exists at: {read_storepath}', end=" ")
         if os.path.exists(read_storepath):
-            print(f'and loading data')
+            print('and loading data')
         else:
-            print(f'and no store exists so returning ...')            
+            print('and no store exists so returning ...')            
             return
         
         if os.path.exists(write_storepath):
@@ -228,7 +248,6 @@ class OmeZarrManager():
             for idx in range(1):
                 colors[idx] = colors_palette[idx%len(colors_palette)]
 
-        labels = self.channel
         channels = []
         for chn in range(1):
             new = {}
@@ -275,7 +294,7 @@ class OmeZarrManager():
                 #Remove any existing files in the temp_dir
                 files = glob.glob(os.path.join(self.tmp_dir, "**/*"), recursive=True)
                 for file in files:
-                    print(f'removing {file}')
+                    print(f'Removing {file}')
                     try:
                         if os.path.isfile(file):
                             os.remove(file)
@@ -285,16 +304,21 @@ class OmeZarrManager():
                         pass
 
                 #Remove any .lock files in the output directory (recursive)
+                
+                print("Removing locks")
                 locks = glob.glob(os.path.join(self.storepath, "**/*.lock"), recursive=True)
                 for lock in locks:
                     try:
                         if os.path.isfile(lock):
-                            print(f'removing {lock}')
+                            print(f'Removing {lock}')
                             os.remove(lock)
                         elif os.path.isdir(lock):
                             shutil.rmtree(lock)
-                    except Exception:
+                    except Exception as ex:
+                        print('Trouble removing lock')
+                        print(ex)
                         pass
+                
                 break
             except KeyboardInterrupt:
                 countKeyboardInterrupt += 1
@@ -306,65 +330,6 @@ class OmeZarrManager():
                 if countException == 100:
                     break
                 pass
-        shutil.rmtree(self.tmp_dir)
-    def create_omezarrWATSON(self):
-        print('Ome zarr manager setup')
-        INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        OUTPUT = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', 'C1T.ome.zarr')
-        scales = (1, 1, 20.0, 10.4, 10.4)
-        originalChunkSize = (1, 1, 1, 1024, 1024)
-        finalChunkSize = (1, 1, 64, 64, 64)
-        #TODOscales = (20.0, 10.4, 10.4)
-        #TODOoriginalChunkSize = (64, 64, 64)
-        #TODOfinalChunkSize = (64, 64, 64)
-        cpu_cores = os.cpu_count()
-        mem=int((psutil.virtual_memory().free/1024**3)*.8)
-        zarr_store_type=zarr.storage.NestedDirectoryStore
-        tmp_dir='/tmp'
-        debug=self.debug
-        omero = {}
-        omero['channels'] = {}
-        omero['channels']['color'] = None
-        omero['channels']['label'] = None
-        omero['channels']['window'] = None
-        omero['name'] = self.animal
-        omero['rdefs'] = {}
-        omero['rdefs']['defaultZ'] = None
-
-        downSampleType='mean'
-
-        omezarr_builder = OmeZarrBuilder(
-            INPUT,
-            OUTPUT,
-            scales=scales,
-            originalChunkSize=originalChunkSize,
-            finalChunkSize=finalChunkSize,
-            cpu_cores=cpu_cores,
-            mem=mem,
-            tmp_dir=tmp_dir,
-            debug=debug,
-            zarr_store_type=zarr_store_type,
-            omero_dict=omero,
-            downSampType=downSampleType,
-        )
-
-        try:
-            #with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir, #<<-Chance dask working directory
-            #                      'logging.distributed': 'error'}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
-            with dask.config.set({'temporary_directory': omezarr_builder.tmp_dir}):  #<<-Disable WARNING messages that are often not helpful (remove for debugging)
-
-                workers = omezarr_builder.workers
-                threads = omezarr_builder.sim_jobs
-
-                #https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
-                os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
-                os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
-                os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
-                print('Building OME Zarr with workers {}, threads {}, mem {}, chunk_size_limit {}'.format(workers, threads, omezarr_builder.mem, omezarr_builder.res0_chunk_limit_GB))
-                omezarr_builder.write_resolution_series()
-
-        except Exception as ex:
-            print('Exception in running builder in omezarr_manager')
-            print(ex)
-
-
+        
+        if os.path.exists(self.tmp_dir):
+            shutil.rmtree(self.tmp_dir)

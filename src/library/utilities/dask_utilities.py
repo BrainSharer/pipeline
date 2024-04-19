@@ -1,5 +1,4 @@
 """Read nested directories of images into an n-dimensional array."""
-import math
 import os
 from pathlib import Path
 import dask.array as da
@@ -10,10 +9,6 @@ from skimage.io import imread
 from typing import List
 import zarr
 from dask.delayed import delayed
-
-from library.omezarr.tiff_manager import tiff_manager_3d
-
-#from library.utilities.tiff_manager import tiff_manager_3d
 
 @tz.curry
 def _load_block(files_array, block_id=None, *,  n_leading_dim, load_func=imread):
