@@ -20,6 +20,7 @@ class OmeZarrManager():
         low, high = get_cpus()
         self.workers = 4
         self.jobs = 1
+        self.tmp_dir = '/scratch'
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
@@ -72,7 +73,7 @@ class OmeZarrManager():
 
         
         try:
-            with dask.config.set({'distributed.scheduler.worker-ttl': None,
+            with dask.config.set({'temporary_directory': self.tmp_dir,
                                   'logging.distributed': 'error'}):
 
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs')
@@ -88,6 +89,7 @@ class OmeZarrManager():
             print(ex)
 
         self.build_zattrs(transformations)
+        self.cleanup()
 
     
     def write_mip_series(self, transformations):
@@ -262,6 +264,48 @@ class OmeZarrManager():
         
         r.attrs['omero'] = omero
 
+    def cleanup(self):
+        #Cleanup
+        countKeyboardInterrupt = 0
+        countException = 0
+        print('Cleaning up tmp dir and orphaned lock files')
+        while True:
+            try:
+                #Remove any existing files in the temp_dir
+                files = glob.glob(os.path.join(self.tmp_dir, "**/*"), recursive=True)
+                for file in files:
+                    print(f'removing {file}')
+                    try:
+                        if os.path.isfile(file):
+                            os.remove(file)
+                        elif os.path.isdir(file):
+                            shutil.rmtree(file)
+                    except Exception:
+                        pass
+
+                #Remove any .lock files in the output directory (recursive)
+                locks = glob.glob(os.path.join(self.storepath, "**/*.lock"), recursive=True)
+                for lock in locks:
+                    try:
+                        if os.path.isfile(lock):
+                            print(f'removing {lock}')
+                            os.remove(lock)
+                        elif os.path.isdir(lock):
+                            shutil.rmtree(lock)
+                    except Exception:
+                        pass
+                break
+            except KeyboardInterrupt:
+                countKeyboardInterrupt += 1
+                if countKeyboardInterrupt == 4:
+                    break
+                pass
+            except Exception:
+                countException += 1
+                if countException == 100:
+                    break
+                pass
+
     def create_omezarrWATSON(self):
         print('Ome zarr manager setup')
         INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
@@ -323,41 +367,3 @@ class OmeZarrManager():
             print(ex)
 
 
-        #Cleanup
-        countKeyboardInterrupt = 0
-        countException = 0
-        print('Cleaning up tmp dir and orphaned lock files')
-        while True:
-            try:
-                #Remove any existing files in the temp_dir
-                filelist = glob.glob(os.path.join(omezarr_builder.tmp_dir, "**/*"), recursive=True)
-                for f in filelist:
-                    try:
-                        if os.path.isfile(f):
-                            os.remove(f)
-                        elif os.path.isdir(f):
-                            shutil.rmtree(f)
-                    except Exception:
-                        pass
-
-                #Remove any .lock files in the output directory (recursive)
-                lockList = glob.glob(os.path.join(omezarr_builder.out_location, "**/*.lock"), recursive=True)
-                for f in lockList:
-                    try:
-                        if os.path.isfile(f):
-                            os.remove(f)
-                        elif os.path.isdir(f):
-                            shutil.rmtree(f)
-                    except Exception:
-                        pass
-                break
-            except KeyboardInterrupt:
-                countKeyboardInterrupt += 1
-                if countKeyboardInterrupt == 4:
-                    break
-                pass
-            except Exception:
-                countException += 1
-                if countException == 100:
-                    break
-                pass
