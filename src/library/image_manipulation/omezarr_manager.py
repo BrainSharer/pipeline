@@ -34,6 +34,8 @@ class OmeZarrManager():
         self.jobs = 1
         tmp_dir = get_scratch_dir()
         self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
+        if os.path.exists(self.tmp_dir):
+            shutil.rmtree(self.tmp_dir)
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
