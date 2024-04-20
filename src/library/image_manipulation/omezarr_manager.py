@@ -19,6 +19,7 @@ import zarr
 import dask
 import dask.array as da
 from distributed import Client, LocalCluster, progress
+from timeit import default_timer as timer
 
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
@@ -43,7 +44,7 @@ class OmeZarrManager():
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 5
+            self.mips = 3
         else:
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
@@ -114,8 +115,13 @@ class OmeZarrManager():
     
     def write_mip_series(self, transformations):
         """
+        For chunk size info: https://forum.image.sc/t/deciding-on-optimal-chunk-size/63023/4
         Make downsampled versions of dataset based on number of transformations
         Requies that a dask.distribuited client be passed for parallel processing
+        omezarr took 21.34 seconds with chunks to auto
+        omezarr took 32.37 seconds with chunks to 128 and 64
+        omezarr took 30.19 seconds with chunks to 128 and 64 and trimto 128
+        omezarr took 64.02 seconds with chunks and trimto 64
         """
 
         cluster = LocalCluster(ip='0.0.0.0', n_workers=self.workers, processes=True, threads_per_worker=self.jobs)
@@ -123,7 +129,7 @@ class OmeZarrManager():
         with Client(cluster) as client:
             self.write_first_mip(client)
 
-
+        
         for scale, _ in enumerate(transformations):
             with Client(cluster) as client:
                 self.write_mips(scale, client)
@@ -131,7 +137,19 @@ class OmeZarrManager():
         cluster.close()
 
     def write_first_mip(self, client):
+        """
+        Main mip took 12.87 seconds with chunks=[128, 128, 128] trimto=8 rechunk auto
+        Main mip took 11.26 seconds with chunks=[128, 128, 128] trimto=8 rechunk chunks
+        Main mip took 10.14 seconds with chunks=[128, 128, 128] trimto=128 rechunk chunks
+        Main mip took 31.42 seconds with chunks=[64, 64, 64] trimto=64 rechunk chunks
+        Main mip took 7.92 seconds with chunks=[32, 256, 256] trimto=64
+        Main mip took 7.02 seconds with chunks=[32, 512, 512] trimto=64
+        Main mip took 7.38 seconds with chunks=[32, 1024, 1024] trimto=64
+        Main mip took 7.41 seconds with chunks=[32, 512, 512] trimto=8
+        Main mip took 7.57 seconds with chunks=[64, 512, 512] trimto=8
+        """
 
+        start_time = timer()
         store = get_store(self.storepath, 0)
         if os.path.exists(os.path.join(self.storepath, 'scale0')):
             print('Initial store exists, continuing')            
@@ -144,8 +162,8 @@ class OmeZarrManager():
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape}')
-        tiff_stack = tiff_stack.rechunk('auto')
-        chunks = [128, 128, 128]
+        chunks = [64, 512, 512]
+        tiff_stack = tiff_stack.rechunk(chunks)
         #chunks = tiff_stack.chunksize
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
@@ -153,8 +171,11 @@ class OmeZarrManager():
         to_store = da.store(tiff_stack, z, lock=False, compute=False)
         to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
-        print('Finished doing zarr store for main resolution\n')
-
+        #print('Finished doing zarr store for main resolution\n')
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f"Main mip took {total_elapsed_time} seconds with chunks={chunks} trimto={trimto}")
+    
     def write_mips(self, scale, client):
         read_storepath = os.path.join(self.storepath, f'scale{scale}')
         write_storepath = os.path.join(self.storepath, f'scale{scale + 1}')
@@ -173,9 +194,9 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        scaled_stack.rechunk('auto')
-        #chunks = scaled_stack.chunksize
         chunks = [64, 64, 64]
+        scaled_stack.rechunk(chunks)
+        #chunks = scaled_stack.chunksize
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
