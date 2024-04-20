@@ -147,6 +147,7 @@ class OmeZarrManager():
         Main mip took 7.38 seconds with chunks=[32, 1024, 1024] trimto=64
         Main mip took 7.41 seconds with chunks=[32, 512, 512] trimto=8
         Main mip took 7.57 seconds with chunks=[64, 512, 512] trimto=8
+        Main mip took 6.56 seconds with chunks=(36, 1040, 1792) trimto=8 rechunk auto
         """
 
         start_time = timer()
@@ -161,10 +162,9 @@ class OmeZarrManager():
         trimto = 8
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-        print(f'Aligned tiff_stack shape={tiff_stack.shape}')
-        chunks = [64, 1024, 1024]
-        tiff_stack = tiff_stack.rechunk(chunks)
-        #chunks = tiff_stack.chunksize
+        print(f'Aligned tiff_stack shape={tiff_stack.shape} with original chunks size={tiff_stack.chunksize}')
+        tiff_stack = tiff_stack.rechunk('auto')
+        chunks = tiff_stack.chunksize
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
