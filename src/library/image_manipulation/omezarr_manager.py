@@ -145,8 +145,8 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape}')
         tiff_stack = tiff_stack.rechunk('auto')
-        #chunks = [128, 128, 128]
-        chunks = tiff_stack.chunksize
+        chunks = [128, 128, 128]
+        #chunks = tiff_stack.chunksize
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
@@ -174,7 +174,8 @@ class OmeZarrManager():
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         scaled_stack.rechunk('auto')
-        chunks = scaled_stack.chunksize
+        #chunks = scaled_stack.chunksize
+        chunks = [64, 64, 64]
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
