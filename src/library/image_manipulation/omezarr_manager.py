@@ -94,6 +94,9 @@ class OmeZarrManager():
             with dask.config.set({'temporary_directory': self.tmp_dir,
                                   'logging.distributed': 'error'}):
 
+
+                self.workers = 2
+                self.jobs = 4
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
@@ -124,7 +127,7 @@ class OmeZarrManager():
         omezarr took 64.02 seconds with chunks and trimto 64
         """
 
-        cluster = LocalCluster(ip='0.0.0.0', n_workers=self.workers, processes=True, threads_per_worker=self.jobs)
+        cluster = LocalCluster(ip='127.0.0.1', n_workers=self.workers, processes=True, threads_per_worker=self.jobs)
 
         with Client(cluster) as client:
             self.write_first_mip(client)

@@ -10,6 +10,7 @@ from timeit import default_timer as timer
 import tifffile
 from scipy.ndimage import zoom
 import zarr
+from tqdm import tqdm
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -263,9 +264,15 @@ class BrainStitcher(ParallelManager):
     def write_sections_from_volume(self):
         channels = [1,2,4]
         for channel in channels:
-            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.scale.{self.scaling_factor}.zarr')
-            print(f'Using existing {zarrpath}')
-            volume = zarr.open(zarrpath, mode='r')
+            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
+            if os.path.exists(zarrpath):
+                print(f'Using existing {zarrpath}')
+            else:
+                print(f'No zarr: {zarrpath}')
+                return
+            
+            store = get_store(zarrpath, 0, 'r')
+            volume = zarr.open(store, 'r')
 
             writing_sections_start_time = timer()
 
@@ -276,7 +283,7 @@ class BrainStitcher(ParallelManager):
 
             writing_sections_start_time = timer()
             os.makedirs(outpath, exist_ok=True)
-            for i in range(volume.shape[0]):
+            for i in tqdm(range(volume.shape[0])):
                 outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
                 if os.path.exists(outfile):
                     continue
@@ -286,6 +293,7 @@ class BrainStitcher(ParallelManager):
             end_time = timer()
             writing_sections_elapsed_time = round((end_time - writing_sections_start_time), 2)
             print(f'writing {i+1} sections in C{channel} took {writing_sections_elapsed_time} seconds')
+            
 
     def extract(self):
         tilepath = os.path.join(self.layer_path,  'h5')
@@ -326,7 +334,7 @@ class BrainStitcher(ParallelManager):
         chunks = (tile_shape[0] // self.scaling_factor // 4, 
                   tile_shape[1] // self.scaling_factor // 4, 
                   tile_shape[2] // self.scaling_factor // 4)
-
+        print(f'Creating zarr channel={channel} volume_shape={volume_shape} chunks={chunks}')
         volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=True, dtype=np.uint16)
 
 
