@@ -96,7 +96,7 @@ class OmeZarrManager():
 
 
                 self.workers = 2
-                self.jobs = 4
+                self.jobs = 2
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
