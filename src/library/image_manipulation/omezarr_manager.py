@@ -22,7 +22,7 @@ from distributed import Client, LocalCluster, progress
 from timeit import default_timer as timer
 
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
-from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
 
 class OmeZarrManager():
     """"""
@@ -30,9 +30,6 @@ class OmeZarrManager():
     def setup(self):
         """Set up variables
         """
-        low, high = get_cpus()
-        self.workers = low
-        self.jobs = 1
         tmp_dir = get_scratch_dir()
         self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
         if os.path.exists(self.tmp_dir):
@@ -105,6 +102,10 @@ class OmeZarrManager():
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
                 os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
+                #https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
+                os.environ["OMP_NUM_THREADS"] = "1"
+                os.environ["MKL_NUM_THREADS"] = "1"
+                os.environ["OPENBLAS_NUM_THREADS"] = "1"
                 self.write_mip_series(transformations)
                 self.cleanup()
                 
@@ -141,16 +142,9 @@ class OmeZarrManager():
 
     def write_first_mip(self, client):
         """
-        Main mip took 12.87 seconds with chunks=[128, 128, 128] trimto=8 rechunk auto
-        Main mip took 11.26 seconds with chunks=[128, 128, 128] trimto=8 rechunk chunks
-        Main mip took 10.14 seconds with chunks=[128, 128, 128] trimto=128 rechunk chunks
-        Main mip took 31.42 seconds with chunks=[64, 64, 64] trimto=64 rechunk chunks
-        Main mip took 7.92 seconds with chunks=[32, 256, 256] trimto=64
-        Main mip took 7.02 seconds with chunks=[32, 512, 512] trimto=64
-        Main mip took 7.38 seconds with chunks=[32, 1024, 1024] trimto=64
-        Main mip took 7.41 seconds with chunks=[32, 512, 512] trimto=8
-        Main mip took 7.57 seconds with chunks=[64, 512, 512] trimto=8
-        Main mip took 6.56 seconds with chunks=(36, 1040, 1792) trimto=8 rechunk auto
+        Main mip took 4.53 seconds with chunks=(36, 1040, 1792) trimto=8
+        Main mip took 4.74 seconds with chunks=(1, 1040, 1792) trimto=8
+        Main mip took 4.73 seconds with chunks=(1, 1040, 1792) trimto=8 no rechunking
         """
 
         start_time = timer()
@@ -174,7 +168,6 @@ class OmeZarrManager():
         to_store = da.store(tiff_stack, z, lock=False, compute=False)
         to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
-        #print('Finished doing zarr store for main resolution\n')
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Main mip took {total_elapsed_time} seconds with chunks={chunks} trimto={trimto}")
@@ -194,10 +187,11 @@ class OmeZarrManager():
             return
 
         previous_stack = da.from_zarr(url=read_storepath)
-        print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
+        print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        chunks = [64, 64, 64]
+        new_shape = scaled_stack.shape
+        chunks = [36, new_shape[1], new_shape[2]]
         scaled_stack.rechunk(chunks)
         #chunks = scaled_stack.chunksize
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
