@@ -185,7 +185,7 @@ class MeshPipeline():
         # shape=64 works at scale 5
         # shape=64 works at scale 20
 
-        s = int(128)
+        s = int(64)
         shape = [s, s, s]
         sharded = True
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
