@@ -45,7 +45,7 @@ class MeshPipeline():
         self.fileLocationManager = FileLocationManager(animal)
         self.mips = [0,1,2]
         self.mesh_mip = 1
-        self.max_simplification_error = 50
+        self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
         xy *=  self.scale
@@ -131,7 +131,7 @@ class MeshPipeline():
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         # reset chunks to much smaller size for better neuroglancer experience
-        chunks = [64, 64, 64]
+        chunks = [128, 128, 128]
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):
@@ -184,15 +184,19 @@ class MeshPipeline():
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
         # larger shape results in less files
+        # shape=32 works at scale 10 but not at 5
+        # shape=64 works at scale 5
+        # shape=64 works at scale 20
 
-        s = int(64*1)
+        s = int(64)
         shape = [s, s, s]
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip} without shards')
+        sharded = True
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
-                                        sharded=False,
-                                        max_simplification_error=50) # The first phase of creating mesh
+                                        sharded=sharded,
+                                        max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
@@ -205,11 +209,12 @@ class MeshPipeline():
         tq.insert(tasks)
         tq.execute()
 
-        #self.ng.precomputed_vol.commit_info()
-        #self.ng.precomputed_vol.commit_provenance()
 
 
     def process_multires_mesh(self):
+        """
+        Keep LOD = self.mesh_mip
+        """
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         tq = LocalTaskQueue(parallel=cpus)
@@ -220,30 +225,12 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = 10
+        LOD = self.mesh_mip
         print(f'Creating sharded multires task with LOD={LOD}')
-        #tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        #mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
-        #singleres_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_single')
-        multi_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}_multi')
-        #move(mesh_path, singleres_path)
-        tmp_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'tmp')
-        if os.path.exists(tmp_dir):
-            print(f'Removing stale {tmp_dir}')
-            rmtree(tmp_dir)
-        tmp_path = f"file://{tmp_dir}"
-
-        tasks = tc.create_sharded_multires_mesh_from_unsharded_tasks(src=self.layer_path, dest=tmp_path, num_lod=LOD)
+        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
-        # move tmp data to regular dir
-        mesh_path = f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}'
-        src = os.path.join(tmp_dir, mesh_path)
-        dst = os.path.join(self.mesh_dir, mesh_path)
-        rmtree(dst)
-        move(src, dst)
 
                            
                            
