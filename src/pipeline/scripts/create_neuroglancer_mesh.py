@@ -7,15 +7,12 @@ import os
 import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
-from taskqueue.taskqueue import LocalTaskQueue, TaskQueue
+from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 import numpy as np
-# np.seterr(all=None, divide=None, over=None, under=None, invalid=None)
-np.seterr(all="ignore")
 from pathlib import Path
 from timeit import default_timer as timer
-from shutil import move, rmtree
 import faulthandler
 import signal
 faulthandler.register(signal.SIGUSR1.value)
@@ -99,7 +96,7 @@ class MeshPipeline():
         if limit > 0:
             _start = self.midpoint - limit
             _end = self.midpoint + limit
-            files = files[_start:_end]
+            files = self.files[_start:_end]
             len_files = len(files)
 
         print(f'\nMidfile: dtype={self.midfile.dtype}, shape={self.midfile.shape}, ids={self.ids}, counts={self.counts}')
@@ -188,7 +185,7 @@ class MeshPipeline():
         # shape=64 works at scale 5
         # shape=64 works at scale 20
 
-        s = int(64)
+        s = int(128)
         shape = [s, s, s]
         sharded = True
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
@@ -255,7 +252,7 @@ class MeshPipeline():
 
 
         directories = {
-            self.progress_dir: f"\nRun stack",
+            self.progress_dir: "\nRun stack",
             self.transfered_path: "\nRun transfer",
             mesh_path: "\nRun mesh",
         }
