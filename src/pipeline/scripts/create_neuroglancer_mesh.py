@@ -188,16 +188,35 @@ class MeshPipeline():
         # removing shape results in no 0.shard being created!!!
         # at scale=5, shape=128 did not work but 128*2 did
         # larger shape results in less files
-        # shape=32 works at scale 10 but not at 5
-        # shape=64 works at scale 5
-        # shape=64 works at scale 20
-        # scale=10, 64 does not work
-        # scale=10, 128 does work
+        ######################################
+        # scale=5 64 works
+        # scale=5 128 does not work
+        # scale=5 256 works
+        # scale=5 448 (default) did not work
+        # scale=5 512 works
+        ######################################
+        # scale=8 64 does not work 
+        # scale=8 128 does not work 
+        # scale=8 256 works 
+        # scale=8 448 does not work 
+        # scale=8 512 works 
+        ######################################
+        # scale=10 64 does not work
+        # scale=10 128 works
+        # scale=10 256 works
+        # scale=10 448 does not work
+        # scale=10 512 works
+        ######################################
+        # scale=15 64 does not work
+        # scale=15 128 does not work
+        # scale=15 256 works
+        # scale=15 448 does not work
+        # scale=15 512 works
 
-        s = int(128)
+        s = int(256)
         shape = [s, s, s]
         sharded = True
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip}} with shards={str(sharded)}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
@@ -229,7 +248,9 @@ class MeshPipeline():
             print(f'Missing {self.transfered_path}')
             sys.exit()
 
-        LOD = self.mesh_mip
+        # LOD=0, resolution stays the same
+        # LOD=0, resolution shows different detail
+        LOD = 10
         print(f'Creating sharded multires task with LOD={LOD}')
         tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
@@ -270,8 +291,9 @@ class MeshPipeline():
 
         result1 = os.path.join(mesh_path, '1')
         result2 = os.path.join(mesh_path, '1.index')
+        result3 = os.path.join(mesh_path, '0.shard')
 
-        if os.path.exists(result1) and os.path.exists(result2):
+        if (os.path.exists(result1) and os.path.exists(result2)) or os.path.exists(result3):
             print(f'Mesh creation is complete for animal={self.animal} at scale={scale}')
         else:
             print('Mesh is not complete.')

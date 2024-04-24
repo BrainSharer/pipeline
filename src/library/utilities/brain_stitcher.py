@@ -262,37 +262,38 @@ class BrainStitcher(ParallelManager):
         
 
     def write_sections_from_volume(self):
-        channels = [1,2,4]
-        for channel in channels:
-            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
-            if os.path.exists(zarrpath):
-                print(f'Using existing {zarrpath}')
-            else:
-                print(f'No zarr: {zarrpath}')
-                return
-            
-            store = get_store(zarrpath, 0, 'r')
-            volume = zarr.open(store, 'r')
+        zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr')
+        if os.path.exists(zarrpath):
+            print(f'Using existing {zarrpath}')
+        else:
+            print(f'No zarr: {zarrpath}')
+            return
+        
+        store = get_store(zarrpath, 0, 'r')
+        volume = zarr.open(store, 'r')
+        if self.debug:
+            print(volume.info)
 
-            writing_sections_start_time = timer()
 
-            if self.scaling_factor > 1:
-                outpath = self.fileLocationManager.get_thumbnail_aligned(channel=channel)
-            else:
-                outpath = self.fileLocationManager.get_full_aligned(channel=channel)
+        writing_sections_start_time = timer()
+        outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
+        os.makedirs(outpath, exist_ok=True)
 
-            writing_sections_start_time = timer()
-            os.makedirs(outpath, exist_ok=True)
+        writing_sections_start_time = timer()
+        if self.debug:
+            print(f'Volume shape={volume.shape} dtype={volume.dtype}')
+        else:
+
             for i in tqdm(range(volume.shape[0])):
                 outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
                 if os.path.exists(outfile):
                     continue
                 section = volume[i, :, :]
                 write_image(outfile, section)
-    
-            end_time = timer()
-            writing_sections_elapsed_time = round((end_time - writing_sections_start_time), 2)
-            print(f'writing {i+1} sections in C{channel} took {writing_sections_elapsed_time} seconds')
+
+        end_time = timer()
+        writing_sections_elapsed_time = round((end_time - writing_sections_start_time), 2)
+        print(f'writing {i+1} sections in C{self.channel} took {writing_sections_elapsed_time} seconds')
             
 
     def extract(self):
