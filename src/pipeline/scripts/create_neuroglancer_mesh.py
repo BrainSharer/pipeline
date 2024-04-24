@@ -8,7 +8,14 @@ import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
+
+import pkg_resources
+tc_version = pkg_resources.get_distribution("igneous-pipeline").version
+if tc_version == "4.22.1":
+    import warnings
+    warnings.filterwarnings('ignore')
 import igneous.task_creation as tc
+
 from cloudvolume import CloudVolume
 import numpy as np
 from pathlib import Path
@@ -40,7 +47,7 @@ class MeshPipeline():
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        self.mips = [0,1,2]
+        self.mips = [0, 1, 2]
         self.mesh_mip = 1
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
@@ -184,8 +191,10 @@ class MeshPipeline():
         # shape=32 works at scale 10 but not at 5
         # shape=64 works at scale 5
         # shape=64 works at scale 20
+        # scale=10, 64 does not work
+        # scale=10, 128 does work
 
-        s = int(64)
+        s = int(128)
         shape = [s, s, s]
         sharded = True
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
@@ -205,8 +214,6 @@ class MeshPipeline():
         tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
-
-
 
     def process_multires_mesh(self):
         """
@@ -228,10 +235,6 @@ class MeshPipeline():
         tq.insert(tasks)    
         tq.execute()
 
-
-                           
-                           
-
     def process_skeleton(self):
         ##### skeleton
         print('Creating skeletons')
@@ -247,9 +250,8 @@ class MeshPipeline():
         section_count = len(self.files) // self.scale
         processed_count = len(os.listdir(self.progress_dir))
         if section_count != processed_count and section_count > 0:
-            dothis = "File count does not equal processed file count\n"
+            dothis = f"File count={section_count} does not equal processed file count={processed_count}\n"
         mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
-
 
         directories = {
             self.progress_dir: "\nRun stack",
@@ -274,6 +276,13 @@ class MeshPipeline():
         else:
             print('Mesh is not complete.')
 
+
+    def run_all(self):
+        self.process_stack()
+        self.process_transfer()
+        self.process_mesh()
+        self.process_multires_mesh()
+        print('Finished running all')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -307,6 +316,7 @@ if __name__ == '__main__':
         "multi": pipeline.process_multires_mesh,
         "skeleton": pipeline.process_skeleton,
         "status": pipeline.check_status,
+        "all": pipeline.run_all
     }
 
     if task in function_mapping:
