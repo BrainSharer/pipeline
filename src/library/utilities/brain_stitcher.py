@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from shutil import copyfile
 from timeit import default_timer as timer
+import psutil
 import tifffile
 from scipy.ndimage import zoom
 import zarr
@@ -209,55 +210,44 @@ class BrainStitcher(ParallelManager):
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
 
         volume1 = self.create_zarr_volume(volume_shape, "1")
-        volume2 = self.create_zarr_volume(volume_shape, "2")
-        volume4 = self.create_zarr_volume(volume_shape, "4")
+        #volume2 = self.create_zarr_volume(volume_shape, "2")
+        #volume4 = self.create_zarr_volume(volume_shape, "4")
         print(f'Volume 1 type={type(volume1)}')
         
         num_tiles = len(self.all_info_files.items())
         i = 1
-
-        for (layer, position), info in self.all_info_files.items():
+        for (layer, position), info in tqdm(self.all_info_files.items(), disable=self.debug):
             h5file = f"{position}.h5"
-            readh5_start_time = timer()
             h5path = os.path.join(self.base_path, layer, 'h5', h5file)
             if not os.path.exists(h5path):
                 print(f'Error: missing {h5path}')
                 sys.exit()
             subvolume1, subvolume2, subvolume4 = self.fetch_tif(h5path)
-            readh5_end_time = timer()
-            readh5_elapsed_time = round((readh5_end_time - readh5_start_time), 2)
-            if self.debug:
-                print(f'reading h5 took {readh5_elapsed_time} seconds', end=" ")
-
 
             start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
                                                                                     rows=subvolume1.shape[1], 
                                                                                     columns=subvolume1.shape[2], 
                                                                                     pages=subvolume1.shape[0])
-            if self.debug:
-                print(f'layer={layer} position={position}', end=" ") 
-                print(f'volume[{start_z}:{end_z},{start_row}:{end_row},{start_col}:{end_col}] tile shape={subvolume1.shape}', end=" ")        
-                write_start_time = timer()
 
-
-            volumes = [volume1, volume2, volume4]
-            subvolumes = [subvolume1, subvolume2, subvolume4]
+            #volumes = [volume1, volume2, volume4]
+            #subvolumes = [subvolume1, subvolume2, subvolume4]
+            volumes = [volume1]
+            subvolumes = [subvolume1]
 
             for subvolume,volume in zip(subvolumes, volumes):
+                if self.debug:
+                    write_start_time = timer()
                 try:
-                    #subvolume[:,:,0:30] = 0
                     max_subvolume = np.maximum(volume[start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
-                    # deal with overlap
                     volume[start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
                 except Exception as e:
                     print(f'Error: {e}')
 
-
-            if self.debug:
-                write_end_time = timer()     
-                write_elapsed_time = round((write_end_time - write_start_time), 2)
-                print(f'writing took {write_elapsed_time} seconds', end=" ")
-                print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
+                if self.debug:
+                    write_end_time = timer()     
+                    write_elapsed_time = round((write_end_time - write_start_time), 2)
+                    print(f'writing took {write_elapsed_time} seconds', end=" ")
+                    print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
             i += 1
         
 
@@ -331,11 +321,12 @@ class BrainStitcher(ParallelManager):
     def create_zarr_volume(self, volume_shape, channel):
         storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
         store = get_store(storepath, 0)
+        volume_shape = [4750, 36962, 43442]
+        tile_shape = [250, 1536, 1024]
 
-        tile_shape=np.array([250, 1536, 1024])
-        chunks = (tile_shape[0] // self.scaling_factor // 4, 
-                  tile_shape[1] // self.scaling_factor // 4, 
-                  tile_shape[2] // self.scaling_factor // 4)
+        chunks = (tile_shape[0], 
+                  tile_shape[1], 
+                  tile_shape[2])
         print(f'Creating zarr channel={channel} volume_shape={volume_shape} chunks={chunks}')
         volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=True, dtype=np.uint16)
 
@@ -360,3 +351,90 @@ def extract_tif(file_key):
             print(channel_file, scaled_arr.dtype, scaled_arr.shape)
             #write_image(outpath, scaled_arr)
             tifffile.imwrite(channel_file, scaled_arr, bigtiff=True)
+
+def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks):
+    '''
+    Grows chunks shape by axis y and x by the original chunk shape until a
+    defined size in GB is reached
+
+    return tuple of new chunk shape
+    '''
+    dtype = np.uint16
+    mem = int((psutil.virtual_memory().free/1024**3)*.8)
+    cpu_cores = os.cpu_count()
+    chunk_limit_GB = mem / cpu_cores / 8
+
+    y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
+    x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
+
+    original_chunks = (original_chunks[0], y, x)
+
+    current_chunks = original_chunks
+    current_size = get_size_GB(current_chunks, dtype)
+
+    print(current_chunks)
+    print(current_size)
+
+    if current_size > chunk_limit_GB:
+        return current_chunks
+
+    idx = 0
+    chunk_bigger_than_z = True if current_chunks[0] >= image_shape[0] else False
+    chunk_bigger_than_y = True if current_chunks[1] >= image_shape[1] else False
+    chunk_bigger_than_x = True if current_chunks[2] >= image_shape[2] else False
+
+    while current_size <= chunk_limit_GB:
+
+        # last_size = get_size_GB(current_chunks,dtype)
+        last_shape = current_chunks
+
+        # chunk_iter_idx = idx % 2
+        # if chunk_iter_idx == 0 and chunk_bigger_than_y == False:
+        #     current_chunks = (original_chunks[0], current_chunks[1] + output_chunks[1], current_chunks[2])
+        # elif chunk_iter_idx == 1 and chunk_bigger_than_x == False:
+        #     current_chunks = (original_chunks[0], current_chunks[1], current_chunks[2] + output_chunks[2])
+
+        # Iterate over y first then x
+        if chunk_bigger_than_y == False:
+            current_chunks = (original_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
+        elif chunk_bigger_than_x == False:
+            current_chunks = (original_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
+        elif chunk_bigger_than_z == False:
+            current_chunks = (original_chunks[0] + output_chunks[0], current_chunks[1], current_chunks[2])
+
+        current_size = get_size_GB(current_chunks, dtype)
+
+        print(f'current_chunks={current_chunks}')
+        print(f'current_size={current_size}')
+
+        if current_size > chunk_limit_GB:
+            return last_shape
+
+        if current_chunks[0] > image_shape[0]:
+            chunk_bigger_than_z = True
+
+        if current_chunks[1] > image_shape[1]:
+            chunk_bigger_than_y = True
+
+        if current_chunks[2] > image_shape[2]:
+            chunk_bigger_than_x = True
+
+        if all([chunk_bigger_than_z, chunk_bigger_than_y, chunk_bigger_than_x]):
+            return last_shape
+
+        idx += 1
+
+
+def get_size_GB(shape,dtype):
+    
+    current_size = math.prod(shape)/1024**3
+    if dtype == np.dtype('uint8'):
+        pass
+    elif dtype == np.dtype('uint16'):
+        current_size *=2
+    elif dtype == np.dtype('float32'):
+        current_size *=4
+    elif dtype == float:
+        current_size *=8
+    
+    return current_size

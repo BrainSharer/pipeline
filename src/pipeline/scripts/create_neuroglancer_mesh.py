@@ -216,7 +216,7 @@ class MeshPipeline():
         s = int(256)
         shape = [s, s, s]
         sharded = True
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip}} with shards={str(sharded)}')
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
