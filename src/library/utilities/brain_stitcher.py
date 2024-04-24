@@ -46,7 +46,7 @@ class BrainStitcher(ParallelManager):
         self.scaling_factor = scaling_factor
         self.available_layers = []
         self.all_info_files = None
-        self.check_status()
+        #self.check_status()
 
     def __call__(self):
         self.check_status()
@@ -282,6 +282,7 @@ class BrainStitcher(ParallelManager):
         writing_sections_start_time = timer()
         if self.debug:
             print(f'Volume shape={volume.shape} dtype={volume.dtype}')
+            return
         else:
 
             for i in tqdm(range(volume.shape[0])):
