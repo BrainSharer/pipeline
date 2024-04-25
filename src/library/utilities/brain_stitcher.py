@@ -210,8 +210,8 @@ class BrainStitcher(ParallelManager):
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
 
         volume1 = self.create_zarr_volume(volume_shape, "1")
-        #volume2 = self.create_zarr_volume(volume_shape, "2")
-        #volume4 = self.create_zarr_volume(volume_shape, "4")
+        volume2 = self.create_zarr_volume(volume_shape, "2")
+        volume4 = self.create_zarr_volume(volume_shape, "4")
         print(f'Volume 1 type={type(volume1)}')
         
         num_tiles = len(self.all_info_files.items())
@@ -234,10 +234,10 @@ class BrainStitcher(ParallelManager):
                                                                                     columns=subvolume1.shape[2], 
                                                                                     pages=subvolume1.shape[0])
 
-            #volumes = [volume1, volume2, volume4]
-            #subvolumes = [subvolume1, subvolume2, subvolume4]
-            volumes = [volume1]
-            subvolumes = [subvolume1]
+            volumes = [volume1, volume2, volume4]
+            subvolumes = [subvolume1, subvolume2, subvolume4]
+            #volumes = [volume1]
+            #subvolumes = [subvolume1]
 
             for subvolume,volume in zip(subvolumes, volumes):
                 if self.debug:
