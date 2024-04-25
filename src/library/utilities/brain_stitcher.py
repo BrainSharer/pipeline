@@ -12,6 +12,7 @@ import tifffile
 from scipy.ndimage import zoom
 import zarr
 from tqdm import tqdm
+from cloudvolume.lib import touch
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -57,19 +58,18 @@ class BrainStitcher(ParallelManager):
             return
         all_layers = [layer for layer in sorted(os.listdir(self.base_path))]
         for layer in all_layers:
-            len_tif = 0
             len_h5 = 0
             len_info = 0
             infopath = os.path.join(self.base_path, layer, 'info')
             if os.path.exists(infopath):
                 len_info = len(os.listdir(infopath))
             h5path = os.path.join(self.base_path, layer, 'h5')
+            progress_path = os.path.join(self.base_path, layer, 'progress')
+            os.makedirs(progress_path, exist_ok=True)
             if os.path.exists(h5path):
                 len_h5 = len(os.listdir(h5path))
-            tifpath = os.path.join(self.base_path, layer, 'tif', f'scale_{self.scaling_factor}', f'C{self.channel}')
-            if os.path.exists(tifpath):
-                len_tif = len(os.listdir(tifpath))
-            print(f'Found {len_info} JSON, {len_h5} H5, and {len_tif} TIFS files in layer={layer}')
+            len_progress = len(os.listdir(progress_path))
+            print(f'Found {len_info} JSON, {len_h5} H5 files, and {len_progress} completed files in layer={layer}')
 
             if ((len_h5 > 0 and len_info > 0) and (len_h5 == len_info)):
                 self.available_layers.append(layer)
@@ -219,6 +219,11 @@ class BrainStitcher(ParallelManager):
         for (layer, position), info in tqdm(self.all_info_files.items(), disable=self.debug):
             h5file = f"{position}.h5"
             h5path = os.path.join(self.base_path, layer, 'h5', h5file)
+            progress_file = f"{position}.txt"
+            progress_path = os.path.join(self.base_path, layer, 'progress', progress_file)
+            if os.path.exists(progress_path):
+                continue
+            
             if not os.path.exists(h5path):
                 print(f'Error: missing {h5path}')
                 sys.exit()
@@ -249,6 +254,11 @@ class BrainStitcher(ParallelManager):
                     print(f'writing took {write_elapsed_time} seconds', end=" ")
                     print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
             i += 1
+            touch(progress_path)
+        end_time = timer()     
+        elapsed_time = round((end_time - start_time), 2)
+        print(f'Writing {i} h5 files took {elapsed_time} seconds')
+
         
 
     def write_sections_from_volume(self):
@@ -325,10 +335,14 @@ class BrainStitcher(ParallelManager):
         tile_shape = [250, 1536, 1024]
 
         chunks = (tile_shape[0], 
-                  tile_shape[1], 
-                  tile_shape[2])
-        print(f'Creating zarr channel={channel} volume_shape={volume_shape} chunks={chunks}')
-        volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=True, dtype=np.uint16)
+                  tile_shape[2], 
+                  tile_shape[1])
+        if os.path.exists(storepath):
+            print(f'Loading existing zarr from {storepath}')
+            volume = zarr.open(store)
+        else:
+            print(f'Creating zarr channel={channel} volume_shape={volume_shape} chunks={chunks}')
+            volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=False, dtype=np.uint16)
 
 
         print(volume.info)
