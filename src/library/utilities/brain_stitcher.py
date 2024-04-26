@@ -17,7 +17,7 @@ from cloudvolume.lib import touch
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
-from library.utilities.dask_utilities import get_store
+from library.utilities.dask_utilities import aligned_coarse_chunks, get_store
 from library.utilities.utilities_process import write_image
 
 class BrainStitcher(ParallelManager):
@@ -233,11 +233,12 @@ class BrainStitcher(ParallelManager):
                                                                                     rows=subvolume1.shape[1], 
                                                                                     columns=subvolume1.shape[2], 
                                                                                     pages=subvolume1.shape[0])
-
-            volumes = [volume1, volume2, volume4]
-            subvolumes = [subvolume1, subvolume2, subvolume4]
-            #volumes = [volume1]
-            #subvolumes = [subvolume1]
+            #print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
+            #continue
+            #volumes = [volume1, volume2, volume4]
+            #subvolumes = [subvolume1, subvolume2, subvolume4]
+            volumes = [volume1]
+            subvolumes = [subvolume1]
 
             for subvolume,volume in zip(subvolumes, volumes):
                 if self.debug:
@@ -251,7 +252,7 @@ class BrainStitcher(ParallelManager):
                 if self.debug:
                     write_end_time = timer()     
                     write_elapsed_time = round((write_end_time - write_start_time), 2)
-                    print(f'writing took {write_elapsed_time} seconds', end=" ")
+                    print(f'writing {position} took {write_elapsed_time} seconds', end=" ")
                     print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
             i += 1
             touch(progress_path)
@@ -334,9 +335,8 @@ class BrainStitcher(ParallelManager):
         volume_shape = [4750, 36962, 43442]
         tile_shape = [250, 1536, 1024]
 
-        chunks = (tile_shape[0], 
-                  tile_shape[2], 
-                  tile_shape[1])
+        chunks = True
+        #chunks = [1, volume_shape[1] // 4, volume_shape[2] // 4] 
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)
