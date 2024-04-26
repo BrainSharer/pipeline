@@ -250,9 +250,9 @@ class MeshPipeline():
 
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
-        LOD = 10
+        LOD = 0
         print(f'Creating sharded multires task with LOD={LOD}')
-        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, min_chunk_size=[64,64,64])
+        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
