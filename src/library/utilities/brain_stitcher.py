@@ -235,10 +235,10 @@ class BrainStitcher(ParallelManager):
                                                                                     pages=subvolume1.shape[0])
             #print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
             #continue
-            #volumes = [volume1, volume2, volume4]
-            #subvolumes = [subvolume1, subvolume2, subvolume4]
-            volumes = [volume1]
-            subvolumes = [subvolume1]
+            volumes = [volume1, volume2, volume4]
+            subvolumes = [subvolume1, subvolume2, subvolume4]
+            #volumes = [volume1]
+            #subvolumes = [subvolume1]
 
             for subvolume,volume in zip(subvolumes, volumes):
                 if self.debug:
@@ -333,17 +333,15 @@ class BrainStitcher(ParallelManager):
         storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
         store = get_store(storepath, 0)
         volume_shape = [4750, 36962, 43442]
-        tile_shape = [250, 1536, 1024]
+        #tile_shape = [250, 1536, 1024]
+        chunks = [150, 578, 679]
 
-        chunks = True
-        #chunks = [1, volume_shape[1] // 4, volume_shape[2] // 4] 
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)
         else:
             print(f'Creating zarr channel={channel} volume_shape={volume_shape} chunks={chunks}')
             volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=False, dtype=np.uint16)
-
 
         print(volume.info)
         return volume    
@@ -418,8 +416,8 @@ def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks):
 
         current_size = get_size_GB(current_chunks, dtype)
 
-        print(f'current_chunks={current_chunks}')
-        print(f'current_size={current_size}')
+        #print(f'current_chunks={current_chunks}')
+        #print(f'current_size={current_size}')
 
         if current_size > chunk_limit_GB:
             return last_shape
