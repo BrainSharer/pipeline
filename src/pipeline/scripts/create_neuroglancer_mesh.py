@@ -241,19 +241,19 @@ class MeshPipeline():
         """
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
-        tq = LocalTaskQueue(parallel=cpus)
+        tq = LocalTaskQueue(parallel=1)
 
         # Now do the mesh creation
-        if not os.path.exists(self.transfered_path):
-            print('You need to run previous tasks first')
-            print(f'Missing {self.transfered_path}')
-            sys.exit()
+        #if not os.path.exists(self.transfered_path):
+        #    print('You need to run previous tasks first')
+        #    print(f'Missing {self.transfered_path}')
+        #    sys.exit()
 
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
         LOD = 1
         print(f'Creating sharded multires task with LOD={LOD}')
-        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, vertex_quantization_bits=10)
+        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, max_labels_per_shard=1, min_shards=1)
         tq.insert(tasks)    
         tq.execute()
 
