@@ -9,6 +9,7 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
 
+
 import pkg_resources
 tc_version = pkg_resources.get_distribution("igneous-pipeline").version
 if tc_version == "4.22.1":
@@ -240,7 +241,7 @@ class MeshPipeline():
         """
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
-        tq = LocalTaskQueue(parallel=1)
+        tq = LocalTaskQueue(parallel=cpus)
 
         # Now do the mesh creation
         if not os.path.exists(self.transfered_path):
@@ -250,9 +251,9 @@ class MeshPipeline():
 
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
-        LOD = 0
+        LOD = 1
         print(f'Creating sharded multires task with LOD={LOD}')
-        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, vertex_quantization_bits=10)
         tq.insert(tasks)    
         tq.execute()
 
