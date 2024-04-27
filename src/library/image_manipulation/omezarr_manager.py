@@ -41,13 +41,13 @@ class OmeZarrManager():
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 3
+            self.mips = 4
         else:
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
             self.mips = 8
-
+        self.chunks = [64, 64, 64]
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
             {
@@ -133,7 +133,6 @@ class OmeZarrManager():
         with Client(cluster) as client:
             self.write_first_mip(client)
 
-        
         for scale, _ in enumerate(transformations):
             with Client(cluster) as client:
                 self.write_mips(scale, client)
@@ -190,14 +189,11 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        new_shape = scaled_stack.shape
-        chunks = [36, new_shape[1], new_shape[2]]
-        scaled_stack.rechunk(chunks)
-        #chunks = scaled_stack.chunksize
-        print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
+        scaled_stack.rechunk(self.chunks)
+        print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={self.chunks}')
 
         store = get_store(self.storepath, scale + 1)
-        z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
+        z = zarr.zeros(scaled_stack.shape, chunks=self.chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
         to_store = da.store(scaled_stack, z, lock=False, compute=False)
         print(f'Writing mip with data to: {write_storepath}')
         to_store = progress(client.compute(to_store))
