@@ -108,7 +108,7 @@ class OmeZarrManager():
             with dask.config.set({'temporary_directory': self.tmp_dir,
                                   'logging.distributed': 'error'}):
 
-                self.workers = 4
+                self.workers = 1
                 self.jobs = 1
                 print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
                 print('With Dask memory config:')
@@ -142,16 +142,20 @@ class OmeZarrManager():
         omezarr took 64.02 seconds with chunks and trimto 64
         """
 
-        cluster = LocalCluster(ip='127.0.0.1', n_workers=self.workers, processes=True, threads_per_worker=self.jobs)
-
+        """
+        cluster = LocalCluster(ip='127.0.0.1', n_workers=self.workers, processes=False, threads_per_worker=self.jobs)
         with Client(cluster) as client:
             self.write_first_mip(client)
-
         for scale, _ in enumerate(transformations):
             with Client(cluster) as client:
                 self.write_mips(scale, client)
-
         cluster.close()
+        """
+        with Client() as client:
+            self.write_first_mip(client)
+        for scale, _ in enumerate(transformations):
+            with Client() as client:
+                self.write_mips(scale, client)
 
     def write_first_mip(self, client):
         """
@@ -205,12 +209,12 @@ class OmeZarrManager():
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         #z, y, x = scaled_stack.shape
         #chunks = [64, y//self.factors[scale], x//self.factors[scale]]
-        scaled_stack.rechunk('auto')
+        #scaled_stack.rechunk('auto')
         chunks = scaled_stack.chunksize
         print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
-        z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
+        z = zarr.zeros(scaled_stack.shape, chunks=True, store=store, overwrite=True, dtype=scaled_stack.dtype)
         to_store = da.store(scaled_stack, z, lock=False, compute=False)
         print(f'Writing mip with data to: {write_storepath}')
         to_store = progress(client.compute(to_store))
