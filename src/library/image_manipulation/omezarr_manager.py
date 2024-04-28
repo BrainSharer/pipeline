@@ -203,9 +203,10 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        z, y, x = scaled_stack.shape
-        chunks = [64, y//self.factors[scale], x//self.factors[scale]]
-        scaled_stack.rechunk(chunks)
+        #z, y, x = scaled_stack.shape
+        #chunks = [64, y//self.factors[scale], x//self.factors[scale]]
+        scaled_stack.rechunk('auto')
+        chunks = scaled_stack.chunksize
         print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
