@@ -37,6 +37,7 @@ class OmeZarrManager():
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
+        self.factors = [8,8,4,2,1,1,1,1]
         if self.downsample:
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
@@ -202,11 +203,13 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        scaled_stack.rechunk(self.chunks[scale])
-        print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={self.chunks[scale]}')
+        z, y, x = scaled_stack.shape
+        chunks = [64, y//self.factors[scale], x//self.factors[scale]]
+        scaled_stack.rechunk(chunks)
+        print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store(self.storepath, scale + 1)
-        z = zarr.zeros(scaled_stack.shape, chunks=self.chunks[scale], store=store, overwrite=True, dtype=scaled_stack.dtype)
+        z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
         to_store = da.store(scaled_stack, z, lock=False, compute=False)
         print(f'Writing mip with data to: {write_storepath}')
         to_store = progress(client.compute(to_store))
