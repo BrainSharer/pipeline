@@ -22,8 +22,7 @@ import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
 from distributed import Client, LocalCluster, progress
-from library.omezarr.tiff_manager import tiff_manager_3d
-from library.utilities.dask_utilities import organize_by_groups, aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype, optimize_chunk_shape_3d_2
+from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
 class OmeZarrManager():
@@ -360,63 +359,6 @@ class OmeZarrManager():
 
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
-
-    def write_resolution_666(self, client=None):
-
-        print('Building Virtual Stack')
-        stack = []
-        originalChunkSize = [1, 1, 8, 1024, 1024]
-        filesList = []
-        for file in sorted(os.listdir(self.input)):
-            filepath = os.path.join(self.input, file)
-            filesList.append(filepath)
-
-        s = organize_by_groups(filesList, originalChunkSize[2])
-        # test_image = tiff_manager(s[0][0]) #2D manager
-        # chunk_depth = (test_image.shape[1]//4) - (test_image.shape[1]//4)%storage_chunks[3]
-        # chunk_depth = self.determine_read_depth(self.origionalChunkSize,
-        #                                         num_workers=self.sim_jobs,
-        #                                         z_plane_shape=test_image.shape,
-        #                                         chunk_limit_GB=self.res0_chunk_limit_GB)
-        test_image = tiff_manager_3d(s[0])
-        print('Image stack shape', test_image.shape, 'chunks', test_image.chunks)
-        # optimum_chunks = utils.optimize_chunk_shape_3d_2(test_image.shape, test_image.chunks, self.origionalChunkSize[2:], test_image.dtype,self.res0_chunk_limit_GB)
-
-        optimum_chunks = optimize_chunk_shape_3d_2(test_image.shape, test_image.chunks, originalChunkSize[2:])
-        test_image.chunks = optimum_chunks
-        print('##########################')
-        print(f'optimum_chunks={optimum_chunks}')
-        print('##########################')
-        # ## TESTING PURPOSES ONLY
-        # test_image.chunks = (test_image.chunks[0],test_image.chunks[1]//2,test_image.chunks[2]*2)
-
-        s = [test_image.clone_manager_new_file_list(x) for x in s]
-        s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-        s = da.concatenate(s)
-        print('1',s.shape)
-        # s = da.stack(s)
-        print(s)
-        stack.append(s)
-
-        stack = da.stack(stack)
-        print('2',s.shape)
-        #stack = stack[None,...]
-        print('3',s.shape)
-        return
-
-
-        store = get_store(self.storepath, 0)
-
-        z = zarr.zeros(stack.shape, chunks=originalChunkSize, store=store, overwrite=True, dtype=np.uint16)
-        if client is None:
-            to_store = da.store(stack, z, lock=True, compute=True)
-        else:
-            to_store = da.store(stack, z, lock=False, compute=False)
-            to_store = client.compute(to_store)
-            progress(to_store)
-            to_store = client.gather(to_store)
-
-        print('Finished writing resolution 0')
 
 
     def write_resolution_0(self, client=None):
