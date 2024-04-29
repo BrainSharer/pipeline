@@ -41,12 +41,12 @@ class OmeZarrManager():
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 4
+            self.mips = 0
         else:
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
-            self.mips = 8
+            self.mips = 0
 
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
@@ -81,23 +81,26 @@ class OmeZarrManager():
             print(transformation)
 
         jobs = 1
-        GB = (psutil.virtual_memory().total // 1024**3) * 0.8
+        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers = 2
-        memory_target = GB / workers / 2
-        memory_limit = f"{memory_target}GB"        
+        memory_tmp = GB // workers
+        memory_limit = f"{memory_tmp}GB"
+
+
+        #'distributed.worker.memory.target': memory_target, 
+        #'distributed.worker.memory.spill': memory_target + 0.1, 
+        #'distributed.worker.memory.pause': memory_target + 0.2, 
+        #'distributed.worker.memory.terminate': 0.95}
 
         try:
             with dask.config.set({'temporary_directory': self.tmp_dir, 
-                                  'logging.distributed': 'error',
-                                  'distributed.worker.memory.target': memory_target, 
-                                  'distributed.worker.memory.spill': memory_target + 0.1, 
-                                  'distributed.worker.memory.pause': memory_target + 0.2, 
-                                  'distributed.worker.memory.terminate': 0.95}):
+                                  'logging.distributed': 'error'}):
 
                 print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with {memory_limit} memory/worker')
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
                 print()
+                
                 #return
                 # https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
@@ -110,7 +113,7 @@ class OmeZarrManager():
                 cluster = LocalCluster(
                     n_workers=workers,
                     processes=True,
-                    threads_per_worker=1,
+                    threads_per_worker=jobs,
                     memory_limit=memory_limit
                 )
 
@@ -147,8 +150,7 @@ class OmeZarrManager():
         trimto = 8
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-        print(f'Aligned tiff_stack shape={tiff_stack.shape} with original chunks size={tiff_stack.chunksize}')
-        chunks = [1, new_shape[1]//16, new_shape[2]//16]
+        print(f'Aligned tiff_stack shape={tiff_stack.shape}')
         tiff_stack = tiff_stack.rechunk('auto')
         chunks = True
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
