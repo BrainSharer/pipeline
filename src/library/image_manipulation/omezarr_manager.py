@@ -83,7 +83,7 @@ class OmeZarrManager():
 
         jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        workers = 4
+        workers = 6
         memory_tmp = GB // workers
         memory_limit = f"{memory_tmp}GB"
 
@@ -201,10 +201,13 @@ class OmeZarrManager():
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         # z, y, x = scaled_stack.shape
         # chunks = [64, y//self.factors[scale], x//self.factors[scale]]
-        chunks = [64, 64, 64]
+        if mip < 2:
+            chunks = [64, 128, 128]
+        else:
+            chunks = [64, 64, 64]
+
         scaled_stack.rechunk('auto')
-        #chunks = scaled_stack.chunksize
-        print(f'New store at mip={mip} with shape={scaled_stack.shape} chunks={chunks}')
+        print(f'New store at mip={mip} with shape={scaled_stack.shape} resized chunks={scaled_stack.chunksize} and storing chunks={chunks}')
 
         store = get_store(self.storepath, mip + 1)
         z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
@@ -375,7 +378,7 @@ class OmeZarrManager():
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
 
-        chunks=(1, 1024, 1024)
+        chunks=(1, 33536, 5120)
         tiff_stack.rechunk(chunks)
 
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=np.uint16)

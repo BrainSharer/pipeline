@@ -190,8 +190,8 @@ def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks):
 
     print(f'original_chunks={original_chunks}')
 
-    y = original_chunks[0] if original_chunks[0] > output_chunks[0] else output_chunks[0]
-    x = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
+    y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
+    x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
 
     original_chunks = (original_chunks[0], y, x)
     
