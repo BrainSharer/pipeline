@@ -82,7 +82,7 @@ class OmeZarrManager():
 
         jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        workers = 2
+        workers = 4
         memory_tmp = GB // workers
         memory_limit = f"{memory_tmp}GB"
 
