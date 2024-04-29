@@ -49,7 +49,7 @@ class MeshPipeline():
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
         self.mips = [0, 1, 2]
-        self.mesh_mip = 1
+        self.mesh_mip = 2
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
