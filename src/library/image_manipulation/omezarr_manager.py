@@ -15,14 +15,14 @@ distributed:
 import glob
 import os
 import shutil
+import psutil
 import zarr
 import dask
 import dask.array as da
-from distributed import Client, LocalCluster, progress
 from timeit import default_timer as timer
-
+from distributed import Client, LocalCluster, progress
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
-from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
 class OmeZarrManager():
     """"""
@@ -37,33 +37,16 @@ class OmeZarrManager():
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
-        self.factors = [8,8,4,2,1,1,1,1]
         if self.downsample:
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.chunks = {
-                0: [64, 64, 64],
-                1: [64, 64, 64],
-                2: [64, 64, 64],
-                3: [64, 64, 64],
-            }
+            self.mips = 4
         else:
-            self.chunks = {
-                0: [64, 256, 256],
-                1: [64, 128, 128],
-                2: [64, 64, 64],
-                3: [64, 64, 64],
-                4: [64, 64, 64],
-                5: [64, 64, 64],
-                6: [64, 64, 64],
-                7: [64, 64, 64],
-            }
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
-
-        self.mips = len(self.chunks)
+            self.mips = 8
 
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
@@ -97,23 +80,25 @@ class OmeZarrManager():
         for transformation in transformations:
             print(transformation)
 
-        """
-        self.write_first_mip(client=None)
-
-        for scale, transformation in enumerate(transformations):
-            self.write_mips(scale, transformation, client=None)
-        """
+        jobs = 1
+        GB = (psutil.virtual_memory().total // 1024**3) * 0.8
+        workers = 2
+        memory_target = GB / workers / 2
+        memory_limit = f"{memory_target}GB"        
 
         try:
-            with dask.config.set({'temporary_directory': self.tmp_dir,
-                                  'logging.distributed': 'error'}):
+            with dask.config.set({'temporary_directory': self.tmp_dir, 
+                                  'logging.distributed': 'error',
+                                  'distributed.worker.memory.target': memory_target, 
+                                  'distributed.worker.memory.spill': memory_target + 0.1, 
+                                  'distributed.worker.memory.pause': memory_target + 0.2, 
+                                  'distributed.worker.memory.terminate': 0.95}):
 
-                self.workers = 1
-                self.jobs = 1
-                print(f'Starting distributed dask with {self.workers} workers and {self.jobs} jobs in tmp dir={self.tmp_dir}')
+                print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with {memory_limit} memory/worker')
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
                 print()
+                #return
                 # https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
@@ -122,40 +107,26 @@ class OmeZarrManager():
                 os.environ["OMP_NUM_THREADS"] = "1"
                 os.environ["MKL_NUM_THREADS"] = "1"
                 os.environ["OPENBLAS_NUM_THREADS"] = "1"
-                self.write_mip_series(transformations)
-                self.cleanup()
+                cluster = LocalCluster(
+                    n_workers=workers,
+                    processes=True,
+                    threads_per_worker=1,
+                    memory_limit=memory_limit
+                )
+
+                with Client(cluster) as client:
+                    self.write_first_mip(client)
+
+                with Client(cluster) as client:
+                    for mip in range(0, self.mips):
+                        self.write_mips(mip, client)
+                    
 
         except Exception as ex:
             print('Exception in running builder in omezarr_manager')
             print(ex)
 
         self.build_zattrs(transformations)
-
-    def write_mip_series(self, transformations):
-        """
-        For chunk size info: https://forum.image.sc/t/deciding-on-optimal-chunk-size/63023/4
-        Make downsampled versions of dataset based on number of transformations
-        Requies that a dask.distribuited client be passed for parallel processing
-        omezarr took 21.34 seconds with chunks to auto
-        omezarr took 32.37 seconds with chunks to 128 and 64
-        omezarr took 30.19 seconds with chunks to 128 and 64 and trimto 128
-        omezarr took 64.02 seconds with chunks and trimto 64
-        """
-
-        """
-        cluster = LocalCluster(ip='127.0.0.1', n_workers=self.workers, processes=False, threads_per_worker=self.jobs)
-        with Client(cluster) as client:
-            self.write_first_mip(client)
-        for scale, _ in enumerate(transformations):
-            with Client(cluster) as client:
-                self.write_mips(scale, client)
-        cluster.close()
-        """
-        with Client() as client:
-            self.write_first_mip(client)
-        for scale, _ in enumerate(transformations):
-            with Client() as client:
-                self.write_mips(scale, client)
 
     def write_first_mip(self, client):
         """
@@ -177,21 +148,23 @@ class OmeZarrManager():
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         print(f'Aligned tiff_stack shape={tiff_stack.shape} with original chunks size={tiff_stack.chunksize}')
+        chunks = [1, new_shape[1]//16, new_shape[2]//16]
         tiff_stack = tiff_stack.rechunk('auto')
-        chunks = tiff_stack.chunksize
+        chunks = True
         print(f'Setting up zarr store for main resolution with chunks={chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
         to_store = da.store(tiff_stack, z, lock=False, compute=False)
         to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
+
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Main mip took {total_elapsed_time} seconds with chunks={chunks} trimto={trimto}")
 
-    def write_mips(self, scale, client):
-        read_storepath = os.path.join(self.storepath, f'scale{scale}')
-        write_storepath = os.path.join(self.storepath, f'scale{scale + 1}')
+    def write_mips(self, mip, client):
+        read_storepath = os.path.join(self.storepath, f'scale{mip}')
+        write_storepath = os.path.join(self.storepath, f'scale{mip + 1}')
         print(f'Checking if data exists at: {read_storepath}', end=" ")
         if os.path.exists(read_storepath):
             print('and loading data')
@@ -207,18 +180,18 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        #z, y, x = scaled_stack.shape
-        #chunks = [64, y//self.factors[scale], x//self.factors[scale]]
-        #scaled_stack.rechunk('auto')
+        # z, y, x = scaled_stack.shape
+        # chunks = [64, y//self.factors[scale], x//self.factors[scale]]
+        # scaled_stack.rechunk('auto')
         chunks = scaled_stack.chunksize
-        print(f'New store at scale={scale} with shape={scaled_stack.shape} chunks={chunks}')
+        print(f'New store at mip={mip} with shape={scaled_stack.shape} chunks={chunks}')
 
-        store = get_store(self.storepath, scale + 1)
+        store = get_store(self.storepath, mip + 1)
         z = zarr.zeros(scaled_stack.shape, chunks=True, store=store, overwrite=True, dtype=scaled_stack.dtype)
         to_store = da.store(scaled_stack, z, lock=False, compute=False)
-        print(f'Writing mip with data to: {write_storepath}')
         to_store = progress(client.compute(to_store))
         to_store = client.gather(to_store)
+        print(f'Wrote mip with data to: {write_storepath}')
         print()
 
     def build_zattrs(self, transformations):
