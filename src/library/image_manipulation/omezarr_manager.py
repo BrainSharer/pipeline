@@ -14,6 +14,7 @@ distributed:
 """
 import glob
 import os
+import sys
 import shutil
 import psutil
 import zarr
@@ -21,7 +22,7 @@ import dask
 import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
-from distributed import Client, LocalCluster, progress
+from distributed import Client, progress
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
@@ -42,12 +43,30 @@ class OmeZarrManager():
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 4
+            self.chunks = [
+                [1, 1024, 1024],
+                [16, 128, 128],
+                [32, 64, 64],
+                [64, 64, 64],
+            ]
+            self.initial_chunks = [1, 1024, 1024]
+            self.mips = len(self.chunks)
         else:
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
-            self.mips = 8
+            self.chunks = [
+                [4, 1024, 1024],
+                [8, 512, 512],
+                [16, 256, 256],
+                [32, 128, 128],
+                [64, 64, 64],
+                [64, 64, 64],
+                [64, 64, 64],
+                [32, 32, 32]
+            ]
+            self.initial_chunks = [1, 2048, 2048]
+            self.mips = len(self.chunks)
 
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
@@ -83,22 +102,22 @@ class OmeZarrManager():
 
         jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        workers = 6
-        memory_tmp = GB // workers
-        memory_limit = f"{memory_tmp}GB"
-
+        workers, _ = get_cpus()
 
         if self.debug:
-            self.write_resolution_0(client=None)
+            self.write_first_mip(client=None)
             for mip in range(0, self.mips):
                 self.write_mips(mip, client=None)
         else:
 
             try:
                 with dask.config.set({'temporary_directory': self.tmp_dir, 
-                                    'logging.distributed': 'error'}):
+                                    'logging.distributed': 'error',
+                                    'distributed.comm.retry.count': 10,
+                                    'distributed.comm.timeouts.connect': 30}):
 
-                    print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with {memory_limit} memory/worker')
+
+                    print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with free memory={GB}GB')
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
                     print()
@@ -112,84 +131,68 @@ class OmeZarrManager():
                     os.environ["OMP_NUM_THREADS"] = "1"
                     os.environ["MKL_NUM_THREADS"] = "1"
                     os.environ["OPENBLAS_NUM_THREADS"] = "1"
-                    """
-                    cluster = LocalCluster(
-                        n_workers=workers,
-                        processes=True,
-                        threads_per_worker=jobs,
-                        memory_limit=memory_limit
-                    )
-                    """
 
                     with Client(n_workers=workers, threads_per_worker=jobs) as client:
-                        self.write_resolution_0(client)
+                        self.write_first_mip(client)
+                        for mip in range(0, self.mips):
+                                self.write_mips(mip, client)
 
+
+                    """"
                     for mip in range(0, self.mips):
                         with Client(n_workers=workers, threads_per_worker=jobs) as client:
                             self.write_mips(mip, client)
-
                     """
-                    for res in range(len(self.pyramidMap)):
-                        with Client(n_workers=self.workers,threads_per_worker=self.sim_jobs) as client:
-                            self.write_resolution(res,client)
-
-
-                    with Client(cluster) as client:
-                        self.write_first_mip(client)
-
-                    with Client(cluster) as client:
-                        for mip in range(0, self.mips):
-                            self.write_mips(mip, client)
-                    """ 
 
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
 
         self.build_zattrs(transformations)
+        self.cleanup()
 
-    def write_first_mip(self, client):
-        """
-        Main mip took 4.53 seconds with chunks=(36, 1040, 1792) trimto=8
-        Main mip took 4.74 seconds with chunks=(1, 1040, 1792) trimto=8
-        Main mip took 4.73 seconds with chunks=(1, 1040, 1792) trimto=8 no rechunking
-        """
-
+    def write_first_mip(self, client=None):
         start_time = timer()
         store = get_store(self.storepath, 0)
         if os.path.exists(os.path.join(self.storepath, 'scale0')):
-            print('Initial store exists, continuing')            
+            print('Initial store exists, continuing\n')            
             return
         print('Building Virtual Stack')
+
         tiff_stack = imreads(self.input)
-        print(f'Original tiff_stack shape={tiff_stack.shape}')
         old_shape = tiff_stack.shape
-        trimto = 8
+        trimto = 64
         new_shape = aligned_coarse_chunks(old_shape, trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-        print(f'Aligned tiff_stack shape={tiff_stack.shape}')
-        tiff_stack = tiff_stack.rechunk('auto')
-        chunks = True
-        print(f'Setting up zarr store for main resolution with chunks={chunks}')
-        z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=tiff_stack.dtype)
 
-        to_store = da.store(tiff_stack, z, lock=False, compute=False)
-        to_store = progress(client.compute(to_store))
-        to_store = client.gather(to_store)
+        optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]
+        tiff_stack.rechunk(optimum_chunks)
+        print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={self.initial_chunks}')
+
+        z = zarr.zeros(tiff_stack.shape, chunks=self.initial_chunks, store=store, overwrite=True, dtype=np.uint16)
+        if client is None:
+            to_store = da.store(tiff_stack, z, lock=True, compute=True)
+        else:
+            to_store = da.store(tiff_stack, z, lock=False, compute=False)
+            to_store = client.compute(to_store)
+            progress(to_store)
+            to_store = client.gather(to_store)
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Main mip took {total_elapsed_time} seconds with chunks={chunks} trimto={trimto}")
+        print(f"Main mip took {total_elapsed_time} seconds with chunks={self.initial_chunks} trimto={trimto}")
+
 
     def write_mips(self, mip, client=None):
         read_storepath = os.path.join(self.storepath, f'scale{mip}')
-        write_storepath = os.path.join(self.storepath, f'scale{mip + 1}')
-        print(f'Checking if data exists at: {read_storepath}', end=" ")
+        write_storepath = os.path.join(self.storepath, f'scale{mip+1}')
+        print(f'Loading data at: {read_storepath}', end=" ")
         if os.path.exists(read_storepath):
-            print('and loading data')
+            print('Success!')
         else:
-            print('and no store exists so returning ...')            
-            return
+            print('\nError: exiting ...')
+            print(f'Missing {read_storepath}')            
+            sys.exit()
 
         if os.path.exists(write_storepath):
             print(f'Already exists: {write_storepath}')            
@@ -199,17 +202,14 @@ class OmeZarrManager():
         print(f'Creating new store from previous shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        # z, y, x = scaled_stack.shape
-        # chunks = [64, y//self.factors[scale], x//self.factors[scale]]
-        if mip < 2:
-            chunks = [64, 128, 128]
-        else:
-            chunks = [64, 64, 64]
 
-        scaled_stack.rechunk('auto')
+        chunks = self.chunks[mip]
+        # optimum_chunks = optimize_chunk_shape(scaled_stack.shape, scaled_stack.chunksize, chunks)
+        optimum_chunks = (1, scaled_stack.shape[1], scaled_stack.shape[2])
+        scaled_stack.rechunk(optimum_chunks)
         print(f'New store at mip={mip} with shape={scaled_stack.shape} resized chunks={scaled_stack.chunksize} and storing chunks={chunks}')
 
-        store = get_store(self.storepath, mip + 1)
+        store = get_store(self.storepath, mip+1)
         z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
         if client is None:
             da.store(scaled_stack, z, lock=True, compute=True)
@@ -362,34 +362,3 @@ class OmeZarrManager():
 
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
-
-
-    def write_resolution_0(self, client=None):
-        start_time = timer()
-        store = get_store(self.storepath, 0)
-        if os.path.exists(os.path.join(self.storepath, 'scale0')):
-            print('Initial store exists, continuing')            
-            return
-        print('Building Virtual Stack')
-
-        tiff_stack = imreads(self.input)
-        old_shape = tiff_stack.shape
-        trimto = 8
-        new_shape = aligned_coarse_chunks(old_shape, trimto)
-        tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-
-        chunks=(1, 33536, 5120)
-        tiff_stack.rechunk(chunks)
-
-        z = zarr.zeros(tiff_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=np.uint16)
-        if client is None:
-            to_store = da.store(tiff_stack, z, lock=True, compute=True)
-        else:
-            to_store = da.store(tiff_stack, z, lock=False, compute=False)
-            to_store = client.compute(to_store)
-            progress(to_store)
-            to_store = client.gather(to_store)
-
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Main mip took {total_elapsed_time} seconds with chunks={chunks} trimto={trimto}")
