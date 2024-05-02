@@ -106,7 +106,7 @@ def mask_with_background(img, mask):
     return img
 
 
-def mask_with_contoursXXX(img):
+def mask_with_contours(img):
 
     new_img = color.rgb2gray(img)
     new_img *= 255 # or any coefficient
