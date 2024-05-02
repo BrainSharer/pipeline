@@ -97,7 +97,16 @@ def scaled(img, scale=20000):
     del img
     return scaled
 
-def mask_with_contours(img):
+def mask_with_background(img, mask):
+    white = np.where(mask==255)
+    whiterows = white[0]
+    firstrow = whiterows[1]
+    gray = (np.max(img[firstrow]))
+    img[mask == 0] = gray
+    return img
+
+
+def mask_with_contoursXXX(img):
 
     new_img = color.rgb2gray(img)
     new_img *= 255 # or any coefficient
@@ -113,7 +122,8 @@ def mask_with_contours(img):
     smoothed = cv2.morphologyEx(thresh, cv2.MORPH_ERODE, kernel)
     inverted_thresh = cv2.bitwise_not(smoothed)
     filled_thresh = binary_fill_holes(inverted_thresh).astype(np.uint8)
-    return cv2.bitwise_and(img,img, mask=filled_thresh)
+    #return cv2.bitwise_and(img,img, mask=filled_thresh)
+    return cv2.bitwise_not(img, filled_thresh)
 
 def equalized(fixed, cliplimit=5):
     """Takes an image that has already been scaled and uses opencv adaptive histogram
@@ -188,8 +198,8 @@ def clean_and_rotate_image(file_key):
 
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
-    if cleaned.ndim == 3 and downsample:
-        cleaned = mask_with_contours(cleaned)
+    if cleaned.ndim == 3:
+        cleaned = mask_with_background(cleaned, mask)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)

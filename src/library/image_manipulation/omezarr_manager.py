@@ -40,6 +40,7 @@ class OmeZarrManager():
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
+            self.trimto = 8
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
@@ -52,6 +53,7 @@ class OmeZarrManager():
             self.initial_chunks = [1, 1024, 1024]
             self.mips = len(self.chunks)
         else:
+            self.trimto = 64
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
@@ -116,13 +118,11 @@ class OmeZarrManager():
                                     'distributed.comm.retry.count': 10,
                                     'distributed.comm.timeouts.connect': 30}):
 
-
                     print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with free memory={GB}GB')
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
                     print()
 
-                    # return
                     # https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
                     os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
                     os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
@@ -136,13 +136,6 @@ class OmeZarrManager():
                         self.write_first_mip(client)
                         for mip in range(0, self.mips):
                                 self.write_mips(mip, client)
-
-
-                    """"
-                    for mip in range(0, self.mips):
-                        with Client(n_workers=workers, threads_per_worker=jobs) as client:
-                            self.write_mips(mip, client)
-                    """
 
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
@@ -161,8 +154,7 @@ class OmeZarrManager():
 
         tiff_stack = imreads(self.input)
         old_shape = tiff_stack.shape
-        trimto = 64
-        new_shape = aligned_coarse_chunks(old_shape, trimto)
+        new_shape = aligned_coarse_chunks(old_shape, self.trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
 
         optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]
@@ -180,7 +172,7 @@ class OmeZarrManager():
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Main mip took {total_elapsed_time} seconds with chunks={self.initial_chunks} trimto={trimto}")
+        print(f"Main mip took {total_elapsed_time} seconds with chunks={self.initial_chunks} trimto={self.trimto}")
 
 
     def write_mips(self, mip, client=None):
@@ -188,7 +180,7 @@ class OmeZarrManager():
         write_storepath = os.path.join(self.storepath, f'scale{mip+1}')
         print(f'Loading data at: {read_storepath}', end=" ")
         if os.path.exists(read_storepath):
-            print('Success!')
+            print(': Success!')
         else:
             print('\nError: exiting ...')
             print(f'Missing {read_storepath}')            
