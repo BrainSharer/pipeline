@@ -38,6 +38,7 @@ class ScanRunController():
         SAFEMAX = 10000
         LITTLE_BIT_MORE = 500
         # just to be safe, we don't want to update numbers that aren't realistic
+        print(f'Updating scan_run table with ID={id}')
         print(f'Found max file size of data with width={width} height: {height}')
         if height > SAFEMAX and width > SAFEMAX:
             height = round(height, -3)
@@ -53,9 +54,12 @@ class ScanRunController():
             try:
                 self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
                 self.session.commit()
+
             except Exception as e:
                 print(f'No merge for  {e}')
                 self.session.rollback()
+            self.scan_run = self.session.query(ScanRun)\
+                .filter(ScanRun.id == id).one()
 
 
     def get_channels(self, FK_prep_id):

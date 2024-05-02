@@ -234,10 +234,10 @@ class BrainStitcher(ParallelManager):
                                                                                     pages=subvolume1.shape[0])
             #print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
             #continue
-            volumes = [volume1, volume2, volume4]
-            subvolumes = [subvolume1, subvolume2, subvolume4]
-            #volumes = [volume1]
-            #subvolumes = [subvolume1]
+            #volumes = [volume1, volume2, volume4]
+            #subvolumes = [subvolume1, subvolume2, subvolume4]
+            volumes = [volume1]
+            subvolumes = [subvolume1]
 
             for subvolume,volume in zip(subvolumes, volumes):
                 if self.debug:
@@ -332,9 +332,10 @@ class BrainStitcher(ParallelManager):
         storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
         store = get_store(storepath, 0)
         volume_shape = [4750, 36962, 43442]
-        #tile_shape = [250, 1536, 1024]
-        chunks = [150, 578, 679]
-
+        tile_shape = [250, 1536, 1024]
+        #chunks = [150, 578, 679]
+        #chunks = [1, 36962//4, 43442//4]
+        chunks = tile_shape
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)

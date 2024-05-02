@@ -2,6 +2,7 @@
 the brain area by using masks.
 """
 import os
+import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
@@ -105,6 +106,11 @@ class ImageCleaner:
             max_width = int(max_width / SCALING_FACTOR)
             max_height = int(max_height / SCALING_FACTOR)
 
+        if max_width == 0 or max_height == 0:
+            print(f'Error: width or height is 0. width={max_width} height={max_height}')
+            sys.exit()
+            return
+
         test_dir(self.animal, OUTPUT, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(OUTPUT))
 
@@ -134,6 +140,6 @@ class ImageCleaner:
         max_width = max(widths)
         max_height = max(heights)
         if self.debug:
-            print(f'Updating {self.animal} width={max_width} height={max_height}')
+            print(f'Updating {self.animal} scan_run with width={max_width} height={max_height}')
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 

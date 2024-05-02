@@ -46,9 +46,20 @@ class PrepCreater:
             OUTPUT = self.fileLocationManager.get_full(self.channel)
         
         if not os.path.exists(INPUT):
+            """This checks for the thumbnail_original dir. This might not be available with the original brains
+            The data will then be in the regular thumbnail dir
+            """
             print(f'This dir does not exist. {INPUT}')
-            sys.exit()
+            print(f'Checking the regular thumbnail dir')
+            INPUT = OUTPUT
+            if not os.path.exists(INPUT):
+                return
+
         starting_files = os.listdir(INPUT)
+        if len(starting_files) == 0:
+            print('No files to work with, check the thumbnail and/or the thumbnail_original dirs')
+            sys.exit()
+            
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
         self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
@@ -63,12 +74,13 @@ class PrepCreater:
             output_path = os.path.join(OUTPUT, str(section_number).zfill(3) + ".tif")
             if not os.path.exists(input_path):
                 continue
-            if os.path.exists(output_path):
-                continue
             relative_input_path = os.path.relpath(input_path, os.path.dirname(output_path))
             width, height = get_image_size(input_path)
             if not self.downsample:
                 self.sqlController.update_tif(section.id, width, height)
+
+            if os.path.exists(output_path):
+                continue
 
             try:    
                 os.symlink(relative_input_path, output_path)
