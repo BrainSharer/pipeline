@@ -29,10 +29,6 @@ class ScanRun(Base, AtlasModel):
     scenes_per_slide = Column(Enum("1", "2", "3", "4", "5", "6"))
     section_schema = Column(Enum("L to R", "R to L"))
     channels_per_scene = Column(Integer, default=3)
-    channel1_name = Column(String, default='C1')
-    channel2_name = Column(String, default='C2')
-    channel3_name = Column(String, default='C3')
-    channel4_name = Column(String, default='C4')
     slide_folder_path = Column(String)
     converted_status = Column(Enum("not started", "converted", "converting", "error"))
     ch_1_filter_set = Column(Enum("68", "47", "38", "46", "63", "64", "50"))
@@ -45,6 +41,7 @@ class ScanRun(Base, AtlasModel):
     flip = Column(Enum("none", "flip", "flop"))
     mask = Column(Integer, default=FULL_MASK, nullable=False)
     image_dimensions = Column(Integer, default=2, nullable=False)
+    bgcolor = Column(Integer, default=0, nullable=False)
 
     comments = Column(String)
 

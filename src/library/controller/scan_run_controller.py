@@ -62,6 +62,29 @@ class ScanRunController():
                 .filter(ScanRun.id == id).one()
 
 
+    def update_scan_run(self, id, update_dict):
+        """
+        Update the scan run with the given ID using the provided update dictionary.
+
+        Args:
+            id (int): The ID of the scan run to update.
+            update_dict (dict): A dictionary containing the fields to update and their new values.
+
+        Returns:
+            None
+        """
+
+        try:
+            self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
+            self.session.commit()
+
+        except Exception as e:
+            print(f'No merge for  {e}')
+            self.session.rollback()
+        self.scan_run = self.session.query(ScanRun)\
+            .filter(ScanRun.id == id).one()
+
+
     def get_channels(self, FK_prep_id):
         """Update the scan run table with safe and good values for the width and height
 

@@ -72,6 +72,7 @@ class ElastixManager(FileLogger):
         :param moving: sitk float array for the moving image.
         :return: the Elastix transformation results that get parsed into the rigid transformation
         """
+        bgcolor = str(self.sqlController.scan_run.bgcolor) # elastix likes strings
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -81,8 +82,9 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
         translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
+        
 
-        rigid_params = create_rigid_parameters(elastixImageFilter)
+        rigid_params = create_rigid_parameters(elastixImageFilter, defaultPixelValue=bgcolor)
         elastixImageFilter.SetParameterMap(translationMap)
         elastixImageFilter.AddParameterMap(rigid_params)
 
@@ -206,29 +208,9 @@ class ElastixManager(FileLogger):
 
             file_key = [infile, outfile, Ts]
             file_keys.append(file_key)
-            align_image_to_affine(file_key)
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-
-
-    def calculate_elastix_channels(self, INPUT, fixed_index, moving_index):
-        """Calculates the rigid transformation from the Elastix output
-        and adds it to the database.
-
-        :param INPUT: path of the files
-        :param fixed_index: index of fixed image
-        :param moving_index: index of moving image
-        """
-
-        # start register simple
-        pixelType = sitk.sitkFloat32
-        fixed_file = os.path.join(INPUT, f"{fixed_index}.tif")
-        moving_file = os.path.join(INPUT, f"{moving_index}.tif")
-        fixed = sitk.ReadImage(fixed_file, pixelType)
-        moving = sitk.ReadImage(moving_file, pixelType)
-        rotation, xshift, yshift = align_elastix(fixed, moving)
-        self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
 
     @staticmethod
