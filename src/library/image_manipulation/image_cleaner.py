@@ -3,9 +3,11 @@ the brain area by using masks.
 """
 import os
 import sys
+import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
+from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, place_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
 
@@ -25,7 +27,7 @@ class ImageCleaner:
         2. clean images
         3. Crop images if mask is set to FULL_MASK
         4. Get biggest box size from all contours from all files and update DB with that info
-        5. Place images in new cropped image size
+        5. Place images in new cropped image size with correct background color
         """
 
         if self.downsample:
@@ -143,3 +145,22 @@ class ImageCleaner:
             print(f'Updating {self.animal} scan_run with width={max_width} height={max_height}')
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 
+    def update_bg_color(self):
+            """
+            Updates the background color of the image.
+
+            This method retrieves the background color of the image using the ImageManager class,
+            and then updates the corresponding field in the scan run table using the SQLController class.
+
+            Parameters:
+                None
+
+            Returns:
+                None
+            """
+            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1)
+            INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+
+            image_manager = ImageManager(INPUT, MASKS)
+            update_dict = {'bgcolor': image_manager.get_bgcolor() }
+            self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)

@@ -76,12 +76,16 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     return T
 
 
-def create_rigid_parameters(elastixImageFilter):
-    """Creates the rigid paramaters used by Elastix.
-    This sets lots of parameters in this dictionary and it used multiple places.
+def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False):
+    """
+    Create and return a dictionary of rigid registration parameters for elastixImageFilter.
 
-    :param elastixImageFilter: object set in previous method for Elastix.
-    :return: dictionary of parameters
+    Parameters:
+    - elastixImageFilter: The elastix image filter object.
+    - defaultPixelValue: The default pixel value for the registration.
+
+    Returns:
+    - rigid_params: A dictionary of rigid registration parameters.
     """
 
     rigid_params = elastixImageFilter.GetDefaultParameterMap("rigid")
@@ -93,7 +97,7 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["MovingImageDimension"] = ["2"]
     rigid_params["UseDirectionCosines"] = ["false"]
     rigid_params["HowToCombineTransforms"] = ["Compose"]
-    rigid_params["DefaultPixelValue"] = ["0.0"]
+    rigid_params["DefaultPixelValue"] = [defaultPixelValue]
     rigid_params["WriteResultImage"] = ["false"]    
     rigid_params["Resampler"] = ["DefaultResampler"]
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
@@ -104,7 +108,11 @@ def create_rigid_parameters(elastixImageFilter):
     rigid_params["AutomaticScalesEstimation"] = ["true"]
     rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
-    rigid_params["MaximumNumberOfIterations"] = ["2500"]
+    if debug:
+        rigid_params["MaximumNumberOfIterations"] = ["2500"]
+    else:
+        rigid_params["MaximumNumberOfIterations"] = ["150"]
+
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
     rigid_params["ImageSampler"] = ["Random"]

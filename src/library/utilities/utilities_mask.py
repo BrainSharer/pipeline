@@ -42,7 +42,6 @@ def place_image(file_key):
     """
     infile, max_width, max_height = file_key
     img = read_image(infile)
-    bgcolor = 0
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -51,6 +50,7 @@ def place_image(file_key):
     startc = zmidc - (img.shape[1] // 2)
     endc = startc + img.shape[1]
     dt = img.dtype
+    bgcolor = 0
 
     placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
     if img.ndim == 2:
@@ -98,13 +98,23 @@ def scaled(img, scale=20000):
     return scaled
 
 def mask_with_background(img, mask):
+    """
+    Masks the image with the given mask and replaces the masked region with the background color.
+
+    Args:
+        img (numpy.ndarray): The input image.
+        mask (numpy.ndarray): The mask to be applied on the image.
+
+    Returns:
+        numpy.ndarray: The masked image with the background color.
+
+    """
     white = np.where(mask==255)
     whiterows = white[0]
     firstrow = whiterows[1]
-    gray = (np.max(img[firstrow]))
-    img[mask == 0] = gray
+    bgcolor = (np.max(img[firstrow]))
+    img[mask == 0] = bgcolor
     return img
-
 
 def mask_with_contours(img):
 
@@ -198,8 +208,6 @@ def clean_and_rotate_image(file_key):
 
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
-    if cleaned.ndim == 3:
-        cleaned = mask_with_background(cleaned, mask)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)

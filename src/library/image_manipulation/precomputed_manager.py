@@ -9,6 +9,7 @@ import igneous.task_creation as tc
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
 XY_CHUNK = 128
+Z_CHUNK = 64
 
 
 class NgPrecomputedMaker:
@@ -33,7 +34,7 @@ class NgPrecomputedMaker:
           resolution = int(db_resolution * 1000 * self.scaling_factor)
           self.mips = 4
         else:
-            self.mips = 7
+            self.mips = 8
  
         scales = (resolution, resolution, int(zresolution * 1000))
         return scales
@@ -84,7 +85,6 @@ class NgPrecomputedMaker:
         PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-        
         starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
         self.logevent(f"INPUT FOLDER: {INPUT}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
@@ -129,7 +129,7 @@ class NgPrecomputedMaker:
             _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
 
 
-        chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
+        chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
         if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, xy_chunk]
@@ -152,19 +152,24 @@ class NgPrecomputedMaker:
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
-        # 2024-02-12 I took out shards as normalization does not work with them and nginx is problematic
-        
-        print(f'Creating transfer tasks with chunks={chunks} and section count={self.section_count}')
-        tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips,
-                                            chunk_size=chunks, mip=0, skip_downsamples=True)
+
+        if num_channels == 3:
+            print(f'Creating non-sharded transfer tasks with chunks={chunks} and section count={self.section_count}')
+            tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips, chunk_size=chunks, mip=0, skip_downsamples=True)
+        else:
+            print(f'Creating sharded transfer tasks with chunks={chunks} and section count={self.section_count}')
+            tasks = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks)
+
         tq.insert(tasks)
         tq.execute()
         print('Finished transfer tasks')
         for mip in range(0, self.mips):
             cv = CloudVolume(outpath, mip)
             print(f'Creating downsample tasks at mip={mip}')
-            tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip,
-                                                    num_mips=1, compress=True)
+            if num_channels == 3:
+                tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True)
+            else:
+                tasks = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
             tq.insert(tasks)
             tq.execute()
 
