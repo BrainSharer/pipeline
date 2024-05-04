@@ -40,7 +40,7 @@ def place_image(file_key):
     :param bgcolor: background color of image, 0 for NTB, white for thionin
     :return: placed image centered in the correct size.
     """
-    infile, max_width, max_height = file_key
+    infile, outfile, max_width, max_height = file_key
     img = read_image(infile)
 
     zmidr = max_height // 2
@@ -73,11 +73,11 @@ def place_image(file_key):
             placed_img[startr:endr, startc:endc,0] = img[:,:,0]
             placed_img[startr:endr, startc:endc,1] = img[:,:,1]
             placed_img[startr:endr, startc:endc,2] = img[:,:,2]
-
+    print(f'Placed {outfile}')
     del img
 
     message = f'Error in saving {infile} with shape {placed_img.shape} img type {placed_img.dtype}'
-    write_image(infile, placed_img.astype(dt), message=message)
+    write_image(outfile, placed_img.astype(dt), message=message)
 
     return
 
@@ -199,7 +199,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, downsample, mask_image = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
