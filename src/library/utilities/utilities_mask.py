@@ -57,7 +57,6 @@ def place_image(file_key):
         try:
             placed_img[startr:endr, startc:endc] = img
         except:
-            ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
             #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
             print(f'Could not place {infile} with shape:{img.shape} in {max_height}x{max_width}')
     if img.ndim == 3:
@@ -69,7 +68,6 @@ def place_image(file_key):
         except:
             print(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
             print('Fixing')
-            mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
             img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
             placed_img = np.zeros([max_height, max_width, 3]) + bgcolor
             placed_img[startr:endr, startc:endc,0] = img[:,:,0]

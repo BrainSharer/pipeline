@@ -111,7 +111,6 @@ class ImageCleaner:
         if max_width == 0 or max_height == 0:
             print(f'Error: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
-            return
 
         test_dir(self.animal, OUTPUT, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(OUTPUT))

@@ -28,7 +28,7 @@ class ScanRunController():
 
     def update_width_height(self, id, width, height):
         """Update the scan run table with safe and good values for the width and height
-
+        2024-05-04 I upped the LITTLE_BIT_MORE from 1000 to 2500 as the cropping may have been too aggressive
         :param id: integer primary key of scan run table
         """
         scan_run = self.session.query(ScanRun).filter(ScanRun.id == id).first()
@@ -36,7 +36,7 @@ class ScanRunController():
         width *= SCALING_FACTOR
         height *= SCALING_FACTOR
         SAFEMAX = 10000
-        LITTLE_BIT_MORE = 500
+        LITTLE_BIT_MORE = 2500
         # just to be safe, we don't want to update numbers that aren't realistic
         print(f'Updating scan_run table with ID={id}')
         print(f'Found max file size of data with width={width} height: {height}')
