@@ -67,13 +67,14 @@ def place_image(file_key):
             placed_img[startr:endr, startc:endc,2] = img[:,:,2]
         except:
             print(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+            """
             print('Fixing')
             img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
             placed_img = np.zeros([max_height, max_width, 3]) + bgcolor
             placed_img[startr:endr, startc:endc,0] = img[:,:,0]
             placed_img[startr:endr, startc:endc,1] = img[:,:,1]
             placed_img[startr:endr, startc:endc,2] = img[:,:,2]
-    print(f'Placed {outfile}')
+            """
     del img
 
     message = f'Error in saving {infile} with shape {placed_img.shape} img type {placed_img.dtype}'

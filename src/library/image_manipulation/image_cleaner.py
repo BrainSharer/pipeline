@@ -121,6 +121,8 @@ class ImageCleaner:
         for file in files:
             infile = os.path.join(INPUT, file)
             outfile = os.path.join(OUTPUT, file)
+            if os.path.exists(outfile):
+                continue
             file_keys.append([infile, outfile, max_width, max_height])
 
         if self.debug:
