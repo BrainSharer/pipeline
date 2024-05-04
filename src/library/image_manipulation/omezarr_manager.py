@@ -23,6 +23,7 @@ import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
 from distributed import Client, progress
+from library.image_manipulation.image_manager import ImageManager
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
@@ -69,6 +70,11 @@ class OmeZarrManager():
             ]
             self.initial_chunks = [1, 2048, 2048]
             self.mips = len(self.chunks)
+
+        image_manager = ImageManager(self.input)
+        self.ndims = image_manager.ndim
+        if self.ndims == 3:
+            self.initial_chunks.append(3)
 
         self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
         self.axes = [
@@ -156,8 +162,8 @@ class OmeZarrManager():
         old_shape = tiff_stack.shape
         new_shape = aligned_coarse_chunks(old_shape, self.trimto)
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-
         optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]
+
         tiff_stack.rechunk(optimum_chunks)
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={self.initial_chunks}')
 
@@ -197,7 +203,7 @@ class OmeZarrManager():
 
         chunks = self.chunks[mip]
         # optimum_chunks = optimize_chunk_shape(scaled_stack.shape, scaled_stack.chunksize, chunks)
-        optimum_chunks = (1, scaled_stack.shape[1], scaled_stack.shape[2])
+        optimum_chunks = [1, scaled_stack.shape[1], scaled_stack.shape[2]]
         scaled_stack.rechunk(optimum_chunks)
         print(f'New store at mip={mip} with shape={scaled_stack.shape} resized chunks={scaled_stack.chunksize} and storing chunks={chunks}')
 
