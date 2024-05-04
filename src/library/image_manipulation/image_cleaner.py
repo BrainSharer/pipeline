@@ -48,7 +48,7 @@ class ImageCleaner:
         if self.debug:
             print(f'Updating scan run.')
         self.set_crop_size()
-        self.setup_parallel_place_images(OUTPUT)
+        self.setup_parallel_place_images()
         
 
     def setup_parallel_create_cleaned(self, INPUT, OUTPUT, MASKS):
@@ -79,7 +79,6 @@ class ImageCleaner:
                     maskfile,
                     rotation,
                     flip,
-                    self.downsample,
                     self.mask_image
                 ]
             )
@@ -93,15 +92,18 @@ class ImageCleaner:
 
 
 
-    def setup_parallel_place_images(self, OUTPUT):
+    def setup_parallel_place_images(self):
         """Do the image placing in parallel. Cleaning and cropping has already taken place.
         We first need to get all the correct image sizes and then update the DB.
-
-        :param INPUT: str of file location input
-        :param OUTPUT: str of file location output
-        :param MASKS: str of file location of masks
         """
+        if self.downsample:
+            INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            OUTPUT = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+        else:
+            INPUT = self.fileLocationManager.get_full_cleaned(self.channel)
+            OUTPUT = self.fileLocationManager.get_full_cropped(self.channel)
 
+        os.makedirs(OUTPUT, exist_ok=True)
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
         if self.downsample:
@@ -112,13 +114,14 @@ class ImageCleaner:
             print(f'Error: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
-        test_dir(self.animal, OUTPUT, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(OUTPUT))
+        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(INPUT))
 
         file_keys = []
         for file in files:
-            infile = os.path.join(OUTPUT, file)
-            file_keys.append([infile, max_width, max_height])
+            infile = os.path.join(INPUT, file)
+            outfile = os.path.join(OUTPUT, file)
+            file_keys.append([infile, outfile, max_width, max_height])
 
         if self.debug:
             print(f'len of file keys in place={len(file_keys)}')

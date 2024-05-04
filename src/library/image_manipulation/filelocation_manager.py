@@ -83,7 +83,7 @@ class FileLocationManager(object):
 
     def get_alignment_directories(self, channel, resolution):
 
-        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cleaned')
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cropped')
         output = os.path.join(self.prep, f'C{channel}', f'{resolution}_aligned')
 
         os.makedirs(output, exist_ok=True)
