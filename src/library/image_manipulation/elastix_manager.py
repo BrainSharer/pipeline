@@ -88,6 +88,11 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetParameterMap(translationMap)
         elastixImageFilter.AddParameterMap(rigid_params)
 
+        affine_params = elastixImageFilter.GetDefaultParameterMap("affine")
+        affine_params["ResultImageFormat"] = ["tif"]
+        elastixImageFilter.AddParameterMap(affine_params)
+
+
         fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
         moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
 
@@ -119,6 +124,11 @@ class ElastixManager(FileLogger):
         
         translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
         rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+        #affines = elastixImageFilter.GetTransformParameterMap()[2]["TransformParameters"]
+        #print(affines)
+        #import sys
+        #sys.exit()
+
         x1, y1 = translations
         R, x2, y2 = rigid
         x = float(x1) + float(x2)
