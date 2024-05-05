@@ -79,8 +79,8 @@ class ImageCleaner:
                     maskfile,
                     rotation,
                     flip,
-                    self.mask_image
-                    self.downsample,
+                    self.mask_image,
+                    self.downsample
                 ]
             )
 
