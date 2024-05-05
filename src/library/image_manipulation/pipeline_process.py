@@ -185,7 +185,6 @@ class Pipeline(
         TODO fix for channel variable name
         """
         print(self.TASK_EXTRA_CHANNEL)
-        self.iteration = i
         if self.downsample:
             self.create_normalized_image()
             self.create_downsampled_mask()
