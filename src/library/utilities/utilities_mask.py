@@ -200,7 +200,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, downsample = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -215,6 +215,8 @@ def clean_and_rotate_image(file_key):
 
     if cleaned.ndim == 2:
         cleaned = scaled(cleaned)
+    if cleaned.ndim == 3 and downsample:
+        cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)

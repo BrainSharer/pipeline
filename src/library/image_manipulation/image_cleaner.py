@@ -80,6 +80,7 @@ class ImageCleaner:
                     rotation,
                     flip,
                     self.mask_image
+                    self.downsample,
                 ]
             )
 
