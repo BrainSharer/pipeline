@@ -177,6 +177,12 @@ class Pipeline(
         self.create_web_friendly_sections()
         print(f'Finished {self.TASK_ALIGN}.')
 
+    def affine_align(self):
+        """Perform the section to section alignment (registration)
+        """
+
+        self.create_affine_transformations()
+
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
