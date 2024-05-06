@@ -13,6 +13,9 @@ class ImageManager:
         self.dtype = self.img.dtype
         self.ndim = self.img.ndim
         self.shape = self.img.shape
+        self.width = self.shape[1]
+        self.height = self.shape[0]
+        self.center = np.array([self.width, self.height]) / 2
 
 
 

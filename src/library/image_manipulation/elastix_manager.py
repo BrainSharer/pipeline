@@ -63,16 +63,69 @@ class ElastixManager(FileLogger):
                     rotation, xshift, yshift = self.align_elastix_with_points(fixed_index, moving_index)
                     self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
-
     def align_elastix_with_points(self, fixed_index, moving_index):
-        """This takes the moving and fixed images runs Elastix on them. Note
-        the huge list of parameters Elastix uses here.
+            """This takes the moving and fixed images runs Elastix on them. Note
+            the huge list of parameters Elastix uses here.
 
-        :param fixed: sitk float array for the fixed image (the image behind the moving).
-        :param moving: sitk float array for the moving image.
-        :return: the Elastix transformation results that get parsed into the rigid transformation
-        """
-        bgcolor = str(self.sqlController.scan_run.bgcolor) # elastix likes strings
+            :param fixed: sitk float array for the fixed image (the image behind the moving).
+            :param moving: sitk float array for the moving image.
+            :return: the Elastix transformation results that get parsed into the rigid transformation
+            """
+            bgcolor = str(self.sqlController.scan_run.bgcolor) # elastix likes strings
+            elastixImageFilter = sitk.ElastixImageFilter()
+            fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+            fixed = sitk.ReadImage(fixed_file, self.pixelType)
+            
+            moving_file = os.path.join(self.input, f"{moving_index}.tif")
+            moving = sitk.ReadImage(moving_file, self.pixelType)
+            elastixImageFilter.SetFixedImage(fixed)
+            elastixImageFilter.SetMovingImage(moving)
+
+            
+            translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
+            rigid_params = create_rigid_parameters(elastixImageFilter, defaultPixelValue=bgcolor)
+            elastixImageFilter.SetParameterMap(translationMap)
+            elastixImageFilter.AddParameterMap(rigid_params)
+            fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
+            moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+
+            if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
+                if self.debug:
+                    print(f'Found point files for {fixed_point_file} and {moving_point_file}')
+                with open(fixed_point_file, 'r') as fp:
+                    fixed_count = len(fp.readlines())
+                with open(moving_point_file, 'r') as fp:
+                    moving_count = len(fp.readlines())
+                assert fixed_count == moving_count, \
+                    f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
+
+                elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+                elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
+                elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
+                elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
+            else:
+                if self.debug:
+                    print(f'No point files for {fixed_point_file} and {moving_point_file}')
+
+            elastixImageFilter.LogToConsoleOff()
+            if self.debug:
+                elastixImageFilter.PrintParameterMap()
+            elastixImageFilter.Execute()
+            
+            translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+            rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+
+            x1, y1 = translations
+            R, x2, y2 = rigid
+            x = float(x1) + float(x2)
+            y = float(y1) + float(y2)
+            return float(R), float(x), float(y)
+
+
+
+    def align_elastix_with_no_points(self, fixed_index, moving_index):
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -81,63 +134,19 @@ class ElastixManager(FileLogger):
         moving = sitk.ReadImage(moving_file, self.pixelType)
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
-        translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-        
-
-        rigid_params = create_rigid_parameters(elastixImageFilter, defaultPixelValue=bgcolor)
-        elastixImageFilter.SetParameterMap(translationMap)
-        elastixImageFilter.AddParameterMap(rigid_params)
-
-        affine_params = elastixImageFilter.GetDefaultParameterMap("affine")
-        affine_params["ResultImageFormat"] = ["tif"]
-        elastixImageFilter.AddParameterMap(affine_params)
 
 
-        fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
-        moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
-
-
-        if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-            if self.debug:
-                print(f'Found point files for {fixed_point_file} and {moving_point_file}')
-            with open(fixed_point_file, 'r') as fp:
-                fixed_count = len(fp.readlines())
-            with open(moving_point_file, 'r') as fp:
-                moving_count = len(fp.readlines())
-            assert fixed_count == moving_count, \
-                f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-
-            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-            elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
-        else:
-            if self.debug:
-                print(f'No point files for {fixed_point_file} and {moving_point_file}')
-
+        defaultMap = elastixImageFilter.GetDefaultParameterMap("similarity")
+        elastixImageFilter.SetParameterMap(defaultMap)
         elastixImageFilter.LogToConsoleOff()
-        if self.debug:
-            elastixImageFilter.PrintParameterMap()
+        elastixImageFilter.PrintParameterMap()
         elastixImageFilter.Execute()
         
-        translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-        #affines = elastixImageFilter.GetTransformParameterMap()[2]["TransformParameters"]
-        #print(affines)
-        #import sys
-        #sys.exit()
-
-        x1, y1 = translations
-        R, x2, y2 = rigid
-        x = float(x1) + float(x2)
-        y = float(y1) + float(y2)
-        #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-        #R, x, y = rigid
-        return float(R), float(x), float(y)
-
-
+        results = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+        # rigid = ('0.00157607', '-0.370347', '-3.21588')
+        # affine = ('1.01987', '-0.00160559', '-0.000230038', '1.02641', '-1.98157', '-1.88057')
+        print(results)
+        
     def create_dir2dir_transformations(self):
         """Calculate and store the rigid transformation using elastix.  
         Align CH3 from CH1
@@ -431,54 +440,3 @@ class ElastixManager(FileLogger):
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(tif_to_png, file_keys, workers)
-
-    def align_elastix(self, fixed, moving):
-        """This takes the moving and fixed images runs Elastix on them. Note
-        the huge list of parameters Elastix uses here.
-
-        :param fixed: sitk float array for the fixed image (the image behind the moving).
-        :param moving: sitk float array for the moving image.
-        :return: the Elastix transformation results that get parsed into the rigid transformation
-        """
-        elastixImageFilter = sitk.ElastixImageFilter()
-        elastixImageFilter.SetFixedImage(fixed)
-        elastixImageFilter.SetMovingImage(moving)
-        translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-
-        rigid_params = create_rigid_parameters(elastixImageFilter)
-        elastixImageFilter.SetParameterMap(translationMap)
-        elastixImageFilter.AddParameterMap(rigid_params)
-
-
-        if os.path.exists(self.fixed_point_file) and os.path.exists(self.moving_point_file):
-            with open(self.fixed_point_file, 'r') as fp:
-                fixed_count = len(fp.readlines())
-            with open(self.moving_point_file, 'r') as fp:
-                moving_count = len(fp.readlines())
-            assert fixed_count == moving_count, \
-                f'Error, the number of fixed points in {self.fixed_point_file} \
-                do not match {self.moving_point_file}'
-
-            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-            elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
-
-            elastixImageFilter.SetFixedPointSetFileName(self.fixed_point_file)
-            elastixImageFilter.SetMovingPointSetFileName(self.moving_point_file)
-        else:
-            print('No point files')
-
-        elastixImageFilter.LogToConsoleOff()
-        elastixImageFilter.Execute()
-        
-        translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-        x1, y1 = translations
-        R, x2, y2 = rigid
-        x = float(x1) + float(x2)
-        y = float(y1) + float(y2)
-        #rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-        #R, x, y = rigid
-        return float(R), float(x), float(y)
-
