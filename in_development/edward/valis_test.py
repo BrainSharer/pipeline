@@ -61,7 +61,7 @@ registrar = registration.Valis(
     imgs_ordered=True,
     image_type="fluorescence",
     non_rigid_registrar_cls=None,
-    resolution_xyu=(10.4, 'micrometer'),
+    resolution_xyu=(10.4, 10.4, u'\u00B5m'),
     max_processed_image_dim_px=1765,
     max_image_dim_px=1765
 )
