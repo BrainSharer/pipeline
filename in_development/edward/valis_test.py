@@ -17,7 +17,12 @@ micro_reg_fraction = 1/32
 #registrar = registration.Valis(slide_src_dir, results_dst_dir, imgs_ordered=True, non_rigid_registrar_cls=None)
 #rigid_registrar, non_rigid_registrar, error_df = registrar.register()
 
-ordered_img_list = sorted(os.listdir(slide_src_dir))
+ordered_img_list = []
+files = sorted(os.listdir(slide_src_dir))
+for file in files:
+    filepath = os.path.join(slide_src_dir, file)
+    ordered_img_list.append(filepath)
+
 start = time.time()
 registrar = registration.Valis(
     slide_src_dir,
