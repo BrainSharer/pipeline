@@ -87,7 +87,7 @@ class OmeZarrManager():
                 self.scaling_factor = 1
                 self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
                 self.chunks = [
-                    [64, 128, 128],
+                    [16, 1024, 1024],
                     [64, 128, 128],
                     [64, 128, 128],
                     [64, 128, 128],
