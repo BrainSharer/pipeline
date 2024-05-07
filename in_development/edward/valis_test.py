@@ -5,6 +5,12 @@ from valis import registration
 from valis.micro_rigid_registrar import MicroRigidRegistrar # For high resolution rigid registration
 
 
+"""
+To avoid this warning, please rebuild your copy of OpenBLAS with a larger NUM_THREADS setting
+or set the environment variable OPENBLAS_NUM_THREADS to 128 or lower
+"""
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 slide_src_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK37/preps/C1/thumbnail_cropped"
 results_dst_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK37/preps/C1/valis"
 os.makedirs(results_dst_dir, exist_ok=True)
