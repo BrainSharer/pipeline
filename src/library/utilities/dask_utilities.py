@@ -108,12 +108,16 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
     '''
 
     transformations = []
+    #n_levels = 1
     for scale_level in range(n_levels):
         scales = []
         for axis_dict in axes:
             resolution = axis_dict['resolution']
-            coarsen = axis_dict['coarsen'] 
+            coarsen = axis_dict['coarsen']
             scales.append(resolution * coarsen**scale_level)
+
+        while (scales[1] * 0.8) > scales[0]:
+            scales[0] *= 2
         transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
