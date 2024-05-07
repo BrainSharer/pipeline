@@ -1,18 +1,24 @@
 """
 resolution_xyu: tuple, optional
-    Physical size per pixel and the unit. If None (the default), these values will be determined for each slide using the slides' metadata. If provided, this physical pixel sizes will be used for all of the slides. This option is available in case one cannot easily access to the original slides, but does have the information on pixel's physical units.
+    Physical size per pixel and the unit. If None (the default), these values will be determined for each slide using the slides' metadata. 
+    If provided, this physical pixel sizes will be used for all of the slides. This option is available in case one cannot easily access to 
+    the original slides, but does have the information on pixel's physical units.
 
 slide_dims_dict_wh : dict, optional
-    Key= slide/image file name, value= dimensions = [(width, height), (width, height), ...] for each level. If None (the default), the slide dimensions will be pulled from the slides' metadata. If provided, those values will be overwritten. This option is available in case one cannot easily access to the original slides, but does have the information on the slide dimensions.
+    Key= slide/image file name, value= dimensions = [(width, height), (width, height), ...] for each level. If None (the default), the slide 
+    dimensions will be pulled from the slides' metadata. If provided, those values will be overwritten. This option is available in case one 
+    cannot easily access to the original slides, but does have the information on the slide dimensions.
 
 max_image_dim_px : int, optional
     Maximum width or height of images that will be saved. This limit is mostly to keep memory in check.
 
 max_processed_image_dim_px : int, optional
-    Maximum width or height of processed images. An important parameter, as it determines the size of of the image in which features will be detected and displacement fields computed.
+    Maximum width or height of processed images. An important parameter, as it determines the size of of the image in which features will 
+    be detected and displacement fields computed.
 
 max_non_rigid_registartion_dim_px : int, optional
-     Maximum width or height of images used for non-rigid registration. Larger values may yeild more accurate results, at the expense of speed and memory. There is also a practical limit, as the specified size may be too large to fit in memory.
+     Maximum width or height of images used for non-rigid registration. Larger values may yeild more accurate results, at the expense of 
+     speed and memory. There is also a practical limit, as the specified size may be too large to fit in memory.
 
 """
 import os
@@ -55,8 +61,9 @@ registrar = registration.Valis(
     imgs_ordered=True,
     image_type="fluorescence",
     non_rigid_registrar_cls=None,
-    resolution_xyu=(10.4, 10.4),
-    max_processed_image_dim_px=1765
+    resolution_xyu=(10.4, 'um'),
+    max_processed_image_dim_px=1765,
+    max_image_dim_px=1765
 )
 rigid_registrar, non_rigid_registrar, error_df = registrar.register()
 
