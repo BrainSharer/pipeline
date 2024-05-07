@@ -61,12 +61,13 @@ registrar = registration.Valis(
     imgs_ordered=True,
     image_type="fluorescence",
     non_rigid_registrar_cls=None,
-    resolution_xyu=(10.4, 'um'),
+    resolution_xyu=(10.4, 'micron'),
     max_processed_image_dim_px=1765,
     max_image_dim_px=1765
 )
 rigid_registrar, non_rigid_registrar, error_df = registrar.register()
-
+registrar.warp_and_merge_slides(registered_slide_dst_dir, crop = False, drop_duplicates = False )
+"""
 # Calculate what `max_non_rigid_registration_dim_px` needs to be to do non-rigid registration on an image that is 25% full resolution.
 img_dims = np.array([slide_obj.slide_dimensions_wh[0] for slide_obj in registrar.slide_dict.values()])
 print(f"Image dimensions: {img_dims}")
@@ -78,6 +79,6 @@ micro_reg_size = np.floor(min_max_size*micro_reg_fraction).astype(int)
 # Perform high resolution non-rigid registration using 25% full resolution
 micro_reg, micro_error = registrar.register_micro(max_non_rigid_registration_dim_px=micro_reg_size)
 registrar.warp_and_save_slides(registered_slide_dst_dir, crop="overlap")
-
+"""
 
 registration.kill_jvm() # Kill the JVM
