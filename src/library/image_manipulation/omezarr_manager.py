@@ -74,9 +74,9 @@ class OmeZarrManager():
                 self.scaling_factor = SCALING_FACTOR
                 self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
                 self.chunks = [
-                    [1, 1024, 1024],
-                    [16, 128, 128],
-                    [32, 64, 64],
+                    [64, 64, 64],
+                    [64, 64, 64],
+                    [64, 64, 64],
                     [64, 64, 64],
                 ]
                 self.initial_chunks = [1, 1024, 1024]
@@ -87,22 +87,20 @@ class OmeZarrManager():
                 self.scaling_factor = 1
                 self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
                 self.chunks = [
-                    [4, 1024, 1024],
-                    [8, 512, 512],
-                    [16, 256, 256],
-                    [32, 128, 128],
+                    [64, 128, 128],
+                    [64, 128, 128],
+                    [64, 128, 128],
+                    [64, 128, 128],
                     [64, 64, 64],
                     [64, 64, 64],
                     [64, 64, 64],
-                    [32, 32, 32]
+                    [64, 64, 64]
                 ]
                 self.initial_chunks = [1, 2048, 2048]
                 self.mips = len(self.chunks)
 
             image_manager = ImageManager(self.input)
             self.ndims = image_manager.ndim
-            if self.ndims == 3:
-                self.initial_chunks.append(3)
 
             self.storepath = os.path.join(self.fileLocationManager.www, 'neuroglancer_data', self.storefile)
             self.axes = [
@@ -139,9 +137,10 @@ class OmeZarrManager():
                 None
             """
             self.setup()
-            transformations = get_transformations(self.axes, self.mips)
+            transformations = get_transformations(self.axes, self.mips + 1)
             for transformation in transformations:
                 print(transformation)
+
 
             jobs = 1
             GB = (psutil.virtual_memory().free // 1024**3) * 0.8
