@@ -53,7 +53,7 @@ def load_stack(INPUT):
     return da.stack(arrays, axis=0)  
 
 
-def imreads(root, pattern='*.tif'):
+def imreads(root, divisor=2, pattern='*.tif'):
     """Read tif images from the downsampled or full folder.
     This function is specifically for Neuroglancer that wants x,y,z
     Not z,y,z !!!!!
@@ -80,10 +80,16 @@ def imreads(root, pattern='*.tif'):
     leading_shape = _find_shape(files)
     n_leading_dim = len(leading_shape)
     first_file = imread(files[0])
+    ndim = first_file.ndim
     dtype = first_file.dtype
-    lagging_shape = first_file.shape
+    divisor //= 8
+    lagging_shape = (first_file.shape[0] // divisor, first_file.shape[1] // divisor)
+    if ndim == 3:
+        lagging_shape = (first_file.shape[0] // divisor, first_file.shape[1] // divisor, 3)
+    print(f'leading_shape={leading_shape}, n_leading_dim={n_leading_dim}, dtype={dtype}, lagging_shape={lagging_shape}')
     files_array = np.array(list(files)).reshape(leading_shape)
     chunks = tuple((1,) * shp for shp in leading_shape) + lagging_shape
+    #print(f'chunks={chunks}')
     stacked = da.map_blocks(
         _load_block(n_leading_dim=n_leading_dim, load_func=imread),
         files_array,
@@ -116,8 +122,8 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
             coarsen = axis_dict['coarsen']
             scales.append(resolution * coarsen**scale_level)
 
-        while (scales[1] * 0.8) > scales[0]:
-            scales[0] *= 2
+        #while (scales[1] * 0.8) > scales[0]:
+        #    scales[0] *= 2
         transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
@@ -151,6 +157,15 @@ def get_xy_chunk() -> int:
     xy_chunk = (target_chunk_size_mb*10**6 / byte_per_pixel / z_section_chunk)**(1/2) #1MB / BYTES PER PIXEL / kui_constant, SPLIT (SQUARE ROOT) BETWEEN LAST 2 DIMENSIONS
 
     return int(xy_chunk)
+
+def get_optimum_chunks(image_shape, trimto):
+    c, z, y, x = image_shape
+    if trimto > z:
+        trimto = z
+
+    return (c, trimto, y//2, x//2)
+
+
 
 
 def get_tiff_zarr_array(filepaths):
