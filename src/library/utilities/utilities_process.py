@@ -123,8 +123,8 @@ def get_cpus():
     nmax = 4
     usecpus = (nmax, nmax)
     cpus = {}
-    cpus["mothra"] = (4, 6)
-    cpus["godzilla"] = (6, 6)
+    cpus["mothra"] = (2, 6)
+    cpus["godzilla"] = (2, 6)
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
     cpus["ratto"] = (4, 8)
