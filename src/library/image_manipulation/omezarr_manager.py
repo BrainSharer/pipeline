@@ -74,10 +74,10 @@ class OmeZarrManager():
                 self.scaling_factor = SCALING_FACTOR
                 self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
                 self.chunks = [
-                    [64, 64, 64],
-                    [64, 64, 64],
-                    [64, 64, 64],
-                    [64, 64, 64],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
                 ]
                 self.initial_chunks = [1, 1024, 1024]
                 self.mips = len(self.chunks)
@@ -87,14 +87,12 @@ class OmeZarrManager():
                 self.scaling_factor = 1
                 self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
                 self.chunks = [
-                    [16, 1024, 1024],
-                    [64, 128, 128],
-                    [64, 128, 128],
-                    [64, 128, 128],
-                    [64, 64, 64],
-                    [64, 64, 64],
-                    [64, 64, 64],
-                    [64, 64, 64]
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
                 ]
                 self.initial_chunks = [1, 2048, 2048]
                 self.mips = len(self.chunks)
@@ -291,6 +289,7 @@ class OmeZarrManager():
         multiscales["name"] = self.animal
 
         multiscales["axes"] = [
+            {"name": "c", "type": "channel"},
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
             {"name": "x", "type": "space", "unit": "micrometer"}
@@ -299,9 +298,10 @@ class OmeZarrManager():
         datasets = [] 
         for mip, transformation in enumerate(transformations):
             scale = {}
+            x, y, z = transformation['scale']
 
             scale["coordinateTransformations"] = [{
-                "scale": transformation['scale'],
+                "scale": [1, z, y, x],
                 "type": "scale",
             }]
 
