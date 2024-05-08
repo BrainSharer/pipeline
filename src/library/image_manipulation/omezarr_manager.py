@@ -105,7 +105,7 @@ class OmeZarrManager():
                     [1, 32, 32, 32],
                     [1, 32, 32, 32],
                 ]
-            self.initial_chunks = [1, 8, 1024, 1024]
+            self.initial_chunks = [1, 1, 2048, 2048]
             self.mips = len(self.chunks)
             #self.mips = 0
 
