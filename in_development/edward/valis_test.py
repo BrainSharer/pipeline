@@ -66,6 +66,7 @@ registrar = registration.Valis(
     max_image_dim_px=1765
 )
 rigid_registrar, non_rigid_registrar, error_df = registrar.register()
+rigid_registrar.save_displacement_fields(results_dst_dir)
 registrar.warp_and_merge_slides(registered_slide_dst_dir, crop = False, drop_duplicates = False )
 """
 # Calculate what `max_non_rigid_registration_dim_px` needs to be to do non-rigid registration on an image that is 25% full resolution.
