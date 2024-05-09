@@ -10,7 +10,6 @@ distributed:
       spill: 0.60  # fraction at which we spill to disk
       pause: 0.70  # fraction at which we pause worker threads
       terminate: False  # fraction at which we terminate the worker
-omezarr took 262.04 seconds with initial chunks = 1
 """
 import glob
 import os
@@ -152,7 +151,7 @@ class OmeZarrManager():
         for transformation in transformations:
             print(transformation)
 
-        jobs = 1
+        jobs = 2
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers, _ = get_cpus()
 
@@ -213,10 +212,11 @@ class OmeZarrManager():
         """
         start_time = timer()
         store = get_store(self.rechunkmepath, 0)
-        if os.path.exists(os.path.join(self.rechunkmepath, 'scale0')):
-            print('Rechunking store exists, continuing\n')            
+        if os.path.exists(os.path.join(self.storepath, 'scale0')):
+            print('Rechunked store exists, no need to write full resolution.\n')
             return
-        print('Building Virtual Stack')
+        
+        print('Building stack and zarr data.')
 
         tiff_stack = imreads(self.input)
         """
@@ -232,8 +232,8 @@ class OmeZarrManager():
             tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
            
             #####tiff_stack = np.expand_dims(tiff_stack, axis=0)
-        """
         #optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]  
+        """
         tiff_stack = tiff_stack.rechunk('auto')      
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={tiff_stack.chunksize}')
         z = zarr.zeros(tiff_stack.shape, chunks=tiff_stack.chunksize, store=store, overwrite=True, dtype=self.dtype)
@@ -250,6 +250,11 @@ class OmeZarrManager():
         print(f"Main mip took {total_elapsed_time} seconds with chunks={tiff_stack.chunksize}")
 
     def rechunkme(self, client=None):
+        if os.path.exists(os.path.join(self.storepath, 'scale0')):
+            print('Rechunked store exists, no need to rechunk full resolution.\n')
+            return
+
+
         read_storepath = os.path.join(self.rechunkmepath, 'scale0')
         write_storepath = os.path.join(self.storepath, 'scale0')
         print(f'Loading data at: {read_storepath}', end=" ")
@@ -271,24 +276,19 @@ class OmeZarrManager():
         if leading_chunk < target_chunks[0]:
             target_chunks = (leading_chunk, 128, 128)
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        #GB = 1
         max_mem = f"{GB}GB"
 
         target_store = os.path.join(self.tmp_dir, "rechunked.zarr")
         temp_store = os.path.join(self.tmp_dir, "rechunked-tmp.zarr")
-        print('Checkpoint 1')
         array_plan = rechunk(
             rechunkme_stack, target_chunks, max_mem, target_store, temp_store=temp_store
         )
-        print('Checkpoint 2')
         with ProgressBar():
             rechunked = array_plan.execute()        
-        print('Checkpoint 3')
         rechunked = da.from_zarr(rechunked)
         store = get_store(self.storepath, 0)
         z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
         if client is None:
-            print('Checkpoint 4')
             to_store = da.store(rechunked, z, lock=True, compute=True)
         else:
             to_store = da.store(rechunked, z, lock=False, compute=False)
@@ -330,7 +330,6 @@ class OmeZarrManager():
         previous_stack = da.from_zarr(url=read_storepath)
         print(f'Using previous store with shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
         axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
-        print(axis_dict)
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         print(f'Coarsened stack shape={scaled_stack.shape} coarsened chunks={scaled_stack.chunksize}')
 
@@ -449,7 +448,6 @@ class OmeZarrManager():
         r.attrs['omero'] = omero
 
     def cleanup(self):
-        return
         """
             Cleans up the temporary directory and removes orphaned lock files.
 
@@ -468,7 +466,6 @@ class OmeZarrManager():
                 # Remove any existing files in the temp_dir
                 files = glob.glob(os.path.join(self.tmp_dir, "**/*"), recursive=True)
                 for file in files:
-                    print(f'Removing {file}')
                     try:
                         if os.path.isfile(file):
                             os.remove(file)
@@ -484,7 +481,6 @@ class OmeZarrManager():
                 for lock in locks:
                     try:
                         if os.path.isfile(lock):
-                            print(f'Removing {lock}')
                             os.remove(lock)
                         elif os.path.isdir(lock):
                             shutil.rmtree(lock)
