@@ -180,15 +180,6 @@ class OmeZarrManager():
                     print(dask.config.get("distributed.worker.memory"))
                     print()
 
-                    # https://github.com/dask/distributed/blob/main/distributed/distributed.yaml#L129-L131
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
-                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
-                    # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
-                    os.environ["OMP_NUM_THREADS"] = "1"
-                    os.environ["MKL_NUM_THREADS"] = "1"
-                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
                     with Client(n_workers=workers, threads_per_worker=jobs) as client:
                         self.write_first_resolution(client)
                         self.rechunkme(client=client)
