@@ -230,7 +230,7 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         tiff_stack = tiff_stack.rechunk('auto')
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize}')
-        z = zarr.zeros(tiff_stack.shape, chunks=[1, 2048, 2048], store=store, overwrite=True, dtype=self.dtype)
+        z = zarr.zeros(tiff_stack.shape, chunks=[1, 1024, 1024], store=store, overwrite=True, dtype=self.dtype)
         if client is None:
             to_store = da.store(tiff_stack, z, lock=True, compute=True)
         else:
