@@ -71,43 +71,44 @@ class OmeZarrManager():
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
+            # Main mip took 36.87 seconds with chunks=[8, 256, 256] trimto=8
+            # Main mip took 8.57 seconds with chunks=[1, 256, 256] trimto=8
+            # Main mip took 14.03 seconds with chunks=[2, 256, 256] trimto=8
+            # Main mip took 10.48 seconds with chunks=[2, 512, 512] trimto=8
+            # Main mip took 21.57 seconds with chunks=[4, 256, 256] trimto=8
             self.trimto = 8
             self.storefile = 'C1T.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
             self.chunks = [
-                    [1, 64, 64, 64],
-                    [1, 32, 32, 32],
-                    [1, 32, 32, 32],
-                    [1, 32, 32, 32],
+                    [64, 64, 64],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
                 ]
             #####self.initial_chunks = [1, 1024, 1024]
             # self.initial_chunks = [self.trimto, 128, 128] # took 144.13 seconds
             # self.initial_chunks = [self.trimto, 256, 256] #  took 59.07 seconds
             #  took 38.87 seconds
-            self.initial_chunks = [1, 8, 256, 256]
+            self.initial_chunks = [4, 256, 256]
             self.mips = len(self.chunks)
-            #self.mips = 0
+            self.mips = 0
         else:
-            # Main mip took 61.91 seconds with chunks=[1, 1, 2048, 2048] trimto=64
-            # Main mip took 66.96 seconds with chunks=[1, 2, 1024, 1024] trimto=64
-            # Main mip took 62.72 seconds with chunks=[1, 4, 1024, 1024] trimto=64
-            # Main mip took 62.86 seconds with chunks=[1, 8, 1024, 1024] trimto=64
+            # 
             self.trimto = 64
             self.storefile = 'C1.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
             self.chunks = [
-                    [1, 64, 128, 128],
-                    [1, 64, 64, 64],
-                    [1, 64, 64, 64],
-                    [1, 32, 32, 32],
-                    [1, 32, 32, 32],
-                    [1, 32, 32, 32],
+                    [64, 128, 128],
+                    [64, 64, 64],
+                    [64, 64, 64],
+                    [32, 32, 32],
+                    [32, 32, 32],
+                    [32, 32, 32],
                 ]
-            self.initial_chunks = [1, 1, 2048, 2048]
+            self.initial_chunks = [1, 2048, 2048]
             self.mips = len(self.chunks)
-            #self.mips = 0
 
         image_manager = ImageManager(self.input)
         self.ndims = image_manager.ndim
@@ -158,7 +159,7 @@ class OmeZarrManager():
         workers, _ = get_cpus()
 
         if self.debug:
-            self.write_first_mip(client=None)
+            self.write_first_resolution(client=None)
             for mip in range(0, self.mips):
                 self.write_mips(mip, client=None)
         else:
@@ -184,7 +185,7 @@ class OmeZarrManager():
                     os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
                     with Client(n_workers=workers, threads_per_worker=jobs) as client:
-                        self.write_first_mip(client)
+                        self.write_first_resolution(client)
                         for mip in range(0, self.mips):
                             self.write_mips(mip, client)
 
@@ -195,7 +196,7 @@ class OmeZarrManager():
         self.build_zattrs(transformations)
         self.cleanup()
 
-    def write_first_mip(self, client=None):
+    def write_first_resolution(self, client=None):
         """
         Writes the first MIP (Maximum Intensity Projection) of the input image stack to a Zarr store.
 
@@ -212,7 +213,7 @@ class OmeZarrManager():
             return
         print('Building Virtual Stack')
 
-        tiff_stack = imreads(self.input, self.trimto)
+        tiff_stack = imreads(self.input)
         old_shape = tiff_stack.shape
         new_shape = aligned_coarse_chunks(old_shape[:3], self.trimto)
         
@@ -224,9 +225,11 @@ class OmeZarrManager():
             self.initial_chunks[0] = 3
         else:
             tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-            tiff_stack = np.expand_dims(tiff_stack, axis=0)
-            self.initial_chunks[0] = 1
+            #####tiff_stack = np.expand_dims(tiff_stack, axis=0)
+            #####self.initial_chunks[0] = 1
 
+        optimum_chunks = [1, tiff_stack.shape[1]//2, tiff_stack.shape[2]//2]  
+        tiff_stack = tiff_stack.rechunk(optimum_chunks)      
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={self.initial_chunks}')
         z = zarr.zeros(tiff_stack.shape, chunks=self.initial_chunks, store=store, overwrite=True, dtype=np.uint16)
         if client is None:
@@ -271,7 +274,7 @@ class OmeZarrManager():
 
         previous_stack = da.from_zarr(url=read_storepath)
         print(f'Using previous store with shape={previous_stack.shape} previous chunks={previous_stack.chunksize}')
-        axis_dict = {0:1, 1:self.axis_scales[0], 2:self.axis_scales[1], 3:self.axis_scales[2]}
+        axis_dict = {0:self.axis_scales[0], 1:self.axis_scales[1], 2:self.axis_scales[2]}
         print(axis_dict)
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         print(f'Coarsened stack shape={scaled_stack.shape} coarsened chunks={scaled_stack.chunksize}')
