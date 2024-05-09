@@ -124,7 +124,7 @@ def get_cpus():
     usecpus = (nmax, nmax)
     cpus = {}
     cpus["mothra"] = (2, 6)
-    cpus["godzilla"] = (2, 6)
+    cpus["godzilla"] = (1, 6)
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
     cpus["ratto"] = (4, 8)
