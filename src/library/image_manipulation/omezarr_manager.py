@@ -220,21 +220,21 @@ class OmeZarrManager():
 
         tiff_stack = imreads(self.input)
         """
-        old_shape = tiff_stack.shape
-        new_shape = aligned_coarse_chunks(old_shape[:3], self.trimto)
         
         if self.ndims == 3:
             tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2], ...]
             optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2], 3]
             tiff_stack.rechunk(optimum_chunks)
             tiff_stack = np.moveaxis(tiff_stack, -1, 0)
-        else:
-            tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
            
             #####tiff_stack = np.expand_dims(tiff_stack, axis=0)
         #optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]  
         """
-        tiff_stack = tiff_stack.rechunk('auto')      
+        if not self.downsample:
+            old_shape = tiff_stack.shape
+            new_shape = aligned_coarse_chunks(old_shape[:3], 64)
+            tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
+            tiff_stack = tiff_stack.rechunk('auto')      
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={tiff_stack.chunksize}')
         z = zarr.zeros(tiff_stack.shape, chunks=tiff_stack.chunksize, store=store, overwrite=True, dtype=self.dtype)
         if client is None:
