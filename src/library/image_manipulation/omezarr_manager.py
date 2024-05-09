@@ -102,6 +102,7 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
+            self.mips = 0
 
         image_manager = ImageManager(self.input)
         self.ndims = image_manager.ndim
@@ -234,9 +235,9 @@ class OmeZarrManager():
             old_shape = tiff_stack.shape
             new_shape = aligned_coarse_chunks(old_shape[:3], 64)
             tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
-            tiff_stack = tiff_stack.rechunk([1, new_shape[1]//2, new_shape[2]//2])      
+            tiff_stack = tiff_stack.rechunk([1, new_shape[1], new_shape[2]])      
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={tiff_stack.chunksize}')
-        z = zarr.zeros(tiff_stack.shape, chunks=tiff_stack.chunksize, store=store, overwrite=True, dtype=self.dtype)
+        z = zarr.zeros(tiff_stack.shape, chunks=[1, 2048, 2048], store=store, overwrite=True, dtype=self.dtype)
         if client is None:
             to_store = da.store(tiff_stack, z, lock=True, compute=True)
         else:
