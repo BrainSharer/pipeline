@@ -159,12 +159,12 @@ def get_xy_chunk() -> int:
 
     return int(xy_chunk)
 
-def get_optimum_chunks(image_shape, trimto):
-    c, z, y, x = image_shape
-    if trimto > z:
-        trimto = z
+def get_optimum_chunks(image_shape, leading_chunk):
+    z, y, x = image_shape
+    if leading_chunk > z:
+        leading_chunk = z
 
-    return (c, trimto, y//2, x//2)
+    return (leading_chunk, y, x)
 
 
 

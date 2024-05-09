@@ -10,7 +10,7 @@ distributed:
       spill: 0.60  # fraction at which we spill to disk
       pause: 0.70  # fraction at which we pause worker threads
       terminate: False  # fraction at which we terminate the worker
-
+omezarr took 262.04 seconds with initial chunks = 1
 """
 import glob
 import os
@@ -18,11 +18,13 @@ import sys
 import shutil
 import psutil
 import zarr
+from rechunker import rechunk
 import dask
 import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
 from distributed import Client, progress
+from dask.diagnostics import ProgressBar
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.dask_utilities import aligned_coarse_chunks, get_optimum_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
@@ -65,19 +67,16 @@ class OmeZarrManager():
             """
         tmp_dir = get_scratch_dir()
         self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
-        if os.path.exists(self.tmp_dir):
-            shutil.rmtree(self.tmp_dir)
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.xy_resolution = self.sqlController.scan_run.resolution
         self.z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
-            # Main mip took 36.87 seconds with chunks=[8, 256, 256] trimto=8
-            # Main mip took 8.57 seconds with chunks=[1, 256, 256] trimto=8
-            # Main mip took 14.03 seconds with chunks=[2, 256, 256] trimto=8
-            # Main mip took 10.48 seconds with chunks=[2, 512, 512] trimto=8
-            # Main mip took 21.57 seconds with chunks=[4, 256, 256] trimto=8
-            self.trimto = 8
+            # Main mip took 10.05 seconds with chunks=[1, 256, 256] trimto=8
+            # Main mip took 4.97 seconds with chunks=[1, 256, 256] trimto=8
+            # Main mip took 4.87 seconds with chunks=[1, 256, 256] trimto=1
+            self.trimto = 1
             self.storefile = 'C1T.zarr'
+            self.rechunkmefile = 'C1T_rechunk.zarr'
             self.scaling_factor = SCALING_FACTOR
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
             self.chunks = [
@@ -86,17 +85,13 @@ class OmeZarrManager():
                     [32, 32, 32],
                     [32, 32, 32],
                 ]
-            #####self.initial_chunks = [1, 1024, 1024]
-            # self.initial_chunks = [self.trimto, 128, 128] # took 144.13 seconds
-            # self.initial_chunks = [self.trimto, 256, 256] #  took 59.07 seconds
-            #  took 38.87 seconds
-            self.initial_chunks = [4, 256, 256]
             self.mips = len(self.chunks)
-            self.mips = 0
+            #self.mips = 0
         else:
             # 
             self.trimto = 64
             self.storefile = 'C1.zarr'
+            self.rechunkmefile = 'C1_rechunk.zarr'
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
             self.chunks = [
@@ -107,14 +102,17 @@ class OmeZarrManager():
                     [32, 32, 32],
                     [32, 32, 32],
                 ]
-            self.initial_chunks = [1, 2048, 2048]
             self.mips = len(self.chunks)
 
         image_manager = ImageManager(self.input)
         self.ndims = image_manager.ndim
+        self.dtype = image_manager.dtype
 
         self.storepath = os.path.join(
             self.fileLocationManager.www, "neuroglancer_data", self.storefile
+        )
+        self.rechunkmepath = os.path.join(
+            self.tmp_dir, self.rechunkmefile
         )
         self.axes = [
             {
@@ -159,9 +157,14 @@ class OmeZarrManager():
         workers, _ = get_cpus()
 
         if self.debug:
+            if not self.downsample:
+                print('Full resolution images must be run under dask distributed')
+                sys.exit()
             self.write_first_resolution(client=None)
+            self.rechunkme(client=None)
             for mip in range(0, self.mips):
                 self.write_mips(mip, client=None)
+            self.cleanup()
         else:
 
             try:
@@ -186,12 +189,14 @@ class OmeZarrManager():
 
                     with Client(n_workers=workers, threads_per_worker=jobs) as client:
                         self.write_first_resolution(client)
+                        self.rechunkme(client=client)
                         for mip in range(0, self.mips):
                             self.write_mips(mip, client)
 
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
+
 
         self.build_zattrs(transformations)
         self.cleanup()
@@ -207,13 +212,14 @@ class OmeZarrManager():
             None
         """
         start_time = timer()
-        store = get_store(self.storepath, 0)
-        if os.path.exists(os.path.join(self.storepath, 'scale0')):
-            print('Initial store exists, continuing\n')            
+        store = get_store(self.rechunkmepath, 0)
+        if os.path.exists(os.path.join(self.rechunkmepath, 'scale0')):
+            print('Rechunking store exists, continuing\n')            
             return
         print('Building Virtual Stack')
 
         tiff_stack = imreads(self.input)
+        """
         old_shape = tiff_stack.shape
         new_shape = aligned_coarse_chunks(old_shape[:3], self.trimto)
         
@@ -222,16 +228,15 @@ class OmeZarrManager():
             optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2], 3]
             tiff_stack.rechunk(optimum_chunks)
             tiff_stack = np.moveaxis(tiff_stack, -1, 0)
-            self.initial_chunks[0] = 3
         else:
             tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
+           
             #####tiff_stack = np.expand_dims(tiff_stack, axis=0)
-            #####self.initial_chunks[0] = 1
-
-        optimum_chunks = [1, tiff_stack.shape[1]//2, tiff_stack.shape[2]//2]  
-        tiff_stack = tiff_stack.rechunk(optimum_chunks)      
-        print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={self.initial_chunks}')
-        z = zarr.zeros(tiff_stack.shape, chunks=self.initial_chunks, store=store, overwrite=True, dtype=np.uint16)
+        """
+        #optimum_chunks = [1, tiff_stack.shape[1], tiff_stack.shape[2]]  
+        tiff_stack = tiff_stack.rechunk('auto')      
+        print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize} stored chunks={tiff_stack.chunksize}')
+        z = zarr.zeros(tiff_stack.shape, chunks=tiff_stack.chunksize, store=store, overwrite=True, dtype=self.dtype)
         if client is None:
             to_store = da.store(tiff_stack, z, lock=True, compute=True)
         else:
@@ -242,7 +247,57 @@ class OmeZarrManager():
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Main mip took {total_elapsed_time} seconds with chunks={self.initial_chunks} trimto={self.trimto}")
+        print(f"Main mip took {total_elapsed_time} seconds with chunks={tiff_stack.chunksize}")
+
+    def rechunkme(self, client=None):
+        read_storepath = os.path.join(self.rechunkmepath, 'scale0')
+        write_storepath = os.path.join(self.storepath, 'scale0')
+        print(f'Loading data at: {read_storepath}', end=" ")
+        if os.path.exists(read_storepath):
+            print(': Success!')
+        else:
+            print('\nError: exiting ...')
+            print(f'Missing {read_storepath}')            
+            sys.exit()
+
+        if os.path.exists(write_storepath):
+            print(f'Already exists: {write_storepath}')            
+            return
+
+        rechunkme_stack = da.from_zarr(url=read_storepath)
+        print(f'Using rechunking store with shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}')
+        leading_chunk = rechunkme_stack.shape[0]
+        target_chunks = (64, 128, 128)
+        if leading_chunk < target_chunks[0]:
+            target_chunks = (leading_chunk, 128, 128)
+        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
+        #GB = 1
+        max_mem = f"{GB}GB"
+
+        target_store = os.path.join(self.tmp_dir, "rechunked.zarr")
+        temp_store = os.path.join(self.tmp_dir, "rechunked-tmp.zarr")
+        print('Checkpoint 1')
+        array_plan = rechunk(
+            rechunkme_stack, target_chunks, max_mem, target_store, temp_store=temp_store
+        )
+        print('Checkpoint 2')
+        with ProgressBar():
+            rechunked = array_plan.execute()        
+        print('Checkpoint 3')
+        rechunked = da.from_zarr(rechunked)
+        store = get_store(self.storepath, 0)
+        z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
+        if client is None:
+            print('Checkpoint 4')
+            to_store = da.store(rechunked, z, lock=True, compute=True)
+        else:
+            to_store = da.store(rechunked, z, lock=False, compute=False)
+            to_store = progress(client.compute(to_store))
+            to_store = client.gather(to_store)
+        print(f'Wrote rechunked data to: {write_storepath}')
+        print()
+
+
 
     def write_mips(self, mip, client=None):
         """
@@ -279,15 +334,12 @@ class OmeZarrManager():
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         print(f'Coarsened stack shape={scaled_stack.shape} coarsened chunks={scaled_stack.chunksize}')
 
-        chunks = self.chunks[mip]
-        # optimum_chunks = optimize_chunk_shape(scaled_stack.shape, scaled_stack.chunksize, chunks)
-        optimum_chunks = [1, 1, scaled_stack.shape[2], scaled_stack.shape[3]]
-        #####optimum_chunks = [1, scaled_stack.shape[1], scaled_stack.shape[2]]
-        scaled_stack.rechunk(optimum_chunks)
-        print(f'Creating new store at mip={mip} with shape={scaled_stack.shape} resized chunks={scaled_stack.chunksize} and storing chunks={chunks}')
+        optimum_chunks = self.chunks[mip]
+        scaled_stack = scaled_stack.rechunk(optimum_chunks)
+        print(f'Creating new store at mip={mip} with shape={scaled_stack.shape} resized chunks={scaled_stack.chunksize} and storing chunks={optimum_chunks}')
 
         store = get_store(self.storepath, mip+1)
-        z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
+        z = zarr.zeros(scaled_stack.shape, chunks=optimum_chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
         if client is None:
             da.store(scaled_stack, z, lock=True, compute=True)
         else:
@@ -314,7 +366,6 @@ class OmeZarrManager():
         multiscales["name"] = self.animal
 
         multiscales["axes"] = [
-            {"name": "c", "type": "channel"},
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
             {"name": "x", "type": "space", "unit": "micrometer"}
@@ -326,7 +377,7 @@ class OmeZarrManager():
             z, y, x = transformation['scale']
 
             scale["coordinateTransformations"] = [{
-                "scale": [1, z, y, x],
+                "scale": [z, y, x],
                 "type": "scale",
             }]
 
@@ -336,7 +387,7 @@ class OmeZarrManager():
 
         multiscales["datasets"] = datasets
 
-        multiscales["type"] = (1, 1, 2, 2)
+        multiscales["type"] = (1, 2, 2)
 
         # Define down sampling methods for inclusion in zattrs
         description = '(1,1,2,2) downsample of in up to 3 dimensions calculated using the local mean'
@@ -398,6 +449,7 @@ class OmeZarrManager():
         r.attrs['omero'] = omero
 
     def cleanup(self):
+        return
         """
             Cleans up the temporary directory and removes orphaned lock files.
 
