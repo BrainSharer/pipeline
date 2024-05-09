@@ -53,7 +53,7 @@ def load_stack(INPUT):
     return da.stack(arrays, axis=0)  
 
 
-def imreads(root, divisor=2, pattern='*.tif'):
+def imreads(root, pattern='*.tif'):
     """Read tif images from the downsampled or full folder.
     This function is specifically for Neuroglancer that wants x,y,z
     Not z,y,z !!!!!
@@ -82,11 +82,12 @@ def imreads(root, divisor=2, pattern='*.tif'):
     first_file = imread(files[0])
     ndim = first_file.ndim
     dtype = first_file.dtype
-    divisor //= 8
-    lagging_shape = (first_file.shape[0] // divisor, first_file.shape[1] // divisor)
+    lagging_shape = first_file.shape
     if ndim == 3:
+        divisor = 1
         lagging_shape = (first_file.shape[0] // divisor, first_file.shape[1] // divisor, 3)
-    print(f'leading_shape={leading_shape}, n_leading_dim={n_leading_dim}, dtype={dtype}, lagging_shape={lagging_shape}')
+    lagging_shape = first_file.shape
+    #print(f'leading_shape={leading_shape}, n_leading_dim={n_leading_dim}, dtype={dtype}, lagging_shape={lagging_shape}')
     files_array = np.array(list(files)).reshape(leading_shape)
     chunks = tuple((1,) * shp for shp in leading_shape) + lagging_shape
     #print(f'chunks={chunks}')
