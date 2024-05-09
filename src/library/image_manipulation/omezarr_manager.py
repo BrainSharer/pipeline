@@ -31,6 +31,8 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_sc
 class OmeZarrManager():
     """
     Manages the creation of OmeZarr files by performing necessary setup, generating transformations, and writing the data to the file.
+    Chunk size is very important. On the first mip, set it so the store has 1,2048,2048 chunks.
+    This works best. The chunks in later mips then get set to a lower size for better viewing in neuroglancer.
 
     Attributes:
         tmp_dir (str): The temporary directory for storing intermediate files.
