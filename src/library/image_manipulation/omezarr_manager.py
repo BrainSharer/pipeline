@@ -151,7 +151,7 @@ class OmeZarrManager():
         for transformation in transformations:
             print(transformation)
 
-        jobs = 2
+        jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers, _ = get_cpus()
 
