@@ -17,15 +17,12 @@ import sys
 import shutil
 import psutil
 import zarr
-from rechunker import rechunk
 import dask
 import dask.array as da
-import numpy as np
 from timeit import default_timer as timer
-from distributed import Client, progress
-from dask.diagnostics import ProgressBar
+from dask.distributed import Client, progress
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.dask_utilities import aligned_coarse_chunks, get_optimum_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
+from library.utilities.dask_utilities import aligned_coarse_chunks, get_store, get_store_from_path, get_transformations, imreads, mean_dtype
 from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
 
 class OmeZarrManager():
@@ -96,7 +93,7 @@ class OmeZarrManager():
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
             self.chunks = [
-                    [64, 64, 64],
+                    [64, 128, 128],
                     [64, 64, 64],
                     [64, 64, 64],
                     [32, 32, 32],
@@ -104,7 +101,6 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
-            #self.mips = 0
 
         image_manager = ImageManager(self.input)
         self.ndims = image_manager.ndim
@@ -154,7 +150,7 @@ class OmeZarrManager():
         for transformation in transformations:
             print(transformation)
 
-        jobs = 2
+        jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers, _ = get_cpus()
 
@@ -180,7 +176,7 @@ class OmeZarrManager():
                     print(dask.config.get("distributed.worker.memory"))
                     print()
 
-                    with Client(n_workers=workers, threads_per_worker=jobs) as client:
+                    with Client(processes=False, n_workers=workers, threads_per_worker=jobs) as client:
                         self.write_first_resolution(client)
                         self.rechunkme(client=client)
                         for mip in range(0, self.mips):
@@ -263,32 +259,33 @@ class OmeZarrManager():
             print(f'Already exists: {write_storepath}')            
             return
 
-        rechunkme_stack = da.from_zarr(url=read_storepath)
-        print(f'Using rechunking store with shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}')
-        leading_chunk = rechunkme_stack.shape[0]
+        rechunk_stack = da.from_zarr(url=read_storepath)
+        print(f'Using rechunking store with shape={rechunk_stack.shape} chunks={rechunk_stack.chunksize}')
+        leading_chunk = rechunk_stack.shape[0]
         target_chunks = (64, 128, 128)
         if leading_chunk < target_chunks[0]:
             target_chunks = (leading_chunk, 128, 128)
         start_time = timer()
-        rechunked = rechunkme_stack.rechunk(target_chunks)
+        rechunk_stack = rechunk_stack.rechunk(target_chunks)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Rechunking to chunk={rechunked.chunksize} took {total_elapsed_time} seconds.')
-        del rechunkme_stack 
+        print(f'Rechunking from {rechunk_stack.chunksize} to {target_chunks} took {total_elapsed_time} seconds.')
         store = get_store(self.storepath, 0)
-        z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
-        to_store = da.store(rechunked, z, lock=False, compute=False)
+        z = zarr.zeros(rechunk_stack.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
+        to_store = da.store(rechunk_stack, z, lock=False, compute=False)
 
         start_time = timer()
-        print(f'Storing type={type(to_store)} rechunked data to: {write_storepath}')
+        print(f'Storing rechunked data to: {write_storepath}')
         to_store = progress(client.compute(to_store))
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Wrote rechunked data to: {write_storepath} took {total_elapsed_time} seconds.')
+        print(f'Writing rechunked data from {rechunk_stack.chunksize} to {target_chunks} {total_elapsed_time} seconds.')
         print()
 
         #big_future = client.scatter(big_data)     # good
         #future = client.submit(func, big_future)  # good
+        # Writing rechunked data from (1, 960, 1024) to (64, 128, 128) 62.85 seconds. omezarr took 73.11 seconds
+        # Writing rechunked data from (64, 128, 128) to (64, 128, 128) 4.26 seconds. omezarr took 14.81 seconds
 
 
     def write_mips(self, mip, client=None):
@@ -334,16 +331,14 @@ class OmeZarrManager():
         if client is None:
             da.store(scaled_stack, z, lock=True, compute=True)
         else:
-            print('point 1')
             to_store = da.store(scaled_stack, z, lock=False, compute=False)
-            #to_store = client.scatter(to_store)
-            print('point 2')
             to_store = progress(client.compute(to_store))
-            print('point 3')
-
             to_store = client.gather(to_store)
-        print(f'Wrote mip with data to: {write_storepath}')
+        
+        print(f'Wrote mip to: {write_storepath}')
         print()
+        # omezarr took 32.35 seconds with variable chunks
+        # omezarr took 24.63 seconds with chunks=[64, 64, 64]
 
     def build_zattrs(self, transformations):
         """
