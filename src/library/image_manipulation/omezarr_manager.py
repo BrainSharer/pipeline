@@ -104,7 +104,7 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
-            self.mips = 0
+            #self.mips = 0
 
         image_manager = ImageManager(self.input)
         self.ndims = image_manager.ndim
