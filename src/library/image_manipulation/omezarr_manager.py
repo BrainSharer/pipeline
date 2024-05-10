@@ -171,6 +171,14 @@ class OmeZarrManager():
                                         'distributed.comm.retry.count': 10,
                                         'distributed.comm.timeouts.connect': 30}):
 
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
+                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
+                  # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
+                    os.environ["OMP_NUM_THREADS"] = "1"
+                    os.environ["MKL_NUM_THREADS"] = "1"
+                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+                    
                     print(f'Starting distributed dask with {workers} workers and {jobs} jobs in tmp dir={self.tmp_dir} with free memory={GB}GB')
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
