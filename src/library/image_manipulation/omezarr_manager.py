@@ -87,7 +87,7 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
-            #self.mips = 0
+            self.mips = 0
         else:
             # 
             self.trimto = 64
@@ -96,7 +96,7 @@ class OmeZarrManager():
             self.scaling_factor = 1
             self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
             self.chunks = [
-                    [64, 128, 128],
+                    [64, 64, 64],
                     [64, 64, 64],
                     [64, 64, 64],
                     [32, 32, 32],
@@ -154,7 +154,7 @@ class OmeZarrManager():
         for transformation in transformations:
             print(transformation)
 
-        jobs = 1
+        jobs = 2
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers, _ = get_cpus()
 
@@ -269,28 +269,26 @@ class OmeZarrManager():
         target_chunks = (64, 128, 128)
         if leading_chunk < target_chunks[0]:
             target_chunks = (leading_chunk, 128, 128)
-        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        max_mem = f"{GB}GB"
-
-        target_store = os.path.join(self.tmp_dir, "rechunked.zarr")
-        temp_store = os.path.join(self.tmp_dir, "rechunked-tmp.zarr")
-        array_plan = rechunk(
-            rechunkme_stack, target_chunks, max_mem, target_store, temp_store=temp_store
-        )
-        with ProgressBar():
-            rechunked = array_plan.execute()        
-        rechunked = da.from_zarr(rechunked)
+        start_time = timer()
+        rechunked = rechunkme_stack.rechunk(target_chunks)
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f'Rechunking to chunk={rechunked.chunksize} took {total_elapsed_time} seconds.')
+        del rechunkme_stack 
         store = get_store(self.storepath, 0)
         z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
-        if client is None:
-            to_store = da.store(rechunked, z, lock=True, compute=True)
-        else:
-            to_store = da.store(rechunked, z, lock=False, compute=False)
-            to_store = progress(client.compute(to_store))
-            to_store = client.gather(to_store)
-        print(f'Wrote rechunked data to: {write_storepath}')
+        to_store = da.store(rechunked, z, lock=False, compute=False)
+
+        start_time = timer()
+        print(f'Storing type={type(to_store)} rechunked data to: {write_storepath}')
+        to_store = progress(client.compute(to_store))
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f'Wrote rechunked data to: {write_storepath} took {total_elapsed_time} seconds.')
         print()
 
+        #big_future = client.scatter(big_data)     # good
+        #future = client.submit(func, big_future)  # good
 
 
     def write_mips(self, mip, client=None):
@@ -336,8 +334,13 @@ class OmeZarrManager():
         if client is None:
             da.store(scaled_stack, z, lock=True, compute=True)
         else:
+            print('point 1')
             to_store = da.store(scaled_stack, z, lock=False, compute=False)
+            #to_store = client.scatter(to_store)
+            print('point 2')
             to_store = progress(client.compute(to_store))
+            print('point 3')
+
             to_store = client.gather(to_store)
         print(f'Wrote mip with data to: {write_storepath}')
         print()
