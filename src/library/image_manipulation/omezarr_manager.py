@@ -47,22 +47,9 @@ class OmeZarrManager():
         axes (list): The list of axis configurations.
         axis_scales (list): The list of coarsen values for each axis.
     """
+            
 
-    def setup(self):
-        """
-            Set up the omezarr manager by initializing necessary variables and configurations.
-
-            This method performs the following steps:
-            1. Creates a temporary directory for storing intermediate files.
-            2. Sets the xy_resolution and z_resolution based on the scan run.
-            3. Sets the trimto, storefile, scaling_factor, input, chunks, initial_chunks, and mips based on the downsample flag.
-            4. Determines the number of dimensions of the input image.
-            5. Sets the storepath and axes based on the file locations and resolutions.
-            6. Sets the axis_scales based on the coarsen values of the axes.
-            Creating new store from previous shape=(479, 984, 1760) previous chunks=(8, 512, 512)
-            New store at mip=0 with shape=(479, 492, 880) resized chunks=(8, 256, 256) and storing chunks=[64, 64, 64]
-
-            """
+    def omezarr_setup(self):
         tmp_dir = get_scratch_dir()
         self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
         os.makedirs(self.tmp_dir, exist_ok=True)
@@ -72,7 +59,7 @@ class OmeZarrManager():
             # Main mip took 10.05 seconds with chunks=[1, 256, 256] trimto=8
             # Main mip took 4.97 seconds with chunks=[1, 256, 256] trimto=8
             # Main mip took 4.87 seconds with chunks=[1, 256, 256] trimto=1
-            self.trimto = 1
+            self.trimto = 8
             self.storefile = 'C1T.zarr'
             self.rechunkmefile = 'C1T_rechunk.zarr'
             self.scaling_factor = SCALING_FACTOR
@@ -84,7 +71,6 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
-            self.mips = 0
         else:
             # 
             self.trimto = 64
@@ -145,11 +131,10 @@ class OmeZarrManager():
             Returns:
                 None
             """
-        self.setup()
         transformations = get_transformations(self.axes, self.mips + 1)
         for transformation in transformations:
             print(transformation)
-
+        workers = 2
         jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
         workers, _ = get_cpus()
@@ -169,11 +154,11 @@ class OmeZarrManager():
                 with dask.config.set({'temporary_directory': self.tmp_dir, 
                                         'logging.distributed': 'error',
                                         'distributed.comm.retry.count': 10,
-                                        'distributed.comm.timeouts.connect': 30}):
+                                        'distributed.comm.timeouts.connect': 130}):
 
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "60s"
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "60s"
-                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "60s"
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "160s"
+                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "160s"
                   # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
                     os.environ["OMP_NUM_THREADS"] = "1"
                     os.environ["MKL_NUM_THREADS"] = "1"
@@ -234,7 +219,7 @@ class OmeZarrManager():
         tiff_stack = tiff_stack[:, 0:new_shape[1], 0:new_shape[2]]
         tiff_stack = tiff_stack.rechunk('auto')
         print(f'tiff_stack shape={tiff_stack.shape} tiff_stack.chunksize={tiff_stack.chunksize}')
-        z = zarr.zeros(tiff_stack.shape, chunks=[1, 1024, 1024], store=store, overwrite=True, dtype=self.dtype)
+        z = zarr.zeros(tiff_stack.shape, chunks=[1, tiff_stack.shape[1]//4, tiff_stack.shape[2]//4], store=store, overwrite=True, dtype=self.dtype)
         if client is None:
             to_store = da.store(tiff_stack, z, lock=True, compute=True)
         else:
