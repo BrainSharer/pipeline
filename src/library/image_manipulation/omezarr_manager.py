@@ -193,7 +193,8 @@ class OmeZarrManager():
             debug=self.debug,
             omero_dict=self.omero_dict,
             directToFinalChunks=self.directToFinalChunks,
-            mips=self.mips
+            mips=self.mips,
+            axes=self.axes
         )
 
         try:

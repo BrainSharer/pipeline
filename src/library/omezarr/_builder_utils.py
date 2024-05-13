@@ -25,6 +25,8 @@ from zarr_stores.archived_nested_store import Archived_Nested_Store
 # from stack_to_multiscale_ngff.h5_nested_store4 import H5_Nested_Store
 from zarr_stores.h5_nested_store import H5_Nested_Store
 
+from library.utilities.dask_utilities import get_pyramid, get_transformations
+
 class _builder_utils:
 
     def open_store(self,res, mode='a'):
@@ -393,6 +395,19 @@ class _builder_utils:
                 pyramidMap_dict[key][nk] = ii
 
         print('Pyramid map')
+        for k,v in pyramidMap_dict.items():
+            print(k,v)
+
+        print()
+
+        out_shape = self.shape_3d
+        initial_chunk = self.originalChunkSize[2:]
+        final_chunk_size = self.finalChunkSize[2:]
+        resolution = self.geometry[2:]
+        zresolution = self.geometry[2]
+
+
+        pyramidMap_dict = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
         for k,v in pyramidMap_dict.items():
             print(k,v)
 
