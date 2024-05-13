@@ -128,6 +128,18 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
         transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
+def get_pyramid(initial_shape, initial_chunk, final_chunk, initial_resolution, mips) -> dict:
+
+    transformations = {}
+    transformations[0] = {'shape': initial_shape, 'chunk': initial_chunk, 'resolution': initial_resolution, 'downsamp': (1, 1, 1)}
+    for mip in range(1, mips + 1):
+        previous_shape = transformations[mip-1]['shape']
+        previous_resolution = transformations[mip-1]['resolution']
+        shape = (initial_shape[0], previous_shape[1] // 2, previous_shape[2] // 2)
+        resolution = (initial_resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
+        transformations[mip] = {'shape': shape, 'chunk': final_chunk, 'resolution': resolution, 'downsamp': (1, 2, 2)}
+    return transformations
+
 
 
 def aligned_coarse_chunks(chunks: List[int], multiple: int) -> List[int]:

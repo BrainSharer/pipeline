@@ -44,7 +44,8 @@ class builder(_builder_downsample,
         debug=False,
         omero_dict={},
         directToFinalChunks=True,
-        mips=4
+        mips=4,
+        axes=None
     ):
 
         self.in_location = in_location
@@ -65,6 +66,7 @@ class builder(_builder_downsample,
         self.downSampType = "mean"
         self.directToFinalChunks = directToFinalChunks
         self.mips = mips
+        self.axes = axes
 
         # Hack to build zarr in tmp location then copy to finalLocation (finalLocation is the original out_location)
         self.finalLocation = self.out_location
