@@ -82,7 +82,7 @@ class OmeZarrManager():
                     [32, 32, 32],
                 ]
             self.mips = len(self.chunks)
-            self.mips = 1
+            self.mips = 4
         else:
             #
             self.trimto = 64
@@ -193,7 +193,8 @@ class OmeZarrManager():
             tmp_dir=self.tmp_dir,
             debug=self.debug,
             omero_dict=self.omero_dict,
-            directToFinalChunks=self.directToFinalChunks
+            directToFinalChunks=self.directToFinalChunks,
+            mips=self.mips
         )
 
 
@@ -214,6 +215,7 @@ class OmeZarrManager():
                 print(dask.config.get("distributed.worker.memory"))
                 print()
                 omezarr.write_resolution_series()
+                omezarr.cleanup()
 
         except Exception as ex:
             print('Exception in running builder in omezarr_manager')

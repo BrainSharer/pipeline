@@ -43,7 +43,8 @@ class builder(_builder_downsample,
         tmp_dir="/tmp",
         debug=False,
         omero_dict={},
-        directToFinalChunks=True
+        directToFinalChunks=True,
+        mips=4
     ):
 
         self.in_location = in_location
@@ -59,9 +60,11 @@ class builder(_builder_downsample,
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
         self.tmp_dir = tmp_dir
+        self.debug = debug
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.directToFinalChunks = directToFinalChunks
+        self.mips = mips
 
         # Hack to build zarr in tmp location then copy to finalLocation (finalLocation is the original out_location)
         self.finalLocation = self.out_location
