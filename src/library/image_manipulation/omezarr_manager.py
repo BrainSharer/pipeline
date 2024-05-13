@@ -100,7 +100,7 @@ class OmeZarrManager():
                 ]
             self.mips = len(self.chunks)
         # vars from stack to multi
-        self.originalChunkSize = [1, 1, 1, 128, 128]
+        self.originalChunkSize = [1, 1, 1, 1024, 1024]
         self.finalChunkSize=(1, 1, 64, 64, 64)
         self.cpu_cores = os.cpu_count()
         self.mem = (psutil.virtual_memory().free // 1024**3) * 0.8
@@ -174,12 +174,11 @@ class OmeZarrManager():
         # self.transformations = get_transformations(self.axes, self.mips + 1)
         # for transformation in self.transformations:
         #    print(transformation)
-        self.workers = self.cpu_cores
+        self.workers, _ = get_cpus()
         self.sim_jobs = 4
         #self.workers = 1
         #self.sim_jobs = 1
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        # workers, _ = get_cpus()
 
         omezarr = builder(
             self.input,
@@ -196,7 +195,6 @@ class OmeZarrManager():
             directToFinalChunks=self.directToFinalChunks,
             mips=self.mips
         )
-
 
         try:
             with dask.config.set({'temporary_directory': self.tmp_dir, 
