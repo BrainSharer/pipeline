@@ -173,9 +173,9 @@ def get_tiff_zarr_array(filepaths):
     with tifffile.imread(filepaths, aszarr=True) as store:
         return zarr.open(store)
 
-def open_store(res, mode="a"):
+def open_store(storepath, res, mode="a"):
     try:
-        return zarr.open(get_store(res, mode=mode))
+        return zarr.open(get_store(storepath, res, mode=mode))
     except Exception as ex:
         print('Exception opening zarr store')
         print(ex)
