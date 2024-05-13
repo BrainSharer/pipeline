@@ -11,10 +11,11 @@ Store mix-in classes for utilities
 These classes are designed to be inherited by the builder class (builder.py)
 '''
 
+import glob
 import os
 import random
+import shutil
 import time
-import math
 from itertools import product
 import zarr
 from dask.delayed import delayed
@@ -252,39 +253,6 @@ class _builder_multiscale_generator:
         else:
             return True,
 
-    # def chunk_increase_to_limit_3d(self,image_shape,starting_chunks,chunk_limit_in_GB):
-    #
-    #     # Determine chunk values to start at
-    #     z = starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #     y = starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #     x = starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #     previous_chunks = (z,y,x)
-    #     current_chunks = (z,y,x)
-    #
-    #     # Iterate 1 axis at a time increasing chunk size by increase_rate until the chunk_limit_in_MB is reached
-    #     idx=0
-    #     while True:
-    #         print(f'First chunks to try {current_chunks}')
-    #         if utils.get_size_GB(current_chunks,self.dtype) >= chunk_limit_in_GB:
-    #             current_chunks = previous_chunks
-    #             print(f'Final chunk to process {current_chunks}')
-    #             break
-    #         else:
-    #             previous_chunks = current_chunks
-    #
-    #         if idx%3 == 0:
-    #             z = z + starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #         if idx%3 == 1:
-    #             y = y + starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #         if idx%3 == 2:
-    #             x = x + starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #         current_chunks = (z,y,x)
-    #         idx+=1
-    #
-    #     return current_chunks
-
     def chunk_increase_to_limit_3d(self,image_shape,starting_chunks,chunk_limit_in_GB):
 
         # Determine chunk values to start at
@@ -299,7 +267,6 @@ class _builder_multiscale_generator:
         while True:
             if utils.get_size_GB(current_chunks,self.dtype) >= chunk_limit_in_GB:
                 current_chunks = previous_chunks
-                print(f'Final chunk to process {current_chunks}')
                 break
             else:
                 previous_chunks = current_chunks
@@ -325,48 +292,6 @@ class _builder_multiscale_generator:
             current_chunks = (z,y,x)
 
         return current_chunks
-
-    # def chunk_increase_to_limit_3d(self,image_shape,starting_chunks,chunk_limit_in_GB):
-    #
-    #     # Determine chunk values to start at
-    #     z = starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #     y = starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #     x = starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #     previous_chunks = (z,y,x)
-    #     current_chunks = (z,y,x)
-    #
-    #     rank_dict = {}
-    #     idx = 0
-    #     for axis,chunk_size in enumerate((z,y,x), current_chunks):
-    #         if chunk_size == min(current_chunks):
-    #             rank_dict[0] = (axis,chunk_size)
-    #         elif chunk_size == max(current_chunks):
-    #             rank_dict[2] = (axis,chunk_size)
-    #         else:
-    #             rank_dict[1] = (axis, chunk_size)
-    #
-    #     # Iterate 1 axis at a time increasing by chunk size along the smallest chunk axis
-    #     while True:
-    #         print(f'First chunks to try {current_chunks}')
-    #         if utils.get_size_GB(current_chunks,self.dtype) >= chunk_limit_in_GB:
-    #             current_chunks = previous_chunks
-    #             print(f'Final chunk to process {current_chunks}')
-    #             break
-    #         else:
-    #             previous_chunks = current_chunks
-    #
-    #         if
-    #         if z < image_shape[0]:
-    #             z = z + starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-    #         elif y < image_shape[1]:
-    #             y = y + starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-    #         elif x < image_shape[2]:
-    #             x = x + starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-    #
-    #         current_chunks = (z,y,x)
-    #
-    #     return current_chunks
 
     def chunk_slice_generator_for_downsample(self,from_array, to_array, down_sample_ratio=(2, 2, 2), length=False):
         '''
@@ -445,17 +370,6 @@ class _builder_multiscale_generator:
                 # print(slices[::-1])
                 yield tuple(from_slices[::-1]), tuple(to_slices[::-1])
 
-    # @staticmethod
-    # def compute_govenor(processing, num_at_once=70, complete=False):
-    #     while len(processing) >= num_at_once:
-    #         processing = [x for x in processing if x.status != 'finished']
-    #         time.sleep(0.1)
-    #     if complete:
-    #         while len(processing) > 0:
-    #             time.sleep(0.1)
-    #             print(f'{len(processing)} remaining')
-    #             processing = [x for x in processing if x.status != 'finished']
-    #     return processing
 
     @staticmethod
     def compute_govenor(processing, num_at_once=70, complete=False, keep_results=False):
@@ -556,3 +470,59 @@ class _builder_multiscale_generator:
             # return final_results
 
         return final_results
+
+    def cleanup(self):
+        """
+            Cleans up the temporary directory and removes orphaned lock files.
+
+            This method removes all files and directories in the temporary directory
+            and removes any .lock files in the output directory.
+
+            Raises:
+                KeyboardInterrupt: If the cleanup process is interrupted by the user.
+                Exception: If an error occurs during the cleanup process.
+            """
+        countKeyboardInterrupt = 0
+        countException = 0
+        print('Cleaning up tmp dir and orphaned lock files')
+        while True:
+            try:
+                # Remove any existing files in the temp_dir
+                files = glob.glob(os.path.join(self.tmp_dir, "**/*"), recursive=True)
+                for file in files:
+                    try:
+                        if os.path.isfile(file):
+                            os.remove(file)
+                        elif os.path.isdir(file):
+                            shutil.rmtree(file)
+                    except Exception:
+                        pass
+
+                # Remove any .lock files in the output directory (recursive)
+
+                locks = glob.glob(os.path.join(self.storepath, "**/*.lock"), recursive=True)
+                for lock in locks:
+                    try:
+                        if os.path.isfile(lock):
+                            os.remove(lock)
+                        elif os.path.isdir(lock):
+                            shutil.rmtree(lock)
+                    except Exception as ex:
+                        print('Trouble removing lock')
+                        print(ex)
+                        pass
+
+                break
+            except KeyboardInterrupt:
+                countKeyboardInterrupt += 1
+                if countKeyboardInterrupt == 4:
+                    break
+                pass
+            except Exception:
+                countException += 1
+                if countException == 100:
+                    break
+                pass
+
+        if os.path.exists(self.tmp_dir):
+            shutil.rmtree(self.tmp_dir)

@@ -20,7 +20,6 @@ class _builder_ome_zarr_utils:
         
         store = self.get_store_from_path(self.out_location)
         r = zarr.open(store)
-        print(r)
         
         multiscales = {}
         multiscales["version"] = "0.5-dev"
@@ -57,14 +56,8 @@ class _builder_ome_zarr_utils:
         multiscales["type"] = self.downSampType
 
         # Define down sampling methods for inclusion in zattrs
-        description = ''
-        details = ''
-        if multiscales['type'] == 'mean':
-            description = '2x downsample of in up to 3 dimensions calculated using the local mean'
-            details = 'stack_to_multiscale_ngff._builder_img_processing.local_mean_downsample'
-        elif multiscales['type'] == 'max':
-            description = '2x downsample of in up to 3 dimensions calculated using the local max'
-            details = 'stack_to_multiscale_ngff._builder_img_processing.local_max_downsample'
+        description = '2x downsample of in up to 3 dimensions calculated using the local mean'
+        details = 'stack_to_multiscale_ngff._builder_img_processing.local_mean_downsample'
 
 
         multiscales["metadata"] = {
