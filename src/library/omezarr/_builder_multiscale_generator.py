@@ -39,8 +39,46 @@ class _builder_multiscale_generator:
             with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
                 self.write_resolutions(mip, client)
 
-    def write_resolutions(self, mip, client):
+    def write_resolution_0(self, client):
+        import sys
 
+        print("Building Virtual Stack")
+        stack = []
+        for color in self.filesList:
+
+            s = self.organize_by_groups(color, self.originalChunkSize[2])
+            test_image = tiff_manager_3d(s[0])
+            optimum_chunks = utils.optimize_chunk_shape_3d_2(
+                test_image.shape,
+                test_image.chunks,
+                self.originalChunkSize[2:],
+                test_image.dtype,
+                self.res0_chunk_limit_GB,
+            )
+            test_image.chunks = optimum_chunks
+            print("optimum chunks", optimum_chunks)
+            print(f"test image shape={test_image.shape} and chunks={test_image.chunks}")
+            s = [test_image.clone_manager_new_file_list(x) for x in s]
+            s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
+            s = da.concatenate(s)
+            stack.append(s)
+        stack = da.stack(stack)
+        stack = stack[None, ...]
+        store = self.get_store(0)
+        z = zarr.zeros(
+            stack.shape,
+            chunks=self.originalChunkSize,
+            store=store,
+            overwrite=True,
+            compressor=self.compressor,
+            dtype=stack.dtype,
+        )
+        to_store = da.store(stack, z, lock=False, compute=False)
+        to_store = client.compute(to_store)
+        progress(to_store)
+        to_store = client.gather(to_store)
+
+    def write_resolutions(self, mip, client):
 
         # During creation of res 1, the min and max is calculated for res 0 if values
         # for omero window were not specified in the commandline
@@ -69,33 +107,6 @@ class _builder_multiscale_generator:
                 self.min.append( min([x[0] for x in tmp]) )
                 self.max.append( max([x[1] for x in tmp]) )
             self.set_omero_window()
-
-    def write_resolution_0(self, client):
-
-        print('Building Virtual Stack')
-        stack = []
-        for color in self.filesList:
-
-            s = self.organize_by_groups(color,self.originalChunkSize[2])
-            test_image = tiff_manager_3d(s[0])
-            # optimum_chunks = utils.optimize_chunk_shape_3d(test_image.shape,test_image.chunks,test_image.dtype,self.res0_chunk_limit_GB)
-            optimum_chunks = utils.optimize_chunk_shape_3d_2(test_image.shape,test_image.chunks,self.originalChunkSize[2:],test_image.dtype,self.res0_chunk_limit_GB)
-            test_image.chunks = optimum_chunks
-            print('optimum chunks', optimum_chunks)
-            print(f'test image shape={test_image.shape} and chunks={test_image.chunks}')
-            s = [test_image.clone_manager_new_file_list(x) for x in s]
-            s = [da.from_array(x,chunks=x.chunks,name=False,asarray=False) for x in s]
-            s = da.concatenate(s)
-            stack.append(s)
-        stack = da.stack(stack)
-        stack = stack[None,...]
-        print('Stack', stack)
-        store = self.get_store(0)
-        z = zarr.zeros(stack.shape, chunks=self.originalChunkSize, store=store, overwrite=True, compressor=self.compressor,dtype=stack.dtype)
-        to_store = da.store(stack,z,lock=False, compute=False)
-        to_store = client.compute(to_store)
-        progress(to_store)
-        to_store = client.gather(to_store)
 
     def down_samp(self, mip, client, minmax=False):
 
@@ -328,7 +339,7 @@ class _builder_multiscale_generator:
                                                          self.res_chunk_limit_GB)
 
         chunksize = list(chunksize[:2]) + list(optimum_chunks)
-        #print(f'Chunksize for processing downsampled array: {chunksize}')
+        # print(f'Chunksize for processing downsampled array: {chunksize}')
         # chunk_multiply = 2
         # chunksize = list(chunksize[:2]) + [x*chunk_multiply for x in chunksize[-3:]]
 
@@ -361,7 +372,6 @@ class _builder_multiscale_generator:
                 from_slices = [slice(x, y) for x, y in zip(start, stop)]
                 # print(slices[::-1])
                 yield tuple(from_slices[::-1]), tuple(to_slices[::-1])
-
 
     @staticmethod
     def compute_govenor(processing, num_at_once=70, complete=False, keep_results=False):
@@ -397,7 +407,6 @@ class _builder_multiscale_generator:
 
     def down_samp_by_chunk_no_overlap(self, mip, client, minmax=False):
 
-
         parent_array = self.open_store(mip - 1, mode='r')
         print(f'Getting Parent Zarr as Dask Array with shape={parent_array.shape} at resolution={mip}')
         new_array_store = self.get_store(mip)
@@ -408,7 +417,7 @@ class _builder_multiscale_generator:
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.multi_scale_compressor, dtype=self.dtype)
-        #print('new_array, {}, {}'.format(new_array.shape, new_array.chunks))
+        # print('new_array, {}, {}'.format(new_array.shape, new_array.chunks))
 
         from_array_shape_chunks = (
             (self.TimePoints,self.Channels,*self.pyramidMap[mip-1]['shape']),
