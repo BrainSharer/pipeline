@@ -17,6 +17,7 @@ import random
 import shutil
 import time
 from itertools import product
+import psutil
 import zarr
 from dask.delayed import delayed
 import dask.array as da
@@ -33,6 +34,9 @@ class _builder_multiscale_generator:
         Make downsampled versions of dataset based on pyramidMap
         Requies that a dask.distribuited client be passed for parallel processing
         '''
+        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
+
+        print(f'Starting distributed dask with {self.workers} workers and {self.sim_jobs} sim_jobs with free memory={GB}GB')
         with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
             self.write_resolution_0(client)
         for mip in range(1, len(self.pyramidMap)):
@@ -40,9 +44,12 @@ class _builder_multiscale_generator:
                 self.write_resolutions(mip, client)
 
     def write_resolution_0(self, client):
-        import sys
-
-        print("Building Virtual Stack")
+        resolution_0_path = os.path.join(self.output, 'scale0')
+        if os.path.exists(resolution_0_path):
+            print(f'Resolution 0 already exists at {resolution_0_path}')
+            return
+        
+        print(f"Building zarr store for resolution 0 at {resolution_0_path}")
         stack = []
         for color in self.filesList:
 
@@ -122,7 +129,7 @@ class _builder_multiscale_generator:
         print(f'and new shape={new_shape}')
         new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
-        new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.multi_scale_compressor,dtype=self.dtype)
+        new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.compressor,dtype=self.dtype)
         print(f'new_array shape={new_array.shape} chunks={new_array.chunks}')
 
         # Other downsample methods could be substituted here
@@ -416,7 +423,7 @@ class _builder_multiscale_generator:
         new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
-                               compressor=self.multi_scale_compressor, dtype=self.dtype)
+                               compressor=self.compressor, dtype=self.dtype)
         # print('new_array, {}, {}'.format(new_array.shape, new_array.chunks))
 
         from_array_shape_chunks = (

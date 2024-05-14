@@ -39,46 +39,32 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_sc
 
 class OmeZarrManager():
 
-    def omezarr_setup(self):
+    def create_omezarr(self):
         tmp_dir = get_scratch_dir()
-        self.tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
-        os.makedirs(self.tmp_dir, exist_ok=True)
-        self.xy_resolution = self.sqlController.scan_run.resolution
-        self.z_resolution = self.sqlController.scan_run.zresolution
+        tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
+        os.makedirs(tmp_dir, exist_ok=True)
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
-            self.storefile = 'C1T.zarr'
-            self.rechunkmefile = 'C1T_rechunk.zarr'
-            self.scaling_factor = SCALING_FACTOR
-            self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
-            self.mips = 4
-            self.originalChunkSize = [1, 1, 1, 512, 512]
-            self.finalChunkSize=(1, 1, 32, 32, 32)
+            storefile = 'C1T.zarr'
+            scaling_factor = SCALING_FACTOR
+            input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+            mips = 4
+            originalChunkSize = [1, 1, 1, 512, 512]
+            finalChunkSize=(1, 1, 32, 32, 32)
         else:
-            self.storefile = 'C1.zarr'
-            self.rechunkmefile = 'C1_rechunk.zarr'
-            self.scaling_factor = 1
-            self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
-            self.mips = 8
-            self.originalChunkSize = [1, 1, 1, 2048, 2048]
-            self.finalChunkSize=(1, 1, 64, 64, 64)
+            storefile = 'C1.zarr'
+            scaling_factor = 1
+            input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
+            mips = 8
+            originalChunkSize = [1, 1, 1, 2048, 2048]
+            finalChunkSize=(1, 1, 64, 64, 64)
         # vars from stack to multi
-        self.cpu_cores = os.cpu_count()
-        self.mem = (psutil.virtual_memory().free // 1024**3) * 0.8
-        self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
         filesList = []
-        for file in sorted(os.listdir(self.input)):
-            filepath = os.path.join(self.input, file)
+        for file in sorted(os.listdir(input)):
+            filepath = os.path.join(input, file)
             filesList.append(filepath)
-        self.filesList = [filesList]
-        self.Channels = len(self.filesList)
-        self.TimePoints = 1
-        testImage = tiff_manager(self.filesList[0][0])
-        self.dtype = testImage.dtype
-        self.ndim = testImage.ndim
-        self.shape_3d = (len(self.filesList[0]),*testImage.shape)        
-        self.shape = (self.TimePoints, self.Channels, *self.shape_3d)
-        self.directToFinalChunks = True # Use final chunks for all multiscales except full resolution
+        filesList = [filesList]
         omero = {}
         omero['channels'] = {}
         omero['channels']['color'] = None
@@ -87,40 +73,32 @@ class OmeZarrManager():
         omero['name'] = self.animal
         omero['rdefs'] = {}
         omero['rdefs']['defaultZ'] = len(filesList) // 2
-        self.omero_dict = omero
+        omero_dict = omero
 
 
-        self.storepath = os.path.join(
-            self.fileLocationManager.www, "neuroglancer_data", self.storefile
+        storepath = os.path.join(
+            self.fileLocationManager.www, "neuroglancer_data", storefile
         )
-        xy = self.xy_resolution * self.scaling_factor
-        self.geometry = (1, 1, self.z_resolution, xy, xy)
+        xy = xy_resolution * scaling_factor
+        geometry = (1, 1, z_resolution, xy, xy)
 
-    def create_omezarr(self):
-        self.workers, _ = get_cpus()
-        self.workers = 8
-        self.sim_jobs = 4
-        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
+
 
         omezarr = builder(
-            self.input,
-            self.storepath,
-            self.filesList,
-            geometry=self.geometry,
-            originalChunkSize=self.originalChunkSize,
-            finalChunkSize=self.finalChunkSize,
-            cpu_cores=self.cpu_cores,
-            sim_jobs=self.sim_jobs,
-            mem=self.mem,
-            tmp_dir=self.tmp_dir,
+            input,
+            storepath,
+            filesList,
+            geometry=geometry,
+            originalChunkSize=originalChunkSize,
+            finalChunkSize=finalChunkSize,
+            tmp_dir=tmp_dir,
             debug=self.debug,
-            omero_dict=self.omero_dict,
-            directToFinalChunks=self.directToFinalChunks,
-            mips=self.mips
+            omero_dict=omero_dict,
+            mips=mips
         )
 
         try:
-            with dask.config.set({'temporary_directory': self.tmp_dir, 
+            with dask.config.set({'temporary_directory': tmp_dir, 
                                     'logging.distributed': 'error'}):
 
                 os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
@@ -131,7 +109,6 @@ class OmeZarrManager():
                 os.environ["MKL_NUM_THREADS"] = "1"
                 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-                print(f'Starting distributed dask with {self.workers} workers and {self.sim_jobs} sim_jobs in tmp dir={self.tmp_dir} with free memory={GB}GB')
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
                 print()

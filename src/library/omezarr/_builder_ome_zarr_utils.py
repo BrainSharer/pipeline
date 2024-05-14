@@ -18,7 +18,7 @@ class _builder_ome_zarr_utils:
     
     def build_zattrs(self):
         
-        store = self.get_store_from_path(self.out_location)
+        store = self.get_store_from_path(self.output)
         r = zarr.open(store)
         
         multiscales = {}
@@ -127,8 +127,8 @@ class _builder_ome_zarr_utils:
         return
     
     def edit_omero_channels(self,channel_num,attr_name,new_value):
-        # store = self.zarr_store_type(self.out_location,verbose=1)
-        store = self.get_store_from_path(self.out_location)
+        # store = self.zarr_store_type(self.output,verbose=1)
+        store = self.get_store_from_path(self.output)
         r = zarr.open(store)
         
         omero = r.attrs['omero']
@@ -143,11 +143,11 @@ class _builder_ome_zarr_utils:
         
     
     def get_omero_attr(self,attr_name):
-        store = self.get_store_from_path(self.out_location)
+        store = self.get_store_from_path(self.output)
         # if self.zarr_store_type == H5_Shard_Store:
-        #     store = self.zarr_store_type(self.out_location,verbose=1)
+        #     store = self.zarr_store_type(self.output,verbose=1)
         # else:
-        #     store = self.zarr_store_type(self.out_location)
+        #     store = self.zarr_store_type(self.output)
         r = zarr.open(store)
         
         omero = r.attrs['omero']
