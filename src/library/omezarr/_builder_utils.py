@@ -72,7 +72,7 @@ class _builder_utils:
         return False
 
     def scale_name(self,res):
-        name = os.path.join(self.out_location,'scale{}'.format(res))
+        name = os.path.join(self.output,'scale{}'.format(res))
         return name
 
     @staticmethod

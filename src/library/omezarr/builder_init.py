@@ -39,50 +39,37 @@ class builder(_builder_downsample,
         geometry=(1, 1, 1),
         originalChunkSize=(1, 1, 1, 1024, 1024),
         finalChunkSize=(1, 1, 64, 64, 64),
-        cpu_cores=os.cpu_count(),
-        sim_jobs=4,
-        mem=int((psutil.virtual_memory().free / 1024**3) * 0.8),
         tmp_dir="/tmp",
         debug=False,
         omero_dict={},
-        directToFinalChunks=True,
         mips=4,
     ):
 
-        self.in_location = in_location
-        self.out_location = out_location
+        self.input = in_location
+        self.output = out_location
         self.filesList = filesList
         self.fileType = "tif"
         self.geometry = tuple(geometry)
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
-        self.cpu_cores = cpu_cores
-        self.sim_jobs = sim_jobs
+        self.cpu_cores = os.cpu_count()
+        self.sim_jobs = 4
         self.workers = int(self.cpu_cores / self.sim_jobs)
-        self.mem = mem
+        self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
         self.tmp_dir = tmp_dir
         self.debug = debug
         self.omero_dict = omero_dict
         self.downSampType = "mean"
-        self.directToFinalChunks = directToFinalChunks
         self.mips = mips
-
-        # Hack to build zarr in tmp location then copy to finalLocation (finalLocation is the original out_location)
-        self.finalLocation = self.out_location
-        self.multi_scale_compressor = self.compressor
         self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
         self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
 
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask
 
-        store = self.get_store_from_path(self.out_location) # location: _builder_utils
-
-        # Sanity check that we can open the store
-        store = zarr.open(store)
-        del store
+        store = self.get_store_from_path(self.output) # location: _builder_utils
 
         self.Channels = len(self.filesList)
         self.TimePoints = 1
@@ -102,4 +89,8 @@ class builder(_builder_downsample,
         self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
         for k, v in self.pyramidMap.items():
             print(k,v)
+        
+
+        #import sys
+        #sys.exit()
         self.build_zattrs()

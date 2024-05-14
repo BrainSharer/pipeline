@@ -211,7 +211,6 @@ class Pipeline(
 
     def omezarr(self):
         print(self.TASK_OMEZARR)
-        self.omezarr_setup()
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
 
