@@ -20,6 +20,7 @@ from library.omezarr._builder_ome_zarr_utils import _builder_ome_zarr_utils
 from library.omezarr._builder_image_utils import _builder_image_utils
 from library.omezarr._builder_multiscale_generator import _builder_multiscale_generator
 from library.omezarr.tiff_manager import tiff_manager
+from library.utilities.dask_utilities import get_pyramid
 # from stack_to_multiscale_ngff._builder_colors import _builder_colors
 
 class builder(_builder_downsample,
@@ -34,6 +35,7 @@ class builder(_builder_downsample,
         self,
         in_location,
         out_location,
+        filesList,
         geometry=(1, 1, 1),
         originalChunkSize=(1, 1, 1, 1024, 1024),
         finalChunkSize=(1, 1, 64, 64, 64),
@@ -45,11 +47,11 @@ class builder(_builder_downsample,
         omero_dict={},
         directToFinalChunks=True,
         mips=4,
-        axes=None
     ):
 
         self.in_location = in_location
         self.out_location = out_location
+        self.filesList = filesList
         self.fileType = "tif"
         self.geometry = tuple(geometry)
         self.originalChunkSize = tuple(originalChunkSize)
@@ -66,7 +68,6 @@ class builder(_builder_downsample,
         self.downSampType = "mean"
         self.directToFinalChunks = directToFinalChunks
         self.mips = mips
-        self.axes = axes
 
         # Hack to build zarr in tmp location then copy to finalLocation (finalLocation is the original out_location)
         self.finalLocation = self.out_location
@@ -83,33 +84,6 @@ class builder(_builder_downsample,
         store = zarr.open(store)
         del store
 
-        ##  LIST ALL FILES TO BE CONVERTED  ##
-        filesList = []
-        if isinstance(self.in_location, str) and os.path.splitext(self.in_location)[-1] == '.nii':
-            filesList.append(self.nifti_unpacker(self.in_location))
-
-        elif isinstance(self.in_location, str) and self.fileType == 'jp2':
-            filesList = self.jp2_unpacker(natsorted(glob.glob(os.path.join(self.in_location,'*.{}'.format(self.fileType)))))
-
-        elif isinstance(self.in_location,(list,tuple)):
-            # Can designate each directory with image files
-            for ii in self.in_location:
-                filesList.append(natsorted(glob.glob(os.path.join(ii,'*.{}'.format(self.fileType)))))
-
-        elif len(glob.glob(os.path.join(self.in_location,'*.{}'.format(self.fileType)))) > 0:
-            filesList.append(
-                natsorted(glob.glob(os.path.join(self.in_location, '*.{}'.format(self.fileType))))
-            )
-
-        else:
-            # Will find nested directories with image files
-            ## Assume files are laid out as "color_dir/images"
-            for ii in natsorted(glob.glob(os.path.join(self.in_location,'*'))):
-                filesList.append(natsorted(glob.glob(os.path.join(ii,'*.{}'.format(self.fileType)))))
-
-        # print(filesList)
-
-        self.filesList = filesList
         self.Channels = len(self.filesList)
         self.TimePoints = 1
         # print(self.Channels)
@@ -119,10 +93,13 @@ class builder(_builder_downsample,
         self.dtype = testImage.dtype
         self.ndim = testImage.ndim
         self.shape_3d = (len(self.filesList[0]),*testImage.shape)
-
         self.shape = (self.TimePoints, self.Channels, *self.shape_3d)
+        out_shape = self.shape_3d
+        initial_chunk = self.originalChunkSize[2:]
+        final_chunk_size = self.finalChunkSize[2:]
+        resolution = self.geometry[2:]
 
-        # self.pyramidMap = self.imagePyramidNum()
-        self.pyramidMap = self.imagePyramidNum_converge_isotropic()
-
+        self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
+        for k, v in self.pyramidMap.items():
+            print(k,v)
         self.build_zattrs()
