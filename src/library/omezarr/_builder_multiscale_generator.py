@@ -33,33 +33,30 @@ class _builder_multiscale_generator:
         Make downsampled versions of dataset based on pyramidMap
         Requies that a dask.distribuited client be passed for parallel processing
         '''
-        for res in range(len(self.pyramidMap)):
-            with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
-                self.write_resolution(res, client)
-
-    def write_resolution(self,res,client):
-
-        if res == 0:
+        with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
             self.write_resolution_0(client)
-            return
+        for mip in range(1, len(self.pyramidMap)):
+            with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
+                self.write_resolutions(mip, client)
+
+    def write_resolutions(self, mip, client):
+
 
         # During creation of res 1, the min and max is calculated for res 0 if values
         # for omero window were not specified in the commandline
         # These values are added to zattrs omero:channels
         # out is a list of tuple (min,max,channel)
 
-        # out = self.down_samp_by_chunk_no_overlap(res, client, minmax=False)
-
         minmax = False
         where_to_calculate_min_max = 2
-        if len(self.pyramidMap) == 2 and res == 1:
+        if len(self.pyramidMap) == 2 and mip == 1:
             minmax = True
-        elif res == len(self.pyramidMap) // where_to_calculate_min_max:
+        elif mip == len(self.pyramidMap) // where_to_calculate_min_max:
             minmax = True
         elif len(self.pyramidMap) // where_to_calculate_min_max == 0:
             minmax = True
 
-        results = self.down_samp_by_chunk_no_overlap(res, client, minmax=minmax)
+        results = self.down_samp_by_chunk_no_overlap(mip, client, minmax=minmax)
 
         if minmax and self.omero_dict['channels']['window'] is None:
             self.min = []
@@ -73,7 +70,7 @@ class _builder_multiscale_generator:
                 self.max.append( max([x[1] for x in tmp]) )
             self.set_omero_window()
 
-    def write_resolution_0(self,client):
+    def write_resolution_0(self, client):
 
         print('Building Virtual Stack')
         stack = []
@@ -100,19 +97,19 @@ class _builder_multiscale_generator:
         progress(to_store)
         to_store = client.gather(to_store)
 
-    def down_samp(self, res, client, minmax=False):
+    def down_samp(self, mip, client, minmax=False):
 
-        out_location = self.scale_name(res)
-        parent_location = self.scale_name(res-1)
+        out_location = self.scale_name(mip)
+        parent_location = self.scale_name(mip-1)
 
         print('Getting Parent Zarr as Dask Array with shape=', end=" ")
-        parent_array = self.open_store(res-1, mode='r')
+        parent_array = self.open_store(mip-1, mode='r')
         print(parent_array.shape, end=" ")
-        new_array_store = self.get_store(res)
+        new_array_store = self.get_store(mip)
 
-        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[res]['shape'])
+        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
         print(f'and new shape={new_shape}')
-        new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
+        new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.multi_scale_compressor,dtype=self.dtype)
         print(f'new_array shape={new_array.shape} chunks={new_array.chunks}')
@@ -124,7 +121,7 @@ class _builder_multiscale_generator:
         # Currently hardcoded - works well for 32core, 512GB RAM
         # 4^3 is the break even point for surface area == volume
         # Higher numbers are better to limt io
-        zz,yy,xx = self.determine_chunks_size_for_downsample(res)
+        zz,yy,xx = self.determine_chunks_size_for_downsample(mip)
         z_depth = new_chunks[-3] * zz
         y_depth = new_chunks[-2] * yy
         x_depth = new_chunks[-1] * xx
@@ -153,10 +150,10 @@ class _builder_multiscale_generator:
 
                             # working = delayed(smooth_downsample)(parent_location,out_location,1,info,store=H5Store)
                             # working = delayed(local_mean_3d_downsample)(parent_location,out_location,info,store=H5Store)
-                            if res == 1:
-                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=True,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[res]['downsamp'])
+                            if mip == 1:
+                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=True,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[mip]['downsamp'])
                             else:
-                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=False,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[res]['downsamp'])
+                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=False,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[mip]['downsamp'])
                             print('{},{},{},{},{}'.format(t,c,z,y,x))
                             to_run.append(working)
                             idx_reference.append((idx,(parent_location,out_location,info)))
@@ -168,11 +165,7 @@ class _builder_multiscale_generator:
         random.shuffle(idx_reference)
         print('Computing {} chunks'.format(len(to_run)))
 
-        if self.performance_report:
-            with performance_report(filename=os.path.join(self.out_location,'performance_res_{}.html'.format(res))):
-                future = self.compute_batch(to_run,round(self.cpu_cores*1.25),client)
-        else:
-            future = self.compute_batch(to_run,round(self.cpu_cores*1.25),client)
+        future = self.compute_batch(to_run,round(self.cpu_cores*1.25),client)
 
         future_tmp = future
 
@@ -194,7 +187,7 @@ class _builder_multiscale_generator:
             idx_reference = []
             to_run = []
             for ii in re_process:
-                if res == 1:
+                if mip == 1:
                     working = delayed(dsamp_algo)(ii[1][0],ii[1][1],ii[1][2],minmax=True,idx=ii[0],store=self.zarr_store_type)
                 else:
                     working = delayed(dsamp_algo)(ii[1][0],ii[1][1],ii[1][2],minmax=False,idx=ii[0],store=self.zarr_store_type)
@@ -221,7 +214,7 @@ class _builder_multiscale_generator:
     '''
     ##############################################################################################################
 
-    def downsample_by_chunk(self, from_res, to_res, down_sample_ratio, from_slice, to_slice, minmax=False):
+    def downsample_by_chunk(self, from_mip, to_mip, down_sample_ratio, from_slice, to_slice, minmax=False):
 
         '''
         Slices are for dims (t,c,z,y,x), downsamp only works on 3 dims
@@ -235,8 +228,8 @@ class _builder_multiscale_generator:
         # print(self.downSampType)
         # dsamp_method = self.local_mean_downsample
 
-        from_array = self.open_store(from_res, mode='r')
-        to_array = self.open_store(to_res)
+        from_array = self.open_store(from_mip, mode='r')
+        to_array = self.open_store(to_mip)
 
         data = from_array[from_slice]
 
@@ -331,7 +324,6 @@ class _builder_multiscale_generator:
             from_shape = from_array.shape
 
         # Chunks are calculated for to_array
-        # optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:],chunksize[2:],self.res_chunk_limit_GB // math.prod(down_sample_ratio) // 1)
         optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:], chunksize[2:],
                                                          self.res_chunk_limit_GB)
 
@@ -403,33 +395,31 @@ class _builder_multiscale_generator:
                 time.sleep(0.1)
         return results, processing
 
-    def down_samp_by_chunk_no_overlap(self, res, client, minmax=False):
+    def down_samp_by_chunk_no_overlap(self, mip, client, minmax=False):
 
-        # out_location = self.scale_name(res)
-        # parent_location = self.scale_name(res - 1)
 
-        parent_array = self.open_store(res - 1, mode='r')
-        print(f'Getting Parent Zarr as Dask Array with shape={parent_array.shape} at resolution={res}')
-        new_array_store = self.get_store(res)
+        parent_array = self.open_store(mip - 1, mode='r')
+        print(f'Getting Parent Zarr as Dask Array with shape={parent_array.shape} at resolution={mip}')
+        new_array_store = self.get_store(mip)
 
-        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[res]['shape'])
+        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
         # new_chunks = (1, 1, 16, 512, 4096)
-        new_chunks = (1, 1, *self.pyramidMap[res]['chunk'])
+        new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.multi_scale_compressor, dtype=self.dtype)
         #print('new_array, {}, {}'.format(new_array.shape, new_array.chunks))
 
         from_array_shape_chunks = (
-            (self.TimePoints,self.Channels,*self.pyramidMap[res-1]['shape']),
-            (1,1,*self.pyramidMap[res-1]['chunk'])
+            (self.TimePoints,self.Channels,*self.pyramidMap[mip-1]['shape']),
+            (1,1,*self.pyramidMap[mip-1]['chunk'])
         )
         to_array_shape_chunks = (
-            (self.TimePoints,self.Channels,*self.pyramidMap[res]['shape']),
-            (1,1,*self.pyramidMap[res]['chunk'])
+            (self.TimePoints,self.Channels,*self.pyramidMap[mip]['shape']),
+            (1,1,*self.pyramidMap[mip]['chunk'])
         )
 
-        down_sample_ratio = self.pyramidMap[res]['downsamp']
+        down_sample_ratio = self.pyramidMap[mip]['downsamp']
 
         slices = self.chunk_slice_generator_for_downsample(from_array_shape_chunks, to_array_shape_chunks,
                                                       down_sample_ratio=down_sample_ratio, length=True)
@@ -452,7 +442,7 @@ class _builder_multiscale_generator:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
             else:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
-            tmp = delayed(self.downsample_by_chunk)(res-1, res, down_sample_ratio, from_slice, to_slice, minmax=minmax)
+            tmp = delayed(self.downsample_by_chunk)(mip-1, mip, down_sample_ratio, from_slice, to_slice, minmax=minmax)
             tmp = client.compute(tmp)
             processing.append(tmp)
             del tmp
@@ -464,8 +454,6 @@ class _builder_multiscale_generator:
         final_results = final_results + results
 
         if minmax:
-            #print('                                                                                      ',end='\r')
-            #print('Gathering Results')
             final_results = client.gather(final_results)
             # return final_results
 
