@@ -35,7 +35,6 @@ class _builder_multiscale_generator:
         Requies that a dask.distribuited client be passed for parallel processing
         '''
         GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-
         print(f'Starting distributed dask with {self.workers} workers and {self.sim_jobs} sim_jobs with free memory={GB}GB')
         with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
             self.write_resolution_0(client)
