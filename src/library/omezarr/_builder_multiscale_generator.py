@@ -39,8 +39,7 @@ class _builder_multiscale_generator:
         print(f'Starting distributed dask with {self.workers} workers and {self.sim_jobs} sim_jobs with free memory={GB}GB')
         with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
             self.write_resolution_0(client)
-        for mip in range(1, len(self.pyramidMap)):
-            with Client(n_workers=self.workers, threads_per_worker=self.sim_jobs) as client:
+            for mip in range(1, len(self.pyramidMap)):
                 self.write_resolutions(mip, client)
 
     def write_resolution_0(self, client):
