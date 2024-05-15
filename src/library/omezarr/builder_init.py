@@ -54,7 +54,7 @@ class builder(_builder_downsample,
         self.finalChunkSize = tuple(finalChunkSize)
         self.cpu_cores = os.cpu_count()
         self.sim_jobs = 2
-        self.workers = int(self.cpu_cores / self.sim_jobs)
+        self.workers = int(self.cpu_cores / self.sim_jobs) // 2
         self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
