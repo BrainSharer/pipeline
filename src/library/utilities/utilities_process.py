@@ -72,7 +72,8 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
     try:
         files = sorted(os.listdir(directory))
     except:
-        return f"{directory} does not exist"
+        error = f"{directory} does not exist\n"
+        files = []
 
     if section_count == 0:
         section_count = len(files)

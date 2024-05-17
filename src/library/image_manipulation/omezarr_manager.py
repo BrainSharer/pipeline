@@ -11,31 +11,12 @@ distributed:
       pause: 0.70  # fraction at which we pause worker threads
       terminate: False  # fraction at which we terminate the worker
 """
-import glob
-import math
 import os
-import sys
-import shutil
-import time
-import psutil
-import zarr
 import dask
-import numpy as np
-from itertools import product
 
-from dask.delayed import delayed
-import dask.array as da
-
-from skimage import io, img_as_uint, img_as_ubyte, img_as_float32, img_as_float64
-
-from timeit import default_timer as timer
-from dask.distributed import Client, progress
-from library.image_manipulation.image_manager import ImageManager
-from library.omezarr.tiff_manager import tiff_manager, tiff_manager_3d
+from dask.distributed import Client
 from library.omezarr.builder_init import builder
-from library.omezarr.utils import get_size_GB, optimize_chunk_shape_3d_2
-from library.utilities.dask_utilities import aligned_coarse_chunks, imreads, mean_dtype
-from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, get_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
 
 class OmeZarrManager():
 
@@ -112,7 +93,12 @@ class OmeZarrManager():
                 print('With Dask memory config:')
                 print(dask.config.get("distributed.worker.memory"))
                 print()
-                omezarr.write_resolution_series()
+                print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
+                #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
+                with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False) as client:
+                    omezarr.write_resolution_0(client)
+                    for mip in range(1, len(omezarr.pyramidMap)):
+                        omezarr.write_resolutions(mip, client)
 
         except Exception as ex:
             print('Exception in running builder in omezarr_manager')

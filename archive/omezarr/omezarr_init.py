@@ -13,11 +13,11 @@ from numcodecs import Blosc
 from natsort import natsorted
 
 # Import local functions
-from library.omezarr._builder_image_utils import tiff_manager
-from library.omezarr._builder_img_processing import _builder_downsample
-from library.omezarr._builder_utils import _builder_utils
-from library.omezarr._builder_ome_zarr_utils import _builder_ome_zarr_utils
-from library.omezarr._builder_multiscale_generator import _builder_multiscale_generator
+from library.omezarr.builder_image_utils import tiff_manager
+from library.omezarr.builder_img_processing import _builder_downsample
+from library.omezarr.builder_utils import _builder_utils
+from library.omezarr.builder_ome_zarr_utils import _builder_ome_zarr_utils
+from library.omezarr.builder_multiscale_generator import _builder_multiscale_generator
 
 class OmeZarrBuilder(_builder_downsample,
             _builder_utils,
