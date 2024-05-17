@@ -132,6 +132,7 @@ if __name__ == "__main__":
         "clean": pipeline.clean,
         "histogram": pipeline.histogram,
         "align": pipeline.align,
+        "realign": pipeline.realign,
         "affine": pipeline.affine_align,
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,

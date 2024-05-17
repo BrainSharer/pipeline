@@ -61,6 +61,7 @@ class Pipeline(
     TASK_CLEAN = "Applying masks"
     TASK_HISTOGRAM =  "Making histogram"
     TASK_ALIGN = "Creating elastix transform"
+    TASK_REALIGN = "Creating alignment improvements"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
@@ -176,6 +177,15 @@ class Pipeline(
         self.align_full_size_image(transformations)
         self.create_web_friendly_sections()
         print(f'Finished {self.TASK_ALIGN}.')
+
+    def realign(self):
+        """Perform the improvement of the section to section alignment
+        """
+
+        print(self.TASK_REALIGN)
+        self.create_within_stack_transformations()
+        transformations = self.get_transformations()
+        print(f'Finished {self.TASK_REALIGN}.')
 
     def affine_align(self):
         """Perform the section to section alignment (registration)

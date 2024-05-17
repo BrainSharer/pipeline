@@ -22,7 +22,7 @@ import dask.array as da
 from distributed import Client, progress, performance_report
 
 # Project specific imports
-from library.omezarr._builder_image_utils import tiff_manager_3d
+from library.omezarr.builder_image_utils import tiff_manager_3d
 from library.omezarr.tiff_manager import tiff_manager
 from library.omezarr.utils import get_size_GB, optimize_chunk_shape_3d_2
 class _builder_multiscale_generator:

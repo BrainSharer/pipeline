@@ -18,7 +18,7 @@ from scipy.ndimage import affine_transform
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
-from library.utilities.utilities_process import get_image_size, read_image
+from library.utilities.utilities_process import get_image_size, read_image, test_dir
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -48,8 +48,8 @@ class ElastixManager(FileLogger):
         This is done in a simple loop with no workers. Usually takes
         up to an hour to run for a stack. It only needs to be run once for
         each brain. 
-        TODO this needs to be modified to account for the channel variable name
         """
+        test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         if self.channel == 1 and self.downsample:
             files = sorted(os.listdir(self.input))
             nfiles = len(files)
@@ -59,68 +59,45 @@ class ElastixManager(FileLogger):
                 fixed_index = os.path.splitext(files[i - 1])[0]
                 moving_index = os.path.splitext(files[i])[0]
                 if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                    rotation, xshift, yshift = self.align_elastix_with_points(fixed_index, moving_index)
+                    rotation, xshift, yshift = self.align_elastix_with_no_points(fixed_index, moving_index)
                     self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
-    def create_affine_transformations(self):
-        files = sorted(os.listdir(self.input))
-        nfiles = len(files)
-        midpoint = nfiles // 2
-        transformation_to_previous_sec = {}
-        center = self.get_rotation_center()
-              
-        
-        for i in range(1, nfiles):
-            fixed_index = os.path.splitext(files[i - 1])[0]
-            moving_index = os.path.splitext(files[i])[0]
-            elastixImageFilter = sitk.ElastixImageFilter()
-            fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
-            fixed = sitk.ReadImage(fixed_file, self.pixelType)            
-            moving_file = os.path.join(self.input, f"{moving_index}.tif")
-            moving = sitk.ReadImage(moving_file, self.pixelType)
-            elastixImageFilter.SetFixedImage(fixed)
-            elastixImageFilter.SetMovingImage(moving)
 
-            affineParameterMap = elastixImageFilter.GetDefaultParameterMap("affine")
-            affineParameterMap["UseDirectionCosines"] = ["true"]
-            affineParameterMap["MaximumNumberOfIterations"] = ["500"] # 250 works ok
-            affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
-            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-            affineParameterMap["WriteResultImage"] = ["false"]
-            elastixImageFilter.SetParameterMap(affineParameterMap)
-            elastixImageFilter.LogToConsoleOff()
-            # elastixImageFilter.PrintParameterMap()
-            elastixImageFilter.Execute()
+    def align_elastix_with_no_points(self, fixed_index, moving_index):
+        """This takes the moving and fixed images runs Elastix on them. Note
+            the huge list of parameters Elastix uses here.
 
-            a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-            R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
-            shift = center + (float(tx), float(ty)) - np.dot(R, center)
-            A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
-            transformation_to_previous_sec[i] = A
+            :param fixed: sitk float array for the fixed image (the image behind the moving).
+            :param moving: sitk float array for the moving image.
+            :return: the Elastix transformation results that get parsed into the rigid transformation
+            """
+        elastixImageFilter = sitk.ElastixImageFilter()
+        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+        fixed = sitk.ReadImage(fixed_file, self.pixelType)
 
-        for moving_index in range(nfiles):
-            filename = str(moving_index).zfill(3) + ".tif"
-            if moving_index == midpoint:
-                transformation = np.eye(3)
-            elif moving_index < midpoint:
-                T_composed = np.eye(3)
-                for i in range(midpoint, moving_index, -1):
-                    T_composed = np.dot(
-                        np.linalg.inv(transformation_to_previous_sec[i]), T_composed
-                    )
-                transformation = T_composed
-            else:
-                T_composed = np.eye(3)
-                for i in range(midpoint + 1, moving_index + 1):
-                    T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
-                transformation = T_composed
-            
-            #print(filename, transformation)
-            infile = os.path.join(self.input, filename)
-            outfile = os.path.join(self.output, filename)
-            file_key = [infile, outfile, transformation]
-            align_image_to_affine(file_key)
+        moving_file = os.path.join(self.input, f"{moving_index}.tif")
+        moving = sitk.ReadImage(moving_file, self.pixelType)
+        elastixImageFilter.SetFixedImage(fixed)
+        elastixImageFilter.SetMovingImage(moving)
 
+        translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
+        rigid_params = create_rigid_parameters(elastixImageFilter)
+        elastixImageFilter.SetParameterMap(translationMap)
+        elastixImageFilter.AddParameterMap(rigid_params)
+
+        elastixImageFilter.LogToConsoleOff()
+        if self.debug:
+            elastixImageFilter.PrintParameterMap()
+        elastixImageFilter.Execute()
+
+        translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+        rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+
+        x1, y1 = translations
+        R, x2, y2 = rigid
+        x = float(x1) + float(x2)
+        y = float(y1) + float(y2)
+        return float(R), float(x), float(y)
 
 
     def align_elastix_with_points(self, fixed_index, moving_index):
@@ -182,7 +159,7 @@ class ElastixManager(FileLogger):
         y = float(y1) + float(y2)
         return float(R), float(x), float(y)
 
-    def align_elastix_with_no_points(self, fixed_index, moving_index):
+    def align_elastix_with_affine(self, fixed_index, moving_index):
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -202,6 +179,68 @@ class ElastixManager(FileLogger):
         # rigid = ('0.00157607', '-0.370347', '-3.21588')
         # affine = ('1.01987', '-0.00160559', '-0.000230038', '1.02641', '-1.98157', '-1.88057')
         print(results)
+
+
+    def create_affine_transformations(self):
+        files = sorted(os.listdir(self.input))
+        nfiles = len(files)
+        midpoint = nfiles // 2
+        transformation_to_previous_sec = {}
+        center = self.get_rotation_center()
+              
+        
+        for i in range(1, nfiles):
+            fixed_index = os.path.splitext(files[i - 1])[0]
+            moving_index = os.path.splitext(files[i])[0]
+            elastixImageFilter = sitk.ElastixImageFilter()
+            fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+            fixed = sitk.ReadImage(fixed_file, self.pixelType)            
+            moving_file = os.path.join(self.input, f"{moving_index}.tif")
+            moving = sitk.ReadImage(moving_file, self.pixelType)
+            elastixImageFilter.SetFixedImage(fixed)
+            elastixImageFilter.SetMovingImage(moving)
+
+            affineParameterMap = elastixImageFilter.GetDefaultParameterMap("affine")
+            affineParameterMap["UseDirectionCosines"] = ["true"]
+            affineParameterMap["MaximumNumberOfIterations"] = ["500"] # 250 works ok
+            affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
+            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+            affineParameterMap["WriteResultImage"] = ["false"]
+            elastixImageFilter.SetParameterMap(affineParameterMap)
+            elastixImageFilter.LogToConsoleOff()
+            # elastixImageFilter.PrintParameterMap()
+            elastixImageFilter.Execute()
+
+            a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+            R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
+            shift = center + (float(tx), float(ty)) - np.dot(R, center)
+            A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
+            transformation_to_previous_sec[i] = A
+
+        for moving_index in range(nfiles):
+            filename = str(moving_index).zfill(3) + ".tif"
+            if moving_index == midpoint:
+                transformation = np.eye(3)
+            elif moving_index < midpoint:
+                T_composed = np.eye(3)
+                for i in range(midpoint, moving_index, -1):
+                    T_composed = np.dot(
+                        np.linalg.inv(transformation_to_previous_sec[i]), T_composed
+                    )
+                transformation = T_composed
+            else:
+                T_composed = np.eye(3)
+                for i in range(midpoint + 1, moving_index + 1):
+                    T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
+                transformation = T_composed
+            
+            #print(filename, transformation)
+            infile = os.path.join(self.input, filename)
+            outfile = os.path.join(self.output, filename)
+            file_key = [infile, outfile, transformation]
+            align_image_to_affine(file_key)
+
+
 
     def create_dir2dir_transformations(self):
         """Calculate and store the rigid transformation using elastix.  

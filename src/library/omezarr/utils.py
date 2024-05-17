@@ -56,7 +56,7 @@ def axis_reorganizer(array=None,input_orientation='tczyx'):
     if array is not None:
         return array.transpose(orientations[input_orientation])
 
-def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
+def optimize_chunk_shape_3d(image_shape,original_chunks,dtype,chunk_limit_GB):
     
     '''
     Grows chunks shape by axis y and x by the origional chunk shape until a 
@@ -65,7 +65,7 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
     return tuple of new chunk shape
     '''
     
-    current_chunks = origional_chunks
+    current_chunks = original_chunks
     current_size = get_size_GB(current_chunks,dtype)
     
     print(current_chunks)
@@ -85,9 +85,9 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
         
         chunk_iter_idx = idx%2
         if chunk_iter_idx == 0 and chunk_bigger_than_y == False:
-            current_chunks = (origional_chunks[0],current_chunks[1]+origional_chunks[1],current_chunks[2])
+            current_chunks = (original_chunks[0],current_chunks[1]+original_chunks[1],current_chunks[2])
         elif chunk_iter_idx == 1 and chunk_bigger_than_x == False:
-            current_chunks = (origional_chunks[0],current_chunks[1],current_chunks[2]+origional_chunks[2])
+            current_chunks = (original_chunks[0],current_chunks[1],current_chunks[2]+original_chunks[2])
             
         current_size = get_size_GB(current_chunks,dtype)
         
@@ -112,7 +112,7 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
 
 
 
-# def optimize_chunk_shape_3d_2(image_shape,origional_chunks,output_chunks,dtype,chunk_limit_GB):
+# def optimize_chunk_shape_3d_2(image_shape,original_chunks,output_chunks,dtype,chunk_limit_GB):
 #
 #     '''
 #     Grows chunks shape by axis y and x by the origional chunk shape until a
@@ -120,12 +120,12 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
 #
 #     return tuple of new chunk shape
 #     '''
-#     y = origional_chunks[1] if origional_chunks[1] > output_chunks[1] else output_chunks[1]
-#     x = origional_chunks[2] if origional_chunks[2] > output_chunks[2] else output_chunks[2]
+#     y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
+#     x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
 #
-#     origional_chunks = (origional_chunks[0],y,x)
+#     original_chunks = (original_chunks[0],y,x)
 #
-#     current_chunks = origional_chunks
+#     current_chunks = original_chunks
 #     current_size = get_size_GB(current_chunks,dtype)
 #
 #     print(current_chunks)
@@ -145,15 +145,15 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
 #
 #         chunk_iter_idx = idx%2
 #         if chunk_iter_idx == 0 and chunk_bigger_than_y == False:
-#             current_chunks = (origional_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
+#             current_chunks = (original_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
 #         elif chunk_iter_idx == 1 and chunk_bigger_than_x == False:
-#             current_chunks = (origional_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
+#             current_chunks = (original_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
 #
 #         # # Iterate over y first then x
 #         # if chunk_bigger_than_y == False:
-#         #     current_chunks = (origional_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
+#         #     current_chunks = (original_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
 #         # elif chunk_bigger_than_x == False:
-#         #     current_chunks = (origional_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
+#         #     current_chunks = (original_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
 #
 #         current_size = get_size_GB(current_chunks,dtype)
 #
@@ -177,22 +177,20 @@ def optimize_chunk_shape_3d(image_shape,origional_chunks,dtype,chunk_limit_GB):
 #         idx += 1
 
 
-def optimize_chunk_shape_3d_2(image_shape, origional_chunks, output_chunks, dtype, chunk_limit_GB):
+def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype, chunk_limit_GB):
     '''
     Grows chunks shape by axis y and x by the origional chunk shape until a
     defined size in GB is reached
 
     return tuple of new chunk shape
     '''
-    y = origional_chunks[1] if origional_chunks[1] > output_chunks[1] else output_chunks[1]
-    x = origional_chunks[2] if origional_chunks[2] > output_chunks[2] else output_chunks[2]
+    y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
+    x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
 
-    origional_chunks = (origional_chunks[0], y, x)
+    original_chunks = (original_chunks[0], y, x)
 
-    current_chunks = origional_chunks
+    current_chunks = original_chunks
     current_size = get_size_GB(current_chunks, dtype)
-
-    print('Current chunks', current_chunks)
 
     if current_size > chunk_limit_GB:
         return current_chunks
@@ -209,17 +207,17 @@ def optimize_chunk_shape_3d_2(image_shape, origional_chunks, output_chunks, dtyp
 
         # chunk_iter_idx = idx % 2
         # if chunk_iter_idx == 0 and chunk_bigger_than_y == False:
-        #     current_chunks = (origional_chunks[0], current_chunks[1] + output_chunks[1], current_chunks[2])
+        #     current_chunks = (original_chunks[0], current_chunks[1] + output_chunks[1], current_chunks[2])
         # elif chunk_iter_idx == 1 and chunk_bigger_than_x == False:
-        #     current_chunks = (origional_chunks[0], current_chunks[1], current_chunks[2] + output_chunks[2])
+        #     current_chunks = (original_chunks[0], current_chunks[1], current_chunks[2] + output_chunks[2])
 
         # Iterate over y first then x
         if chunk_bigger_than_y == False:
-            current_chunks = (origional_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
+            current_chunks = (original_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
         elif chunk_bigger_than_x == False:
-            current_chunks = (origional_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
+            current_chunks = (original_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
         elif chunk_bigger_than_z == False:
-            current_chunks = (origional_chunks[0] + output_chunks[0], current_chunks[1], current_chunks[2])
+            current_chunks = (original_chunks[0] + output_chunks[0], current_chunks[1], current_chunks[2])
 
         current_size = get_size_GB(current_chunks, dtype)
 
