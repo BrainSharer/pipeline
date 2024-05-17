@@ -60,8 +60,8 @@ class builder(_builder_downsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / (self.cpu_cores - 2) / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.mem / (self.cpu_cores - 2) / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
+        self.res0_chunk_limit_GB = self.mem / (self.cpu_cores - 0) / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
+        self.res_chunk_limit_GB = self.mem / (self.cpu_cores - 0) / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
 
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask
