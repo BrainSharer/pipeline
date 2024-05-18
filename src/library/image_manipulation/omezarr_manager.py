@@ -78,32 +78,39 @@ class OmeZarrManager():
             mips=mips
         )
 
-        try:
-            with dask.config.set({'temporary_directory': tmp_dir, 
-                                    'logging.distributed': 'error'}):
-
-                os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
-                os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "160s"
-                os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "160s"
-                # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
-                os.environ["OMP_NUM_THREADS"] = "1"
-                os.environ["MKL_NUM_THREADS"] = "1"
-                os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
-                print('With Dask memory config:')
-                print(dask.config.get("distributed.worker.memory"))
-                print()
-                print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
-                #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
-                with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False) as client:
-                    omezarr.write_resolution_0(client)
-                    for mip in range(1, len(omezarr.pyramidMap)):
-                        omezarr.write_resolutions(mip, client)
-
-        except Exception as ex:
-            print('Exception in running builder in omezarr_manager')
-            print(ex)
-
-        finally:
+        if self.debug:
+            print(f'Starting debug non-dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
+            omezarr.write_resolution_0(client=None)
             omezarr.cleanup()
+        else:
+
+
+            try:
+                with dask.config.set({'temporary_directory': tmp_dir, 
+                                        'logging.distributed': 'error'}):
+
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
+                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "160s"
+                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "160s"
+                    # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
+                    os.environ["OMP_NUM_THREADS"] = "1"
+                    os.environ["MKL_NUM_THREADS"] = "1"
+                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+                    print('With Dask memory config:')
+                    print(dask.config.get("distributed.worker.memory"))
+                    print()
+                    print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
+                    #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
+                    with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False) as client:
+                        omezarr.write_resolution_0(client)
+                        for mip in range(1, len(omezarr.pyramidMap)):
+                            omezarr.write_resolutions(mip, client)
+
+            except Exception as ex:
+                print('Exception in running builder in omezarr_manager')
+                print(ex)
+
+            finally:
+                omezarr.cleanup()
 

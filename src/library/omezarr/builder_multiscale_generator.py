@@ -49,9 +49,11 @@ class _builder_multiscale_generator:
                 self.originalChunkSize[2:],
                 test_image.dtype,
                 self.res0_chunk_limit_GB,
+                self.workers
             )
             test_image.chunks = optimum_chunks
             print(f'Using mem={self.res0_chunk_limit_GB} to get optimum chunks={optimum_chunks} with shape={test_image.shape}')
+            return
             s = [test_image.clone_manager_new_file_list(x) for x in s]
             s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
             s = da.concatenate(s)
@@ -67,10 +69,14 @@ class _builder_multiscale_generator:
             compressor=self.compressor,
             dtype=stack.dtype,
         )
-        to_store = da.store(stack, z, lock=False, compute=False)
-        to_store = client.compute(to_store)
-        progress(to_store)
-        to_store = client.gather(to_store)
+        if client is None:
+            to_store = da.store(stack, z, lock=True, compute=True)
+        else:
+            to_store = da.store(stack, z, lock=False, compute=False)
+            to_store = client.compute(to_store)
+            progress(to_store)
+            to_store = client.gather(to_store)
+
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Resolution 0 completed in {total_elapsed_time} seconds")
