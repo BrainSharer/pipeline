@@ -49,7 +49,7 @@ class builder(_builder_downsample,
         self.geometry = tuple(geometry)
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
-        self.cpu_cores = os.cpu_count()
+        self.cpu_cores = os.cpu_count() // 2
         self.sim_jobs = 4
         self.workers = int(self.cpu_cores / self.sim_jobs)
         self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
@@ -60,8 +60,9 @@ class builder(_builder_downsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / self.workers / 16
-        self.res_chunk_limit_GB = self.mem / self.workers / 8
+        self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
+        self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
+
 
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask

@@ -9,7 +9,7 @@ Created on Fri Sep 16 17:11:50 2022
 import math
 import numpy as np
 
-def get_size_GB(shape,dtype):
+def get_size_GB(shape, dtype):
     
     current_size = math.prod(shape)/1024**3
     if dtype == np.dtype('uint8'):
