@@ -177,7 +177,7 @@ def optimize_chunk_shape_3d(image_shape,original_chunks,dtype,chunk_limit_GB):
 #         idx += 1
 
 
-def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype, chunk_limit_GB):
+def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype, chunk_limit_GB, workers):
     '''
     Grows chunks shape by axis y and x by the origional chunk shape until a
     defined size in GB is reached
@@ -193,7 +193,11 @@ def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype
     current_size = get_size_GB(current_chunks, dtype)
 
     if current_size > chunk_limit_GB:
+        print(f'Returning current chunks={current_chunks}, current_size={current_size} chunk_limit_GB={chunk_limit_GB}')
         return current_chunks
+    else:
+        print(f'NOT Returning current chunks={current_chunks}, current_size={current_size} chunk_limit_GB={chunk_limit_GB}')
+
 
     idx = 0
     chunk_bigger_than_z = True if current_chunks[0] >= image_shape[0] else False

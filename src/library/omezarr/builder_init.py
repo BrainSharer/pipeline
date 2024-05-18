@@ -51,7 +51,7 @@ class builder(_builder_downsample,
         self.finalChunkSize = tuple(finalChunkSize)
         self.cpu_cores = os.cpu_count()
         self.sim_jobs = 4
-        self.workers = int(self.cpu_cores / self.sim_jobs / 2)
+        self.workers = int(self.cpu_cores / self.sim_jobs)
         self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
@@ -60,8 +60,8 @@ class builder(_builder_downsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / (self.cpu_cores - 0) / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.mem / (self.cpu_cores - 0) / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
+        self.res0_chunk_limit_GB = self.mem / self.workers
+        self.res_chunk_limit_GB = self.mem / self.workers
 
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask
