@@ -50,7 +50,6 @@ class _builder_multiscale_generator:
                 test_image.dtype,
                 self.res0_chunk_limit_GB
             )
-            optimum_chunks = (1, 3500, 3500)
             test_image.chunks = optimum_chunks
             print(f'Using mem={self.res0_chunk_limit_GB} to get optimum chunks={optimum_chunks} with shape={test_image.shape}')
             s = [test_image.clone_manager_new_file_list(x) for x in s]
