@@ -48,12 +48,10 @@ class _builder_multiscale_generator:
                 test_image.chunks,
                 self.originalChunkSize[2:],
                 test_image.dtype,
-                self.res0_chunk_limit_GB,
-                self.workers
+                self.res0_chunk_limit_GB
             )
             test_image.chunks = optimum_chunks
             print(f'Using mem={self.res0_chunk_limit_GB} to get optimum chunks={optimum_chunks} with shape={test_image.shape}')
-            return
             s = [test_image.clone_manager_new_file_list(x) for x in s]
             s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
             s = da.concatenate(s)
