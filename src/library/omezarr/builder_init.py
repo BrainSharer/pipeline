@@ -60,8 +60,8 @@ class builder(_builder_downsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / self.workers / 4
-        self.res_chunk_limit_GB = self.mem / self.workers / 4
+        self.res0_chunk_limit_GB = self.mem / self.workers / 8
+        self.res_chunk_limit_GB = self.mem / self.workers / 8
 
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask
