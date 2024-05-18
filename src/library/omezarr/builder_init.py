@@ -60,7 +60,7 @@ class builder(_builder_downsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / self.workers / 8
+        self.res0_chunk_limit_GB = self.mem / self.workers / 16
         self.res_chunk_limit_GB = self.mem / self.workers / 8
 
         # Makes store location and initial group
