@@ -102,7 +102,7 @@ class OmeZarrManager():
                     print()
                     print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
                     #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
-                    with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False) as client:
+                    with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs) as client:
                         omezarr.write_resolution_0(client)
                         for mip in range(1, len(omezarr.pyramidMap)):
                             omezarr.write_resolutions(mip, client)
