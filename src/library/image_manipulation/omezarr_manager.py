@@ -15,6 +15,7 @@ import os
 import dask
 
 from dask.distributed import Client
+from distributed import LocalCluster
 from library.omezarr.builder_init import builder
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
 
@@ -96,13 +97,21 @@ class OmeZarrManager():
                     os.environ["OMP_NUM_THREADS"] = "1"
                     os.environ["MKL_NUM_THREADS"] = "1"
                     os.environ["OPENBLAS_NUM_THREADS"] = "1"
+                    # os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
 
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
                     print()
-                    print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
+                    mem_per_worker = round(omezarr.mem / omezarr.workers)
+                    print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
                     #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
-                    with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs) as client:
+                    mem_per_worker = str(mem_per_worker) + 'GB'
+                    cluster = LocalCluster(n_workers=omezarr.workers,
+                       threads_per_worker=1,
+                       memory_limit=mem_per_worker)
+                    client = Client(cluster)
+                    #with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs) as client:
+                    with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
                         for mip in range(1, len(omezarr.pyramidMap)):
                             omezarr.write_resolutions(mip, client)

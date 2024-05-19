@@ -17,7 +17,7 @@ from skimage import img_as_float32
 import math
 import zarr
 
-class BuilderDownsample:
+class _builder_downsample:
 
     def fast_downsample(self, from_path, to_path, info, minmax=False, idx=None,
                            store=zarr.storage.NestedDirectoryStore, verify=True,

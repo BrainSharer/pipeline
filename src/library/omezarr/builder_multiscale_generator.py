@@ -24,10 +24,10 @@ import dask.array as da
 from distributed import progress
 
 # Project specific imports
-from library.omezarr.builder_image_utils import tiff_manager_3d
+from library.omezarr.builder_image_utils import TiffManager3d, get_size_GB
 from library.omezarr import utils
 
-class _builder_multiscale_generator:
+class BuilderMultiscaleGenerator:
 
 
     def write_resolution_0(self, client):
@@ -42,7 +42,7 @@ class _builder_multiscale_generator:
         for color in self.filesList:
 
             s = self.organize_by_groups(color, self.originalChunkSize[2])
-            test_image = tiff_manager_3d(s[0])
+            test_image = TiffManager3d(s[0])
             optimum_chunks = utils.optimize_chunk_shape_3d_2(
                 test_image.shape,
                 test_image.chunks,
@@ -50,8 +50,9 @@ class _builder_multiscale_generator:
                 test_image.dtype,
                 self.res0_chunk_limit_GB
             )
+            import numpy as np
             test_image.chunks = optimum_chunks
-            print(f'Using mem={self.res0_chunk_limit_GB} to get optimum chunks={optimum_chunks} with shape={test_image.shape}')
+            print(f'Using optimumm chunks={optimum_chunks} for resolution 0')
             s = [test_image.clone_manager_new_file_list(x) for x in s]
             s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
             s = da.concatenate(s)

@@ -14,9 +14,6 @@ import io
 import math
 # import imagecodecs
 from copy import deepcopy
-import dask
-from dask.delayed import delayed
-import imagecodecs
 
 
 file = r'C:\code\testData\191817_05308_CH1.tif'
@@ -37,7 +34,9 @@ manager but with a different file.  This allows for rapid creation of 1000s of
 managers without having to access the file system during __init__ to integrigate
 each file.
 '''
-class tiff_manager:
+
+class TiffManager:
+    
     def __init__(self,file,desired_chunk_depth=64):
         self.file = file
         
