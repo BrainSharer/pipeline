@@ -279,9 +279,9 @@ class BrainStitcher(ParallelManager):
         outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
         os.makedirs(outpath, exist_ok=True)
 
-        writing_sections_start_time = timer()
         if self.debug:
             print(f'Volume shape={volume.shape} dtype={volume.dtype}')
+            print('Exiting early')
             return
         else:
 
