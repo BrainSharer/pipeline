@@ -12,20 +12,18 @@ from numcodecs import Blosc
 
 
 ## Import mix-in classes
-from library.omezarr.builder_img_processing import _builder_downsample
-from library.omezarr.builder_utils import _builder_utils
-from library.omezarr.builder_ome_zarr_utils import _builder_ome_zarr_utils
-from library.omezarr.builder_image_utils import _builder_image_utils
-from library.omezarr.builder_multiscale_generator import _builder_multiscale_generator
-from library.omezarr.tiff_manager import tiff_manager
+from library.omezarr.builder_img_processing import BuilderDownsample
+from library.omezarr.builder_utils import BuilderUtils
+from library.omezarr.builder_ome_zarr_utils import BuilderOmeZarrUtils
+from library.omezarr.builder_multiscale_generator import BuilderMultiscaleGenerator
+from library.omezarr.tiff_manager import TiffManager
 from library.utilities.dask_utilities import get_pyramid
-# from stack_to_multiscale_ngff._builder_colors import _builder_colors
 
-class builder(_builder_downsample,
-            _builder_utils,
-            _builder_ome_zarr_utils,
-            _builder_image_utils,
-            _builder_multiscale_generator):
+class builder(BuilderDownsample,
+            BuilderUtils,
+            BuilderOmeZarrUtils,
+     #####       BuilderImageUtils,
+            BuilderMultiscaleGenerator):
     '''
     A mix-in class for builder.py
     '''
@@ -49,8 +47,9 @@ class builder(_builder_downsample,
         self.geometry = tuple(geometry)
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
-        self.cpu_cores = os.cpu_count() // 2
-        self.sim_jobs = 2
+        #self.cpu_cores = os.cpu_count()
+        self.cpu_cores = 8
+        self.sim_jobs = 4 
         self.workers = int(self.cpu_cores / self.sim_jobs)
         self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
@@ -62,8 +61,11 @@ class builder(_builder_downsample,
         self.mips = mips
         self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
         self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
-
-
+        # workers = cpu_count, sim=1 died right away
+        # workers = 1 sim=1 worker uses about 20%ram
+        # workers = 1 sim=2 complains about ram
+        # workers = 2, seems each worker uses about 20%ram
+        # workers = 8, complains
         # Makes store location and initial group
         # do not make a class attribute because it may not pickle when computing over dask
 
@@ -74,7 +76,7 @@ class builder(_builder_downsample,
         # print(self.Channels)
         # print(self.filesList)
 
-        testImage = tiff_manager(self.filesList[0][0])
+        testImage = TiffManager(self.filesList[0][0])
         self.dtype = testImage.dtype
         self.ndim = testImage.ndim
         self.shape_3d = (len(self.filesList[0]),*testImage.shape)

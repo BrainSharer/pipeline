@@ -14,7 +14,7 @@ These classes are designed to be inherited by the builder class (builder.py)
 import zarr
 import numpy as np
 
-class _builder_ome_zarr_utils:
+class BuilderOmeZarrUtils:
     
     def build_zattrs(self):
         
