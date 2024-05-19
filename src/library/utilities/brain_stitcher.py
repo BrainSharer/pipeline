@@ -276,7 +276,11 @@ class BrainStitcher(ParallelManager):
 
 
         writing_sections_start_time = timer()
-        outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
+        if self.scaling_factor > 1:
+            outpath = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        else:
+            outpath = self.fileLocationManager.get_full_aligned(channel=self.channel)
+
         os.makedirs(outpath, exist_ok=True)
 
         if self.debug:
