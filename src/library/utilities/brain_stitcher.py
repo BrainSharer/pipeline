@@ -290,6 +290,9 @@ class BrainStitcher(ParallelManager):
                 if os.path.exists(outfile):
                     continue
                 section = volume[i, :, :]
+                if self.scaling_factor != 1:
+                    section = zoom(section, (1/self.scaling_factor, 1/self.scaling_factor))
+
                 write_image(outfile, section)
 
         end_time = timer()
