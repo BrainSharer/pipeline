@@ -94,9 +94,9 @@ class OmezarrManager():
             rechunkme_stack = da.from_zarr(url=read_storepath)
             print(f'Using rechunking store with shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}')
             leading_chunk = rechunkme_stack.shape[2]
-            target_chunks = (1, 1, 1, rechunkme_stack.shape[3]//4, rechunkme_stack.shape[4]//4)
+            target_chunks = (1, 1, 1, rechunkme_stack.shape[1]//4, rechunkme_stack.shape[2]//4)
             if leading_chunk < target_chunks[2]:
-                target_chunks = (1, 1, leading_chunk, rechunkme_stack.shape[3]//4, rechunkme_stack.shape[4]//4)
+                target_chunks = (1, 1, leading_chunk, rechunkme_stack.shape[1]//4, rechunkme_stack.shape[2]//4)
             start_time = timer()
             rechunked = rechunkme_stack.rechunk(target_chunks)
             end_time = timer()
