@@ -401,6 +401,8 @@ class BrainStitcher(ParallelManager):
                 volume = zarr.open(store, 'r')
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
+            else:
+                print(f'Error: missing {path}')
 
     @staticmethod
     def create_target_chunks(shape):
