@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument("--animal", help="Enter the animal", required=False, default="DK20230126-003", type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--channel", help="Enter 1, 2, or 4", required=False, default=1, type=int)
-    parser.add_argument("--scaling_factor", help="Enter an integer", required=False, default=1, type=int)
+    parser.add_argument("--downsample", help="downsample", required=False, default=True)
     parser.add_argument("--layer", help="Enter layer", required=False, default=1, type=int)
     parser.add_argument(
         "--task",
@@ -25,12 +25,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     animal = args.animal
     channel = args.channel
-    scaling_factor = args.scaling_factor
     layer = args.layer
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
 
-    pipeline = BrainStitcher(animal, layer, channel, scaling_factor, debug)
+    pipeline = BrainStitcher(animal, layer, channel, downsample, debug)
 
     function_mapping = {
         "extract": pipeline.extract,
@@ -38,6 +38,8 @@ if __name__ == "__main__":
         "status": pipeline.check_status,
         "move": pipeline.move_data,
         "write": pipeline.write_sections_from_volume,
+        "rechunk": pipeline.rechunkme,
+        "info": pipeline.info,
     }
 
     if task in function_mapping:
@@ -46,3 +48,4 @@ if __name__ == "__main__":
         print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():
             print(f"\t{key}")
+
