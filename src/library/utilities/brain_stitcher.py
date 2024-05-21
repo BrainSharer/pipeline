@@ -60,12 +60,12 @@ class BrainStitcher(ParallelManager):
         self.all_info_files = None
         # attributes from rechunker
         if self.downsample:
-            self.scaling_factor = 1
+            self.scaling_factor = SCALING_FACTOR
             self.storefile = 'C1T.zarr'
             self.rechunkmefile = 'C1T_rechunk.zarr'
             self.input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
         else:
-            self.scaling_factor = SCALING_FACTOR
+            self.scaling_factor = 1
             self.storefile = 'C1.zarr'
             self.rechunkmefile = 'C1_rechunk.zarr'
             self.input = self.fileLocationManager.get_full_aligned(self.channel)
@@ -373,7 +373,7 @@ class BrainStitcher(ParallelManager):
         self.run_commands_concurrently(extract_tif, file_keys, workers)
 
     def create_zarr_volume(self, volume_shape, channel):
-        if self.scaling_factor > 1:
+        if self.downsample:
             storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T_rechunk.zarr')
         else:
             storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}_rechunk.zarr')
@@ -402,7 +402,7 @@ class BrainStitcher(ParallelManager):
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
             else:
-                print(f'Error: missing {path}')
+                print(f'Warning: missing {path}')
 
     @staticmethod
     def create_target_chunks(shape):
@@ -423,7 +423,17 @@ class BrainStitcher(ParallelManager):
 
 
     def rechunkme(self):
-    
+        # UserWarning: Sending large graph of size 461.46 MiB.Rechunking to chunk=(1, 1, 1, 2310, 2715)
+        # UserWarning: Sending large graph of size 329.43 MiB with Rechunking to chunk=(1, 1, 1, 4620, 5430)
+        # UserWarning: Sending large graph of size 207.58 MiB.Rechunking to chunk=(1, 1, 1, 9240, 10860)
+        # UserWarning: Sending large graph of size 78.84 MiB Rechunking to chunk=(1, 1, 1, 18481, 21721)
+        # UserWarning: Sending large graph of size 72.21 MiB.Rechunking to chunk=(1, 1, 1, 36962, 21721)
+        # UserWarning: Sending large graph of size 59.72 MiB.Rechunking to chunk=(1, 1, 1, 36962, 43442)
+        # UserWarning: Sending large graph of size 56.94 MiB.Rechunking to chunk=(1, 1, 2, 36962, 43442)
+        # UserWarning: Sending large graph of size 44.26 MiB.Rechunking to chunk=(1, 1, 4, 36962, 43442)
+        # UserWarning: Sending large graph of size 39.74 MiB Rechunking to chunk=(1, 1, 8, 36962, 43442)
+        # UserWarning: Sending large graph of size 37.78 MiB.Rechunking to chunk=(1, 1, 16, 36962, 43442)
+        # UserWarning: Sending large graph of size 36.82 MiB.Rechunking to chunk=(1, 1, 32, 36962, 43442)
         if os.path.exists(os.path.join(self.storepath, 'scale0')):
             print('Rechunked store exists, no need to rechunk full resolution.\n')
             return
@@ -452,6 +462,7 @@ class BrainStitcher(ParallelManager):
         rechunkme_stack = rechunkme_stack.rechunk('auto')
         rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
         rechunkme_stack = rechunkme_stack.rechunk('auto')
+        target_chunks = rechunkme_stack.chunksize
         print(f'New shape={rechunkme_stack.shape} new chunks={rechunkme_stack.chunksize}')
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
@@ -466,12 +477,17 @@ class BrainStitcher(ParallelManager):
         start_time = timer()
         with ProgressBar():
             rechunked = array_plan.execute()        
-        print('Plan executed')
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f'Executing plan took {total_elapsed_time} seconds.\n')
+
         rechunked = da.from_zarr(rechunked)
+        del rechunkme_stack
         store = get_store(self.storepath, 0)
         target_chunks = (1, 1, 1, 2048, 2048)
         workers = 2
         jobs = 4
+        start_time = timer()
         z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
         with Client(n_workers=workers, threads_per_worker=jobs) as client:
             print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
