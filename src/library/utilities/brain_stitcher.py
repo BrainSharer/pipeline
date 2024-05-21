@@ -1,3 +1,4 @@
+import shutil
 import numpy as np
 import os
 import sys
@@ -7,18 +8,16 @@ import math
 from pathlib import Path
 from shutil import copyfile
 from timeit import default_timer as timer
-import psutil
 import tifffile
 from scipy.ndimage import zoom
 import zarr
 from tqdm import tqdm
 from cloudvolume.lib import touch
-from rechunker import rechunk
+import dask
 import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
 from distributed import Client, progress
-from dask.diagnostics import ProgressBar
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -80,7 +79,6 @@ class BrainStitcher(ParallelManager):
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
 
-
     def __call__(self):
         self.check_status()
 
@@ -117,7 +115,7 @@ class BrainStitcher(ParallelManager):
         infopath = os.path.join(outpath, 'info')
         os.makedirs(tilepath, exist_ok=True)
         os.makedirs(infopath, exist_ok=True)
-        
+
         vessel_path = '/net/birdstore/Vessel/WBIM/Acquisition/LifeCanvas/003_20240209'
         vessel_layer_path = os.path.join(vessel_path, self.layer, 'Scan')
         if not os.path.exists(vessel_layer_path):
@@ -140,7 +138,6 @@ class BrainStitcher(ParallelManager):
                 if not os.path.exists(newtilefile):
                     # copying takes way too long. lets try a symlink instead
                     os.symlink(tilefile, newtilefile)
-                
 
     def parse_all_info(self):
         self.all_info_files = {}
@@ -155,8 +152,6 @@ class BrainStitcher(ParallelManager):
                     infostem = Path(file).stem
                     self.all_info_files[(layer, infostem)] = d
 
-
-
     def fetch_tif(self, inpath):
         try:
             with h5py.File(inpath, "r") as f:
@@ -165,7 +160,7 @@ class BrainStitcher(ParallelManager):
 
                 channel2_key = f['CH2']
                 channel2_arr = channel2_key['raw'][()]
-                
+
                 channel4_key = f['CH4']
                 channel4_arr = channel4_key['raw'][()]
 
@@ -174,7 +169,7 @@ class BrainStitcher(ParallelManager):
             print(ex)
             raise
         return channel1_arr, channel2_arr, channel4_arr
-    
+
     def compute_bbox(self, info, vol_bbox_mm_um, stitch_voxel_size_um, rows, columns, pages):
         tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
         tmp_tile_bbox_mm_um.append(info['layer_z_um'])
@@ -195,7 +190,7 @@ class BrainStitcher(ParallelManager):
         tmp_local_bbox_mm_ds_pxl = np.round(tmp_local_bbox_um / stitch_voxel_size_um)
         """ Deal with edge: """ 
         tmp_local_bbox_mm_ds_pxl = np.maximum(tmp_local_bbox_mm_ds_pxl, 1)
-        
+
         start_row = int(round(tmp_local_bbox_mm_ds_pxl[0])) - 1
         end_row = start_row + rows
         start_col = int(round(tmp_local_bbox_mm_ds_pxl[1])) - 1
@@ -205,11 +200,10 @@ class BrainStitcher(ParallelManager):
 
         return start_row, end_row, start_col, end_col, start_z, end_z
 
-
     def stitch_master_volumes(self):
-        #Chunks=[125, 768, 512] total time: 861.33 seconds. writing took 66.15 seconds #7 @ 50.0% done.
-        #Chunks=True total time: 620.54 seconds. writing took 217.37 seconds #9
-        #Chunks=(31, 192, 128) total time: 155.5 seconds.writing took 10.13 seconds
+        # Chunks=[125, 768, 512] total time: 861.33 seconds. writing took 66.15 seconds #7 @ 50.0% done.
+        # Chunks=True total time: 620.54 seconds. writing took 217.37 seconds #9
+        # Chunks=(31, 192, 128) total time: 155.5 seconds.writing took 10.13 seconds
         # matlab is yxz
         # numpy is zyx
         start_time = timer()
@@ -244,7 +238,7 @@ class BrainStitcher(ParallelManager):
         volume2 = self.create_zarr_volume(volume_shape, "2")
         volume4 = self.create_zarr_volume(volume_shape, "4")
         print(f'Volume 1 type={type(volume1)}')
-        
+
         num_tiles = len(self.all_info_files.items())
         i = 1
         for (layer, position), info in tqdm(self.all_info_files.items(), disable=self.debug):
@@ -254,7 +248,7 @@ class BrainStitcher(ParallelManager):
             progress_path = os.path.join(self.base_path, layer, 'progress', progress_file)
             if os.path.exists(progress_path):
                 continue
-            
+
             if not os.path.exists(h5path):
                 print(f'Error: missing {h5path}')
                 sys.exit()
@@ -269,10 +263,10 @@ class BrainStitcher(ParallelManager):
                                                                                     rows=subvolume1.shape[1], 
                                                                                     columns=subvolume1.shape[2], 
                                                                                     pages=subvolume1.shape[0])
-            #print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
-            #continue
-            #volumes = [volume1, volume2, volume4]
-            #subvolumes = [subvolume1, subvolume2, subvolume4]
+            # print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
+            # continue
+            # volumes = [volume1, volume2, volume4]
+            # subvolumes = [subvolume1, subvolume2, subvolume4]
             volumes = [volume1]
             subvolumes = [subvolume1]
 
@@ -296,8 +290,6 @@ class BrainStitcher(ParallelManager):
         elapsed_time = round((end_time - start_time), 2)
         print(f'Writing {i} h5 files took {elapsed_time} seconds')
 
-        
-
     def write_sections_from_volume(self):
         zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr')
         if os.path.exists(zarrpath):
@@ -305,12 +297,11 @@ class BrainStitcher(ParallelManager):
         else:
             print(f'No zarr: {zarrpath}')
             return
-        
+
         store = get_store(zarrpath, 0, 'r')
         volume = zarr.open(store, 'r')
         if self.debug:
             print(volume.info)
-
 
         writing_sections_start_time = timer()
         if self.downsample:
@@ -339,7 +330,6 @@ class BrainStitcher(ParallelManager):
         end_time = timer()
         writing_sections_elapsed_time = round((end_time - writing_sections_start_time), 2)
         print(f'writing {i+1} sections in C{self.channel} took {writing_sections_elapsed_time} seconds')
-            
 
     def extract(self):
         tilepath = os.path.join(self.layer_path,  'h5')
@@ -389,7 +379,6 @@ class BrainStitcher(ParallelManager):
 
         print(volume.info)
         return volume    
-    
 
     def info(self):
 
@@ -421,85 +410,61 @@ class BrainStitcher(ParallelManager):
         target_chunks = (1, 1, 1, rows, columns)
         return target_chunks
 
-
     def rechunkme(self):
-        # UserWarning: Sending large graph of size 461.46 MiB.Rechunking to chunk=(1, 1, 1, 2310, 2715)
-        # UserWarning: Sending large graph of size 329.43 MiB with Rechunking to chunk=(1, 1, 1, 4620, 5430)
-        # UserWarning: Sending large graph of size 207.58 MiB.Rechunking to chunk=(1, 1, 1, 9240, 10860)
-        # UserWarning: Sending large graph of size 78.84 MiB Rechunking to chunk=(1, 1, 1, 18481, 21721)
-        # UserWarning: Sending large graph of size 72.21 MiB.Rechunking to chunk=(1, 1, 1, 36962, 21721)
-        # UserWarning: Sending large graph of size 59.72 MiB.Rechunking to chunk=(1, 1, 1, 36962, 43442)
-        # UserWarning: Sending large graph of size 56.94 MiB.Rechunking to chunk=(1, 1, 2, 36962, 43442)
-        # UserWarning: Sending large graph of size 44.26 MiB.Rechunking to chunk=(1, 1, 4, 36962, 43442)
-        # UserWarning: Sending large graph of size 39.74 MiB Rechunking to chunk=(1, 1, 8, 36962, 43442)
-        # UserWarning: Sending large graph of size 37.78 MiB.Rechunking to chunk=(1, 1, 16, 36962, 43442)
-        # UserWarning: Sending large graph of size 36.82 MiB.Rechunking to chunk=(1, 1, 32, 36962, 43442)
-        if os.path.exists(os.path.join(self.storepath, 'scale0')):
-            print('Rechunked store exists, no need to rechunk full resolution.\n')
+
+        if os.path.exists(os.path.join(self.storepath, "scale0")):
+            print("Rechunked store exists, no need to rechunk full resolution.\n")
             return
 
-        read_storepath = os.path.join(self.rechunkmepath, 'scale0')
-        write_storepath = os.path.join(self.storepath, 'scale0')
-        print(f'Loading data at: {read_storepath}', end=" ")
+        read_storepath = os.path.join(self.rechunkmepath, "scale0")
+        write_storepath = os.path.join(self.storepath, "scale0")
+        print(f"Loading data at: {read_storepath}", end=" ")
         if os.path.exists(read_storepath):
-            print(': Success!')
+            print(": Success!")
         else:
-            print('\nError: exiting ...')
-            print(f'Missing {read_storepath}')            
+            print("\nError: exiting ...")
+            print(f"Missing {read_storepath}")
             sys.exit()
 
-        
         if os.path.exists(write_storepath):
-            print(f'Already exists: {write_storepath}')            
+            print(f"Already exists: {write_storepath}")
             return
-
-        rechunkme_stack = da.from_zarr(url=read_storepath)
-        #target_chunks = self.create_target_chunks(rechunkme_stack.shape)
-        print(f'Using existing store with old shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}', end=" ")
-        GB = (psutil.virtual_memory().free // 1024**3) * 0.8
-        max_mem = f"{GB}GB"        
         start_time = timer()
-        rechunkme_stack = rechunkme_stack.rechunk('auto')
-        rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
-        rechunkme_stack = rechunkme_stack.rechunk('auto')
-        target_chunks = rechunkme_stack.chunksize
-        print(f'New shape={rechunkme_stack.shape} new chunks={rechunkme_stack.chunksize}')
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Rechunking to chunk={rechunkme_stack.chunksize} took {total_elapsed_time} seconds.')
-        
-        store = get_store(self.storepath, 0)
-        temp_store = os.path.join(self.tmp_dir, "rechunked-tmp.zarr")
-        array_plan = rechunk(
-            rechunkme_stack, rechunkme_stack.chunksize, max_mem, store, temp_store=temp_store
-        )
-        print(f'Executing plan with mem={max_mem}')
-        start_time = timer()
-        with ProgressBar():
-            rechunked = array_plan.execute()        
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Executing plan took {total_elapsed_time} seconds.\n')
-
-        rechunked = da.from_zarr(rechunked)
-        del rechunkme_stack
+        cpu_cores = os.cpu_count()
+        jobs = 4
+        workers = int(cpu_cores / jobs / 2)
         store = get_store(self.storepath, 0)
         target_chunks = (1, 1, 1, 2048, 2048)
-        workers = 2
-        jobs = 4
-        start_time = timer()
-        z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
-        with Client(n_workers=workers, threads_per_worker=jobs) as client:
-            print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
-            to_store = da.store(rechunked, z, lock=False, compute=False)
-            to_store = progress(client.compute(to_store))
-            to_store = client.gather(to_store)
+        try:
+            with dask.config.set(
+                {
+                    "temporary_directory": self.tmp_dir,
+                    "array.slicing.split_large_chunks": False,
+                    "logging.distributed": "error",
+                }
+            ):
+
+                with Client(n_workers=workers, threads_per_worker=jobs) as client:
+                    rechunkme_stack = da.from_zarr(url=read_storepath)
+                    print(f"Using existing store with old shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}")
+                    rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
+                    z = zarr.zeros(rechunkme_stack.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
+                    print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
+                    to_store = da.store(rechunkme_stack, z, lock=False, compute=False)
+                    to_store = progress(client.compute(to_store))
+                    to_store = client.gather(to_store)
+
+        except Exception as ex:
+            print('Exception in running rechunker')
+            print(ex)
+
+        finally:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f'Wrote rechunked data to: {write_storepath} took {total_elapsed_time} seconds.')
 
-        
 
 def extract_tif(file_key):
     inpath, scaling_factor, outpath, outfile = file_key
