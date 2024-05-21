@@ -66,15 +66,13 @@ class BrainStitcher(ParallelManager):
         else:
             self.scaling_factor = 1
             self.storefile = f'C{self.channel}.zarr'
-            self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
+            #self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
             self.input = self.fileLocationManager.get_full_aligned(1)
 
         self.storepath = os.path.join(
             self.fileLocationManager.www, "neuroglancer_data", self.storefile
         )
-        self.rechunkmepath = os.path.join(
-            self.fileLocationManager.www, "neuroglancer_data", self.rechunkmefile
-        )
+        #self.rechunkmepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", self.rechunkmefile)
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
@@ -235,8 +233,8 @@ class BrainStitcher(ParallelManager):
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
 
         volume1 = self.create_zarr_volume(volume_shape, "1")
-        volume2 = self.create_zarr_volume(volume_shape, "2")
-        volume4 = self.create_zarr_volume(volume_shape, "4")
+        #volume2 = self.create_zarr_volume(volume_shape, "2")
+        #volume4 = self.create_zarr_volume(volume_shape, "4")
         print(f'Volume 1 type={type(volume1)}')
 
         num_tiles = len(self.all_info_files.items())
@@ -274,8 +272,8 @@ class BrainStitcher(ParallelManager):
                 if self.debug:
                     write_start_time = timer()
                 try:
-                    max_subvolume = np.maximum(volume[start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
-                    volume[start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
+                    max_subvolume = np.maximum(volume[..., start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
+                    volume[..., start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
                 except Exception as e:
                     print(f'Error: {e}')
 
@@ -364,12 +362,12 @@ class BrainStitcher(ParallelManager):
 
     def create_zarr_volume(self, volume_shape, channel):
         if self.downsample:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T_rechunk.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T.zarr')
         else:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}_rechunk.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
         store = get_store(storepath, 0)
-        volume_shape = [4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
-        chunks = [250, 1536, 1024]
+        volume_shape = [1, 1, 4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
+        chunks = [1, 1, 1, 2048, 2048]
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)
@@ -382,7 +380,7 @@ class BrainStitcher(ParallelManager):
 
     def info(self):
 
-        paths = [self.storepath, self.rechunkmepath]
+        paths = [self.storepath]
         for path in paths:
             if os.path.exists(path):
                 print(f'Using existing {path}')   
@@ -418,7 +416,7 @@ class BrainStitcher(ParallelManager):
 
         read_storepath = os.path.join(self.rechunkmepath, "scale0")
         write_storepath = os.path.join(self.storepath, "scale0")
-        print(f"Loading data at: {read_storepath}", end=" ")
+        print(f"Found data at: {read_storepath}", end=" ")
         if os.path.exists(read_storepath):
             print(": Success!")
         else:
@@ -432,9 +430,11 @@ class BrainStitcher(ParallelManager):
         start_time = timer()
         cpu_cores = os.cpu_count()
         jobs = 4
-        workers = int(cpu_cores / jobs )
+        workers = int(cpu_cores / jobs / 2)
         store = get_store(self.storepath, 0)
         target_chunks = (1, 1, 1, 2048, 2048)
+        volume_store = get_store(self.rechunkmepath, 0)
+
         try:
             with dask.config.set(
                 {
@@ -445,11 +445,22 @@ class BrainStitcher(ParallelManager):
             ):
 
                 with Client(n_workers=workers, threads_per_worker=jobs) as client:
-                    rechunkme_stack = da.from_zarr(url=read_storepath)
-                    print(f"Using existing store with old shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}")
-                    rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
-                    z = zarr.zeros(rechunkme_stack.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
+                    #rechunkme_stack = da.from_zarr(url=read_storepath)
+
+                    x = zarr.open(volume_store)
+                    print(f'Loaded zarr with type={type(x)} shape={x.shape} chunks={x.chunks}')
+                    shape  = x.shape
+                    future = client.scatter(x)
+                    x = da.from_delayed(future, shape=x.shape, dtype=x.dtype)
+                    #x = x.reshape(1, 1, *shape)
+                    x = x.rechunk((1, 2048, 2048))
+                    rechunkme_stack = x.persist()
+                    print(f'rechunkme_stack with type={type(rechunkme_stack)} shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}')
+
+                    #rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
+                    z = zarr.zeros(rechunkme_stack.shape, chunks=(1, 2048, 2048), store=store, overwrite=True, dtype=self.dtype)
                     print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
+
                     to_store = da.store(rechunkme_stack, z, lock=False, compute=False)
                     to_store = progress(client.compute(to_store))
                     to_store = client.gather(to_store)
