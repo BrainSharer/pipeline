@@ -61,13 +61,13 @@ class BrainStitcher(ParallelManager):
         # attributes from rechunker
         if self.downsample:
             self.scaling_factor = SCALING_FACTOR
-            self.storefile = 'C1T.zarr'
-            self.rechunkmefile = 'C1T_rechunk.zarr'
+            self.storefile = f'C{self.channel}T.zarr'
+            self.rechunkmefile = f'C{self.channel}T_rechunk.zarr'
             self.input = self.fileLocationManager.get_thumbnail_aligned(1)
         else:
             self.scaling_factor = 1
-            self.storefile = 'C1.zarr'
-            self.rechunkmefile = 'C1_rechunk.zarr'
+            self.storefile = f'C{self.channel}.zarr'
+            self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
             self.input = self.fileLocationManager.get_full_aligned(1)
 
         self.storepath = os.path.join(
