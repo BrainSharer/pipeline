@@ -432,7 +432,7 @@ class BrainStitcher(ParallelManager):
         start_time = timer()
         cpu_cores = os.cpu_count()
         jobs = 4
-        workers = int(cpu_cores / jobs / 2)
+        workers = int(cpu_cores / jobs )
         store = get_store(self.storepath, 0)
         target_chunks = (1, 1, 1, 2048, 2048)
         try:
