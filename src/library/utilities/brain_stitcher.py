@@ -1,4 +1,3 @@
-import shutil
 import numpy as np
 import os
 import sys
@@ -59,20 +58,21 @@ class BrainStitcher(ParallelManager):
         self.all_info_files = None
         # attributes from rechunker
         if self.downsample:
-            self.scaling_factor = SCALING_FACTOR
+            self.scaling_factor = 4 # SCALING_FACTOR
             self.storefile = f'C{self.channel}T.zarr'
             self.rechunkmefile = f'C{self.channel}T_rechunk.zarr'
             self.input = self.fileLocationManager.get_thumbnail_aligned(1)
         else:
             self.scaling_factor = 1
             self.storefile = f'C{self.channel}.zarr'
-            #self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
+            self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
             self.input = self.fileLocationManager.get_full_aligned(1)
 
         self.storepath = os.path.join(
             self.fileLocationManager.www, "neuroglancer_data", self.storefile
         )
-        #self.rechunkmepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", self.rechunkmefile)
+
+        self.rechunkmepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", self.rechunkmefile)
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
@@ -91,7 +91,7 @@ class BrainStitcher(ParallelManager):
             if os.path.exists(infopath):
                 len_info = len(os.listdir(infopath))
             h5path = os.path.join(self.base_path, layer, 'h5')
-            progress_path = os.path.join(self.base_path, layer, 'progress')
+            progress_path = os.path.join(self.base_path, layer, 'progress', self.channel_source)
             os.makedirs(progress_path, exist_ok=True)
             if os.path.exists(h5path):
                 len_h5 = len(os.listdir(h5path))
@@ -153,20 +153,14 @@ class BrainStitcher(ParallelManager):
     def fetch_tif(self, inpath):
         try:
             with h5py.File(inpath, "r") as f:
-                channel1_key = f['CH1']
-                channel1_arr = channel1_key['raw'][()]
-
-                channel2_key = f['CH2']
-                channel2_arr = channel2_key['raw'][()]
-
-                channel4_key = f['CH4']
-                channel4_arr = channel4_key['raw'][()]
+                channel1_key = f[self.channel_source]
+                arr = channel1_key['raw'][()]
 
         except Exception as ex:
             print(f'Cannot open {inpath}')
             print(ex)
             raise
-        return channel1_arr, channel2_arr, channel4_arr
+        return arr
 
     def compute_bbox(self, info, vol_bbox_mm_um, stitch_voxel_size_um, rows, columns, pages):
         tmp_tile_bbox_mm_um = info['tile_mmxx_um'][:2]
@@ -208,7 +202,7 @@ class BrainStitcher(ParallelManager):
         self.check_status()
         self.parse_all_info()
         stitch_voxel_size_um = [0.375*self.scaling_factor, 0.375*self.scaling_factor, 1*self.scaling_factor];
-        overlap_size = np.array([60,60,25])
+        #####overlap_size = np.array([60,60,25])
 
         first_element = next(iter(self.all_info_files.values()))
         stack_size_um = first_element['stack_size_um']
@@ -232,10 +226,8 @@ class BrainStitcher(ParallelManager):
         print(f'Volume shape={volume_shape} composed of {len(self.all_info_files.values())} files')
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
 
-        volume1 = self.create_zarr_volume(volume_shape, "1")
-        #volume2 = self.create_zarr_volume(volume_shape, "2")
-        #volume4 = self.create_zarr_volume(volume_shape, "4")
-        print(f'Volume 1 type={type(volume1)}')
+        volume = self.create_zarr_volume(volume_shape, str(self.channel))
+        print(f'Volume  type={type(volume)}')
 
         num_tiles = len(self.all_info_files.items())
         i = 1
@@ -243,47 +235,38 @@ class BrainStitcher(ParallelManager):
             h5file = f"{position}.h5"
             h5path = os.path.join(self.base_path, layer, 'h5', h5file)
             progress_file = f"{position}.txt"
-            progress_path = os.path.join(self.base_path, layer, 'progress', progress_file)
+            progress_path = os.path.join(self.base_path, layer, 'progress', self.channel_source, progress_file)
             if os.path.exists(progress_path):
                 continue
 
             if not os.path.exists(h5path):
                 print(f'Error: missing {h5path}')
                 sys.exit()
-            subvolume1, subvolume2, subvolume4 = self.fetch_tif(h5path)
+            subvolume = self.fetch_tif(h5path)
 
             if self.downsample:
-                subvolume1 = zoom(subvolume1, (1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor))
-                subvolume2 = zoom(subvolume2, (1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor))
-                subvolume4 = zoom(subvolume4, (1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor))
+                subvolume = zoom(subvolume, (1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor))
 
             start_row, end_row, start_col, end_col, start_z, end_z = self.compute_bbox(info, vol_bbox_mm_um, stitch_voxel_size_um, 
-                                                                                    rows=subvolume1.shape[1], 
-                                                                                    columns=subvolume1.shape[2], 
-                                                                                    pages=subvolume1.shape[0])
-            # print(f'subvolume shape={subvolume1.shape} z size={end_z-start_z} row size={end_row-start_row} col size={end_col-start_col}')
-            # continue
-            # volumes = [volume1, volume2, volume4]
-            # subvolumes = [subvolume1, subvolume2, subvolume4]
-            volumes = [volume1]
-            subvolumes = [subvolume1]
+                                                                                    rows=subvolume.shape[1], 
+                                                                                    columns=subvolume.shape[2], 
+                                                                                    pages=subvolume.shape[0])
 
-            for subvolume,volume in zip(subvolumes, volumes):
-                if self.debug:
-                    write_start_time = timer()
-                try:
-                    max_subvolume = np.maximum(volume[..., start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
-                    volume[..., start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
-                except Exception as e:
-                    print(f'Error: {e}')
+            if self.debug:
+                write_start_time = timer()
+            try:
+                max_subvolume = np.maximum(volume[..., start_z:end_z, start_row:end_row, start_col:end_col], subvolume)
+                volume[..., start_z:end_z, start_row:end_row, start_col:end_col] = max_subvolume
+            except Exception as e:
+                print(f'Error: {e}')
 
-                if self.debug:
-                    write_end_time = timer()     
-                    write_elapsed_time = round((write_end_time - write_start_time), 2)
-                    print(f'writing {position} took {write_elapsed_time} seconds', end=" ")
-                    print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
-            i += 1
-            touch(progress_path)
+            if self.debug:
+                write_end_time = timer()     
+                write_elapsed_time = round((write_end_time - write_start_time), 2)
+                print(f'writing {position} took {write_elapsed_time} seconds', end=" ")
+                print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
+        i += 1
+        touch(progress_path)
         end_time = timer()     
         elapsed_time = round((end_time - start_time), 2)
         print(f'Writing {i} h5 files took {elapsed_time} seconds')
@@ -362,12 +345,14 @@ class BrainStitcher(ParallelManager):
 
     def create_zarr_volume(self, volume_shape, channel):
         if self.downsample:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T_rechunk.zarr')
         else:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}_rechunk.zarr')
         store = get_store(storepath, 0)
-        volume_shape = [1, 1, 4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
-        chunks = [1, 1, 1, 2048, 2048]
+        #####volume_shape = [1, 1, 4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
+        #####chunks = [1, 1, 1, 2048, 2048]
+        volume_shape = [4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
+        chunks = [1, 2048, 2048]
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)
@@ -380,7 +365,7 @@ class BrainStitcher(ParallelManager):
 
     def info(self):
 
-        paths = [self.storepath]
+        paths = [self.storepath, self.rechunkmepath]
         for path in paths:
             if os.path.exists(path):
                 print(f'Using existing {path}')   
@@ -408,73 +393,51 @@ class BrainStitcher(ParallelManager):
         target_chunks = (1, 1, 1, rows, columns)
         return target_chunks
 
-    def rechunkme(self):
 
-        if os.path.exists(os.path.join(self.storepath, "scale0")):
-            print("Rechunked store exists, no need to rechunk full resolution.\n")
+    def rechunkme(self):
+        if os.path.exists(os.path.join(self.storepath, 'scale0')):
+            print('Rechunked store exists, no need to rechunk full resolution.\n')
             return
 
-        read_storepath = os.path.join(self.rechunkmepath, "scale0")
-        write_storepath = os.path.join(self.storepath, "scale0")
-        print(f"Found data at: {read_storepath}", end=" ")
+        read_storepath = os.path.join(self.rechunkmepath, 'scale0')
+        write_storepath = os.path.join(self.storepath, 'scale0')
+        print(f'Loading data at: {read_storepath}', end=" ")
         if os.path.exists(read_storepath):
-            print(": Success!")
+            print(': Success!')
         else:
-            print("\nError: exiting ...")
-            print(f"Missing {read_storepath}")
+            print('\nError: exiting ...')
+            print(f'Missing {read_storepath}')            
             sys.exit()
 
+        
         if os.path.exists(write_storepath):
-            print(f"Already exists: {write_storepath}")
+            print(f'Already exists: {write_storepath}')            
             return
+        
+        rechunkme_stack = da.from_zarr(url=read_storepath)
+        print(f'type of rechunkme_stack={type(rechunkme_stack)}')
+        rechunked = dask.array.reshape(rechunkme_stack, (1, 1, *rechunkme_stack.shape))
+        del rechunkme_stack
         start_time = timer()
-        cpu_cores = os.cpu_count()
-        jobs = 4
-        workers = int(cpu_cores / jobs / 2)
-        store = get_store(self.storepath, 0)
         target_chunks = (1, 1, 1, 2048, 2048)
-        volume_store = get_store(self.rechunkmepath, 0)
+        store = get_store(self.storepath, 0)
 
-        try:
-            with dask.config.set(
-                {
-                    "temporary_directory": self.tmp_dir,
-                    "array.slicing.split_large_chunks": False,
-                    "logging.distributed": "error",
-                }
-            ):
-
-                with Client(n_workers=workers, threads_per_worker=jobs) as client:
-                    #rechunkme_stack = da.from_zarr(url=read_storepath)
-
-                    x = zarr.open(volume_store)
-                    print(f'Loaded zarr with type={type(x)} shape={x.shape} chunks={x.chunks}')
-                    shape  = x.shape
-                    future = client.scatter(x)
-                    x = da.from_delayed(future, shape=x.shape, dtype=x.dtype)
-                    #x = x.reshape(1, 1, *shape)
-                    x = x.rechunk((1, 2048, 2048))
-                    rechunkme_stack = x.persist()
-                    print(f'rechunkme_stack with type={type(rechunkme_stack)} shape={rechunkme_stack.shape} chunks={rechunkme_stack.chunksize}')
-
-                    #rechunkme_stack = rechunkme_stack.reshape(1, 1, *rechunkme_stack.shape)
-                    z = zarr.zeros(rechunkme_stack.shape, chunks=(1, 2048, 2048), store=store, overwrite=True, dtype=self.dtype)
-                    print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
-
-                    to_store = da.store(rechunkme_stack, z, lock=False, compute=False)
-                    to_store = progress(client.compute(to_store))
-                    to_store = client.gather(to_store)
-
-        except Exception as ex:
-            print('Exception in running rechunker')
-            print(ex)
-
-        finally:
-            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
+        workers = 2
+        jobs = 4
+        with Client(n_workers=workers, threads_per_worker=jobs) as client:
+            print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
+            to_store = da.store(rechunked, z, lock=False, compute=False)
+            to_store = progress(client.compute(to_store))
+            to_store = client.gather(to_store)
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f'Wrote rechunked data to: {write_storepath} took {total_elapsed_time} seconds.')
+
+
+
+                
 
 
 def extract_tif(file_key):
