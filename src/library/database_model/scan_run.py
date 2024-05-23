@@ -40,8 +40,6 @@ class ScanRun(Base, AtlasModel):
     rotation = Column(Integer, default=0, nullable=False)
     flip = Column(Enum("none", "flip", "flop"))
     mask = Column(Integer, default=FULL_MASK, nullable=False)
-    image_dimensions = Column(Integer, default=2, nullable=False)
-    bgcolor = Column(Integer, default=0, nullable=False)
 
     comments = Column(String)
 

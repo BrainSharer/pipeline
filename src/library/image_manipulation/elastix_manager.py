@@ -63,6 +63,36 @@ class ElastixManager(FileLogger):
                     self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
 
+    def update_within_stack_transformations(self):
+        """Takes the existing transformations and aligned images and improves the transformations
+        """
+        self.input = self.fileLocationManager.get_thumbnail_aligned(channel=1)
+        test_dir(self.animal, self.input, self.section_count, True, same_size=True)
+        fiducials = self.sqlController.get_fiducials(self.animal)
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+
+        for k,v in fiducials.items():
+            x = v[0] / xy_resolution
+            y = v[1] / xy_resolution
+            z = v[2] / z_resolution
+            print(k,x,y,z)
+        return
+
+
+        files = sorted(os.listdir(self.input))
+        nfiles = len(files)
+        print(f'Aligning {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
+        self.logevent(f"INPUT FOLDER: {self.input}")
+        self.logevent(f"FILE COUNT: {nfiles}")
+        for i in range(1, nfiles):
+            fixed_index = os.path.splitext(files[i - 1])[0]
+            moving_index = os.path.splitext(files[i])[0]
+            if not self.sqlController.check_elastix_row(self.animal, moving_index):
+                rotation, xshift, yshift = self.align_elastix_with_no_points(fixed_index, moving_index)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
+
+
     def align_elastix_with_no_points(self, fixed_index, moving_index):
         """This takes the moving and fixed images runs Elastix on them. Note
             the huge list of parameters Elastix uses here.

@@ -183,8 +183,9 @@ class Pipeline(
         """
 
         print(self.TASK_REALIGN)
-        self.create_within_stack_transformations()
-        transformations = self.get_transformations()
+        self.update_within_stack_transformations()
+        
+        #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
 
     def affine_align(self):
