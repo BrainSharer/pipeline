@@ -27,11 +27,11 @@ class AnnotationSession(Base):
     updated = Column(DateTime)
 
 class CellSources(enum.Enum):
-    NULL = 'NULL'
     MACHINE_SURE = 'MACHINE-SURE'
     MACHINE_UNSURE = 'MACHINE-UNSURE'
     HUMAN_POSITIVE = 'HUMAN-POSITIVE'
     HUMAN_NEGATIVE = 'HUMAN-NEGATIVE'
+    UNMARKED = 'UNMARKED'
 
 class MarkedCell(Base):
     __tablename__ = 'marked_cells'
@@ -43,6 +43,11 @@ class MarkedCell(Base):
     FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
     FK_cell_type_id = Column(Integer)
     session = relationship('AnnotationSession', lazy=True)
+
+#class CellType(Base):
+#    id =  Column(Integer, primary_key=True, nullable=False)
+#    cell_type = Column(String, nullable=False)
+
 
 class COMSources(enum.Enum):
     MANUAL = 'MANUAL'
