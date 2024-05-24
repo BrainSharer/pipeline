@@ -6,7 +6,8 @@ The libraries are contained within the SimpleITK-SimpleElastix library
 
 import os
 import numpy as np
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+
 from PIL import Image
 from timeit import default_timer as timer
 
@@ -65,32 +66,48 @@ class ElastixManager(FileLogger):
 
     def update_within_stack_transformations(self):
         """Takes the existing transformations and aligned images and improves the transformations
+        Elastix needs the points to be in files so we need to write the data from the DB to the filesystem.
+        Each section will have it's own point file. We usually create 3 points per section, so there
+        will be a point file containing 3 ponts for each section.
         """
-        self.input = self.fileLocationManager.get_thumbnail_aligned(channel=1)
-        test_dir(self.animal, self.input, self.section_count, True, same_size=True)
+        os.makedirs(self.registration_output, exist_ok=True)
         fiducials = self.sqlController.get_fiducials(self.animal)
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-
+        polygons = defaultdict(list)
         for k,v in fiducials.items():
             x = v[0] / xy_resolution
             y = v[1] / xy_resolution
-            z = v[2] / z_resolution
-            print(k,x,y,z)
-        return
+            section = v[2] / z_resolution
+            polygons[section].append((x,y))
 
+        for section, points in polygons.items():
+            section = str(int(section)).zfill(3)
+            point_file = os.path.join(self.registration_output, f'{section}_points.txt')
+            with open(point_file, 'w') as f:
+                f.write('point\n')
+                f.write(f'{len(points)}\n')
+                for point in points:
+                    x = point[0]
+                    y = point[1]
+                    f.write(f'{x} {y}')
+                    f.write('\n')
 
         files = sorted(os.listdir(self.input))
         nfiles = len(files)
-        print(f'Aligning {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
-        self.logevent(f"INPUT FOLDER: {self.input}")
-        self.logevent(f"FILE COUNT: {nfiles}")
+        nchanges = len(polygons)
+        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
-            if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                rotation, xshift, yshift = self.align_elastix_with_no_points(fixed_index, moving_index)
-                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
+            rotation, xshift, yshift = self.align_elastix_with_points(fixed_index, moving_index)
+            if rotation != 0 and xshift != 0 and yshift != 0:
+                print(f'Updating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}')
+                updates = dict(rotation=rotation, xshift=xshift, yshift=yshift)
+                self.sqlController.update_elastix_row(self.animal, moving_index, updates)
+
+        if nchanges > 0:
+            print('Changes have been made. You need to remove the aligned images and run the alignment again.')
 
 
     def align_elastix_with_no_points(self, fixed_index, moving_index):
@@ -138,7 +155,6 @@ class ElastixManager(FileLogger):
             :param moving: sitk float array for the moving image.
             :return: the Elastix transformation results that get parsed into the rigid transformation
             """
-        bgcolor = str(self.sqlController.scan_run.bgcolor) # elastix likes strings
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -149,31 +165,30 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetMovingImage(moving)
 
         translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-        rigid_params = create_rigid_parameters(elastixImageFilter, defaultPixelValue=bgcolor)
+        rigid_params = create_rigid_parameters(elastixImageFilter)
         elastixImageFilter.SetParameterMap(translationMap)
         elastixImageFilter.AddParameterMap(rigid_params)
         fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
         moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
 
         if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-            if self.debug:
-                print(f'Found point files for {fixed_point_file} and {moving_point_file}')
+            print(f'Found fixed point file {fixed_point_file} and {fixed_point_file}')
+            print(f'Found moving point file {fixed_point_file} and {moving_point_file}')
             with open(fixed_point_file, 'r') as fp:
                 fixed_count = len(fp.readlines())
             with open(moving_point_file, 'r') as fp:
                 moving_count = len(fp.readlines())
             assert fixed_count == moving_count, \
                     f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-
-            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-            elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
         else:
-            if self.debug:
-                print(f'No point files for {fixed_point_file} and {moving_point_file}')
+            return 0, 0, 0
+
+        elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+        elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
+        elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
+        elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
+        elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
+        elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
 
         elastixImageFilter.LogToConsoleOff()
         if self.debug:

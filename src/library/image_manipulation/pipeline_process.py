@@ -113,7 +113,6 @@ class Pipeline(
         super().__init__(self.fileLocationManager.get_logdir())
         self.report_status()
 
-
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
@@ -136,11 +135,10 @@ class Pipeline(
 
         return section_count
 
-
     def extract(self):
         print(self.TASK_EXTRACT)
         self.extract_slide_meta_data_and_insert_to_database()
-        #self.correct_multiples()
+        # self.correct_multiples()
         self.extract_tiffs_from_czi()
         self.create_web_friendly_image()
         print(f'Finished {self.TASK_EXTRACT}.')
@@ -151,15 +149,15 @@ class Pipeline(
         self.create_normalized_image()
         self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
-    
+
     def clean(self):
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-            
+
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
-    
+
     def histogram(self):
         print(self.TASK_HISTOGRAM)
         self.make_histogram()
@@ -180,11 +178,33 @@ class Pipeline(
 
     def realign(self):
         """Perform the improvement of the section to section alignment
+        We need two sets of neuroglancer data, one from the cropped data which is unaligned, 
+        and one from the aligned data. So first check if they both exist, if not, create them.
         """
 
         print(self.TASK_REALIGN)
+        neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
+        neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
+        if not os.path.exists(neuroglancer_aligned):
+            print(f'Missing {neuroglancer_aligned}')
+            print('You need to run the align task first.')
+            return
+        if not os.path.exists(neuroglancer_cropped):
+            print(f'Missing {neuroglancer_cropped}')
+            print('Creating cropped data first.')
+            self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
+            self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+            downsample=self.downsample,
+            channel=1,
+            cropped=True
+        )
+
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned_rechunked')
+            self.output = neuroglancer_cropped
+            self.run_neuroglancer()
+
         self.update_within_stack_transformations()
-        
+
         #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
 
@@ -194,6 +214,61 @@ class Pipeline(
 
         self.create_affine_transformations()
 
+    def neuroglancer(self):
+        """This is a convenience method to run the entire neuroglancer process.
+        """
+
+        if self.downsample:
+            self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T_rechunkme')
+
+        else:
+            self.input = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}_rechunkme')
+
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+            downsample=self.downsample,
+            channel=self.channel,
+            cropped=False,
+        )
+        if self.debug:
+            print(f'Input dir={self.input}')
+            print(f'Rechunkme dir={self.rechunkme_path}')
+            print(f'Output dir={self.output}')
+
+        self.run_neuroglancer()
+
+    def run_neuroglancer(self):
+        """The input and output directories are set in either the self.neuroglancer method or
+        the self.realign method.  This method is used to run the neuroglancer process.
+        """
+
+        print(self.TASK_NEUROGLANCER)
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+    def omezarr(self):
+        print(self.TASK_OMEZARR)
+        self.create_omezarr()
+        print(f'Finished {self.TASK_OMEZARR}.')
+
+    def cell_labels(self):
+        """
+        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
+        """
+        print(self.TASK_CELL_LABELS)
+        self.check_prerequisites()
+
+        # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
+
+        # ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
+
+        self.start_labels()
+        print(f'Finished {self.TASK_CELL_LABELS}.')
+
+        # ADD CLEANUP OF SCRATCH FOLDER
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
@@ -213,34 +288,6 @@ class Pipeline(
             self.create_cleaned_images_full_resolution(channel=self.channel)
             self.apply_full_transformations(channel=self.channel)
         print(f'Finished {self.TASK_EXTRA_CHANNEL}.')
-
-    def neuroglancer(self):
-        print(self.TASK_NEUROGLANCER)
-        self.create_neuroglancer()
-        self.create_downsamples()
-        print(f'Finished {self.TASK_NEUROGLANCER}.')
-
-    def omezarr(self):
-        print(self.TASK_OMEZARR)
-        self.create_omezarr()
-        print(f'Finished {self.TASK_OMEZARR}.')
-
-    def cell_labels(self):
-        """
-        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
-        """
-        print(self.TASK_CELL_LABELS)
-        self.check_prerequisites()
-
-        #IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
-
-        #ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
-        
-        self.start_labels()
-        print(f'Finished {self.TASK_CELL_LABELS}.')
-
-        #ADD CLEANUP OF SCRATCH FOLDER
-
 
     def check_status(self):
         prep = self.fileLocationManager.prep
@@ -274,7 +321,6 @@ class Pipeline(
         else:
             print(f'Non-existent dir={dir}')
 
-
     @staticmethod
     def check_programs():
         """
@@ -284,7 +330,7 @@ class Pipeline(
         for our purpose but should be increased accordingly if your images are bigger
         If the check failed, check the workernoshell.err.log in your project directory for more information
         """
-        
+
         error = ""
         if not os.path.exists("/usr/bin/identify"):
             error += "\nImagemagick is not installed"

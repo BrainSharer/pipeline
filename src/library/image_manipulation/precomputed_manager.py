@@ -74,23 +74,18 @@ class NgPrecomputedMaker:
         if self.downsample:
             xy_chunk = int(XY_CHUNK//2)
             chunks = [xy_chunk, xy_chunk, 1]
-            INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
-            INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
 
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel)
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        os.makedirs(self.rechunkme_path, exist_ok=True)
+        os.makedirs(self.progress_dir, exist_ok=True)
 
-        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
-        os.makedirs(PROGRESS_DIR, exist_ok=True)
-
-        starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        starting_files = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
+        self.logevent(f"self.input FOLDER: {self.input}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
+        self.logevent(f"OUTPUT FOLDER: {self.output}")
         
-        midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+        midfile, file_keys, volume_size, num_channels = self.get_file_information(self.input, self.progress_dir)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         print(f'volume_size={volume_size} num_channels={num_channels} dtype={midfile.dtype}')
@@ -105,7 +100,7 @@ class NgPrecomputedMaker:
             chunk_size=chunks,
         )
         
-        ng.init_precomputed(OUTPUT_DIR, volume_size)
+        ng.init_precomputed(self.rechunkme_path, volume_size)
         workers = self.get_nworkers()
         if self.debug:
             for file_key in file_keys:
@@ -120,13 +115,10 @@ class NgPrecomputedMaker:
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        PROGRESS_DIR = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         try:
-            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+            _, _, _, num_channels = self.get_file_information(self.input, self.progress_dir)
         except:
-            INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
-            _, _, _, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
+            _, _, _, num_channels = self.get_file_information(self.input, self.progress_dir)
 
 
         chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
@@ -137,18 +129,16 @@ class NgPrecomputedMaker:
             z_chunk = int(XY_CHUNK)//2
             chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
-        if os.path.exists(OUTPUT_DIR):
-            print(f"DIR {OUTPUT_DIR} already exists and not performing any downsampling.")
+        if os.path.exists(self.output):
+            print(f"DIR {self.output} already exists. Downsampling has already been performed.")
             return
-        outpath = f"file://{OUTPUT_DIR}"
-        INPUT_DIR = self.fileLocationManager.get_neuroglancer( self.downsample, self.channel )
-        if not os.path.exists(INPUT_DIR):
-            print(f"DIR {INPUT_DIR} does not exist, exiting.")
+        outpath = f"file://{self.output}"
+        if not os.path.exists(self.rechunkme_path):
+            print(f"DIR {self.rechunkme_path} does not exist, exiting.")
             sys.exit()
-        cloudpath = f"file://{INPUT_DIR}"
-        self.logevent(f"INPUT_DIR: {INPUT_DIR}")
-        self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
+        cloudpath = f"file://{self.rechunkme_path}"
+        self.logevent(f"INPUT_DIR: {self.rechunkme_path}")
+        self.logevent(f"OUTPUT_DIR: {self.output}")
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
@@ -179,8 +169,7 @@ class NgPrecomputedMaker:
         
         print(f'Running normalization tasks with MIPs={self.mips}')
         workers =self.get_nworkers()
-        OUTPUT_DIR = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
-        outpath = f"file://{OUTPUT_DIR}"
+        outpath = f"file://{self.output}"
 
         tq = LocalTaskQueue(parallel=workers)
         for mip in range(0, self.mips):
