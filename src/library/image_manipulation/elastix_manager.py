@@ -108,6 +108,7 @@ class ElastixManager(FileLogger):
 
         if nchanges > 0:
             print('Changes have been made. You need to remove the aligned images and run the alignment again.')
+            print('You will also need to rerun the neuroglancer task again.')
 
 
     def align_elastix_with_no_points(self, fixed_index, moving_index):
@@ -172,8 +173,8 @@ class ElastixManager(FileLogger):
         moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
 
         if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-            print(f'Found fixed point file {fixed_point_file} and {fixed_point_file}')
-            print(f'Found moving point file {fixed_point_file} and {moving_point_file}')
+            print(f'Found fixed point file: {fixed_point_file}')
+            print(f'Found moving point file: {moving_point_file}')
             with open(fixed_point_file, 'r') as fp:
                 fixed_count = len(fp.readlines())
             with open(moving_point_file, 'r') as fp:
