@@ -133,17 +133,20 @@ class FileLocationManager(object):
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
+
         if not rechunk:
             channel_outdir += "_rechunkme"
+
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
+    def get_neuroglancer_progress(self, downsample=True, channel=1, cropped=False):
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
 
-        if not rechunk:
-            channel_outdir += "_rechunkme"
+        if cropped:
+            channel_outdir += "_unaligned"
+
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 
     def get_logdir(self):
