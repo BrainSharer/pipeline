@@ -22,7 +22,7 @@ class MarkedCellController():
         z_resolution = self.scan_run.zresolution
         
         rows = self.session.query(MarkedCell).filter(MarkedCell.FK_session_id==annotation_session.id)\
-            .order_by(MarkedCell.z, MarkedCell.x)\
+            .order_by(MarkedCell.z, MarkedCell.x, MarkedCell.y)\
             .all()
 
         for row in rows:

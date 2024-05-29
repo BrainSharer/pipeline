@@ -187,7 +187,7 @@ class Pipeline(
         neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
         if not os.path.exists(neuroglancer_aligned):
             print(f'Missing {neuroglancer_aligned}')
-            print('You need to run the align task first.')
+            print('You need to run the neuroglancer task first.')
             return
         if not os.path.exists(neuroglancer_cropped):
             print(f'Missing {neuroglancer_cropped}')
