@@ -72,16 +72,13 @@ class ElastixManager(FileLogger):
         """
         os.makedirs(self.registration_output, exist_ok=True)
         fiducials = self.sqlController.get_fiducials(self.animal)
-        xy_resolution = self.sqlController.scan_run.resolution
-        z_resolution = self.sqlController.scan_run.zresolution
-        polygons = defaultdict(list)
-        for k,v in fiducials.items():
-            x = v[0] / xy_resolution
-            y = v[1] / xy_resolution
-            section = v[2] / z_resolution
-            polygons[section].append((x,y))
+        nchanges = len(fiducials)
+        if nchanges == 0:
+            print('No fiducials found')
+            return
 
-        for section, points in polygons.items():
+
+        for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
             point_file = os.path.join(self.registration_output, f'{section}_points.txt')
             with open(point_file, 'w') as f:
@@ -95,7 +92,6 @@ class ElastixManager(FileLogger):
 
         files = sorted(os.listdir(self.input))
         nfiles = len(files)
-        nchanges = len(polygons)
         print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
@@ -108,7 +104,7 @@ class ElastixManager(FileLogger):
 
         if nchanges > 0:
             print('Changes have been made. You need to remove the aligned images and run the alignment again.')
-            print('You will also need to rerun the neuroglancer task again.')
+            print('You will also need to rerun the neuroglancer task(s) again.')
 
 
     def align_elastix_with_no_points(self, fixed_index, moving_index):
