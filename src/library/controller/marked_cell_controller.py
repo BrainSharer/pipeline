@@ -1,4 +1,5 @@
 
+from collections import defaultdict
 from library.database_model.annotation_points import AnnotationSession, AnnotationType, MarkedCell
 
 FIDUCIAL = 33 # cell type ID in table cell type
@@ -7,25 +8,30 @@ class MarkedCellController():
 
     def get_fiducials(self, prep_id):
         """Fiducials will be marked on downsampled images. You will need the resolution
-        and the scaling factor to convert from micrometers back to pixels of
-        the downsampled images.
+        to convert from micrometers back to pixels of the downsampled images.
         """
 
-        row_dict = {}
-
+        fiducials = defaultdict(list)
         annotation_session = self.get_session(prep_id)
         if not annotation_session:
             print('No data for this animal')
-            return row_dict
+            return fiducials
         
-        print(f'Annotation session ID: {annotation_session.id}')
 
+        xy_resolution = self.scan_run.resolution
+        z_resolution = self.scan_run.zresolution
         
-        rows = self.session.query(MarkedCell).filter(MarkedCell.FK_session_id==annotation_session.id).order_by(MarkedCell.id).all()
+        rows = self.session.query(MarkedCell).filter(MarkedCell.FK_session_id==annotation_session.id)\
+            .order_by(MarkedCell.z, MarkedCell.x)\
+            .all()
 
         for row in rows:
-            row_dict[row.id] = [row.x, row.y, row.z]
-        return row_dict
+            x = row.x / xy_resolution
+            y = row.y / xy_resolution
+            section = row.z / z_resolution
+            fiducials[section].append((x,y))
+
+        return fiducials
 
     
     def get_session(self, prep_id):
