@@ -92,19 +92,19 @@ class ElastixManager(FileLogger):
 
         files = sorted(os.listdir(self.input))
         nfiles = len(files)
-        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
+        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}\n')
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             rotation, xshift, yshift = self.align_elastix_with_points(fixed_index, moving_index)
             if rotation != 0 and xshift != 0 and yshift != 0:
-                print(f'Updating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}')
+                print(f'\tUpdating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}')
                 updates = dict(rotation=rotation, xshift=xshift, yshift=yshift)
                 self.sqlController.update_elastix_row(self.animal, moving_index, updates)
 
         if nchanges > 0:
-            print('Changes have been made. You need to remove the aligned images and run the alignment again.')
-            print('You will also need to rerun the neuroglancer task(s) again.')
+            print('\nChanges have been made. You need to remove the aligned images and run the alignment again.')
+            print('You will also need to rerun the neuroglancer task(s) again.\n')
 
 
     def align_elastix_with_no_points(self, fixed_index, moving_index):
@@ -152,6 +152,20 @@ class ElastixManager(FileLogger):
             :param moving: sitk float array for the moving image.
             :return: the Elastix transformation results that get parsed into the rigid transformation
             """
+        fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
+        moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+        if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
+            print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
+            print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}')
+            with open(fixed_point_file, 'r') as fp:
+                fixed_count = len(fp.readlines())
+            with open(moving_point_file, 'r') as fp:
+                moving_count = len(fp.readlines())
+            assert fixed_count == moving_count, \
+                    f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
+        else:
+            return 0, 0, 0
+        
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -165,20 +179,6 @@ class ElastixManager(FileLogger):
         rigid_params = create_rigid_parameters(elastixImageFilter)
         elastixImageFilter.SetParameterMap(translationMap)
         elastixImageFilter.AddParameterMap(rigid_params)
-        fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
-        moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
-
-        if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-            print(f'Found fixed point file: {fixed_point_file}')
-            print(f'Found moving point file: {moving_point_file}')
-            with open(fixed_point_file, 'r') as fp:
-                fixed_count = len(fp.readlines())
-            with open(moving_point_file, 'r') as fp:
-                moving_count = len(fp.readlines())
-            assert fixed_count == moving_count, \
-                    f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-        else:
-            return 0, 0, 0
 
         elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
         elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
