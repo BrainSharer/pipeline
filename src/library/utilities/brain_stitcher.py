@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from shutil import copyfile
 from timeit import default_timer as timer
+import psutil
 import tifffile
 from scipy.ndimage import zoom
 import zarr
@@ -16,7 +17,7 @@ import dask
 import dask.array as da
 import numpy as np
 from timeit import default_timer as timer
-from distributed import Client, progress
+from distributed import Client, LocalCluster, progress
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -76,6 +77,10 @@ class BrainStitcher(ParallelManager):
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
+        self.cpu_cores = os.cpu_count() 
+        self.sim_jobs = 8
+        self.workers = int(self.cpu_cores / self.sim_jobs)
+        self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
 
     def __call__(self):
         self.check_status()
@@ -393,8 +398,41 @@ class BrainStitcher(ParallelManager):
         target_chunks = (1, 1, 1, rows, columns)
         return target_chunks
 
-
     def rechunkme(self):
+        try:
+            with dask.config.set({'temporary_directory': self.tmp_dir, 
+                                    'logging.distributed': 'error'}):
+
+                os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
+                os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "160s"
+                os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "160s"
+                # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
+                os.environ["OMP_NUM_THREADS"] = "1"
+                os.environ["MKL_NUM_THREADS"] = "1"
+                os.environ["OPENBLAS_NUM_THREADS"] = "1"
+                # os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
+
+                print('With Dask memory config:')
+                print(dask.config.get("distributed.worker.memory"))
+                print()
+                self.workers = 1
+                self.sim_jobs = os.cpu_count() - 2
+                mem_per_worker = round(self.mem / self.workers)
+                print(f'Starting distributed dask with {self.workers} workers and {self.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
+                #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
+                mem_per_worker = str(mem_per_worker) + 'GB'
+                cluster = LocalCluster(n_workers=self.workers, processes=False,
+                    threads_per_worker=self.sim_jobs,
+                    memory_limit=mem_per_worker)
+                with Client(cluster) as client:
+                    self.run_rechunkme(client)
+
+        except Exception as ex:
+            print('Exception in running rechunker')
+            print(ex)
+
+
+    def run_rechunkme(self, client):
         if os.path.exists(os.path.join(self.storepath, 'scale0')):
             print('Rechunked store exists, no need to rechunk full resolution.\n')
             return
@@ -414,22 +452,20 @@ class BrainStitcher(ParallelManager):
             print(f'Already exists: {write_storepath}')            
             return
         
-        rechunkme_stack = da.from_zarr(url=read_storepath)
-        print(f'type of rechunkme_stack={type(rechunkme_stack)}')
-        rechunked = dask.array.reshape(rechunkme_stack, (1, 1, *rechunkme_stack.shape))
-        del rechunkme_stack
+        rechunkme = da.from_zarr(url=read_storepath)
+        print(f'type of rechunkme={type(rechunkme)} with shape={rechunkme.shape}')
+        rechunked = dask.array.reshape(rechunkme, (1, 1, *rechunkme.shape))
+
         start_time = timer()
         target_chunks = (1, 1, 1, 2048, 2048)
         store = get_store(self.storepath, 0)
 
         z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
-        workers = 2
-        jobs = 4
-        with Client(n_workers=workers, threads_per_worker=jobs) as client:
-            print(f'Writing to zarr with workers={workers} jobs={jobs} target_chunks={target_chunks} dtype={self.dtype}')
-            to_store = da.store(rechunked, z, lock=False, compute=False)
-            to_store = progress(client.compute(to_store))
-            to_store = client.gather(to_store)
+
+        print(f'Writing to zarr with workers={self.workers} jobs={self.sim_jobs} target_chunks={target_chunks} dtype={self.dtype}')
+        to_store = da.store(rechunked, z, lock=False, compute=False)
+        to_store = progress(client.compute(to_store))
+        to_store = client.gather(to_store)
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
