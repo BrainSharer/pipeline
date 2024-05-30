@@ -74,10 +74,8 @@ class ElastixManager(FileLogger):
         fiducials = self.sqlController.get_fiducials(self.animal)
         nchanges = len(fiducials)
         if nchanges == 0:
-            print('No fiducials found')
             return
-
-
+        
         for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
             point_file = os.path.join(self.registration_output, f'{section}_points.txt')
@@ -89,7 +87,7 @@ class ElastixManager(FileLogger):
                     y = point[1]
                     f.write(f'{x} {y}')
                     f.write('\n')
-
+    
         files = sorted(os.listdir(self.input))
         nfiles = len(files)
         print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}\n')

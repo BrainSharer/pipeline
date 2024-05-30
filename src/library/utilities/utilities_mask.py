@@ -95,7 +95,7 @@ def normalize_image(img):
 
 
 def scaled(img, scale=20000):
-    """First we find really high values, which are the bright spots and turn them down
+    """Stretch values out to scale
     """
     dtype = img.dtype
     epsilon = 0.99    

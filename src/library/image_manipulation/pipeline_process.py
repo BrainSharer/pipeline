@@ -299,11 +299,11 @@ class Pipeline(
         if self.downsample:
             directories = ['thumbnail_original', f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
                            f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
-                           f'C{self.channel}/thumbnail_aligned']
+                           f'C{self.channel}/thumbnail_cropped', f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
             directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', 
-                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_aligned']
+                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_cropped', f'C{self.channel}/full_aligned']
             ndirectory = f'C{self.channel}'
 
         for directory in directories:
@@ -324,11 +324,7 @@ class Pipeline(
     @staticmethod
     def check_programs():
         """
-        Make sure the necessary tools are installed on the machine and configures the memory of 
-        involving tools to work with big images.
-        We use to use java so we adjust the java heap size limit to 10 GB.  This is big enough 
-        for our purpose but should be increased accordingly if your images are bigger
-        If the check failed, check the workernoshell.err.log in your project directory for more information
+        Make sure imagemagick is installed.
         """
 
         error = ""
