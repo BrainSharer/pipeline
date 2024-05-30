@@ -14,7 +14,7 @@ class MarkedCellController():
         fiducials = defaultdict(list)
         annotation_session = self.get_session(prep_id)
         if not annotation_session:
-            print('No data for this animal')
+            print('No fiducial data for this animal was found.')
             return fiducials
         
 
