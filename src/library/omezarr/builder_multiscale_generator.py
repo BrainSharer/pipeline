@@ -485,6 +485,8 @@ class BuilderMultiscaleGenerator:
                 KeyboardInterrupt: If the cleanup process is interrupted by the user.
                 Exception: If an error occurs during the cleanup process.
             """
+        from time import sleep
+        sleep(5) # give the system time to finish writing
         countKeyboardInterrupt = 0
         countException = 0
         print('Cleaning up tmp dir and orphaned lock files')
