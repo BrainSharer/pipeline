@@ -154,8 +154,8 @@ class BrainStitcher(ParallelManager):
     def fetch_tif(self, inpath):
         try:
             with h5py.File(inpath, "r") as f:
-                channel1_key = f[self.channel_source]
-                arr = channel1_key['raw'][()]
+                channel_key = f[self.channel_source]
+                arr = channel_key['raw'][()]
 
         except Exception as ex:
             print(f'Cannot open {inpath}')
@@ -366,7 +366,7 @@ class BrainStitcher(ParallelManager):
         paths = [self.storepath]
         for path in paths:
             if os.path.exists(path):
-                print(f'Using existing {path}')   
+                print(f'Querying existing {path}')   
                 store = get_store(path, 0, 'r')
                 volume = zarr.open(store, 'r')
                 print(volume.info)
