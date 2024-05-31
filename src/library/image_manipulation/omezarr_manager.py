@@ -28,16 +28,16 @@ class OmeZarrManager():
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         if self.downsample:
-            storefile = 'C1T.zarr'
+            storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
-            input = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+            input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
             mips = 4
             originalChunkSize = [1, 1, 1, 512, 512]
             finalChunkSize=(1, 1, 32, 32, 32)
         else:
-            storefile = 'C1.zarr'
+            storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
-            input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
+            input = self.fileLocationManager.get_full_aligned(self.channel)
             mips = 8
             originalChunkSize = [1, 1, 1, 2048, 2048]
             finalChunkSize=(1, 1, 64, 64, 64)
@@ -63,8 +63,6 @@ class OmeZarrManager():
         )
         xy = xy_resolution * scaling_factor
         geometry = (1, 1, z_resolution, xy, xy)
-
-
 
         omezarr = builder(
             input,

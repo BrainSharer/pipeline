@@ -61,19 +61,15 @@ class BrainStitcher(ParallelManager):
         if self.downsample:
             self.scaling_factor = 4 # SCALING_FACTOR
             self.storefile = f'C{self.channel}T.zarr'
-            self.rechunkmefile = f'C{self.channel}T_rechunk.zarr'
             self.input = self.fileLocationManager.get_thumbnail_aligned(1)
         else:
             self.scaling_factor = 1
             self.storefile = f'C{self.channel}.zarr'
-            self.rechunkmefile = f'C{self.channel}_rechunk.zarr'
             self.input = self.fileLocationManager.get_full_aligned(1)
 
         self.storepath = os.path.join(
             self.fileLocationManager.www, "neuroglancer_data", self.storefile
         )
-
-        self.rechunkmepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", self.rechunkmefile)
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
@@ -232,7 +228,6 @@ class BrainStitcher(ParallelManager):
         os.makedirs(self.fileLocationManager.neuroglancer_data, exist_ok=True)
 
         volume = self.create_zarr_volume(volume_shape, str(self.channel))
-        print(f'Volume  type={type(volume)}')
 
         num_tiles = len(self.all_info_files.items())
         i = 1
@@ -350,14 +345,12 @@ class BrainStitcher(ParallelManager):
 
     def create_zarr_volume(self, volume_shape, channel):
         if self.downsample:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T_rechunk.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}T.zarr')
         else:
-            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}_rechunk.zarr')
+            storepath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{channel}.zarr')
         store = get_store(storepath, 0)
-        #####volume_shape = [1, 1, 4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
-        #####chunks = [1, 1, 1, 2048, 2048]
-        volume_shape = [4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
-        chunks = [1, 2048, 2048]
+        volume_shape = [1, 1, 4750//self.scaling_factor, 36962//self.scaling_factor, 43442//self.scaling_factor]
+        chunks = [1, 1, 1, 2048, 2048]
         if os.path.exists(storepath):
             print(f'Loading existing zarr from {storepath}')
             volume = zarr.open(store)
@@ -366,11 +359,11 @@ class BrainStitcher(ParallelManager):
             volume = zarr.zeros(shape=(volume_shape), chunks=chunks, store=store, overwrite=False, dtype=np.uint16)
 
         print(volume.info)
-        return volume    
+        return volume
 
     def info(self):
 
-        paths = [self.storepath, self.rechunkmepath]
+        paths = [self.storepath]
         for path in paths:
             if os.path.exists(path):
                 print(f'Using existing {path}')   
@@ -398,7 +391,7 @@ class BrainStitcher(ParallelManager):
         target_chunks = (1, 1, 1, rows, columns)
         return target_chunks
 
-    def rechunkme(self):
+    def setup_dask(self):
         try:
             with dask.config.set({'temporary_directory': self.tmp_dir, 
                                     'logging.distributed': 'error'}):
@@ -430,51 +423,6 @@ class BrainStitcher(ParallelManager):
         except Exception as ex:
             print('Exception in running rechunker')
             print(ex)
-
-
-    def run_rechunkme(self, client):
-        if os.path.exists(os.path.join(self.storepath, 'scale0')):
-            print('Rechunked store exists, no need to rechunk full resolution.\n')
-            return
-
-        read_storepath = os.path.join(self.rechunkmepath, 'scale0')
-        write_storepath = os.path.join(self.storepath, 'scale0')
-        print(f'Loading data at: {read_storepath}', end=" ")
-        if os.path.exists(read_storepath):
-            print(': Success!')
-        else:
-            print('\nError: exiting ...')
-            print(f'Missing {read_storepath}')            
-            sys.exit()
-
-        
-        if os.path.exists(write_storepath):
-            print(f'Already exists: {write_storepath}')            
-            return
-        
-        rechunkme = da.from_zarr(url=read_storepath)
-        print(f'type of rechunkme={type(rechunkme)} with shape={rechunkme.shape}')
-        rechunked = dask.array.reshape(rechunkme, (1, 1, *rechunkme.shape))
-
-        start_time = timer()
-        target_chunks = (1, 1, 1, 2048, 2048)
-        store = get_store(self.storepath, 0)
-
-        z = zarr.zeros(rechunked.shape, chunks=target_chunks, store=store, overwrite=True, dtype=self.dtype)
-
-        print(f'Writing to zarr with workers={self.workers} jobs={self.sim_jobs} target_chunks={target_chunks} dtype={self.dtype}')
-        to_store = da.store(rechunked, z, lock=False, compute=False)
-        to_store = progress(client.compute(to_store))
-        to_store = client.gather(to_store)
-
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Wrote rechunked data to: {write_storepath} took {total_elapsed_time} seconds.')
-
-
-
-                
-
 
 def extract_tif(file_key):
     inpath, scaling_factor, outpath, outfile = file_key
