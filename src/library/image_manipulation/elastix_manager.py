@@ -60,8 +60,8 @@ class ElastixManager(FileLogger):
                 fixed_index = os.path.splitext(files[i - 1])[0]
                 moving_index = os.path.splitext(files[i])[0]
                 if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                    rotation, xshift, yshift = self.align_elastix_with_no_points(fixed_index, moving_index)
-                    self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
+                    rotation, xshift, yshift, metric = self.align_elastix_with_no_points(fixed_index, moving_index)
+                    self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
 
 
     def update_within_stack_transformations(self):
@@ -122,25 +122,46 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
-        translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-        rigid_params = create_rigid_parameters(elastixImageFilter)
-        elastixImageFilter.SetParameterMap(translationMap)
-        elastixImageFilter.AddParameterMap(rigid_params)
+        #####translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
+        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
+        rigid_params["WriteIterationInfo"] = ["true"]
+        #####elastixImageFilter.SetParameterMap(translationMap)
+        #####elastixImageFilter.AddParameterMap(rigid_params)
+        elastixImageFilter.SetParameterMap(rigid_params)
+        elastixImageFilter.SetLogToFile(True)
+        logpath =  os.path.join(self.registration_output, 'iteration_logs')
+        os.makedirs(logpath, exist_ok=True)
+        elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
         if self.debug:
-            elastixImageFilter.PrintParameterMap()
+            pass
+            #elastixImageFilter.PrintParameterMap()
         elastixImageFilter.Execute()
 
-        translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+        #####translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+        #####rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+        rigid = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+        metric = self.get_metric(logpath)
 
-        x1, y1 = translations
-        R, x2, y2 = rigid
-        x = float(x1) + float(x2)
-        y = float(y1) + float(y2)
-        return float(R), float(x), float(y)
+        #####x1, y1 = translations
+        #####R, x2, y2 = rigid
+        R, x, y = rigid
+        #####x = float(x1) + float(x2)
+        #####y = float(y1) + float(y2)
+        return float(R), float(x), float(y), float(metric)
 
+    @staticmethod
+    def get_metric(logpath):
+        metric_value = None
+        filepath = os.path.join(logpath, 'IterationInfo.0.R4.txt')
+        if os.path.exists(filepath):
+            with open(filepath) as infile:
+                last_line = infile.readlines()[-1]
+                metric_value = last_line.split('\t')[1]
+        if metric_value is None:
+            metric_value = 0
+        return metric_value
 
     def align_elastix_with_points(self, fixed_index, moving_index):
         """This takes the moving and fixed images runs Elastix on them. Note

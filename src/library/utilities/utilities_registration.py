@@ -106,13 +106,15 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
     rigid_params["Transform"] = ["EulerTransform"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
-    rigid_params["NumberOfSpatialSamples"] = ["12288"]
-    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    #####rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     if debug:
         rigid_params["MaximumNumberOfIterations"] = ["150"]
+        rigid_params["NumberOfSpatialSamples"] = ["2048"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["2500"]
+        rigid_params["NumberOfSpatialSamples"] = ["12288"]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
