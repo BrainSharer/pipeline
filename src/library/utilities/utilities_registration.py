@@ -99,6 +99,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["HowToCombineTransforms"] = ["Compose"]
     rigid_params["DefaultPixelValue"] = [defaultPixelValue]
     rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["WriteIterationInfo"] = ["true"]
     rigid_params["Resampler"] = ["DefaultResampler"]
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
@@ -106,8 +107,8 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
     rigid_params["Transform"] = ["EulerTransform"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
-    #####rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
-    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation"]
+    # the AdvancedMattesMutualInformation metric really helps with the alignment
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     if debug:
         rigid_params["MaximumNumberOfIterations"] = ["150"]

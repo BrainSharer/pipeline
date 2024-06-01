@@ -60,7 +60,7 @@ class ElastixManager(FileLogger):
                 fixed_index = os.path.splitext(files[i - 1])[0]
                 moving_index = os.path.splitext(files[i])[0]
                 if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                    rotation, xshift, yshift, metric = self.align_elastix_with_no_points(fixed_index, moving_index)
+                    rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False)
                     self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
 
 
@@ -94,10 +94,10 @@ class ElastixManager(FileLogger):
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
-            rotation, xshift, yshift = self.align_elastix_with_points(fixed_index, moving_index)
+            rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=True)
             if rotation != 0 and xshift != 0 and yshift != 0:
-                print(f'\tUpdating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}')
-                updates = dict(rotation=rotation, xshift=xshift, yshift=yshift)
+                print(f'\tUpdating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}, metric={metric}')
+                updates = dict(rotation=rotation, xshift=xshift, yshift=yshift, metric=metric)
                 self.sqlController.update_elastix_row(self.animal, moving_index, updates)
 
         if nchanges > 0:
@@ -105,85 +105,37 @@ class ElastixManager(FileLogger):
             print('You will also need to rerun the neuroglancer task(s) again.\n')
 
 
-    def align_elastix_with_no_points(self, fixed_index, moving_index):
-        """This takes the moving and fixed images runs Elastix on them. Note
-            the huge list of parameters Elastix uses here.
+    def align_elastix(self, fixed_index, moving_index, use_points=False):
+        """
+        Aligns two images using the Elastix registration algorithm.
 
-            :param fixed: sitk float array for the fixed image (the image behind the moving).
-            :param moving: sitk float array for the moving image.
-            :return: the Elastix transformation results that get parsed into the rigid transformation
-            """
-        elastixImageFilter = sitk.ElastixImageFilter()
-        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
-        fixed = sitk.ReadImage(fixed_file, self.pixelType)
+        Args:
+            fixed_index (int): The index of the fixed image.
+            moving_index (int): The index of the moving image.
+            use_points (bool, optional): Whether to use corresponding points for registration. Defaults to False.
 
-        moving_file = os.path.join(self.input, f"{moving_index}.tif")
-        moving = sitk.ReadImage(moving_file, self.pixelType)
-        elastixImageFilter.SetFixedImage(fixed)
-        elastixImageFilter.SetMovingImage(moving)
+        Returns:
+            tuple: A tuple containing the rotation angle (R), translation in the x-axis (x), translation in the y-axis (y),
+            and the registration metric.
 
-        #####translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
-        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
-        rigid_params["WriteIterationInfo"] = ["true"]
-        #####elastixImageFilter.SetParameterMap(translationMap)
-        #####elastixImageFilter.AddParameterMap(rigid_params)
-        elastixImageFilter.SetParameterMap(rigid_params)
-        elastixImageFilter.SetLogToFile(True)
-        logpath =  os.path.join(self.registration_output, 'iteration_logs')
-        os.makedirs(logpath, exist_ok=True)
-        elastixImageFilter.SetOutputDirectory(logpath)        
+        Raises:
+            AssertionError: If the number of fixed points does not match the number of moving points.
 
-        elastixImageFilter.LogToConsoleOff()
-        if self.debug:
-            pass
-            #elastixImageFilter.PrintParameterMap()
-        elastixImageFilter.Execute()
-
-        #####translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        #####rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
-        rigid = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        metric = self.get_metric(logpath)
-
-        #####x1, y1 = translations
-        #####R, x2, y2 = rigid
-        R, x, y = rigid
-        #####x = float(x1) + float(x2)
-        #####y = float(y1) + float(y2)
-        return float(R), float(x), float(y), float(metric)
-
-    @staticmethod
-    def get_metric(logpath):
-        metric_value = None
-        filepath = os.path.join(logpath, 'IterationInfo.0.R4.txt')
-        if os.path.exists(filepath):
-            with open(filepath) as infile:
-                last_line = infile.readlines()[-1]
-                metric_value = last_line.split('\t')[1]
-        if metric_value is None:
-            metric_value = 0
-        return metric_value
-
-    def align_elastix_with_points(self, fixed_index, moving_index):
-        """This takes the moving and fixed images runs Elastix on them. Note
-            the huge list of parameters Elastix uses here.
-
-            :param fixed: sitk float array for the fixed image (the image behind the moving).
-            :param moving: sitk float array for the moving image.
-            :return: the Elastix transformation results that get parsed into the rigid transformation
-            """
-        fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
-        moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
-        if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-            print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
-            print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}')
-            with open(fixed_point_file, 'r') as fp:
-                fixed_count = len(fp.readlines())
-            with open(moving_point_file, 'r') as fp:
-                moving_count = len(fp.readlines())
-            assert fixed_count == moving_count, \
-                    f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-        else:
-            return 0, 0, 0
+        """
+        if use_points:
+            fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
+            moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+            if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
+                print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
+                print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}')
+                with open(fixed_point_file, 'r') as fp:
+                    fixed_count = len(fp.readlines())
+                with open(moving_point_file, 'r') as fp:
+                    moving_count = len(fp.readlines())
+                assert fixed_count == moving_count, \
+                        f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
+            else:
+                return 0, 0, 0, 0
         
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
@@ -194,31 +146,33 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
-        translationMap = elastixImageFilter.GetDefaultParameterMap("translation")
         rigid_params = create_rigid_parameters(elastixImageFilter)
-        elastixImageFilter.SetParameterMap(translationMap)
-        elastixImageFilter.AddParameterMap(rigid_params)
+        elastixImageFilter.SetParameterMap(rigid_params)
 
-        elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-        elastixImageFilter.SetParameter("Metric",  ["AdvancedNormalizedCorrelation", "CorrespondingPointsEuclideanDistanceMetric"])
-        elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-        elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
-        elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
-        elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
+        if use_points:
+            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+            elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
+            elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
+            elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
+
+        elastixImageFilter.SetLogToFile(True)
+        logpath =  os.path.join(self.registration_output, 'iteration_logs')
+        os.makedirs(logpath, exist_ok=True)
+        elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
         if self.debug:
             elastixImageFilter.PrintParameterMap()
         elastixImageFilter.Execute()
 
-        translations = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        rigid = elastixImageFilter.GetTransformParameterMap()[1]["TransformParameters"]
+        R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+        metric = self.get_metric(logpath)
 
-        x1, y1 = translations
-        R, x2, y2 = rigid
-        x = float(x1) + float(x2)
-        y = float(y1) + float(y2)
-        return float(R), float(x), float(y)
+        return float(R), float(x), float(y), float(metric)
+
+
 
     def align_elastix_with_affine(self, fixed_index, moving_index):
         elastixImageFilter = sitk.ElastixImageFilter()
@@ -339,7 +293,7 @@ class ElastixManager(FileLogger):
                 moving_arr = equalized(moving_arr)
                 moving = sitk.GetImageFromArray(moving_arr)
                 start_time = timer()
-                rotation, xshift, yshift = self.align_elastix_with_points(fixed, moving)
+                rotation, xshift, yshift, metric = self.align_elastix(fixed, moving, use_points=False)
                 end_time = timer()
                 total_elapsed_time = round((end_time - start_time),2)
                 print(f"Moving index={moving_index} took {total_elapsed_time} seconds")
@@ -386,30 +340,6 @@ class ElastixManager(FileLogger):
         workers = self.get_nworkers()
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
 
-    @staticmethod
-    def parameter_elastix_parameter_file_to_dict(filename):
-        d = {}
-        with open(filename, 'r') as f:
-            for line in f.readlines():
-                if line.startswith('('):
-                    tokens = line[1:-2].split(' ')
-                    key = tokens[0]
-                    if len(tokens) > 2:
-                        value = []
-                        for v in tokens[1:]:
-                            try:
-                                value.append(float(v))
-                            except ValueError:
-                                value.append(v)
-                    else:
-                        v = tokens[1]
-                        try:
-                            value = (float(v))
-                        except ValueError:
-                            value = v
-                    d[key] = value
-
-            return d
 
     def load_elastix_transformation(self, animal, moving_index):
         """loading the elastix transformation from the database
@@ -585,3 +515,40 @@ class ElastixManager(FileLogger):
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(tif_to_png, file_keys, workers)
+
+    @staticmethod
+    def get_metric(logpath):
+        metric_value = None
+        filepath = os.path.join(logpath, 'IterationInfo.0.R4.txt')
+        if os.path.exists(filepath):
+            with open(filepath) as infile:
+                last_line = infile.readlines()[-1]
+                metric_value = last_line.split('\t')[1]
+        if metric_value is None:
+            metric_value = 0
+        return metric_value
+
+    @staticmethod
+    def parameter_elastix_parameter_file_to_dict(filename):
+        d = {}
+        with open(filename, 'r') as f:
+            for line in f.readlines():
+                if line.startswith('('):
+                    tokens = line[1:-2].split(' ')
+                    key = tokens[0]
+                    if len(tokens) > 2:
+                        value = []
+                        for v in tokens[1:]:
+                            try:
+                                value.append(float(v))
+                            except ValueError:
+                                value.append(v)
+                    else:
+                        v = tokens[1]
+                        try:
+                            value = (float(v))
+                        except ValueError:
+                            value = v
+                    d[key] = value
+
+            return d
