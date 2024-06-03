@@ -16,25 +16,79 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.mask_utilities.mask_class import MaskDataset, StructureDataset, get_transform
 from library.image_manipulation.mask_manager import MaskManager
 from library.mask_utilities.utils import collate_fn
-from library.mask_utilities.engine import train_one_epoch
+from library.mask_utilities.engine import train_one_epoch, evaluate
 
 ROOT = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
 
+def train_and_test(epochs):
+    # train on the GPU or on the CPU, if a GPU is not available
+    device = get_device()
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--animal', help='specify animal', required=False, type=str)
-    parser.add_argument('--debug', help='test model', required=False, default='false', type=str)
-    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='false', type=str)
-    parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
-    parser.add_argument('--num_classes', help='# of structures', required=True, default=2, type=int)
-    
-    args = parser.parse_args()
-    structures = bool({'true': True, 'false': False}[args.structures.lower()])
-    debug = bool({'true': True, 'false': False}[args.debug.lower()])
-    animal = args.animal
-    epochs = args.epochs
-    num_classes = args.num_classes
+
+    # our dataset has two classes only - background and person
+    num_classes = 2
+    # use our dataset and defined transformations
+    dataset = MaskDataset(ROOT, animal=None, transforms = get_transform(train=True))
+    dataset_test = MaskDataset(ROOT, animal=None, transforms = get_transform(train=False))
+
+    # split the dataset in train and test set
+    indices = torch.randperm(len(dataset)).tolist()
+    dataset = torch.utils.data.Subset(dataset, indices[:-50])
+    dataset_test = torch.utils.data.Subset(dataset_test, indices[-50:])
+
+    # define training and validation data loaders
+    data_loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=2,
+        shuffle=True,
+        num_workers=4,
+        collate_fn=collate_fn
+    )
+
+    data_loader_test = torch.utils.data.DataLoader(
+        dataset_test,
+        batch_size=1,
+        shuffle=False,
+        num_workers=4,
+        collate_fn=collate_fn
+    )
+
+    # get the model using our helper function
+    mask_manager = MaskManager()
+    model = mask_manager.get_model_instance_segmentation(num_classes)
+
+    # move model to the right device
+    model.to(device)
+
+    # construct an optimizer
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD(
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
+
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    print(f"We have: {len(dataset)} images to train and {len(dataset_test)} images to test over {epochs} epochs.")
+
+    for epoch in range(epochs):
+        # train for one epoch, printing every 10 iterations
+        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+        # update the learning rate
+        lr_scheduler.step()
+        # evaluate on the test dataset
+        evaluate(model, data_loader_test, device=device)
+
+    print("That's it!")    
+
+def train(animal, structures, epochs, num_classes, debug):
 
     if structures:
         ROOT = os.path.join(ROOT, 'structures')
@@ -56,13 +110,7 @@ if __name__ == '__main__':
     ## the line below is very important for data on an NFS file system!
     torch.multiprocessing.set_sharing_strategy('file_system')
 
-    if torch.cuda.is_available(): 
-        device = torch.device('cuda') 
-        print(f'Using Nvidia graphics card GPU with {workers} workers at a batch size of {batch_size}')
-    else:
-        warnings.filterwarnings("ignore")
-        device = torch.device('cpu')
-        print(f'Using CPU with {workers} workers at a batch size of {batch_size}')
+    device = get_device()
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
@@ -132,6 +180,41 @@ if __name__ == '__main__':
     plt.close()
     fig.savefig(output_path, bbox_inches="tight")
     print('Finished with loss plot')
+
+
+def get_device():
+    if torch.cuda.is_available(): 
+        device = torch.device('cuda') 
+        print(f'Using Nvidia graphics card GPU.')
+    else:
+        warnings.filterwarnings("ignore")
+        device = torch.device('cpu')
+        print(f'No Nvidia card found, using CPU.')
+
+    return device
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Work on Animal')
+    parser.add_argument('--animal', help='specify animal', required=False, type=str)
+    parser.add_argument('--debug', help='test model', required=False, default='false', type=str)
+    parser.add_argument('--test', help='train or test model', required=False, default='false', type=str)
+    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='false', type=str)
+    parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
+    parser.add_argument('--num_classes', help='# of structures', required=False, default=2, type=int)
+    
+    args = parser.parse_args()
+    structures = bool({'true': True, 'false': False}[args.structures.lower()])
+    debug = bool({'true': True, 'false': False}[args.debug.lower()])
+    test = bool({'true': True, 'false': False}[args.test.lower()])
+    animal = args.animal
+    epochs = args.epochs
+    num_classes = args.num_classes
+    if test:
+        train_and_test(epochs)
+    else:
+        train(animal, structures, epochs, num_classes, debug)
+
 
 
 
