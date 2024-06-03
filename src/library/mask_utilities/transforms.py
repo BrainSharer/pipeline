@@ -4,11 +4,8 @@ import torch
 import torchvision
 from torch import nn, Tensor
 from torchvision import ops
-#from torchvision.transforms import functional as F, InterpolationMode, transforms as T
-#from torchvision.transforms.v2 import functional as F, InterpolationMode, transforms as T
-from torchvision.transforms.v2 import functional as F
-from torchvision.transforms.v2 import InterpolationMode
-from torchvision.transforms import v2 as T
+from torchvision.transforms import functional as F, InterpolationMode, transforms as T
+
 
 def _flip_coco_person_keypoints(kps, width):
     flip_inds = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
@@ -56,17 +53,14 @@ class PILToTensor(nn.Module):
         return image, target
 
 
-class ToDtype(nn.Module):
-    def __init__(self, dtype: torch.dtype, scale: bool = False) -> None:
+class ConvertImageDtype(nn.Module):
+    def __init__(self, dtype: torch.dtype) -> None:
         super().__init__()
         self.dtype = dtype
-        self.scale = scale
 
     def forward(
         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
-        if not self.scale:
-            return image.to(dtype=self.dtype), target
         image = F.convert_image_dtype(image, self.dtype)
         return image, target
 
@@ -299,13 +293,11 @@ class ScaleJitter(nn.Module):
         target_size: Tuple[int, int],
         scale_range: Tuple[float, float] = (0.1, 2.0),
         interpolation: InterpolationMode = InterpolationMode.BILINEAR,
-        antialias=True,
     ):
         super().__init__()
         self.target_size = target_size
         self.scale_range = scale_range
         self.interpolation = interpolation
-        self.antialias = antialias
 
     def forward(
         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
@@ -323,17 +315,14 @@ class ScaleJitter(nn.Module):
         new_width = int(orig_width * r)
         new_height = int(orig_height * r)
 
-        image = F.resize(image, [new_height, new_width], interpolation=self.interpolation, antialias=self.antialias)
+        image = F.resize(image, [new_height, new_width], interpolation=self.interpolation)
 
         if target is not None:
             target["boxes"][:, 0::2] *= new_width / orig_width
             target["boxes"][:, 1::2] *= new_height / orig_height
             if "masks" in target:
                 target["masks"] = F.resize(
-                    target["masks"],
-                    [new_height, new_width],
-                    interpolation=InterpolationMode.NEAREST,
-                    antialias=self.antialias,
+                    target["masks"], [new_height, new_width], interpolation=InterpolationMode.NEAREST
                 )
 
         return image, target
@@ -602,3 +591,4 @@ class SimpleCopyPaste(torch.nn.Module):
     def __repr__(self) -> str:
         s = f"{self.__class__.__name__}(blending={self.blending}, resize_interpolation={self.resize_interpolation})"
         return s
+
