@@ -20,10 +20,15 @@ from library.mask_utilities.engine import train_one_epoch, evaluate
 
 class MaskTrainer():
 
-    def __init__(self):
+    def __init__(self, animal, structures, epochs, num_classes, debug):
         self.root = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
         self.workers = 2
         self.batch_size = 4
+        self.animal = animal
+        self.structures = structures
+        self.epochs = epochs
+        self.num_classes = num_classes
+        self.debug = debug
         if torch.cuda.is_available(): 
             self.device = torch.device('cuda') 
             print('Using Nvidia graphics card GPU.')
@@ -33,32 +38,38 @@ class MaskTrainer():
             print('No Nvidia card found, using CPU.')
 
 
-    def train_and_test(self, epochs):
+    def train_and_test(self):
         # our dataset has two classes only - background and person
-        num_classes = 2
         # use our dataset and defined transformations
         dataset = MaskDataset(self.root, animal=None, transforms = get_transform(train=True))
         dataset_test = MaskDataset(self.root, animal=None, transforms = get_transform(train=False))
 
         # split the dataset in train and test set
         indices = torch.randperm(len(dataset)).tolist()
-        dataset = torch.utils.data.Subset(dataset, indices[:-50])
-        dataset_test = torch.utils.data.Subset(dataset_test, indices[-50:])
+        if self.debug:
+            test_cases = 100
+            torch.manual_seed(1)
+            dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
+            dataset_test = torch.utils.data.Subset(dataset_test, indices[test_cases:test_cases+10])
+        else:            
+            dataset = torch.utils.data.Subset(dataset, indices[:-50])
+            dataset_test = torch.utils.data.Subset(dataset_test, indices[-50:])
+
 
         # define training and validation data loaders
         data_loader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=2,
+            batch_size=self.batch_size,
             shuffle=True,
-            num_workers=4,
+            num_workers=self.workers,
             collate_fn=collate_fn
         )
 
         data_loader_test = torch.utils.data.DataLoader(
             dataset_test,
-            batch_size=1,
+            batch_size=self.batch_size,
             shuffle=False,
-            num_workers=4,
+            num_workers=self.workers,
             collate_fn=collate_fn
         )
 
@@ -78,7 +89,7 @@ class MaskTrainer():
         if n_files > 1000:
             print_freq = 100
 
-        print(f"We have: {len(dataset)} images to train and {len(dataset_test)} images to test over {epochs} epochs.")
+        print(f"We have: {len(dataset)} images to train and {len(dataset_test)} images to test over {self.epochs} epochs.")
 
         for epoch in range(epochs):
             train_one_epoch(model, optimizer, data_loader, self.device, epoch, print_freq=print_freq)
@@ -89,9 +100,9 @@ class MaskTrainer():
 
         print("That's it!")    
 
-    def train(self, animal, structures, epochs, num_classes, debug):
+    def train(self):
 
-        if structures:
+        if self.structures:
             structure_root = os.path.join(self.root, 'structures')
             dataset = StructureDataset(structure_root, transforms = get_transform(train=True))
         else:
@@ -99,7 +110,7 @@ class MaskTrainer():
 
         indices = torch.randperm(len(dataset)).tolist()
 
-        if debug:
+        if self.debug:
             test_cases = 12
             torch.manual_seed(1)
             torch_dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
@@ -153,7 +164,7 @@ class MaskTrainer():
             loss_list.append([loss, loss_mask])
             # update the learning rate
             lr_scheduler.step()
-            if not debug:
+            if not self.debug:
                 torch.save(model.state_dict(), modelpath)
 
         logfile.write(str(loss_list))
@@ -197,11 +208,11 @@ if __name__ == '__main__':
     animal = args.animal
     epochs = args.epochs
     num_classes = args.num_classes
-    mask_trainer = MaskTrainer()
+    mask_trainer = MaskTrainer(animal, structures, epochs, num_classes, debug)
     if test:
-        mask_trainer.train_and_test(epochs)
+        mask_trainer.train_and_test()
     else:
-        mask_trainer.train(animal, structures, epochs, num_classes, debug)
+        mask_trainer.train()
 
 
 

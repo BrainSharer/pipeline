@@ -7,8 +7,7 @@ from PIL import Image
 import cv2
 import torchvision
 from library.mask_utilities.utils import reduce_dict, collate_fn
-from torchvision.transforms import v2 as T
-
+import library.mask_utilities.transforms as T
 
 class MaskDataset(torch.utils.data.Dataset):
     def __init__(self, root, animal=None, transforms=None):
@@ -243,14 +242,14 @@ class TrigeminalDataset(torch.utils.data.Dataset):
         return len(self.imgs)
 
 
+
 def get_transform(train):
     transforms = []
+    transforms.append(T.PILToTensor())
+    transforms.append(T.ConvertImageDtype(torch.float))
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
-    transforms.append(T.ToDtype(torch.float, scale=True))
-    transforms.append(T.ToPureTensor())
     return T.Compose(transforms)
-
 
 def test_model(ROOT, animal):
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="DEFAULT")

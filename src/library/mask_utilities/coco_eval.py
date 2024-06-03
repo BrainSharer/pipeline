@@ -5,9 +5,10 @@ from contextlib import redirect_stdout
 import numpy as np
 import pycocotools.mask as mask_util
 import torch
-from library.mask_utilities.utils import all_gather
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+
+from library.mask_utilities.utils import all_gather
 
 
 class CocoEvaluator:
