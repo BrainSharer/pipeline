@@ -13,7 +13,8 @@ import warnings
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.mask_utilities.mask_class import MaskDataset, StructureDataset, get_model_instance_segmentation, get_transform
+from library.mask_utilities.mask_class import MaskDataset, StructureDataset, get_transform
+from library.image_manipulation.mask_manager import MaskManager
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
 
@@ -24,7 +25,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='specify animal', required=False, type=str)
     parser.add_argument('--debug', help='test model', required=False, default='false', type=str)
-    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='true', type=str)
+    parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='false', type=str)
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
     parser.add_argument('--num_classes', help='# of structures', required=True, default=2, type=int)
     
@@ -46,12 +47,13 @@ if __name__ == '__main__':
     if debug:
         test_cases = 12
         torch.manual_seed(1)
-        dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
+        torch_dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
     else:
-        dataset = torch.utils.data.Subset(dataset, indices)
+        torch_dataset = torch.utils.data.Subset(dataset, indices)
 
     workers = 2
     batch_size = 4
+    ## the line below is very important for data on an NFS file system!
     torch.multiprocessing.set_sharing_strategy('file_system')
 
     if torch.cuda.is_available(): 
@@ -64,23 +66,24 @@ if __name__ == '__main__':
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, num_workers=workers,
+        torch_dataset, batch_size=batch_size, shuffle=True, num_workers=workers,
         collate_fn=collate_fn)
 
-    n_files = len(dataset)
+    n_files = len(torch_dataset)
     print_freq = 10
     if n_files > 1000:
         print_freq = 100
-    print(f"We have: {n_files} images to train and printing loss info every {print_freq} iterations.")
+    print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
     # our dataset has two classs, tissue or 'not tissue'
     modelpath = os.path.join(ROOT, 'mask.model.pth')
     # create logging file
     logpath = os.path.join(ROOT, "mask.logger.txt")
     logfile = open(logpath, "w")
-    logheader = f"Masking {datetime.now()} with {epochs} epochs\n"
+    logheader = f"Masking {datetime.now()} with {epochs} epochs from {dataset.img_root} with {n_files} files.\n"
     logfile.write(logheader)
     # get the model using our helper function
-    model = get_model_instance_segmentation(num_classes)
+    mask_manager = MaskManager()
+    model = mask_manager.get_model_instance_segmentation(num_classes)
     # move model to the right device
     model.to(device)
     # construct an optimizer

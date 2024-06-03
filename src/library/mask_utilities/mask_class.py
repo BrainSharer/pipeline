@@ -10,16 +10,22 @@ from library.mask_utilities.utils import reduce_dict, collate_fn
 import library.mask_utilities.transforms as T
 
 class MaskDataset(torch.utils.data.Dataset):
-    def __init__(self, root, transforms=None):
+    def __init__(self, root, animal=None, transforms=None):
         self.root = root
         self.transforms = transforms
         self.imgs = sorted(os.listdir(os.path.join(root, 'normalized')))
         self.masks = sorted(os.listdir(os.path.join(root, 'thumbnail_masked')))
+        if animal is not None:
+            self.imgs = [img for img in self.imgs if animal in img]
+            self.masks = [mask for mask in self.masks if animal in mask]
+
+        self.img_root = os.path.join(self.root, 'normalized')
+        self.mask_root = os.path.join(self.root, 'thumbnail_masked') 
 
     def __getitem__(self, idx):
         # load images and bounding boxes
-        img_path = os.path.join(self.root, 'normalized', self.imgs[idx])
-        mask_path = os.path.join(self.root, 'thumbnail_masked', self.masks[idx])
+        img_path = os.path.join(self.img_root, self.imgs[idx])
+        mask_path = os.path.join(self.mask_root, self.masks[idx])
         img = Image.open(img_path).convert("L") # L = grayscale
         mask = Image.open(mask_path) # 
         mask = np.array(mask)
