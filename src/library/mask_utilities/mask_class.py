@@ -242,14 +242,14 @@ class TrigeminalDataset(torch.utils.data.Dataset):
         return len(self.imgs)
 
 
-
 def get_transform(train):
     transforms = []
-    transforms.append(T.PILToTensor())
-    transforms.append(T.ConvertImageDtype(torch.float))
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
+    transforms.append(T.ToDtype(torch.float, scale=True))
+    transforms.append(T.ToPureTensor())
     return T.Compose(transforms)
+
 
 def test_model(ROOT, animal):
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="DEFAULT")
