@@ -146,7 +146,7 @@ class ElastixManager(FileLogger):
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
-        rigid_params = create_rigid_parameters(elastixImageFilter)
+        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
         elastixImageFilter.SetParameterMap(rigid_params)
 
         if use_points:
