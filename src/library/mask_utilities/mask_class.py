@@ -7,7 +7,8 @@ from PIL import Image
 import cv2
 import torchvision
 from library.mask_utilities.utils import reduce_dict, collate_fn
-import library.mask_utilities.transforms as T
+from torchvision.transforms import v2 as T
+
 
 class MaskDataset(torch.utils.data.Dataset):
     def __init__(self, root, animal=None, transforms=None):
