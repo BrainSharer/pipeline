@@ -47,10 +47,10 @@ class MaskTrainer():
         # split the dataset in train and test set
         indices = torch.randperm(len(dataset)).tolist()
         if self.debug:
-            test_cases = 100
+            test_cases = 20
             torch.manual_seed(1)
             dataset = torch.utils.data.Subset(dataset, indices[0:test_cases])
-            dataset_test = torch.utils.data.Subset(dataset_test, indices[test_cases:test_cases+10])
+            dataset_test = torch.utils.data.Subset(dataset_test, indices[test_cases:test_cases+2])
         else:            
             dataset = torch.utils.data.Subset(dataset, indices[:-50])
             dataset_test = torch.utils.data.Subset(dataset_test, indices[-50:])
@@ -67,9 +67,9 @@ class MaskTrainer():
 
         data_loader_test = torch.utils.data.DataLoader(
             dataset_test,
-            batch_size=self.batch_size,
+            batch_size=1,
             shuffle=False,
-            num_workers=self.workers,
+            num_workers=1,
             collate_fn=collate_fn
         )
 
@@ -166,6 +166,7 @@ class MaskTrainer():
             lr_scheduler.step()
             if not self.debug:
                 torch.save(model.state_dict(), modelpath)
+
 
         logfile.write(str(loss_list))
         logfile.write("\n")
