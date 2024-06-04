@@ -43,7 +43,7 @@ class ScanRunController():
         if height > SAFEMAX and width > SAFEMAX:
             height = round(height, -3)
             width = round(width, -3)
-            height += LITTLE_BIT_MORE
+            height += LITTLE_BIT_MORE + 1000
             width += LITTLE_BIT_MORE
             if (rotation % 2) == 0:
                 update_dict = {'width': width, 'height': height}
