@@ -43,6 +43,7 @@ class MaskDataset(torch.utils.data.Dataset):
                 ymax = int(round(y+h))
                 color = (i+10) * 10
                 cv2.fillPoly(mask, [contour], color);
+                print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
                 boxes.append([xmin, ymin, xmax, ymax])
         
         obj_ids = np.unique(mask)
@@ -59,7 +60,11 @@ class MaskDataset(torch.utils.data.Dataset):
         masks = torch.as_tensor(masks, dtype=torch.uint8)
 
         image_id = torch.tensor([idx])
-        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])        
+        try:
+            area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        except Exception as e:
+            print(f'Error: {e} boxes has shape {boxes.shape}')
+            area = torch.zeros((1, 4), dtype=torch.float32)
 
         # suppose all instances are not crowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
