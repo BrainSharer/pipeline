@@ -198,19 +198,19 @@ class MaskManager:
         
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
-        NORMALIZED = self.fileLocationManager.get_normalized(self.channel)
-        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {NORMALIZED}")
+        self.input = self.fileLocationManager.get_normalized(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
+        self.logevent(f"INPUT FOLDER: {self.input}")
         
-        test_dir(self.animal, NORMALIZED, self.section_count, self.downsample, same_size=False)
-        os.makedirs(COLORED, exist_ok=True)
-        files = os.listdir(NORMALIZED)
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        os.makedirs(self.output, exist_ok=True)
+        files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"OUTPUT FOLDER: {COLORED}")
+        self.logevent(f"OUTPUT FOLDER: {self.output}")
         for file in files:
-            filepath = os.path.join(NORMALIZED, file)
+            filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
-            maskpath = os.path.join(COLORED, mask_dest_file)
+            maskpath = os.path.join(self.output, mask_dest_file)
 
             if os.path.exists(maskpath):
                 continue
@@ -222,9 +222,10 @@ class MaskManager:
                 self.loaded_model.eval()
                 with torch.no_grad():
                     pred = self.loaded_model(torch_input)
-                masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                masks = [(pred[0]["masks"] > 0.25).squeeze().detach().cpu().numpy()]
                 mask = masks[0]
                 dims = mask.ndim
+                print(f"mask shape: {mask.shape} dtype: {mask.dtype} ndim: {dims}")
                 if dims > 2:
                     mask = combine_dims(mask)
                 raw_img = np.array(img)

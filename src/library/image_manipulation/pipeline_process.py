@@ -60,7 +60,7 @@ class Pipeline(
     TASK_MASK = "Creating masks"
     TASK_CLEAN = "Applying masks"
     TASK_HISTOGRAM =  "Making histogram"
-    TASK_ALIGN = "Creating elastix transform"
+    TASK_ALIGN = "Creating alignment process"
     TASK_REALIGN = "Creating alignment improvements"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"

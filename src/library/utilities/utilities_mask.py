@@ -149,8 +149,11 @@ def equalized(fixed, cliplimit=5):
     :param fixed: image we are working on
     :return: a better looking image
     """
-    
-    clahe = cv2.createCLAHE(clipLimit=cliplimit, tileGridSize=(8, 8))
+    cliplimit = 5
+    if fixed.ndim == 3:
+        fixed = cv2.cvtColor(fixed, cv2.COLOR_BGR2GRAY)
+        fixed = scaled(fixed, scale=200)
+    clahe = cv2.createCLAHE(clipLimit=cliplimit, tileGridSize=(8, 32))
     fixed = clahe.apply(fixed)
     return fixed
 
