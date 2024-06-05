@@ -225,7 +225,6 @@ class MaskManager:
                 masks = [(pred[0]["masks"] > 0.25).squeeze().detach().cpu().numpy()]
                 mask = masks[0]
                 dims = mask.ndim
-                print(f"mask shape: {mask.shape} dtype: {mask.dtype} ndim: {dims}")
                 if dims > 2:
                     mask = combine_dims(mask)
                 raw_img = np.array(img)
