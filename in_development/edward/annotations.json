@@ -1,0 +1,224 @@
+{
+    "annotation_type": "polygon_sequence",
+    "FK_user_id": 1,
+    "FK_prep_id": "DK37",
+    "FK_state_id": 999,
+    "FK_brain_region_id": 2,
+    "xy_scale": 0.123,
+    "z_scale": 0.456,
+ "annotations": [
+    {
+      "source": [
+        897.4691162109375,
+        267.5477294921875,
+        178.5
+      ],
+      "childAnnotationIds": [
+        "7624bc82f82d1ffa268c4350c476c04218a87827",
+        "4d38c858cfbfa448f138ed89dc88bc91f0562151"
+      ],
+      "childrenVisible": true,
+      "type": "volume",
+      "id": "bc722977a88729851657722ded5beedbe9754db3",
+      "description": "10N_L",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "source": [
+        897.4691162109375,
+        267.5477294921875,
+        178.5
+      ],
+      "childAnnotationIds": [
+        "b3b922fd522a8bf7e957bb438adbaba34e9fbe91",
+        "a51afad76ef25326279746b6f2ba43ba7e252530",
+        "8eefb3fb60515227080ccece633dfd688b675750",
+        "d22742b6e61516f4a3c186eb219c884ad5ea6486"
+      ],
+      "childrenVisible": true,
+      "type": "polygon",
+      "id": "7624bc82f82d1ffa268c4350c476c04218a87827",
+      "parentAnnotationId": "bc722977a88729851657722ded5beedbe9754db3",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        897.4691162109375,
+        267.5477294921875,
+        178.5
+      ],
+      "pointB": [
+        768.0986938476562,
+        396.91815185546875,
+        178.5
+      ],
+      "type": "line",
+      "id": "b3b922fd522a8bf7e957bb438adbaba34e9fbe91",
+      "parentAnnotationId": "7624bc82f82d1ffa268c4350c476c04218a87827",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        768.0986938476562,
+        396.91815185546875,
+        178.5
+      ],
+      "pointB": [
+        930.2672729492188,
+        526.28857421875,
+        178.5
+      ],
+      "type": "line",
+      "id": "a51afad76ef25326279746b6f2ba43ba7e252530",
+      "parentAnnotationId": "7624bc82f82d1ffa268c4350c476c04218a87827",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        930.2672729492188,
+        526.28857421875,
+        178.5
+      ],
+      "pointB": [
+        1083.3251953125,
+        429.71630859375,
+        178.5
+      ],
+      "type": "line",
+      "id": "8eefb3fb60515227080ccece633dfd688b675750",
+      "parentAnnotationId": "7624bc82f82d1ffa268c4350c476c04218a87827",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        1083.3251953125,
+        429.71630859375,
+        178.5
+      ],
+      "pointB": [
+        897.4691162109375,
+        267.5477294921875,
+        178.5
+      ],
+      "type": "line",
+      "id": "d22742b6e61516f4a3c186eb219c884ad5ea6486",
+      "parentAnnotationId": "7624bc82f82d1ffa268c4350c476c04218a87827",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "source": [
+        879.0939331054688,
+        278.3313903808594,
+        179.5
+      ],
+      "childAnnotationIds": [
+        "fd7f26d870cf59bf51f36aaee34852e700c5cf05",
+        "692ae1ef2f404a99d72db6f4830ba8f5bfb01ad5",
+        "b85b8217379358cc8872a76abcd8003adf6cd0ae",
+        "c85ada86e1ca77310165ea03c54a533f2aada434"
+      ],
+      "childrenVisible": true,
+      "type": "polygon",
+      "id": "4d38c858cfbfa448f138ed89dc88bc91f0562151",
+      "parentAnnotationId": "bc722977a88729851657722ded5beedbe9754db3",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        879.0939331054688,
+        278.3313903808594,
+        179.5
+      ],
+      "pointB": [
+        773.4110717773438,
+        396.76910400390625,
+        179.5
+      ],
+      "type": "line",
+      "id": "fd7f26d870cf59bf51f36aaee34852e700c5cf05",
+      "parentAnnotationId": "4d38c858cfbfa448f138ed89dc88bc91f0562151",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        773.4110717773438,
+        396.76910400390625,
+        179.5
+      ],
+      "pointB": [
+        942.8681030273438,
+        533.4280395507812,
+        179.5
+      ],
+      "type": "line",
+      "id": "692ae1ef2f404a99d72db6f4830ba8f5bfb01ad5",
+      "parentAnnotationId": "4d38c858cfbfa448f138ed89dc88bc91f0562151",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        942.8681030273438,
+        533.4280395507812,
+        179.5
+      ],
+      "pointB": [
+        1090.459716796875,
+        420.4566650390625,
+        179.5
+      ],
+      "type": "line",
+      "id": "b85b8217379358cc8872a76abcd8003adf6cd0ae",
+      "parentAnnotationId": "4d38c858cfbfa448f138ed89dc88bc91f0562151",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    },
+    {
+      "pointA": [
+        1090.459716796875,
+        420.4566650390625,
+        179.5
+      ],
+      "pointB": [
+        879.0939331054688,
+        278.3313903808594,
+        179.5
+      ],
+      "type": "line",
+      "id": "c85ada86e1ca77310165ea03c54a533f2aada434",
+      "parentAnnotationId": "4d38c858cfbfa448f138ed89dc88bc91f0562151",
+      "props": [
+        "#ffff00",
+        1
+      ]
+    }
+  ]
+  }
