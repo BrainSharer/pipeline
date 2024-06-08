@@ -21,13 +21,12 @@ def resize_images(animal, channel):
     for file in files:
         inpath = os.path.join(input_path, file)
         outpath = os.path.join(output_path, file)
-        if os.path.exists(outpath):
-            print(f"Skipping {file}")
-            continue
-        else:
+        if not os.path.exists(outpath):
             scaleme = read_image(inpath)
+            print(f'Processing {file} with shape {scaleme.shape} and dtype {scaleme.dtype}.', end="")
             scaled = zoom(scaleme, (change))
-            write_image(scaled, outpath)
+            write_image(outpath, scaled)
+            print(f'Processed {file} with shape {scaleme.shape} and dtype {scaleme.dtype}')
 
 
 if __name__ == "__main__":
