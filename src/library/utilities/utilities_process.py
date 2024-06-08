@@ -9,6 +9,7 @@ import numpy as np
 import gc
 from skimage.transform import rescale
 import math
+from tifffile import imread, imwrite
 
 SCALING_FACTOR = 32.0
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
@@ -219,7 +220,12 @@ def write_image(file_path:str, data, message: str = "Error") -> None:
     except Exception as e:
         print(message, e)
         print("Unexpected error:", sys.exc_info()[0])
-        sys.exit()
+        try:
+            imwrite(file_path, data)
+        except Exception as e:
+            print(message, e)
+            print("Unexpected error:", sys.exc_info()[0])
+            sys.exit()
 
 
 def read_image(file_path: str):
@@ -235,5 +241,10 @@ def read_image(file_path: str):
         print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
 
     if img is None:
+        img = imread(file_path)
+
+    if img is None:
+        print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
         sys.exit()
+
     return img
