@@ -240,7 +240,7 @@ def read_image(file_path: str):
     except:
         print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
 
-    if img is None:
+    if img is None or img.shape[0] == 0 or img.shape[1] == 0:
         img = imread(file_path)
 
     if img is None:
