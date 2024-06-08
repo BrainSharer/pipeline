@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import sys
 from scipy.ndimage import zoom
+from tifffile import imread
 
 
 PIPELINE_ROOT = Path("./src").absolute()
@@ -22,7 +23,8 @@ def resize_images(animal, channel):
         inpath = os.path.join(input_path, file)
         outpath = os.path.join(output_path, file)
         if not os.path.exists(outpath):
-            scaleme = read_image(inpath)
+            scaleme = imread(inpath)
+
             print(f'Processing {file} with shape {scaleme.shape} and dtype {scaleme.dtype}.', end="")
             scaled = zoom(scaleme, (change))
             write_image(outpath, scaled)
