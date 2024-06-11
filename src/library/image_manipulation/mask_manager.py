@@ -5,6 +5,7 @@ https://www.cis.upenn.edu/~jshi/ped_html/
 
 import os
 import numpy as np
+from tqdm import tqdm
 import torch
 from PIL import Image
 from skimage import color
@@ -33,17 +34,17 @@ class MaskManager:
         INPUT dir is the colored merged masks
         """
         
-        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
+        self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
+        test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
-        files = sorted(os.listdir(INPUT))
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        files = sorted(os.listdir(self.input))
+        self.logevent(f"INPUT FOLDER: {self.input}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {MASKS}")
         for file in files:
-            filepath = os.path.join(INPUT, file)
+            filepath = os.path.join(self.input, file)
             maskpath = os.path.join(MASKS, file)
             if os.path.exists(maskpath):
                 continue
@@ -127,21 +128,21 @@ class MaskManager:
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
-        FULLRES = self.fileLocationManager.get_full(self.channel)
+        self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {FULLRES}")
-        starting_files = os.listdir(FULLRES)
+        self.logevent(f"INPUT FOLDER: {self.input}")
+        starting_files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
         self.logevent(f"OUTPUT FOLDER: {MASKED}")
         test_dir(
-            self.animal, FULLRES, self.section_count, self.downsample, same_size=False
+            self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
         os.makedirs(MASKED, exist_ok=True)
-        files = sorted(os.listdir(FULLRES))
+        files = sorted(os.listdir(self.input))
         file_keys = []
         for file in files:
-            infile = os.path.join(FULLRES, file)
+            infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
             outfile = os.path.join(MASKED, file)
             if os.path.exists(outfile):
@@ -162,16 +163,16 @@ class MaskManager:
         The output files are the colored merged files. 
         """
         
-        INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-        OUTPUT = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        os.makedirs(OUTPUT, exist_ok=True)
+        self.input = self.fileLocationManager.get_thumbnail(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_masked(channel=1)
+        os.makedirs(self.output, exist_ok=True)
         
-        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
-        files = os.listdir(INPUT)
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files = os.listdir(self.input)
         for file in files:
-            infile = os.path.join(INPUT, file)
+            infile = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
-            maskpath = os.path.join(OUTPUT, mask_dest_file)
+            maskpath = os.path.join(self.output, mask_dest_file)
 
             if os.path.exists(maskpath):
                 continue
@@ -206,8 +207,8 @@ class MaskManager:
         os.makedirs(self.output, exist_ok=True)
         files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"OUTPUT FOLDER: {self.output}")
-        for file in files:
+        self.logevent(f"self.output FOLDER: {self.output}")
+        for file in tqdm(files):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
             maskpath = os.path.join(self.output, mask_dest_file)
