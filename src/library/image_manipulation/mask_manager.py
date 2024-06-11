@@ -141,7 +141,7 @@ class MaskManager:
         os.makedirs(MASKED, exist_ok=True)
         files = sorted(os.listdir(self.input))
         file_keys = []
-        for file in files:
+        for file in tqdm(files):
             infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
             outfile = os.path.join(MASKED, file)
