@@ -437,7 +437,7 @@ class ElastixManager(FileLogger):
             starting_files = os.listdir(self.input)
             self.logevent(f"FILE COUNT: {len(starting_files)} with {len(transforms)} transforms")
             self.logevent(f"Output FOLDER: {self.output}")
-            self.align_images(self.input, self.output, transforms)
+            self.align_images(transforms)
 
     def align_downsampled_images(self, transforms):
         """align the downsample tiff images
@@ -448,7 +448,7 @@ class ElastixManager(FileLogger):
         if self.downsample:
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
             print(f'Aligning {len(os.listdir(self.input))} images from {os.path.basename(os.path.normpath(self.input))} to {os.path.basename(os.path.normpath(self.output))}', end=" ")
-            self.align_images(self.input, self.output, transforms)
+            self.align_images(transforms)
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  
@@ -461,7 +461,7 @@ class ElastixManager(FileLogger):
         fileLocationManager = FileLocationManager(animal)
         self.input = fileLocationManager.rotated_and_padded_thumbnail_mask
         self.output = fileLocationManager.rotated_and_padded_and_aligned_thumbnail_mask
-        self.align_images(self.input, self.output, transforms)
+        self.align_images(transforms)
 
     def align_images(self, transforms):
         """function to align a set of images with a with the transformations between them given

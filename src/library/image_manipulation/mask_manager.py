@@ -130,21 +130,21 @@ class MaskManager:
         
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
-        MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
+        MASKS = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"Input FOLDER: {self.input}")
         starting_files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"Output FOLDER: {MASKED}")
+        self.logevent(f"Output FOLDER: {MASKS}")
         test_dir(
             self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
-        os.makedirs(MASKED, exist_ok=True)
+        os.makedirs(MASKS, exist_ok=True)
         files = sorted(os.listdir(self.input))
         file_keys = []
         for file in tqdm(files):
             infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
-            outfile = os.path.join(MASKED, file)
+            outfile = os.path.join(MASKS, file)
             if os.path.exists(outfile):
                 continue
             try:

@@ -20,7 +20,7 @@ class MetaUtilities:
         Scans the czi dir to extract the meta information for each tif file
         """
 
-        INPUT = self.fileLocationManager.get_czi(self.rescan_number)
+        self.input = self.fileLocationManager.get_czi(self.rescan_number)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.get_user_entered_scan_id()
         file_validation_status, unique_files = self.file_validation(czi_files)
@@ -33,7 +33,7 @@ class MetaUtilities:
         if len(unprocessed_czifiles) > 0:
             file_keys = []
             for unprocessed_czifile in unprocessed_czifiles:
-                infile = os.path.join(INPUT, unprocessed_czifile)
+                infile = os.path.join(self.input, unprocessed_czifile)
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
 
@@ -136,17 +136,17 @@ class MetaUtilities:
         """Check that the CZI files are placed in the correct location
         """
         
-        INPUT = self.fileLocationManager.get_czi(self.rescan_number)
-        if not os.path.exists(INPUT):
-            print(f"{INPUT} does not exist, we are exiting.")
+        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        if not os.path.exists(self.input):
+            print(f"{self.input} does not exist, we are exiting.")
             sys.exit()
         try:
-            files = os.listdir(INPUT)
+            files = os.listdir(self.input)
             nfiles = len(files)
             if nfiles < 1:
                 print("There are no CZI files to work with, we are exiting.")
                 sys.exit()
-            self.logevent(f"INPUT FOLDER: {INPUT}")
+            self.logevent(f"Input FOLDER: {self.input}")
             self.logevent(f"FILE COUNT: {nfiles}")
         except OSError as e:
             print(e)

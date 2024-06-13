@@ -26,20 +26,20 @@ class TiffExtractor(ParallelManager):
         """
 
         if self.downsample:
-            OUTPUT = self.fileLocationManager.thumbnail_original
+            self.output = self.fileLocationManager.thumbnail_original
             scale_factor = DOWNSCALING_FACTOR
         else:
-            OUTPUT = self.fileLocationManager.tif
+            self.output = self.fileLocationManager.tif
             scale_factor = 1
 
-        INPUT = self.fileLocationManager.get_czi(self.rescan_number)
-        os.makedirs(OUTPUT, exist_ok=True)
+        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        os.makedirs(self.output, exist_ok=True)
         starting_files = glob.glob(
-            os.path.join(OUTPUT, "*_C" + str(self.channel) + ".tif")
+            os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
         )
-        total_files = os.listdir(OUTPUT)
+        total_files = os.listdir(self.output)
         self.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+        self.logevent(f"Output FOLDER: {self.output}")
         self.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
         self.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
 
@@ -52,9 +52,9 @@ class TiffExtractor(ParallelManager):
 
         file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1
         for section in sections:
-            czi_file = os.path.join(INPUT, section.czi_file)
+            czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
-            output_path = os.path.join(OUTPUT, tif_file)
+            output_path = os.path.join(self.output, tif_file)
             if self.debug:
                 print(f'creating thumbnail={output_path}')
             if not os.path.exists(czi_file):
@@ -75,21 +75,21 @@ class TiffExtractor(ParallelManager):
         These images are used for Quality Control.
         """
 
-        INPUT = self.fileLocationManager.get_czi(self.rescan_number)
-        OUTPUT = self.fileLocationManager.thumbnail_web
+        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.output = self.fileLocationManager.thumbnail_web
         channel = 1
-        os.makedirs(OUTPUT, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
 
         sections = self.sqlController.get_sections(self.animal, channel, self.rescan_number)
         self.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+        self.logevent(f"Output FOLDER: {self.output}")
 
         file_keys = []
         files_skipped = 0
         for i, section in enumerate(sections):
-            infile = os.path.join(INPUT, section.czi_file)
+            infile = os.path.join(self.input, section.czi_file)
             outfile = os.path.basename(section.file_name)
-            output_path = os.path.join(OUTPUT, outfile)
+            output_path = os.path.join(self.output, outfile)
             outfile = output_path[:-5] + "1.png"  # force "C1" in filename
             if os.path.exists(outfile):
                 files_skipped += 1

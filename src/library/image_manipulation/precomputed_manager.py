@@ -8,6 +8,7 @@ import igneous.task_creation as tc
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import SCALING_FACTOR, test_dir
+from library.image_manipulation.image_manager import ImageManager
 XY_CHUNK = 128
 Z_CHUNK = 64
 
@@ -39,36 +40,11 @@ class NgPrecomputedMaker:
         scales = (resolution, resolution, int(zresolution * 1000))
         return scales
 
-    def get_file_information(self, INPUT, PROGRESS_DIR):
-        """getting the information of files in the directory
-
-        Args:
-            INPUT (str): path to input directory
-
-        Returns:
-            str: name of the tif images corresponding to the section in the middle of the stack
-            list: list of id and filename tuples for the files in the directory
-            tuple: tuple of integers for the width,height and number of sections in the stack
-            int: number of channels present in each tif files
-        """
-        files = sorted(os.listdir(INPUT))
-        midpoint = len(files) // 2
-        midfilepath = os.path.join(INPUT, files[midpoint])
-        midfile = io.imread(midfilepath, img_num=0)
-        height = midfile.shape[0]
-        width = midfile.shape[1]
-        num_channels = midfile.shape[2] if len(midfile.shape) > 2 else 1
-        file_keys = []
-        volume_size = (width, height, len(files))
-        orientation = self.sqlController.histology.orientation
-        for i, f in enumerate(files):
-            filepath = os.path.join(INPUT, f)
-            file_keys.append([i, filepath, orientation, PROGRESS_DIR])
-        return midfile, file_keys, volume_size, num_channels
 
     def create_neuroglancer(self):
         """create the Seung lab cloud volume format from the image stack
         For a large isotropic data set, Allen uses chunks = [128,128,128]
+        self.input and self.output are defined in the pipeline_process
         """
 
         if self.downsample:
@@ -83,24 +59,30 @@ class NgPrecomputedMaker:
         starting_files = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         self.logevent(f"self.input FOLDER: {self.input}")
         self.logevent(f"CURRENT FILE COUNT: {starting_files}")
-        self.logevent(f"OUTPUT FOLDER: {self.output}")
+        self.logevent(f"Output FOLDER: {self.output}")
         
-        midfile, file_keys, volume_size, num_channels = self.get_file_information(self.input, self.progress_dir)
+        image_manager = ImageManager(self.input)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
-        print(f'volume_size={volume_size} num_channels={num_channels} dtype={midfile.dtype}')
+        print(f'volume_size={image_manager.volume_size} num_channels={image_manager.num_channels} dtype={image_manager.dtype}')
             
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
             scales,
             "image",
-            midfile.dtype,
-            num_channels=num_channels,
+            image_manager.dtype,
+            num_channels=image_manager.num_channels,
             chunk_size=chunks,
         )
         
-        ng.init_precomputed(self.rechunkme_path, volume_size)
+        ng.init_precomputed(self.rechunkme_path, image_manager.volume_size)
+        file_keys = []
+        orientation = self.sqlController.histology.orientation
+        for i, f in enumerate(image_manager.files):
+            filepath = os.path.join(self.input, f)
+            file_keys.append([i, filepath, orientation, self.progress_dir])
+
         workers = self.get_nworkers()
         if self.debug:
             for file_key in file_keys:
@@ -115,11 +97,7 @@ class NgPrecomputedMaker:
         """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
         """
 
-        try:
-            _, _, _, num_channels = self.get_file_information(self.input, self.progress_dir)
-        except:
-            _, _, _, num_channels = self.get_file_information(self.input, self.progress_dir)
-
+        image_manager = ImageManager(self.input)
 
         chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
         if self.downsample:
@@ -137,13 +115,13 @@ class NgPrecomputedMaker:
             print(f"DIR {self.rechunkme_path} does not exist, exiting.")
             sys.exit()
         cloudpath = f"file://{self.rechunkme_path}"
-        self.logevent(f"INPUT_DIR: {self.rechunkme_path}")
-        self.logevent(f"OUTPUT_DIR: {self.output}")
+        self.logevent(f"Input DIR: {self.rechunkme_path}")
+        self.logevent(f"Output DIR: {self.output}")
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)
 
-        if num_channels == 3:
+        if image_manager.num_channels == 3:
             print(f'Creating non-sharded transfer tasks with chunks={chunks} and section count={self.section_count}')
             tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=self.mips, chunk_size=chunks, mip=0, skip_downsamples=True)
         else:
@@ -156,7 +134,7 @@ class NgPrecomputedMaker:
         for mip in range(0, self.mips):
             cv = CloudVolume(outpath, mip)
             print(f'Creating downsample tasks at mip={mip}')
-            if num_channels == 3:
+            if image_manager.num_channels == 3:
                 tasks = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True)
             else:
                 tasks = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
