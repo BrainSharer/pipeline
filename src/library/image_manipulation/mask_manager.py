@@ -31,7 +31,7 @@ class MaskManager:
     def apply_user_mask_edits(self):
         """Apply the edits made on the image masks to extract the tissue from the 
         surround debris to create the final masks used to clean the images.
-        INPUT dir is the colored merged masks
+        Input dir is the colored merged masks
         """
         
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
@@ -40,7 +40,7 @@ class MaskManager:
         test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
         files = sorted(os.listdir(self.input))
-        self.logevent(f"INPUT FOLDER: {self.input}")
+        self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {MASKS}")
         for file in files:
@@ -131,10 +131,10 @@ class MaskManager:
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {self.input}")
+        self.logevent(f"Input FOLDER: {self.input}")
         starting_files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {MASKED}")
+        self.logevent(f"Output FOLDER: {MASKED}")
         test_dir(
             self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
@@ -201,7 +201,7 @@ class MaskManager:
         transform = torchvision.transforms.ToTensor()
         self.input = self.fileLocationManager.get_normalized(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {self.input}")
+        self.logevent(f"Input FOLDER: {self.input}")
         
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         os.makedirs(self.output, exist_ok=True)

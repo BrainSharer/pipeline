@@ -31,19 +31,19 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            OUTPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
+            self.output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            self.input = self.fileLocationManager.get_thumbnail(self.channel)
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
-            OUTPUT = self.fileLocationManager.get_full_cleaned(self.channel)
-            INPUT = self.fileLocationManager.get_full(self.channel)
+            self.output = self.fileLocationManager.get_full_cleaned(self.channel)
+            self.input = self.fileLocationManager.get_full(self.channel)
             MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
-        starting_files = os.listdir(INPUT)
-        self.logevent(f"image_cleaner::create_cleaned_images INPUT FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
-        os.makedirs(OUTPUT, exist_ok=True)
+        starting_files = os.listdir(self.input)
+        self.logevent(f"image_cleaner::create_cleaned_images INPUT FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        os.makedirs(self.output, exist_ok=True)
 
-        self.setup_parallel_create_cleaned(INPUT, OUTPUT, MASKS)
+        self.setup_parallel_create_cleaned(MASKS)
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.debug:
             print(f'Updating scan run.')
@@ -51,23 +51,20 @@ class ImageCleaner:
         self.setup_parallel_place_images()
         
 
-    def setup_parallel_create_cleaned(self, INPUT, OUTPUT, MASKS):
+    def setup_parallel_create_cleaned(self, MASKS):
         """Do the image cleaning in parallel
-
-        :param INPUT: str of file location input
-        :param OUTPUT: str of file location output
         :param MASKS: str of file location of masks
         """
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(INPUT))
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(self.input))
 
         file_keys = []
         for file in files:
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(OUTPUT, file)
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(MASKS, file)
@@ -98,13 +95,13 @@ class ImageCleaner:
         We first need to get all the correct image sizes and then update the DB.
         """
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            OUTPUT = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+            self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            self.output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
         else:
-            INPUT = self.fileLocationManager.get_full_cleaned(self.channel)
-            OUTPUT = self.fileLocationManager.get_full_cropped(self.channel)
+            self.input = self.fileLocationManager.get_full_cleaned(self.channel)
+            self.output = self.fileLocationManager.get_full_cropped(self.channel)
 
-        os.makedirs(OUTPUT, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
         if self.downsample:
@@ -115,13 +112,13 @@ class ImageCleaner:
             print(f'Error: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
-        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(INPUT))
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(self.input))
 
         file_keys = []
         for file in files:
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(OUTPUT, file)
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, max_width, max_height])
@@ -164,8 +161,8 @@ class ImageCleaner:
                 None
             """
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1)
-            INPUT = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
 
-            image_manager = ImageManager(INPUT, MASKS)
+            image_manager = ImageManager(self.input, MASKS)
             update_dict = {'bgcolor': image_manager.get_bgcolor() }
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
