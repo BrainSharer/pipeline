@@ -54,7 +54,7 @@ class ElastixManager(FileLogger):
         if self.channel == 1 and self.downsample:
             files = sorted(os.listdir(self.input))
             nfiles = len(files)
-            self.logevent(f"INPUT FOLDER: {self.input}")
+            self.logevent(f"Input FOLDER: {self.input}")
             self.logevent(f"FILE COUNT: {nfiles}")
             for i in range(1, nfiles):
                 fixed_index = os.path.splitext(files[i - 1])[0]
@@ -264,8 +264,8 @@ class ElastixManager(FileLogger):
         """
         MOVING_DIR = os.path.join(self.fileLocationManager.prep, 'CH3', 'thumbnail_cropped')
         FIXED_DIR = self.fileLocationManager.get_thumbnail_aligned(channel=2)
-        OUTPUT = self.fileLocationManager.get_thumbnail_aligned(channel=3)
-        os.makedirs(OUTPUT, exist_ok=True)
+        self.output = self.fileLocationManager.get_thumbnail_aligned(channel=3)
+        os.makedirs(self.output, exist_ok=True)
         moving_files = sorted(os.listdir(MOVING_DIR))
         files = sorted(os.listdir(MOVING_DIR))
         midpoint = len(files) // 2
@@ -304,7 +304,7 @@ class ElastixManager(FileLogger):
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
 
             infile = moving_file
-            outfile = os.path.join(OUTPUT, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, T])
@@ -316,10 +316,10 @@ class ElastixManager(FileLogger):
         """Calculate and store the rigid transformation using elastix.  
         Align CH3 from CH1
         """
-        INPUT = os.path.join(self.fileLocationManager.prep, 'CH3', 'full_cropped')
-        OUTPUT = self.fileLocationManager.get_full_aligned(channel=channel)
-        os.makedirs(OUTPUT, exist_ok=True)
-        files = sorted(os.listdir(INPUT))
+        self.input = os.path.join(self.fileLocationManager.prep, 'CH3', 'full_cropped')
+        self.output = self.fileLocationManager.get_full_aligned(channel=channel)
+        os.makedirs(self.output, exist_ok=True)
+        files = sorted(os.listdir(self.input))
         center = self.get_rotation_center(channel=channel)
         file_keys = []
 
@@ -329,8 +329,8 @@ class ElastixManager(FileLogger):
 
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             Ts = create_scaled_transform(T)
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(OUTPUT, file)
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
 
@@ -365,10 +365,10 @@ class ElastixManager(FileLogger):
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(INPUT))
+        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+        files = sorted(os.listdir(self.input))
         midpoint = len(files) // 2
-        midfilepath = os.path.join(INPUT, files[midpoint])
+        midfilepath = os.path.join(self.input, files[midpoint])
         width, height = get_image_size(midfilepath)
         center = np.array([width, height]) / 2
         return center
@@ -387,8 +387,8 @@ class ElastixManager(FileLogger):
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        INPUT = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(INPUT))
+        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+        files = sorted(os.listdir(self.input))
         midpoint = len(files) // 2
         transformation_to_previous_sec = {}
         center = self.get_rotation_center()
@@ -401,7 +401,7 @@ class ElastixManager(FileLogger):
         transformations = {}
 
         if self.debug:
-            print(f'elastix_manager::get_transformations #files={len(files)} in {INPUT}')
+            print(f'elastix_manager::get_transformations #files={len(files)} in {self.input}')
             print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
 
         for moving_index in range(len(files)):
@@ -432,12 +432,12 @@ class ElastixManager(FileLogger):
         """
         if not self.downsample:
             transforms = create_downsampled_transforms(transforms, downsample=False, scaling_factor=self.scaling_factor)
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
-            self.logevent(f"INPUT FOLDER: {INPUT}")
-            starting_files = os.listdir(INPUT)
+            self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
+            self.logevent(f"Input FOLDER: {self.input}")
+            starting_files = os.listdir(self.input)
             self.logevent(f"FILE COUNT: {len(starting_files)} with {len(transforms)} transforms")
-            self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
-            self.align_images(INPUT, OUTPUT, transforms)
+            self.logevent(f"Output FOLDER: {self.output}")
+            self.align_images(self.input, self.output, transforms)
 
     def align_downsampled_images(self, transforms):
         """align the downsample tiff images
@@ -446,9 +446,9 @@ class ElastixManager(FileLogger):
         """
 
         if self.downsample:
-            INPUT, OUTPUT = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
-            print(f'Aligning {len(os.listdir(INPUT))} images from {os.path.basename(os.path.normpath(INPUT))} to {os.path.basename(os.path.normpath(OUTPUT))}', end=" ")
-            self.align_images(INPUT, OUTPUT, transforms)
+            self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
+            print(f'Aligning {len(os.listdir(self.input))} images from {os.path.basename(os.path.normpath(self.input))} to {os.path.basename(os.path.normpath(self.output))}', end=" ")
+            self.align_images(self.input, self.output, transforms)
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  
@@ -459,28 +459,26 @@ class ElastixManager(FileLogger):
         :param transforms: (array): 3*3 transformation array
         """
         fileLocationManager = FileLocationManager(animal)
-        INPUT = fileLocationManager.rotated_and_padded_thumbnail_mask
-        OUTPUT = fileLocationManager.rotated_and_padded_and_aligned_thumbnail_mask
-        self.align_images(INPUT, OUTPUT, transforms)
+        self.input = fileLocationManager.rotated_and_padded_thumbnail_mask
+        self.output = fileLocationManager.rotated_and_padded_and_aligned_thumbnail_mask
+        self.align_images(self.input, self.output, transforms)
 
-    def align_images(self, INPUT, OUTPUT, transforms):
+    def align_images(self, transforms):
         """function to align a set of images with a with the transformations between them given
         Note: image alignment is memory intensive (but all images are same size)
         6 factor of est. RAM per image for clean/transform needs firmed up but safe
 
-        :param INPUT: (str) directory of images to be aligned
-        :param OUTPUT (str): directory output the aligned images
         :param transforms (dict): dictionary of transformations indexed by id of moving sections
         """
 
-        os.makedirs(OUTPUT, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
         first_file_name = list(transforms.keys())[0]
-        infile = os.path.join(INPUT, first_file_name)
+        infile = os.path.join(self.input, first_file_name)
         file_keys = []
         for file, T in transforms.items():
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(OUTPUT, file)
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, T])
@@ -499,16 +497,16 @@ class ElastixManager(FileLogger):
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        INPUT = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-        OUTPUT = fileLocationManager.section_web
+        self.input = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        self.output = fileLocationManager.section_web
 
-        os.makedirs(OUTPUT, exist_ok=True)
-        files = sorted(os.listdir(INPUT))
+        os.makedirs(self.output, exist_ok=True)
+        files = sorted(os.listdir(self.input))
         file_keys = []
         for file in files:
             png = str(file).replace(".tif", ".png")
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(OUTPUT, png)
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, png)
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile])
