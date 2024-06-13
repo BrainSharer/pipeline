@@ -39,39 +39,39 @@ class PrepCreater:
         """
 
         if self.downsample:
-            INPUT = self.fileLocationManager.thumbnail_original
-            OUTPUT = self.fileLocationManager.get_thumbnail(self.channel)
+            self.input = self.fileLocationManager.thumbnail_original
+            self.output = self.fileLocationManager.get_thumbnail(self.channel)
         else:
-            INPUT = self.fileLocationManager.tif
-            OUTPUT = self.fileLocationManager.get_full(self.channel)
+            self.input = self.fileLocationManager.tif
+            self.output = self.fileLocationManager.get_full(self.channel)
         
-        if not os.path.exists(INPUT):
+        if not os.path.exists(self.input):
             """This checks for the thumbnail_original dir. This might not be available with the original brains
             The data will then be in the regular thumbnail dir
             """
-            print(f'This dir does not exist. {INPUT}')
+            print(f'This dir does not exist. {self.input}')
             print(f'Checking the regular thumbnail dir')
-            INPUT = OUTPUT
-            if not os.path.exists(INPUT):
+            self.input = self.output
+            if not os.path.exists(self.input):
                 return
 
-        starting_files = os.listdir(INPUT)
+        starting_files = os.listdir(self.input)
         if len(starting_files) == 0:
             print('No files to work with, check the thumbnail and/or the thumbnail_original dirs')
             sys.exit()
             
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
-        os.makedirs(OUTPUT, exist_ok=True)
+        self.logevent(f"Output FOLDER: {self.output}")
+        os.makedirs(self.output, exist_ok=True)
         try:
             sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
         except:
             return
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)
-            input_path = os.path.join(INPUT, infile)
-            output_path = os.path.join(OUTPUT, str(section_number).zfill(3) + ".tif")
+            input_path = os.path.join(self.input, infile)
+            output_path = os.path.join(self.output, str(section_number).zfill(3) + ".tif")
             if not os.path.exists(input_path):
                 continue
             relative_input_path = os.path.relpath(input_path, os.path.dirname(output_path))

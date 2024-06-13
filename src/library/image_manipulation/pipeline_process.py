@@ -216,6 +216,7 @@ class Pipeline(
 
     def neuroglancer(self):
         """This is a convenience method to run the entire neuroglancer process.
+        We also define the input, output and progress directories.
         """
 
         if self.downsample:
