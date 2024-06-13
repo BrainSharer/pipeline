@@ -32,11 +32,11 @@ class SlideCZIToTifController():
             .filter(Slide.slide_physical_id == slide_physical_id)
         for slide_row in slide_rows:
             slide_physical_ids.append(slide_row.id)
-        print(f'slide_physical_ids={slide_physical_ids}')
+        print(f'Slide_physical_ids={slide_physical_ids}')
         master_slide = min(slide_physical_ids)
-        print(f'master slide={master_slide}')
+        print(f'Master slide={master_slide}')
         slide_physical_ids.remove(master_slide)
-        print(f'other slides = {slide_physical_ids}')
+        print(f'Other slides = {slide_physical_ids}')
         max_index = self.session.query(func.max(SlideCziTif.scene_index)).filter(SlideCziTif.FK_slide_id == master_slide).one()[0] + 1
         if not isinstance(max_index, int):
             print('we should not get here')

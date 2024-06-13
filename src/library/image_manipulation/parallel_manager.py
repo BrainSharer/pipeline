@@ -49,7 +49,7 @@ class ParallelManager:
 
 
     def run_commands_with_threads(self, function, file_keys, workers):
-        """This method uses the ProcessPoolExecutor library to run
+        """This method uses the ThreadPoolExecutor library to run
         multiple processes at the same time. It also has a debug option.
         This is helpful to show errors on stdout. 
 

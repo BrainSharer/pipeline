@@ -9,6 +9,7 @@ import numpy as np
 import gc
 from skimage.transform import rescale
 import math
+from tifffile import imread, imwrite
 
 SCALING_FACTOR = 32.0
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
@@ -65,14 +66,15 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
     # so 3000 is a good min size. I had to turn this down as we are using
     # blank images and they are small
     # min size on NTB is 8.8K
-    starting_size = 30
+    starting_size = 20
     min_size = starting_size * SCALING_FACTOR * 1000
     if downsample:
         min_size = starting_size
     try:
         files = sorted(os.listdir(directory))
     except:
-        return f"{directory} does not exist"
+        error = f"{directory} does not exist\n"
+        files = []
 
     if section_count == 0:
         section_count = len(files)
@@ -85,7 +87,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
         heights.add(int(height))
         size = os.path.getsize(filepath)
         if size < min_size:
-            error += f"{size} is less than min: {min_size} {filepath} \n"
+            error += f"File is too small. {size} is less than min: {min_size} {filepath} \n"
     # picked 100 as an arbitrary number. the min file count is usually around 380 or so
     if len(files) > 100:
         min_width = min(widths)
@@ -105,6 +107,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
             len(files),
         )
         error += f"Number of files in {directory} is incorrect.\n"
+        error += "If there are no slides in the DB, section count comes from the preps/C1/thumbnail dir. Make sure that is correct.\n"
     if min_width != max_width and min_width > 0 and same_size:
         error += f"Widths are not of equal size, min is {min_width} and max is {max_width}.\n"
     if min_height != max_height and min_height > 0 and same_size:
@@ -122,15 +125,32 @@ def get_cpus():
     nmax = 4
     usecpus = (nmax, nmax)
     cpus = {}
-    cpus["mothra"] = (1, 1)
-    cpus["godzilla"] = (6, 6)
+    cpus["mothra"] = (2, 6)
+    cpus["godzilla"] = (1, 6)
     cpus["muralis"] = (10, 20)
     cpus["basalis"] = (4, 12)
     cpus["ratto"] = (4, 8)
+    cpus["tobor"] = (1, 12)
     hostname = get_hostname()
     if hostname in cpus.keys():
         usecpus = cpus[hostname]
     return usecpus
+
+def get_scratch_dir():
+    """Helper method to return the scratch dir
+    Ratto can't use /scratch as it is not big enough
+    """
+
+    usedir = {}
+    usedir['ratto'] = "/data"
+
+    hostname = get_hostname()
+    if hostname in usedir.keys():
+        tmp_dir = usedir[hostname]
+    else:
+        tmp_dir = "/scratch"
+
+    return tmp_dir
 
 def convert(img, target_type_min, target_type_max, target_type):
     """Converts an image from one type to another and also resizes
@@ -191,7 +211,7 @@ def convert_size(size_bytes: int) -> str:
     return "%s %s" % (s, size_name[i])
 
 
-def write_image(file_path, data, message: str = "Error") -> None:
+def write_image(file_path:str, data, message: str = "Error") -> None:
     """Writes an image to the filesystem
     """
     
@@ -200,7 +220,12 @@ def write_image(file_path, data, message: str = "Error") -> None:
     except Exception as e:
         print(message, e)
         print("Unexpected error:", sys.exc_info()[0])
-        sys.exit()
+        try:
+            imwrite(file_path, data)
+        except Exception as e:
+            print(message, e)
+            print("Unexpected error:", sys.exc_info()[0])
+            sys.exit()
 
 
 def read_image(file_path: str):
@@ -215,6 +240,11 @@ def read_image(file_path: str):
     except:
         print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
 
+    if img is None or img.shape[0] == 0 or img.shape[1] == 0:
+        img = imread(file_path)
+
     if img is None:
+        print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
         sys.exit()
+
     return img

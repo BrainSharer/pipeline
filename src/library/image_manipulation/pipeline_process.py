@@ -23,6 +23,7 @@ from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
+from library.image_manipulation.omezarr_manager import OmeZarrManager
 from library.controller.sql_controller import SqlController
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
 from library.database_model.scan_run import IMAGE_MASK
@@ -48,7 +49,8 @@ class Pipeline(
     ElastixManager,
     NgPrecomputedMaker,
     FileLogger,
-    CellMaker
+    CellMaker,
+    OmeZarrManager
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -58,14 +60,14 @@ class Pipeline(
     TASK_MASK = "Creating masks"
     TASK_CLEAN = "Applying masks"
     TASK_HISTOGRAM =  "Making histogram"
-    TASK_ALIGN = "Creating elastix transform"
-    TASK_CREATE_METRICS = "Creating elastix  metrics"
+    TASK_ALIGN = "Creating alignment process"
+    TASK_REALIGN = "Creating alignment improvements"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
     TASK_NEUROGLANCER = "Neuroglancer"
     TASK_CELL_LABELS = "Creating centroids for cells"
+    TASK_OMEZARR = "Creating multiscaled ome zarr"
 
-
-    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, 
+    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR,  
                  task='status', debug=False):
         """Setting up the pipeline and the processing configurations
         Here is how the Class is instantiated:
@@ -102,15 +104,22 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
+        self.scaling_factor = scaling_factor
+
+        self.mips = 7 
+        if self.downsample:
+            self.mips = 4
 
         super().__init__(self.fileLocationManager.get_logdir())
+        self.report_status()
 
+    def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
-            20), f"@ {str(SCALING_FACTOR)}".ljust(20))
+            20), f"@ {str(self.scaling_factor)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
@@ -120,45 +129,43 @@ class Pipeline(
     def get_section_count(self):
         section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
         if section_count == 0:
-            INPUT = self.fileLocationManager.get_full_aligned()
+            INPUT = self.fileLocationManager.get_thumbnail(channel=1)
             if os.path.exists(INPUT):
                 section_count = len(os.listdir(INPUT))
 
         return section_count
 
-
     def extract(self):
         print(self.TASK_EXTRACT)
         self.extract_slide_meta_data_and_insert_to_database()
-        self.correct_multiples()
+        # self.correct_multiples()
         self.extract_tiffs_from_czi()
         self.create_web_friendly_image()
-        print('Finished extracting.')
+        print(f'Finished {self.TASK_EXTRACT}.')
 
     def mask(self):
         print(self.TASK_MASK)
-        self.update_scanrun()
         self.apply_QC()
         self.create_normalized_image()
         self.create_mask()
-        print('Finished masking.')
-    
+        print(f'Finished {self.TASK_MASK}.')
+
     def clean(self):
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-            
+
         self.create_cleaned_images()
-        print('Finished cleaning')
-    
+        print(f'Finished {self.TASK_CLEAN}.')
+
     def histogram(self):
         print(self.TASK_HISTOGRAM)
         self.make_histogram()
         self.make_combined_histogram()
-        print('Finished creating histograms.')
+        print(f'Finished {self.TASK_HISTOGRAM}.')
 
     def align(self):
-        """The number of iterations is set on the command line argument
+        """Perform the section to section alignment (registration)
         """
 
         print(self.TASK_ALIGN)
@@ -166,15 +173,102 @@ class Pipeline(
         transformations = self.get_transformations()
         self.align_downsampled_images(transformations)
         self.align_full_size_image(transformations)
-
         self.create_web_friendly_sections()
-        print('Finished aligning.')
+        print(f'Finished {self.TASK_ALIGN}.')
 
+    def realign(self):
+        """Perform the improvement of the section to section alignment
+        We need two sets of neuroglancer data, one from the cropped data which is unaligned, 
+        and one from the aligned data. So first check if they both exist, if not, create them.
+        """
 
-    def create_metrics(self):
-        print(self.TASK_CREATE_METRICS)
-        self.call_alignment_metrics()
-        print('Finished creating alignment metrics.')
+        print(self.TASK_REALIGN)
+        neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
+        neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
+        if not os.path.exists(neuroglancer_aligned):
+            print(f'Missing {neuroglancer_aligned}')
+            print('You need to run the neuroglancer task first.')
+            return
+        if not os.path.exists(neuroglancer_cropped):
+            print(f'Missing {neuroglancer_cropped}')
+            print('Creating cropped data first.')
+            self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
+            self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+            downsample=self.downsample,
+            channel=1,
+            cropped=True
+        )
+
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned_rechunked')
+            self.output = neuroglancer_cropped
+            self.run_neuroglancer()
+
+        self.update_within_stack_transformations()
+
+        #####transformations = self.get_transformations()
+        print(f'Finished {self.TASK_REALIGN}.')
+
+    def affine_align(self):
+        """Perform the section to section alignment (registration)
+        """
+
+        self.create_affine_transformations()
+
+    def neuroglancer(self):
+        """This is a convenience method to run the entire neuroglancer process.
+        """
+
+        if self.downsample:
+            self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T_rechunkme')
+
+        else:
+            self.input = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}_rechunkme')
+
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+            downsample=self.downsample,
+            channel=self.channel,
+            cropped=False,
+        )
+        if self.debug:
+            print(f'Input dir={self.input}')
+            print(f'Rechunkme dir={self.rechunkme_path}')
+            print(f'Output dir={self.output}')
+
+        self.run_neuroglancer()
+
+    def run_neuroglancer(self):
+        """The input and output directories are set in either the self.neuroglancer method or
+        the self.realign method.  This method is used to run the neuroglancer process.
+        """
+
+        print(self.TASK_NEUROGLANCER)
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+    def omezarr(self):
+        print(self.TASK_OMEZARR)
+        self.create_omezarr()
+        print(f'Finished {self.TASK_OMEZARR}.')
+
+    def cell_labels(self):
+        """
+        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
+        """
+        print(self.TASK_CELL_LABELS)
+        self.check_prerequisites()
+
+        # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
+
+        # ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
+
+        self.start_labels()
+        print(f'Finished {self.TASK_CELL_LABELS}.')
+
+        # ADD CLEANUP OF SCRATCH FOLDER
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
@@ -183,9 +277,6 @@ class Pipeline(
         TODO fix for channel variable name
         """
         print(self.TASK_EXTRA_CHANNEL)
-        i = 2
-        print(f'Starting iteration {i}')
-        self.iteration = i
         if self.downsample:
             self.create_normalized_image()
             self.create_downsampled_mask()
@@ -196,29 +287,7 @@ class Pipeline(
             self.create_full_resolution_mask(channel=self.channel)
             self.create_cleaned_images_full_resolution(channel=self.channel)
             self.apply_full_transformations(channel=self.channel)
-
-    def neuroglancer(self):
-        print(self.TASK_NEUROGLANCER)
-        self.create_neuroglancer()
-        self.create_downsamples()
-        print('Finished creating neuroglancer data.')
-
-    def cell_labels(self):
-        """
-        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
-        """
-        print(self.TASK_CELL_LABELS)
-        self.check_prerequisites()
-
-        #IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
-
-        #ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
-        
-        self.start_labels()
-        print('Finished automatic cell labeling.')
-
-        #ADD CLEANUP OF SCRATCH FOLDER
-
+        print(f'Finished {self.TASK_EXTRA_CHANNEL}.')
 
     def check_status(self):
         prep = self.fileLocationManager.prep
@@ -228,13 +297,13 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = [f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
+            directories = ['thumbnail_original', f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
                            f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
-                           f'C{self.channel}/thumbnail_aligned']
+                           f'C{self.channel}/thumbnail_cropped', f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
             directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', 
-                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_aligned']
+                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_cropped', f'C{self.channel}/full_aligned']
             ndirectory = f'C{self.channel}'
 
         for directory in directories:
@@ -252,17 +321,12 @@ class Pipeline(
         else:
             print(f'Non-existent dir={dir}')
 
-
     @staticmethod
     def check_programs():
         """
-        Make sure the necessary tools are installed on the machine and configures the memory of 
-        involving tools to work with big images.
-        We use to use java so we adjust the java heap size limit to 10 GB.  This is big enough 
-        for our purpose but should be increased accordingly if your images are bigger
-        If the check failed, check the workernoshell.err.log in your project directory for more information
+        Make sure imagemagick is installed.
         """
-        
+
         error = ""
         if not os.path.exists("/usr/bin/identify"):
             error += "\nImagemagick is not installed"

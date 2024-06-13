@@ -11,6 +11,7 @@ from skimage.filters import gaussian
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
+from library.database_model.annotation_points import AnnotationType
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
@@ -218,7 +219,7 @@ class BrainStructureManager():
     def update_com(self, com, structure_id):
         source = "MANUAL"
         controller = AnnotationSessionController(self.animal)
-        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2)
+        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2, AnnotationType.STRUCTURE_COM)
         x = com[0] * 25
         y = com[1] * 25
         z = com[2] * 25

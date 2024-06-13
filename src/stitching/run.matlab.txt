@@ -1,0 +1,1 @@
+nohup matlab -nodisplay -nosplash -r "run('convert_jp2_tif.m'); exit" > output.log 2>&1 & 

@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 from skimage.exposure import rescale_intensity
 from library.database_model.scan_run import FULL_MASK
+from skimage import color
+from scipy.ndimage import binary_fill_holes
 
 from library.utilities.utilities_process import read_image, write_image
 
@@ -27,7 +29,8 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-def place_image(img, file: str, max_width, max_height, bgcolor=None):
+def place_image(file_key):
+
     """Places the image in a padded one size container with the correct background
 
     :param img: image we are working on.
@@ -37,6 +40,8 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
     :param bgcolor: background color of image, 0 for NTB, white for thionin
     :return: placed image centered in the correct size.
     """
+    infile, outfile, max_width, max_height = file_key
+    img = read_image(infile)
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -45,30 +50,35 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
     startc = zmidc - (img.shape[1] // 2)
     endc = startc + img.shape[1]
     dt = img.dtype
-    if bgcolor == None:
-        start_bottom = img.shape[0] - 5
-        bottom_rows = img[start_bottom:img.shape[0], :]
-        avg = np.mean(bottom_rows)
-        bgcolor = int(round(avg))
-    new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
-    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
+    bgcolor = 0
+
+    placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
     if img.ndim == 2:
         try:
-            new_img[startr:endr, startc:endc] = img
+            placed_img[startr:endr, startc:endc] = img
         except:
-            ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
-            #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
-            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
+            #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            print(f'Could not place {infile} with shape:{img.shape} in {max_height}x{max_width}')
     if img.ndim == 3:
         try:
-            new_img = np.zeros([max_height, max_width, 3]) + bgcolor
-            new_img[startr:endr, startc:endc,0] = img[:,:,0]
-            new_img[startr:endr, startc:endc,1] = img[:,:,1]
-            new_img[startr:endr, startc:endc,2] = img[:,:,2]
+            placed_img = np.zeros([max_height, max_width, 3]) + bgcolor
+            placed_img[startr:endr, startc:endc,0] = img[:,:,0]
+            placed_img[startr:endr, startc:endc,1] = img[:,:,1]
+            placed_img[startr:endr, startc:endc,2] = img[:,:,2]
         except:
-            print(f'Could not place 3DIM {file} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+            print(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+            print('Fixing')
+            img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            placed_img = np.zeros([max_height, max_width, 3]) + bgcolor
+            placed_img[startr:endr, startc:endc,0] = img[:,:,0]
+            placed_img[startr:endr, startc:endc,1] = img[:,:,1]
+            placed_img[startr:endr, startc:endc,2] = img[:,:,2]
     del img
-    return new_img.astype(dt)
+
+    message = f'Error in saving {infile} with shape {placed_img.shape} img type {placed_img.dtype}'
+    write_image(outfile, placed_img.astype(dt), message=message)
+
+    return
 
 
 def normalize_image(img):
@@ -82,25 +92,53 @@ def normalize_image(img):
     return img
 
 
-def scaled(img, mask, scale=30000):
-    """First we find really high values, which are the bright spots and turn them down
+def scaled(img, scale=20000):
+    """Stretch values out to scale
     """
     dtype = img.dtype
-    lower_e = 0.9
-    upper_e = 0.99
-    lower = int(np.quantile(img[img>0], lower_e)) # gets almost the max value of img
-    upper = int(np.quantile(img[img>0], upper_e)) # gets almost the max value of img
-    img[img > upper] = lower
-
-    #img = scale_img(img, scale=45000)
-    
-    _max = np.quantile(img[img>0], upper_e)
-    scaled = (img * (scale / _max)).astype(dtype) # scale the image from original values to e.g., 30000/10000
+    epsilon = 0.99    
+    _max = np.quantile(img[img>0], epsilon)
+    scaled = (img * (scale / _max)).astype(dtype) # scale the image from original values to a broader range of values
     del img
-
     return scaled
 
+def mask_with_background(img, mask):
+    """
+    Masks the image with the given mask and replaces the masked region with the background color.
 
+    Args:
+        img (numpy.ndarray): The input image.
+        mask (numpy.ndarray): The mask to be applied on the image.
+
+    Returns:
+        numpy.ndarray: The masked image with the background color.
+
+    """
+    white = np.where(mask==255)
+    whiterows = white[0]
+    firstrow = whiterows[1]
+    bgcolor = (np.max(img[firstrow]))
+    img[mask == 0] = bgcolor
+    return img
+
+def mask_with_contours(img):
+
+    new_img = color.rgb2gray(img)
+    new_img *= 255 # or any coefficient
+    new_img = new_img.astype(np.uint8)
+    new_img[(new_img > 200)] = 0
+    lowerbound = 0
+    upperbound = 255
+    #all pixels value above lowerbound will  be set to upperbound 
+    _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(50,50))
+    thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8,8))
+    smoothed = cv2.morphologyEx(thresh, cv2.MORPH_ERODE, kernel)
+    inverted_thresh = cv2.bitwise_not(smoothed)
+    filled_thresh = binary_fill_holes(inverted_thresh).astype(np.uint8)
+    return cv2.bitwise_and(img,img, mask=filled_thresh)
+    #return cv2.bitwise_not(img, filled_thresh)
 
 def equalized(fixed, cliplimit=5):
     """Takes an image that has already been scaled and uses opencv adaptive histogram
@@ -111,8 +149,11 @@ def equalized(fixed, cliplimit=5):
     :param fixed: image we are working on
     :return: a better looking image
     """
-    
-    clahe = cv2.createCLAHE(clipLimit=cliplimit, tileGridSize=(8, 8))
+    cliplimit = 5
+    if fixed.ndim == 3:
+        fixed = cv2.cvtColor(fixed, cv2.COLOR_BGR2GRAY)
+        fixed = scaled(fixed, scale=200)
+    clahe = cv2.createCLAHE(clipLimit=cliplimit, tileGridSize=(8, 32))
     fixed = clahe.apply(fixed)
     return fixed
 
@@ -134,11 +175,17 @@ def normalize16(img):
         img = ((img - mn)/mx) * 2**16 - 1
         return np.round(img).astype(np.uint16) 
 
+
 def clean_and_rotate_image(file_key):
     """The main function that uses the user edited mask to crop out the tissue from 
     surrounding debris. It also rotates the image to
     a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
     The hippocampus is facing up and the brainstem is facing down)
+    Normalization needs adjusting, for section 064 of DK101, the cells get an uwanted
+    outline that is far too bright. This happens with the scaled method.
+    An affected area on 064.tif full resolution is top left corner of 32180x19665, and
+    bottom right corner at: 33500x20400 on the full cleaned version
+    For the regular tif, look at 15812x43685, 16816x44463
 
     :param file_key: is a tuple of the following:
 
@@ -154,16 +201,23 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, downsample = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
-    cleaned = apply_mask(img, mask, infile)
-    if channel == 1:
-        #cleaned = normalize_image(cleaned)
-        cleaned = scaled(cleaned, mask)
-        cleaned = equalized(cleaned, cliplimit=2)
-        #cleaned = normalize16(cleaned)
+
+    try:
+        cleaned = cv2.bitwise_and(img, img, mask=mask)
+    except:
+        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+        print("Are the shapes exactly the same?")
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+
+    if cleaned.ndim == 2:
+        cleaned = scaled(cleaned)
+    if cleaned.ndim == 3 and downsample:
+        cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
@@ -175,32 +229,11 @@ def clean_and_rotate_image(file_key):
         cleaned = np.flip(cleaned)
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
-    cleaned = place_image(cleaned, infile, max_width, max_height, bgcolor=0)
 
-    message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
-    write_image(outpath, cleaned, message=message)
-        
+    message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
+    write_image(outfile, cleaned, message=message)
+
     return
-
-
-def apply_mask(img, mask, infile):
-    """Apply image mask to image.
-
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :param infile: path to file
-    :return: numpy array of cleaned image
-    """
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-    return cleaned
-
 
 def crop_image(img, mask):
     """Crop image to remove parts of image not in mask
@@ -211,7 +244,7 @@ def crop_image(img, mask):
     """
 
     x1, y1, x2, y2 = get_image_box(mask)
-    img = np.ascontiguousarray(img, dtype=np.uint16)
+    img = np.ascontiguousarray(img, dtype=img.dtype)
     cropped = img[y1:y2, x1:x2]
     return cropped
 
@@ -246,6 +279,48 @@ def get_image_box(mask):
     x1, y1, x2, y2 = [0 if i < 0 else i for i in [x1, y1, x2, y2]]
     return x1, y1, x2, y2
 
+def get_box_corners(arr):
+    areaArray = []  
+    _, thresh = cv2.threshold(arr, 200, 250, 0)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    for i, c in enumerate(contours):
+        area = cv2.contourArea(c)
+        areaArray.append(area)
+
+    #first sort the array by area
+    sorteddata = sorted(zip(areaArray, contours), key=lambda x: x[0], reverse=True)
+    #find the nth largest contour [n-1][1], in this case 2
+    secondlargestcontour = sorteddata[1][1]    
+
+    x,y,w,h = cv2.boundingRect(secondlargestcontour)
+    p1x = x
+    p1y = y
+    
+    p2x = x+w
+    p2y = y
+    
+    p3x = x
+    p3y = y+h
+    
+    p4x = x+w
+    p4y = y+h
+    """
+    moving_file = os.path.join(self.input, f"{moving_index}.tif")
+    moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+    if not os.path.exists(moving_point_file):
+        moving_arr = read_image(moving_file)
+        moving_arr = normalize8(moving_arr)
+        p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y = get_box_corners(moving_arr)
+        with open(moving_point_file, 'w') as f:
+            f.write('point\n')
+            f.write('4\n')
+            f.write(f'{p1x} {p1y}\n')
+            f.write(f'{p2x} {p2y}\n')
+            f.write(f'{p3x} {p3y}\n')
+            f.write(f'{p4x} {p4y}\n')
+    """
+    return p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y
+
 
 def merge_mask(image, mask):
     """Merge image with mask [so user can edit]
@@ -255,10 +330,14 @@ def merge_mask(image, mask):
     :param mask: numpy array of the mask
     :return: merged numpy array
     """
-
     b = mask
-    g = image
-    r = np.zeros_like(image).astype(np.uint8)
+
+    if image.ndim == 3:     
+        g = image[:,:,1]
+        r = np.zeros_like(image[:,:,0]).astype(np.uint8)
+    else:
+        g = image
+        r = np.zeros_like(image).astype(np.uint8)
     merged = np.stack([r, g, b], axis=2)
     return merged
 

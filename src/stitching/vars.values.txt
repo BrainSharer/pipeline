@@ -1,0 +1,20 @@
+stack_size_um = 576   384   250
+stack_size = 1536        1024         250
+ds_stack_size =  288   192   125
+vol_bbox_z_mx_um =  56770       57694
+vol_bbox_mm_um =  1.0e+04 * 3.0996    3.0366    5.6770
+vol_bbox_xx_um = 1.0e+04 *  3.8767    3.9787    5.7694
+vol_bbox_ll_um = 1.0e+03 * 7772.1    9422.1    925.0
+ds_bbox_ll = 3886        4711         463
+
+stack_size_um [576, 384, 250]
+ds_stack_size [288, 192, 125]
+vol_bbox_ll_um [7772.125, 9422.125, 925]
+Big box shape=(463, 3887, 4712)
+# identify yields y = 463, x = 3887, z = 4711
+
+
+
+
+
+

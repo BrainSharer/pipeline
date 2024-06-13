@@ -63,7 +63,9 @@ class FileLocationManager(object):
 
     def get_full_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full_cleaned")
-
+    
+    def get_full_cropped(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "full_cropped")
 
     def get_full_aligned(self, channel=1):
         if isinstance(channel, int):
@@ -81,7 +83,7 @@ class FileLocationManager(object):
 
     def get_alignment_directories(self, channel, resolution):
 
-        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cleaned')
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cropped')
         output = os.path.join(self.prep, f'C{channel}', f'{resolution}_aligned')
 
         os.makedirs(output, exist_ok=True)
@@ -92,6 +94,9 @@ class FileLocationManager(object):
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
+    
+    def get_thumbnail_cropped(self, channel=1):
+        return os.path.join(self.prep, f"C{channel}", "thumbnail_cropped")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")
@@ -128,17 +133,20 @@ class FileLocationManager(object):
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
+
         if not rechunk:
             channel_outdir += "_rechunkme"
+
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel=1, rechunk=False):
+    def get_neuroglancer_progress(self, downsample=True, channel=1, cropped=False):
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
 
-        if not rechunk:
-            channel_outdir += "_rechunkme"
+        if cropped:
+            channel_outdir += "_unaligned"
+
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 
     def get_logdir(self):

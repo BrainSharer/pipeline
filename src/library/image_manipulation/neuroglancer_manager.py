@@ -146,7 +146,7 @@ class NumpyToNeuroglancer():
             volume_size=volume_size,  # X,Y,Z size in voxels
         )
         self.starting_points = starting_points
-        self.precomputed_vol = CloudVolume(f'file://{path}', mip=0, info=info, compress=True, progress=False)
+        self.precomputed_vol = CloudVolume(f'file://{path}', info=info, compress=True, progress=False)
         self.precomputed_vol.commit_info()
         self.precomputed_vol.commit_provenance()
 
@@ -385,8 +385,9 @@ class NumpyToNeuroglancer():
 
         try:
             self.precomputed_vol[:, :, index] = img
-        except:
+        except Exception as ex:
             print(f'could not set {infile} to precomputed, adding blank img')
+            print(ex)
             return
 
         touch(progress_file)
