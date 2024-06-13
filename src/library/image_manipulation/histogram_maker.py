@@ -26,21 +26,21 @@ class HistogramMaker:
         """
 
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-            MASK_INPUT = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
+            self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
             files = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
-            test_dir(self.animal, INPUT, self.section_count, downsample=True, same_size=False)
+            test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
             if len(files) == 0:
                 print(" No sections in the database")
-            OUTPUT = self.fileLocationManager.get_histogram(self.channel)
-            os.makedirs(OUTPUT, exist_ok=True)
+            self.output = self.fileLocationManager.get_histogram(self.channel)
+            os.makedirs(self.output, exist_ok=True)
             file_keys = []
             for i, file in enumerate(files):
                 filename = str(i).zfill(3) + ".tif"
-                input_path = os.path.join(INPUT, filename)
-                mask_path = os.path.join(MASK_INPUT, filename)
+                input_path = os.path.join(self.input, filename)
+                mask_path = os.path.join(MASKS, filename)
                 output_path = os.path.join(
-                    OUTPUT, os.path.splitext(file.file_name)[0] + ".png"
+                    self.output, os.path.splitext(file.file_name)[0] + ".png"
                 )
                 if not os.path.exists(input_path):
                     print("Input tif does not exist", input_path)
@@ -67,30 +67,29 @@ class HistogramMaker:
         """
 
         if self.downsample:
-            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-            MASK_INPUT = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
-            OUTPUT = self.fileLocationManager.get_histogram(self.channel)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
-            files = os.listdir(INPUT)
+            self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
+            self.output = self.fileLocationManager.get_histogram(self.channel)
+            self.logevent(f"Input FOLDER: {self.input}")
+            files = os.listdir(self.input)
             files = [os.path.basename(i) for i in files]
             lfiles = len(files)
             self.logevent(f"CURRENT FILE COUNT: {lfiles}")
-            self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
-            os.makedirs(OUTPUT, exist_ok=True)
-            # files = os.listdir(INPUT) #deprecated 28-jun-2022
+            self.logevent(f"Output FOLDER: {self.output}")
+            os.makedirs(self.output, exist_ok=True)
             hist_dict = Counter({})
             outfile = f"{self.animal}.png"
-            outpath = os.path.join(OUTPUT, outfile)
+            outpath = os.path.join(self.output, outfile)
             if os.path.exists(outpath):
                 return
             midindex = lfiles // 2
-            midfilepath = os.path.join(INPUT, files[midindex])
+            midfilepath = os.path.join(self.input, files[midindex])
             img = io.imread(midfilepath)
             bits = img.dtype
             del img
             for file in files:
-                input_path = os.path.join(INPUT, file)
-                mask_path = os.path.join(MASK_INPUT, file)
+                input_path = os.path.join(self.input, file)
+                mask_path = os.path.join(MASKS, file)
                 try:
                     img = io.imread(input_path)
                 except:

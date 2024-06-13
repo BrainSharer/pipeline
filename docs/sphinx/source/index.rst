@@ -20,6 +20,7 @@ Use the side navigation panel to view different documentation topics.
    :caption: Preprocessing pipeline
    :hidden:
 
+   modules/data_ingestion.rst
    modules/masking_scripts.rst
    modules/pipeline_scripts.rst
    modules/registration_scripts.rst

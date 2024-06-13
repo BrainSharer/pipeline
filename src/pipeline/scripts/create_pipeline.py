@@ -1,11 +1,14 @@
 """This program will create everything.
 The only required argument is the animal and step. By default it will work on channel=1
-and downsample = True. Run them in this sequence:
+and downsample = True. Run them in this sequence for channel 1, when that is done, run
+them again for the remaining channels and then for the full resolution version:
 
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false --task
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 2|3 downsample false --task
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task status
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task mask
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
 
 Explanation for the tasks:
 
@@ -23,8 +26,6 @@ Explanation for the tasks:
 - histogram - Histograms showing the distribution of the image intensity levels are created \
     for all cleaned channel 1 sections.
 - align - Section to section alignment with Elastix is then run on the cleaned images using a rigid transformation. 
-- create_metrics - Each section to section alignment with Elastix is evaluated on the cleaned images. This data \
-    is entered into the database for reference purposes.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 
 **Timing results**
@@ -57,10 +58,12 @@ from pathlib import Path
 import sys, socket
 from timeit import default_timer as timer
 
+
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.pipeline_process import Pipeline
+from library.utilities.utilities_process import SCALING_FACTOR
 
 
 if __name__ == "__main__":
@@ -84,12 +87,19 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--scaling_factor",
+        help="Used for downsampling, defaults to 32",
+        required=False,
+        default=SCALING_FACTOR,
+        type=float
+    )
+    parser.add_argument(
         "--debug", help="Enter true or false", required=False, default="false", type=str
     )
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
-                        extract|mask|clean|histogram|align|create_metrics|extra_channel|neuroglancer|status|cell_labels",
+                        extract|mask|clean|histogram|align|extra_channel|neuroglancer|status|cell_labels",
         required=False,
         default="status",
         type=str,
@@ -101,6 +111,7 @@ if __name__ == "__main__":
     rescan_number = int(args.rescan_number)
     channel = args.channel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
+    scaling_factor = args.scaling_factor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     process_hostname = socket.gethostname()
@@ -110,6 +121,7 @@ if __name__ == "__main__":
         rescan_number=rescan_number,
         channel=channel,
         downsample=downsample,
+        scaling_factor=scaling_factor,
         task=task,
         debug=debug,
     )
@@ -120,10 +132,12 @@ if __name__ == "__main__":
         "clean": pipeline.clean,
         "histogram": pipeline.histogram,
         "align": pipeline.align,
-        "create_metrics": pipeline.create_metrics,
+        "realign": pipeline.realign,
+        "affine": pipeline.affine_align,
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
         "cell_labels": pipeline.cell_labels,
+        "omezarr": pipeline.omezarr,
         "status": pipeline.check_status,
     }
 

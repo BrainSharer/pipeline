@@ -79,7 +79,7 @@ class MetaUtilities:
             msg2 = "NO DUPLICATE FILES; CONTINUE"
         else:
             self.multiple_slides = list(set([i for i in slide_id if slide_id.count(i)>1]))
-            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S);"
+            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); multiple_slides with physical IDs={self.multiple_slides}"
             
         print(msg, msg2, sep="\n")
         self.logevent(msg)
@@ -212,4 +212,4 @@ class MetaUtilities:
     def correct_multiples(self):
         for slide_physical_id in self.multiple_slides:
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id)
-            print(f'updated tiffs to fall use this slide physical ID={slide_physical_id}')
+            print(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')

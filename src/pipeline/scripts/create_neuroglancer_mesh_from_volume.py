@@ -5,6 +5,7 @@ import argparse
 import os
 import sys
 from PIL import Image
+
 Image.MAX_IMAGE_PIXELS = None
 from cloudvolume import CloudVolume
 import shutil
@@ -17,6 +18,7 @@ PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.controller.sql_controller import SqlController
 
 # from library.controller.sql_controller import SqlController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -32,21 +34,22 @@ def get_ids_from_csv(csvfile, ids):
 
 def create_mesh(animal, volume_file, csvfile=None):
     chunks = (64, 64, 64)
-    #sqlController = SqlController(animal)
+    sqlController = SqlController(animal)
     fileLocationManager = FileLocationManager(animal)
-    #xy = sqlController.scan_run.resolution * 1000
-    #z = sqlController.scan_run.zresolution * 1000
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'registration')
+    xy = sqlController.scan_run.resolution * 1000
+    z = sqlController.scan_run.zresolution * 1000
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'registration')
     outpath = os.path.basename(volume_file)
     outpath = outpath.split('.')[0]
     MESH_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_{outpath}')
     PROGRESS_DIR = os.path.join(fileLocationManager.neuroglancer_data, 'progress', f'mesh_{outpath}')
     
-    #xy *=  SCALING_FACTOR
-
-    #scales = (int(xy), int(xy), int(z))
-    scales = (25000, 25000, 25000)
-    if 'godzilla' in get_hostname():
+    xy *=  10
+    scales = (int(xy), int(xy), int(z))
+    print(f'scales={scales}')
+    
+    #scales = (25000, 25000, 25000)
+    if 'mothra' in get_hostname():
         print(f'Cleaning {MESH_DIR}')
         if os.path.exists(MESH_DIR):
             shutil.rmtree(MESH_DIR)
@@ -66,7 +69,8 @@ def create_mesh(animal, volume_file, csvfile=None):
     print(f'Volume: {infile} dtype={data_type}, shape={volume.shape}')
     print(f'Initial chunks at {chunks} and chunks for downsampling={chunks} and scales with {scales}')
     print(f'IDS={ids}')
-    #print(f'counts={counts}')
+    print(f'counts={counts}')
+    return
     
     
     ng = NumpyToNeuroglancer(animal, volume, scales, layer_type='segmentation', 

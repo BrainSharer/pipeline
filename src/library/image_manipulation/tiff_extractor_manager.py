@@ -46,6 +46,8 @@ class TiffExtractor(ParallelManager):
         sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
+            print("Were the CZI file names correct on birdstore?")
+            print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
         file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1

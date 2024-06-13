@@ -5,8 +5,10 @@ https://www.cis.upenn.edu/~jshi/ped_html/
 
 import os
 import numpy as np
+from tqdm import tqdm
 import torch
 from PIL import Image
+from skimage import color
 Image.MAX_IMAGE_PIXELS = None
 import cv2
 import torchvision
@@ -15,7 +17,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
-from library.utilities.utilities_process import read_image, test_dir, get_image_size
+from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
 
 class MaskManager:
@@ -29,20 +31,20 @@ class MaskManager:
     def apply_user_mask_edits(self):
         """Apply the edits made on the image masks to extract the tissue from the 
         surround debris to create the final masks used to clean the images.
-        INPUT dir is the colored merged masks
+        Input dir is the colored merged masks
         """
         
-        INPUT = self.fileLocationManager.get_thumbnail_colored(self.channel)
+        self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        test_dir(self.animal, INPUT, self.section_count, True, same_size=False)
+        test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         os.makedirs(MASKS, exist_ok=True)
-        files = sorted(os.listdir(INPUT))
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        files = sorted(os.listdir(self.input))
+        self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {MASKS}")
         for file in files:
-            filepath = os.path.join(INPUT, file)
+            filepath = os.path.join(self.input, file)
             maskpath = os.path.join(MASKS, file)
             if os.path.exists(maskpath):
                 continue
@@ -65,7 +67,7 @@ class MaskManager:
                 lastrow = whiterows[-1]
                 lastcol = max(white[1])
                 mask[firstrow:lastrow, 0:lastcol] = 255
-                cv2.imwrite(maskfillpath, mask.astype(np.uint8))
+                write_image(maskfillpath, mask.astype(np.uint8))
 
 
     def get_model_instance_segmentation(self, num_classes):
@@ -92,7 +94,9 @@ class MaskManager:
     def create_mask(self):
         """Helper method to call either full resolition of downsampled.
         Create the images masks for extracting the tissue from the surrounding 
-        debris using a CNN based machine learning algorithm
+        debris using a CNN based machine learning algorithm.
+        If the images are from the MDXXX brains, they are 3 dimenions so the masks
+        need to be done differently
         """
         
         if self.channel == 1:
@@ -124,21 +128,21 @@ class MaskManager:
         """Upsample the masks created for the downsampled images to the full resolution
         """
         
-        FULLRES = self.fileLocationManager.get_full(self.channel)
+        self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {FULLRES}")
-        starting_files = os.listdir(FULLRES)
+        self.logevent(f"Input FOLDER: {self.input}")
+        starting_files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {MASKED}")
+        self.logevent(f"Output FOLDER: {MASKED}")
         test_dir(
-            self.animal, FULLRES, self.section_count, self.downsample, same_size=False
+            self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
         os.makedirs(MASKED, exist_ok=True)
-        files = sorted(os.listdir(FULLRES))
+        files = sorted(os.listdir(self.input))
         file_keys = []
-        for file in files:
-            infile = os.path.join(FULLRES, file)
+        for file in tqdm(files):
+            infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
             outfile = os.path.join(MASKED, file)
             if os.path.exists(outfile):
@@ -153,6 +157,40 @@ class MaskManager:
         workers = self.get_nworkers()
         self.run_commands_concurrently(self.resize_tif, file_keys, workers)
 
+    def create_contour_mask(self):
+        """Create masks for the downsampled images using contours
+        The input files are the files that have not been normalized
+        The output files are the colored merged files. 
+        """
+        
+        self.input = self.fileLocationManager.get_thumbnail(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_masked(channel=1)
+        os.makedirs(self.output, exist_ok=True)
+        
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files = os.listdir(self.input)
+        for file in files:
+            infile = os.path.join(self.input, file)
+            mask_dest_file = (os.path.splitext(file)[0] + ".tif")
+            maskpath = os.path.join(self.output, mask_dest_file)
+
+            if os.path.exists(maskpath):
+                continue
+
+            img = read_image(infile)
+            new_img = color.rgb2gray(img)
+            new_img *= 255 # or any coefficient
+            new_img = new_img.astype(np.uint8)
+            new_img[(new_img > 200)] = 0
+            lowerbound = 0
+            upperbound = 255
+            #all pixels value above lowerbound will  be set to upperbound 
+            _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+            thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
+            mask = cv2.bitwise_not(thresh)            
+            cv2.imwrite(maskpath, mask.astype(np.uint8))
+
     def create_downsampled_mask(self):
         """Create masks for the downsampled images using a machine learning algorithm.
         The input files are the files that have been normalized.
@@ -161,19 +199,19 @@ class MaskManager:
         
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
-        NORMALIZED = self.fileLocationManager.get_normalized(self.channel)
-        COLORED = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"INPUT FOLDER: {NORMALIZED}")
+        self.input = self.fileLocationManager.get_normalized(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
+        self.logevent(f"Input FOLDER: {self.input}")
         
-        test_dir(self.animal, NORMALIZED, self.section_count, self.downsample, same_size=False)
-        os.makedirs(COLORED, exist_ok=True)
-        files = os.listdir(NORMALIZED)
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        os.makedirs(self.output, exist_ok=True)
+        files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"OUTPUT FOLDER: {COLORED}")
-        for file in files:
-            filepath = os.path.join(NORMALIZED, file)
+        self.logevent(f"self.output FOLDER: {self.output}")
+        for file in tqdm(files):
+            filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
-            maskpath = os.path.join(COLORED, mask_dest_file)
+            maskpath = os.path.join(self.output, mask_dest_file)
 
             if os.path.exists(maskpath):
                 continue
@@ -185,7 +223,7 @@ class MaskManager:
                 self.loaded_model.eval()
                 with torch.no_grad():
                     pred = self.loaded_model(torch_input)
-                masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                masks = [(pred[0]["masks"] > 0.25).squeeze().detach().cpu().numpy()]
                 mask = masks[0]
                 dims = mask.ndim
                 if dims > 2:

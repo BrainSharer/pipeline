@@ -1,11 +1,14 @@
 import sys
 from pathlib import Path
 import numpy as np
-import pandas as pd
+import pymysql
+from sqlalchemy import exc
+
 from scipy.ndimage import center_of_mass
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from collections import defaultdict
 import cv2
+
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -16,6 +19,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 from library.database_model.annotation_points import PolygonSequence, AnnotationType, StructureCOM
 from library.utilities.atlas import allen_structures, singular_structures
 from library.controller.polygon_sequence_controller import PolygonSequenceController
+from library.utilities.utilities_process import SCALING_FACTOR
 
 
 def update_coms(debug=False):
@@ -163,23 +167,39 @@ def load_foundation_brain_polygon_sequences(animal):
     source = 'NA'
     for abbreviation, v in brainManager.aligned_contours.items():
         FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
-        FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.POLYGON_SEQUENCE, 
-                                                                                FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
+        annotation_session = annotationSessionController.get_annotation_session(prep_id=animal, brain_region_id=FK_brain_region_id, 
+                                                                            annotator_id=1, annotation_type=AnnotationType.POLYGON_SEQUENCE)
         for section, vertices in v.items():
             polygon_index = int(section)
             point_order = 1
             z = float(int(section) * zresolution)
             vlist = []
-            for x,y in vertices:
-                x = x * 32 * xy_resolution
-                y = y * 32 * xy_resolution
+            step = int(len(vertices)/ 100)
+            #print(f'abbrev={abbreviation} section={section} len vertices={len(vertices)} step={step}')
+            #continue
+            for vertex in range(0, len(vertices), step):
+                x = vertices[vertex][0]
+                y = vertices[vertex][1]
+                
+                x = x * SCALING_FACTOR * xy_resolution
+                y = y * SCALING_FACTOR * xy_resolution
                 #print(source, x, y, z, polygon_index, point_order, FK_session_id)
                 polygon_sequence = PolygonSequence(x=x, y=y, z=z, source=source, 
-                                                polygon_index=polygon_index, point_order=point_order, FK_session_id=FK_session_id)
+                                                polygon_index=polygon_index, point_order=point_order, FK_session_id=annotation_session.id)
+                
                 point_order += 1
                 vlist.append(polygon_sequence)
-            brainManager.sqlController.session.bulk_save_objects(vlist)
-            brainManager.sqlController.session.commit()
+
+            try:
+                brainManager.sqlController.session.bulk_save_objects(vlist)
+                brainManager.sqlController.session.commit()
+            except pymysql.err.IntegrityError as e:
+                brainManager.sqlController.session.rollback()
+            except exc.IntegrityError as e:
+                brainManager.sqlController.session.rollback()
+            except Exception as e:
+                brainManager.sqlController.session.rollback()
+
 
 
 if __name__ == '__main__':

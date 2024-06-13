@@ -6,11 +6,6 @@ Pipeline scripts
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: pipeline.scripts.create_alignment_metrics
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 .. automodule:: pipeline.scripts.create_neuroglancer_mesh_from_volume
    :members:
    :undoc-members:
