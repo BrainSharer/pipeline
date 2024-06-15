@@ -40,7 +40,7 @@ class ImageCleaner:
             MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
         starting_files = os.listdir(self.input)
-        self.logevent(f"image_cleaner::create_cleaned_images INPUT FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
         os.makedirs(self.output, exist_ok=True)
 
         self.setup_parallel_create_cleaned(MASKS)

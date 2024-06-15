@@ -50,6 +50,7 @@ from library.utilities.utilities_mask import normalize8, smooth_image
 from library.utilities.utilities_process import read_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
+from library.image_manipulation.image_manager import ImageManger
 
 # constants
 MOVING_CROP = 50
@@ -500,37 +501,21 @@ class VolumeRegistration:
                 cv2.imwrite(outpath, img)
 
 
-    def get_file_information(self):
-        """Get information about the mid file in the image stack
-
-        :return files: list of files in the directory
-        :return volume_size: tuple of numpy shape
-        """
-
-        files = sorted(os.listdir(self.thumbnail_aligned))
-        midpoint = len(files) // 20
-        midfilepath = os.path.join(self.thumbnail_aligned, files[midpoint])
-        midfile = read_image(midfilepath)
-        rows = midfile.shape[0]
-        columns = midfile.shape[1]
-        volume_size = (rows, columns, len(files))
-        return files, volume_size, midfile.dtype
-
-
     def create_volume(self):
         """Create a 3D volume of the image stack
         """
-        files, volume_size, dtype = self.get_file_information()
-        image_stack = np.zeros(volume_size)
+        image_manager = ImageManger(self.thumbnail_aligned)
+
+        image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in tqdm(files):
+        for ffile in tqdm(image_manager.files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             farr[farr > 250] = 0
             farr = smooth_image(farr)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
-        io.imsave(self.moving_volume_path, image_stack.astype(dtype))
+        io.imsave(self.moving_volume_path, image_stack.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
     def create_precomputed(self):
