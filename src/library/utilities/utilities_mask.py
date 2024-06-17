@@ -213,7 +213,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image, downsample, bgcolor = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -226,9 +226,7 @@ def clean_and_rotate_image(file_key):
         print("Unexpected error:", sys.exc_info()[0])
         raise
 
-    if cleaned.ndim == 2:
-        cleaned = scaled(cleaned)
-    if cleaned.ndim == 3 and downsample:
+    if cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
         r = cleaned[:,:,0]
         g = cleaned[:,:,1]
@@ -237,8 +235,9 @@ def clean_and_rotate_image(file_key):
         g[g == 0] = bgcolor[1]
         b[b == 0] = bgcolor[2]
         cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
+    else:
+        cleaned = scaled(cleaned)
         
-        #cleaned = mask_with_contours(cleaned)
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
