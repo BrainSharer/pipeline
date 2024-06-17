@@ -44,5 +44,7 @@ class ImageManager:
         bgcolor = self.img[firstrow, firstcol]
         if isinstance(bgcolor, list):
             bgcolor = tuple(bgcolor)
+        else:
+            bgcolor = int(bgcolor)
         return bgcolor
 
