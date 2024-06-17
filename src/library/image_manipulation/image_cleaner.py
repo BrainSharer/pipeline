@@ -33,17 +33,21 @@ class ImageCleaner:
         if self.downsample:
             self.output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+            self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
             self.output = self.fileLocationManager.get_full_cleaned(self.channel)
             self.input = self.fileLocationManager.get_full(self.channel)
-            MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
+            self.maskpath = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
         starting_files = os.listdir(self.input)
-        self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
+        image_manager = ImageManager(self.input)
+        
+        self.bgcolor = image_manager.get_bgcolor(self.maskpath)
+        print(f'bgcolor={self.bgcolor}')
 
-        self.setup_parallel_create_cleaned(MASKS)
+        self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.debug:
             print(f'Updating scan run.')
@@ -51,9 +55,8 @@ class ImageCleaner:
         self.setup_parallel_place_images()
         
 
-    def setup_parallel_create_cleaned(self, MASKS):
+    def setup_parallel_create_cleaned(self):
         """Do the image cleaning in parallel
-        :param MASKS: str of file location of masks
         """
 
         rotation = self.sqlController.scan_run.rotation
@@ -67,7 +70,7 @@ class ImageCleaner:
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
-            maskfile = os.path.join(MASKS, file)
+            maskfile = os.path.join(self.maskpath, file)
 
             file_keys.append(
                 [
@@ -77,7 +80,8 @@ class ImageCleaner:
                     rotation,
                     flip,
                     self.mask_image,
-                    self.downsample
+                    self.downsample,
+                    self.bgcolor
                 ]
             )
 
@@ -109,7 +113,7 @@ class ImageCleaner:
             max_height = int(max_height / SCALING_FACTOR)
 
         if max_width == 0 or max_height == 0:
-            print(f'Error: width or height is 0. width={max_width} height={max_height}')
+            print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
@@ -121,7 +125,7 @@ class ImageCleaner:
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
-            file_keys.append([infile, outfile, max_width, max_height])
+            file_keys.append([infile, outfile, max_width, max_height, self.bgcolor])
 
         if self.debug:
             print(f'len of file keys in place={len(file_keys)}')
@@ -129,12 +133,12 @@ class ImageCleaner:
         self.run_commands_concurrently(place_image, file_keys, workers)
 
     def set_crop_size(self):
-        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
-        maskfiles = sorted(os.listdir(MASKS))
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        maskfiles = sorted(os.listdir(self.maskpath))
         widths = []
         heights = []
         for maskfile in maskfiles:
-            maskpath = os.path.join(MASKS, maskfile)
+            maskpath = os.path.join(self.maskpath, maskfile)
             mask = read_image(maskpath)
             x1, y1, x2, y2 = get_image_box(mask)
             width = x2 - x1
@@ -160,9 +164,9 @@ class ImageCleaner:
             Returns:
                 None
             """
-            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1)
+            self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
             self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
 
-            image_manager = ImageManager(self.input, MASKS)
+            image_manager = ImageManager(self.input, self.maskpath)
             update_dict = {'bgcolor': image_manager.get_bgcolor() }
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
