@@ -166,9 +166,11 @@ class Pipeline(
 
     def align(self):
         """Perform the section to section alignment (registration)
+        We need to set the maskpath to get information from ImageManager
         """
 
         print(self.TASK_ALIGN)
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
         self.create_within_stack_transformations()
         transformations = self.get_transformations()
         self.align_downsampled_images(transformations)
