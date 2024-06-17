@@ -36,7 +36,10 @@ class ImageManager:
         
         white = np.where(self.mask==255)
         whiterows = white[0]
+        whitecols = white[1]
         firstrow = whiterows[0]
-        bgcolor = (np.max(self.img[firstrow]))
+        firstcol = whitecols[1]
+        bgcolor = self.img[firstrow, firstcol]
+
         return bgcolor
 
