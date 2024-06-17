@@ -42,10 +42,8 @@ class ImageCleaner:
         starting_files = os.listdir(self.input)
         self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
-        image_manager = ImageManager(self.input)
-        
+        image_manager = ImageManager(self.input)        
         self.bgcolor = image_manager.get_bgcolor(self.maskpath)
-        print(f'bgcolor={self.bgcolor}')
 
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 

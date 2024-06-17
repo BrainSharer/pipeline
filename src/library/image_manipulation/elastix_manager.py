@@ -471,6 +471,8 @@ class ElastixManager(FileLogger):
 
         :param transforms (dict): dictionary of transformations indexed by id of moving sections
         """
+        image_manager = ImageManager(self.input)        
+        self.bgcolor = image_manager.get_bgcolor(self.maskpath)
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
@@ -482,7 +484,7 @@ class ElastixManager(FileLogger):
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
-            file_keys.append([infile, outfile, T])
+            file_keys.append([infile, outfile, T, self.bgcolor])
 
         workers = self.get_nworkers() // 2
         start_time = timer()

@@ -60,12 +60,22 @@ def place_image(file_key, bgcolor = 0):
             #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
             raise Exception(f'Could not place {infile} with shape:{img.shape} in {max_height}x{max_width}')
     if img.ndim == 3:
-        placed_img = np.zeros([max_height, max_width]).astype(dtype)
         try:
-            placed_img = np.full((max_height, max_width, 3), bgcolor, dtype=dtype)
-            placed_img[startr:endr, startc:endc, 0] = img[:,:,0]
-            placed_img[startr:endr, startc:endc, 1] = img[:,:,1]
-            placed_img[startr:endr, startc:endc, 2] = img[:,:,2]
+
+            r = np.full((max_height, max_width), bgcolor[0], dtype=dtype)
+            g = np.full((max_height, max_width), bgcolor[1], dtype=dtype)
+            b = np.full((max_height, max_width), bgcolor[2], dtype=dtype)
+
+            r[startr:endr, startc:endc] = img[:,:,0]
+            g[startr:endr, startc:endc] = img[:,:,1]
+            b[startr:endr, startc:endc] = img[:,:,2]
+
+
+            placed_img = cv2.merge((b,g,r)) # put them back in the correct order for cv2
+
+
+
+
         except:
             raise Exception(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
             #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
