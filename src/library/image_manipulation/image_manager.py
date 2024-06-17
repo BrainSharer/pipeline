@@ -24,6 +24,8 @@ class ImageManager:
 
 
     def get_bgcolor(self, maskpath):
+        """align needs either an integer or a tuple of integers for the fill color"""
+        
         self.masks = sorted(os.listdir(maskpath))
         midmaskfile = self.masks[self.midpoint]
         midmaskpath = os.path.join(maskpath, midmaskfile)
@@ -40,6 +42,8 @@ class ImageManager:
         firstrow = whiterows[0]
         firstcol = whitecols[1]
         bgcolor = self.img[firstrow, firstcol]
+        if len(bgcolor) == 3:
+            bgcolor = tuple(bgcolor)
 
         return bgcolor
 
