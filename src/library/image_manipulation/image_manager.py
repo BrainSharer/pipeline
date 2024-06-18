@@ -42,7 +42,7 @@ class ImageManager:
         firstrow = whiterows[0]
         firstcol = whitecols[1]
         bgcolor = self.img[firstrow, firstcol]
-        if isinstance(bgcolor, list):
+        if isinstance(bgcolor, (list, np.ndarray)):
             bgcolor = tuple(bgcolor)
         else:
             bgcolor = int(bgcolor)
