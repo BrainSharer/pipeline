@@ -1,6 +1,6 @@
 
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, String, Integer, ForeignKey,Enum,DateTime
+from sqlalchemy import JSON, Column, String, Integer, ForeignKey,Enum,DateTime
 from sqlalchemy.sql.sqltypes import Float
 import enum
 
@@ -22,6 +22,7 @@ class AnnotationSession(Base):
     annotation_type = Column(Enum(AnnotationType))    
     brain_region = relationship('BrainRegion', lazy=True, primaryjoin="AnnotationSession.FK_brain_region_id == BrainRegion.id")
     annotator = relationship('User', lazy=True)
+    annotation = Column(JSON)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
     updated = Column(DateTime)
