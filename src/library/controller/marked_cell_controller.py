@@ -1,10 +1,11 @@
-
 from collections import defaultdict
+
+from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession, AnnotationType, MarkedCell
 
 FIDUCIAL = 33 # cell type ID in table cell type
 
-class MarkedCellController():
+class MarkedCellController(SqlController):
 
     def get_fiducials(self, prep_id):
         """Fiducials will be marked on downsampled images. You will need the resolution
@@ -42,3 +43,14 @@ class MarkedCellController():
             .join(MarkedCell)\
             .filter(MarkedCell.FK_cell_type_id==FIDUCIAL).first()
         return session
+
+    def get_data_per_session(self, session_id):
+        """returns the data for a session
+
+        Args:
+            session_id (int): session id
+
+        Returns:
+            list: list of StructureCOM objects
+        """
+        return self.session.query(MarkedCell).filter(MarkedCell.FK_session_id == session_id).all()

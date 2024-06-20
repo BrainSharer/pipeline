@@ -190,5 +190,5 @@ class StructureCOMController(SqlController):
         Returns:
             list: list of StructureCOM objects
         """
-        return self.session.query(StructureCOM).filter(StructureCOM.FK_session_id == session_id).all()
+        return self.session.query(StructureCOM).filter(StructureCOM.FK_session_id == session_id).one()
 

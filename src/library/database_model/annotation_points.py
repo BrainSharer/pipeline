@@ -42,12 +42,14 @@ class MarkedCell(Base):
     z = Column(Float, nullable=False)
     source = Column(Enum(CellSources))    
     FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
-    FK_cell_type_id = Column(Integer)
+    FK_cell_type_id = Column(Integer, ForeignKey('cell_type.id'), nullable=True)
     session = relationship('AnnotationSession', lazy=True)
+    cell_type = relationship('CellType', lazy=True, primaryjoin="MarkedCell.FK_cell_type_id == CellType.id")
 
-#class CellType(Base):
-#    id =  Column(Integer, primary_key=True, nullable=False)
-#    cell_type = Column(String, nullable=False)
+class CellType(Base):
+    __tablename__ = 'cell_type'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    cell_type = Column(String, nullable=False)
 
 
 class COMSources(enum.Enum):
