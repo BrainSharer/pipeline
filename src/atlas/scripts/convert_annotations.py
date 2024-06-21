@@ -4,7 +4,7 @@ import numpy as np
 
 from scipy.ndimage import center_of_mass
 from collections import defaultdict
-
+from tqdm import tqdm
 
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -80,8 +80,7 @@ def load_annotation_sessions():
         update_dict = {'annotation': annotation }
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # polygons
-    for annotation_session in polygon_sessions:
-        print(annotation_session.id)
+    for annotation_session in tqdm(polygon_sessions):
         # coms below is always just one for each session 
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
@@ -144,8 +143,8 @@ def load_annotation_sessions():
                 "childJsons": polygons
             }
 
-        # update_dict = {'annotation': volume }
-        # annotationSessionController.update_session(annotation_session.id, update_dict)
+        update_dict = {'annotation': volume }
+        annotationSessionController.update_session(annotation_session.id, update_dict)
 
 if __name__ == '__main__':
     load_annotation_sessions()
