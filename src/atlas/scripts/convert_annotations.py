@@ -103,7 +103,7 @@ def load_annotation_sessions():
             point_indices = point_indices - point_indices.min()
 
             sorted_points = np.array(points)[point_indices] / m_um_scale
-            index_points_sorted[index] = sorted_points
+            index_points_sorted[index] = sorted_points.tolist()
             
         polygons = []
         for index in sorted(list(index_points_sorted.keys())):
