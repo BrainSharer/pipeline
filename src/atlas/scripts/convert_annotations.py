@@ -90,6 +90,8 @@ def load_annotation_sessions():
         annotation['props'] =  ["#ffff00", 1]
         point_list = []
         for point in points:
+            polygon_index = point.polygon_index
+            point_order = point.point_order
             x = point.x / 1000000
             y = point.y / 1000000
             z = point.z / 1000000
@@ -100,6 +102,33 @@ def load_annotation_sessions():
         annotationSessionController.update_session(annotation_session.id, update_dict)
 
 
+
+"""
+    polygon_json = []
+    npoints = len(polygon_points)
+    parent_annotation, child_ids = create_parent_annotation_json(npoints, polygon_id, polygon_points[0], _type='polygon',parent_id=parent_id)
+    polygon_json.append(parent_annotation)
+    for point in range(npoints - 1):
+        line = {}
+        line["pointA"] = polygon_points[point]
+        line["pointB"] = polygon_points[point + 1]
+        line["type"] = "line"
+        line["id"] = child_ids[point]
+        line["parentAnnotationId"] = polygon_id
+        line["props"] = [hexcolor]
+        polygon_json.append(line)
+    line = {}
+    line["pointA"] = polygon_points[-1]
+    line["pointB"] = polygon_points[0]
+    line["type"] = "line"
+    line["id"] = child_ids[-1]
+    line["parentAnnotationId"] = polygon_id
+    line["props"] = [hexcolor]
+    polygon_json.append(line)
+    return polygon_json
+
+
+"""
 
 if __name__ == '__main__':
     load_annotation_sessions()
