@@ -147,6 +147,5 @@ def load_annotation_sessions():
         # update_dict = {'annotation': volume }
         # annotationSessionController.update_session(annotation_session.id, update_dict)
 
-
 if __name__ == '__main__':
     load_annotation_sessions()
