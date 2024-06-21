@@ -95,14 +95,15 @@ def load_annotation_sessions():
             except ValueError:
                 index = int(point.z)
             index_points[index].append([point.x, point.y, point.z])
-            index_orders[index].append([point.point_order])
+            index_orders[index].append(point.point_order)
         
         index_points_sorted = {}
         for index, points in index_points.items():
+            points = np.array(points)
             point_indices = np.array(index_orders[index])
             point_indices = point_indices - point_indices.min()
 
-            sorted_points = np.array(points)[point_indices] / m_um_scale
+            sorted_points = np.array(points)[point_indices, :] / m_um_scale
             index_points_sorted[index] = sorted_points
             
         polygons = []
@@ -116,21 +117,21 @@ def load_annotation_sessions():
                 lines.append({
                     "type": "line",
                     "props": default_props,
-                    "pointA": points[i],
-                    "pointB": points[i + 1],
+                    "pointA": points[i].tolist(),
+                    "pointB": points[i + 1].tolist(),
                 })
             lines.append({
                 "type": "line",
                 "props": default_props,
-                "pointA": points[-1],
-                "pointB": points[0],
+                "pointA": points[-1].tolist(),
+                "pointB": points[0].tolist(),
             })
 
             polygons.append({
                 "type": "polygon",
                 "props": default_props,
-                "source": points[0],
-                "centroid": np.mean(points),
+                "source": points[0].tolist(),
+                "centroid": np.mean(points, axis=0).tolist(),
                 "childJsons": lines
             })
 
