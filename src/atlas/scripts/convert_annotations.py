@@ -128,6 +128,38 @@ def load_annotation_sessions():
     return polygon_json
 
 
+
+def create_parent_annotation_json(npoints, id, source, _type, child_ids=None,parent_id = None, description = None):
+    '''create the json entry for a parent annotation.  The parent annotation need to have a 
+    specific id and the list of id for all the children
+
+    Args:
+        npoints (int): number of points in this parent annotation
+        parent_id (int): id of parent annotation
+        source (list of x,y,z): the source coordinate
+        _type (string): annotation type: this could be polygon or volumes
+        child_ids (list, optional): list of id of child annotations that belong to the parent annotation. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    '''
+
+    parent_annotation = {}
+    if child_ids is None:
+        child_ids = [random_string() for _ in range(npoints)]
+    parent_annotation["source"] = source
+    parent_annotation["childAnnotationIds"] = child_ids
+    if parent_id is not None:
+        parent_annotation["parentAnnotationId"] = parent_id
+    if description is not None:
+        parent_annotation["description"] = description
+    parent_annotation["type"] = _type
+    parent_annotation["id"] = id
+    parent_annotation["props"] = [hexcolor]
+    return parent_annotation, child_ids
+    
+
+
 """
 
 if __name__ == '__main__':
