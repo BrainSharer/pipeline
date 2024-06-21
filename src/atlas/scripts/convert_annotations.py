@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import numpy as np
 
 from scipy.ndimage import center_of_mass
 from collections import defaultdict
@@ -15,6 +16,8 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 from library.database_model.annotation_points import AnnotationType
 from library.controller.polygon_sequence_controller import PolygonSequenceController
 
+default_props = ["#ffff00", 1, 1, 5, 3, 1]
+m_um_scale = 1000000
 
 def load_annotation_sessions():
     """x,y,z data fetched here is in micrometers
@@ -78,57 +81,72 @@ def load_annotation_sessions():
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # polygons
     for annotation_session in polygon_sessions:
+        print(annotation_session.id)
         # coms below is always just one for each session 
-        points = polygonController.get_data_per_session(annotation_session.id)
-        annotation = {}
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
         user = annotation_session.annotator.first_name
-        print(f'{annotation_session.id} {animal} {brain_region} {user} and len points {len(points)}')
         
-        annotation['type'] = 'volume'
-        annotation['props'] =  ["#ffff00", 1]
-        point_list = []
+        points = polygonController.get_data_per_session(annotation_session.id)
+        index_points = defaultdict(list)
+        index_orders = defaultdict(list)
         for point in points:
-            polygon_index = point.polygon_index
-            point_order = point.point_order
-            x = point.x / 1000000
-            y = point.y / 1000000
-            z = point.z / 1000000
-            point_list.append([x, y, z])
-            # update the code below for the new JSON format
-        annotation['childJsons'] = point_list        
-        update_dict = {'annotation': annotation }
-        annotationSessionController.update_session(annotation_session.id, update_dict)
+            try:
+                index = int(point.polygon_index)
+            except ValueError:
+                index = int(point.z)
+            index_points[index].append([point.x, point.y, point.z])
+            index_orders[index].append([point.point_order])
+        
+        index_points_sorted = {}
+        for index, points in index_points.items():
+            point_indices = np.array(index_orders[index])
+            point_indices = point_indices - point_indices.min()
 
+            sorted_points = np.array(points)[point_indices] / m_um_scale
+            index_points_sorted[index] = sorted_points
+            
+        polygons = []
+        for index in sorted(list(index_points_sorted.keys())):
+            if index not in index_points_sorted: 
+                continue
+            points = index_points_sorted[index]
 
+            lines = []
+            for i in range(len(points) - 1):
+                lines.append({
+                    "type": "line",
+                    "props": default_props,
+                    "pointA": points[i],
+                    "pointB": points[i + 1],
+                })
+            lines.append({
+                "type": "line",
+                "props": default_props,
+                "pointA": points[-1],
+                "pointB": points[0],
+            })
 
-"""
-    polygon_json = []
-    npoints = len(polygon_points)
-    parent_annotation, child_ids = create_parent_annotation_json(npoints, polygon_id, polygon_points[0], _type='polygon',parent_id=parent_id)
-    polygon_json.append(parent_annotation)
-    for point in range(npoints - 1):
-        line = {}
-        line["pointA"] = polygon_points[point]
-        line["pointB"] = polygon_points[point + 1]
-        line["type"] = "line"
-        line["id"] = child_ids[point]
-        line["parentAnnotationId"] = polygon_id
-        line["props"] = [hexcolor]
-        polygon_json.append(line)
-    line = {}
-    line["pointA"] = polygon_points[-1]
-    line["pointB"] = polygon_points[0]
-    line["type"] = "line"
-    line["id"] = child_ids[-1]
-    line["parentAnnotationId"] = polygon_id
-    line["props"] = [hexcolor]
-    polygon_json.append(line)
-    return polygon_json
+            polygons.append({
+                "type": "polygon",
+                "props": default_props,
+                "source": points[0],
+                "centroid": np.mean(points),
+                "childJsons": lines
+            })
 
+        if len(polygons) > 0:
+            volume = {
+                "type": "polygon",
+                "props": default_props,
+                "source": polygons[0]["source"],
+                "centroid": polygons[len(polygons) // 2]["centroid"],
+                "childJsons": polygons
+            }
 
-"""
+        # update_dict = {'annotation': volume }
+        # annotationSessionController.update_session(annotation_session.id, update_dict)
+
 
 if __name__ == '__main__':
     load_annotation_sessions()
