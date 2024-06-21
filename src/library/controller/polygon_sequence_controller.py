@@ -71,4 +71,7 @@ class PolygonSequenceController(SqlController):
         Returns:
             list: list of StructureCOM objects
         """
-        return self.session.query(PolygonSequence).filter(PolygonSequence.FK_session_id == session_id).all()
+        return self.session.query(PolygonSequence).filter(PolygonSequence.FK_session_id == session_id)\
+                .order_by(PolygonSequence.z)\
+                .order_by(PolygonSequence.point_order)\
+            .all()

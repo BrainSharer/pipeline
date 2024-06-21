@@ -328,11 +328,15 @@ class Pipeline(
     def check_programs():
         """
         Make sure imagemagick is installed.
+        Make sure there is a ./src/settings.py file
         """
 
         error = ""
         if not os.path.exists("/usr/bin/identify"):
             error += "\nImagemagick is not installed"
+
+        if not os.path.exists("./src/settings.py"):
+            error += "\nThere is no ./src/settings.py file!"
 
         if len(error) > 0:
             print(error)
