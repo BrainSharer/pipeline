@@ -137,7 +137,7 @@ def load_annotation_sessions():
 
         if len(polygons) > 0:
             volume = {
-                "type": "polygon",
+                "type": "volume",
                 "props": default_props,
                 "source": polygons[0]["source"],
                 "centroid": polygons[len(polygons) // 2]["centroid"],
