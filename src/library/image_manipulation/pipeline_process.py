@@ -25,7 +25,7 @@ from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.image_manipulation.omezarr_manager import OmeZarrManager
 from library.controller.sql_controller import SqlController
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 
 try:
@@ -230,6 +230,8 @@ class Pipeline(
             self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}_rechunkme')
 
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+        scratch_tmp = get_scratch_dir()
+        self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,
             channel=self.channel,
