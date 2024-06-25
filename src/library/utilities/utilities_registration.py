@@ -177,7 +177,7 @@ def align_image_to_affine(file_key):
     :param file_key: tuple of file input and output
     :return: nothing
     """
-    infile, outfile, T = file_key
+    infile, outfile, T, fillcolor = file_key
     try:
         im1 = Image.open(infile)
     except:
@@ -198,7 +198,7 @@ def align_image_to_affine(file_key):
         del im
 
     try:
-        im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
+        im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
     except Exception as e:
         print(f'align image to affine, could not transform {infile} to:')
         print(outfile)

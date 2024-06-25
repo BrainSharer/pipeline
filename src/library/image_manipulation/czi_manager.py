@@ -26,8 +26,10 @@ class CZIManager(FileLogger):
         self.czi_file = czi_file
         self.file = CziFile(czi_file)
 
-        LOGFILE_PATH = os.environ["LOGFILE_PATH"]
-        super().__init__(LOGFILE_PATH)
+
+        if "LOGFILE_PATH" in os.environ:
+            LOGFILE_PATH = os.environ["LOGFILE_PATH"]
+            super().__init__(LOGFILE_PATH)
 
 
     def extract_metadata_from_czi_file(self, czi_file, czi_file_path):
