@@ -264,7 +264,9 @@ class Pipeline(
         USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
         """
         print(self.TASK_CELL_LABELS)
-        self.check_prerequisites()
+        
+        scratch_tmp = get_scratch_dir()
+        self.check_prerequisites(scratch_tmp)
 
         # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
 
