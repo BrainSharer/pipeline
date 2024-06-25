@@ -54,7 +54,7 @@ class CellMaker():
         """Set up the class with the name of the file and the path to it's location."""
         self.channel = 1
 
-    def check_prerequisites(self):
+    def check_prerequisites(self, SCRATCH):
         '''
         CELL LABELING REQUIRES A) AVAILABLE FULL-RESOLUTION IMAGES, B) 2 CHANNELS (NAME, TYPE), C) SCRATCH DIRECTORY, D) OUTPUT DIRECTORY, E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), F) models: models_example.pkl
         '''
@@ -73,10 +73,10 @@ class CellMaker():
             print(f'CELL LABELS OUTPUT DIR: {self.OUTPUT}')
         self.logevent(f'CELL LABELS OUTPUT DIR: {self.OUTPUT}')
 
-        self.SCRATCH = '/scratch' #REMOVE HARD-CODING LATER; SEE IF WE CAN AUTO-DETECT NVME
+        self.SCRATCH = SCRATCH #TODO SEE IF WE CAN AUTO-DETECT NVME
         if self.debug:
-            print(f'TEMP STORAGE LOCATION: {self.SCRATCH}')
-        self.logevent(f'TEMP STORAGE LOCATION: {self.SCRATCH}')
+             print(f'TEMP STORAGE LOCATION: {SCRATCH}')
+        self.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
         
         #CHECK FOR PRESENCE OF meta-data.json
         meta_data_file = 'meta-data.json'
@@ -250,7 +250,7 @@ class CellMaker():
                 cell_candidates.append(candidate)
             return cell_candidates
     
-        output_path = Path(SCRATCH, 'pipeline', animal, 'cell_candidates')
+        output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates')
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
 
@@ -372,7 +372,7 @@ class CellMaker():
         if debug:
             print(f'STARTING FUNCTION: calculate_features WITH {len(cell_candidate_data)} CELL CANDIDATES')
 
-        output_path = Path(SCRATCH, 'pipeline', animal, 'cell_features')
+        output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_features')
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'cell_features_{str_section_number}.csv')
 
