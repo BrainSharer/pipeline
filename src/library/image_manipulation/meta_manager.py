@@ -1,7 +1,7 @@
 """This module is responsible for extracting metadata from the CZI files.
 """
 
-import os, sys, time, re
+import os, sys, time, re, json
 from datetime import datetime
 from pathlib import Path
 
@@ -163,7 +163,15 @@ class MetaUtilities:
         czi_file = os.path.basename(os.path.normpath(infile))
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
-
+        
+        #CREATE meta-data.json [IF !EXISTS]
+        meta_data_file = 'meta-data.json'
+        meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
+        if self.debug:
+            print(f'NEUROANATOMICAL TRACING INFO NOT FOUND; CREATING @ {meta_store}')
+            # Writing the data to the file
+            with open(meta_store, 'w') as fh:
+                json.dump(czi_metadata["json_meta"], fh, indent=4)
 
         slide = Slide()
         slide.scan_run_id = scan_id

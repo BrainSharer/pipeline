@@ -7,6 +7,7 @@ import os
 from PIL import Image
 from aicspylibczi import CziFile
 from aicsimageio import AICSImage
+import xml.etree.ElementTree as ET
 
 from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import write_image
@@ -43,6 +44,7 @@ class CZIManager(FileLogger):
         czi_aics = AICSImage(czi_file_path)
         total_scenes = czi_aics.scenes
 
+        #PROCESS SLIDE/SCENE INFO
         czi_meta_dict = {}
         scenes = {}
         for idx, scene in enumerate(total_scenes):
@@ -59,6 +61,60 @@ class CZIManager(FileLogger):
             }
 
         czi_meta_dict[czi_file] = scenes
+        czi_meta_xml = czi_aics.metadata #SCANNER META-DATA
+        metadata_str = ET.tostring(czi_meta_xml, encoding='unicode')
+        parsed_metadata = ET.fromstring(metadata_str)
+
+        #ACTIVE CHANNELS INFO
+        tracing_data = []
+        channels_activated = parsed_metadata.findall(".//Channel[@IsActivated='true']")
+        for channel_idx, channel in enumerate(channels_activated):
+            channel_name = channel.get('Name')
+            channel_description = channel.get('Description')
+            channel_str = ET.tostring(channel, encoding='unicode')
+
+            #Can we auto-detect dye/virus? store in channel_description?
+            if (channel_idx+1) == 1:
+                mode = "dye"
+            elif (channel_idx+1) == 3:
+                mode = "virus"
+            else:
+                mode = "unknown"
+            tracing_data.append({"id": str(channel_idx+1), "mode": mode, "description": channel_name, "channel_name": "C"+str(channel_idx+1)})
+        
+        json_meta = {"Neuroanatomical_tracing": {}}
+        for item in tracing_data:
+            json_meta["Neuroanatomical_tracing"][item["id"]] = {
+                "mode": item["mode"],
+                "description": item["description"],
+                "channel_name": item["channel_name"]
+            }
+        
+        #RESOLUTION INFO
+        xy_resolutions = parsed_metadata.findall(".//Items")
+        for xml_element in xy_resolutions:
+            # Find the Distance elements for X and Y
+            x_distance_element = xml_element.find(".//Distance[@Id='X']")
+            y_distance_element = xml_element.find(".//Distance[@Id='Y']")
+
+            if x_distance_element is not None:
+                x_value = x_distance_element.find('Value').text
+                x_unit = x_distance_element.find('DefaultUnitFormat').text
+            else:
+                if self.debug:
+                    print("x_res: Not found")
+            
+            if y_distance_element is not None:
+                y_value = y_distance_element.find('Value').text
+                y_unit = y_distance_element.find('DefaultUnitFormat').text
+            else:
+                if self.debug:
+                    print("x_res: Not found")
+
+        #TODO: Note: in scientific notation; needs conversion prior to insert in database e.g. 3.25E-07 µm
+        json_meta["xy_resolution_unit"] = [x_value, x_unit, y_value, y_unit]
+        czi_meta_dict['json_meta'] = json_meta
+
         return czi_meta_dict
     
     def get_scene_dimension(self, scene_index):
