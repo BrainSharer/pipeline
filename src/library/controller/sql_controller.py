@@ -18,7 +18,6 @@ import urllib
 from library.controller.animal_controller import AnimalController
 from library.controller.elastix_controller import ElastixController
 from library.controller.histology_controller import HistologyController
-from library.controller.marked_cell_controller import MarkedCellController
 from library.controller.scan_run_controller import ScanRunController
 from library.controller.sections_controller import SectionsController
 from library.controller.slide_tif_controller import SlideCZIToTifController
@@ -33,7 +32,7 @@ except ImportError as fe:
     raise
 
 
-class SqlController(AnimalController, ElastixController, HistologyController, MarkedCellController,
+class SqlController(AnimalController, ElastixController, HistologyController,
                      ScanRunController, SectionsController, SlideCZIToTifController):
     """ This is the base controller class for all things SQL.  
     Each parent class of SqlController would correspond to one table in the database, and include all the 

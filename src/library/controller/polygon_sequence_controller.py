@@ -61,3 +61,17 @@ class PolygonSequenceController(SqlController):
             .filter(AnnotationSession.FK_brain_region_id != 54)\
             .all()
         return active_sessions
+    
+    def get_data_per_session(self, session_id):
+        """returns the data for a session
+
+        Args:
+            session_id (int): session id
+
+        Returns:
+            list: list of StructureCOM objects
+        """
+        return self.session.query(PolygonSequence).filter(PolygonSequence.FK_session_id == session_id)\
+                .order_by(PolygonSequence.z)\
+                .order_by(PolygonSequence.point_order)\
+            .all()

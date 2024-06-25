@@ -11,15 +11,35 @@ class AnnotationSessionController(SqlController):
     """The class that queries and addes entry to the annotation_session table
     """
 
+    def update_session(self, id, update_dict):
+        """
+        Update the table with the given ID using the provided update dictionary.
+
+        Args:
+            id (int): The ID of the scan run to update.
+            update_dict (dict): A dictionary containing the fields to update and their new values.
+
+        Returns:
+            None
+        """
+
+        try:
+            self.session.query(AnnotationSession).filter(AnnotationSession.id == id).update(update_dict)
+            self.session.commit()
+
+        except Exception as e:
+            print(f'No merge for  {e}')
+            self.session.rollback()
+
     
-    def get_existing_session(self):
+    def get_existing_session(self, annotation_type=AnnotationType.STRUCTURE_COM):
         """retruns a list of available session objects that is currently active in the database
 
         Returns:
             list: list of volume sessions
         """ 
         active_sessions = self.session.query(AnnotationSession) \
-                .filter(AnnotationSession.annotation_type==AnnotationType.STRUCTURE_COM)\
+                .filter(AnnotationSession.annotation_type==annotation_type)\
                 .filter(AnnotationSession.active==True).all()
         return active_sessions
     

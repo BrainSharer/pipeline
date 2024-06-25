@@ -6,20 +6,18 @@ The libraries are contained within the SimpleITK-SimpleElastix library
 
 import os
 import numpy as np
-from collections import OrderedDict, defaultdict
-
+from collections import OrderedDict
 from PIL import Image
 from timeit import default_timer as timer
-
 Image.MAX_IMAGE_PIXELS = None
 from timeit import default_timer as timer
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
-
+from tqdm import tqdm
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
-from library.utilities.utilities_process import get_image_size, read_image, test_dir
+from library.utilities.utilities_process import get_image_size, read_image, test_dir, write_image
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -29,6 +27,7 @@ from library.utilities.utilities_registration import (
     parameters_to_rigid_transform,
     tif_to_png,
 )
+from library.image_manipulation.image_manager import ImageManager
 
 
 class ElastixManager(FileLogger):
@@ -197,16 +196,17 @@ class ElastixManager(FileLogger):
 
 
     def create_affine_transformations(self):
-        files = sorted(os.listdir(self.input))
-        nfiles = len(files)
-        midpoint = nfiles // 2
+        image_manager = ImageManager(self.input)
+        #files = sorted(os.listdir(self.input))
+        #nfiles = len(files)
+        #midpoint = nfiles // 2
         transformation_to_previous_sec = {}
-        center = self.get_rotation_center()
+        #center = image_manager.center
               
         
-        for i in range(1, nfiles):
-            fixed_index = os.path.splitext(files[i - 1])[0]
-            moving_index = os.path.splitext(files[i])[0]
+        for i in tqdm(range(1, image_manager.len_files)):
+            fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
+            moving_index = os.path.splitext(image_manager.files[i])[0]
             elastixImageFilter = sitk.ElastixImageFilter()
             fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
             fixed = sitk.ReadImage(fixed_file, self.pixelType)            
@@ -217,9 +217,9 @@ class ElastixManager(FileLogger):
 
             affineParameterMap = elastixImageFilter.GetDefaultParameterMap("affine")
             affineParameterMap["UseDirectionCosines"] = ["true"]
-            affineParameterMap["MaximumNumberOfIterations"] = ["500"] # 250 works ok
+            affineParameterMap["MaximumNumberOfIterations"] = ["250"] # 250 works ok
             affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
-            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+            affineParameterMap["NumberOfResolutions"]= ["4"] # Takes lots of RAM
             affineParameterMap["WriteResultImage"] = ["false"]
             elastixImageFilter.SetParameterMap(affineParameterMap)
             elastixImageFilter.LogToConsoleOff()
@@ -228,24 +228,24 @@ class ElastixManager(FileLogger):
 
             a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
             R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
-            shift = center + (float(tx), float(ty)) - np.dot(R, center)
+            shift = image_manager.center + (float(tx), float(ty)) - np.dot(R, image_manager.center)
             A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
             transformation_to_previous_sec[i] = A
 
-        for moving_index in range(nfiles):
+        for moving_index in tqdm(range(image_manager.len_files)):
             filename = str(moving_index).zfill(3) + ".tif"
-            if moving_index == midpoint:
+            if moving_index == image_manager.midpoint:
                 transformation = np.eye(3)
-            elif moving_index < midpoint:
+            elif moving_index < image_manager.midpoint:
                 T_composed = np.eye(3)
-                for i in range(midpoint, moving_index, -1):
+                for i in range(image_manager.midpoint, moving_index, -1):
                     T_composed = np.dot(
                         np.linalg.inv(transformation_to_previous_sec[i]), T_composed
                     )
                 transformation = T_composed
             else:
                 T_composed = np.eye(3)
-                for i in range(midpoint + 1, moving_index + 1):
+                for i in range(image_manager.midpoint + 1, moving_index + 1):
                     T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
                 transformation = T_composed
             
@@ -254,6 +254,7 @@ class ElastixManager(FileLogger):
             outfile = os.path.join(self.output, filename)
             file_key = [infile, outfile, transformation]
             align_image_to_affine(file_key)
+            #####self.transform_save_image(infile, outfile, transformation)
 
 
 
@@ -264,14 +265,10 @@ class ElastixManager(FileLogger):
         """
         MOVING_DIR = os.path.join(self.fileLocationManager.prep, 'CH3', 'thumbnail_cropped')
         FIXED_DIR = self.fileLocationManager.get_thumbnail_aligned(channel=2)
+        image_manager = ImageManager(MOVING_DIR)
         self.output = self.fileLocationManager.get_thumbnail_aligned(channel=3)
         os.makedirs(self.output, exist_ok=True)
-        moving_files = sorted(os.listdir(MOVING_DIR))
-        files = sorted(os.listdir(MOVING_DIR))
-        midpoint = len(files) // 2
-        midfilepath = os.path.join(MOVING_DIR, files[midpoint])
-        width, height = get_image_size(midfilepath)
-        center = np.array([width, height]) / 2
+        moving_files = image_manager.files
 
         file_keys = []
 
@@ -301,7 +298,7 @@ class ElastixManager(FileLogger):
                 print(f" took {total_elapsed_time} seconds")
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
 
-            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
+            T = parameters_to_rigid_transform(rotation, xshift, yshift, image_manager.center)
 
             infile = moving_file
             outfile = os.path.join(self.output, file)
@@ -366,12 +363,8 @@ class ElastixManager(FileLogger):
         """
 
         self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(self.input))
-        midpoint = len(files) // 2
-        midfilepath = os.path.join(self.input, files[midpoint])
-        width, height = get_image_size(midfilepath)
-        center = np.array([width, height]) / 2
-        return center
+        image_manager = ImageManager(self.input)
+        return image_manager.center
 
     def transform_image(self, img, T):
         matrix = T[:2,:2]
@@ -379,6 +372,14 @@ class ElastixManager(FileLogger):
         offset = np.flip(offset)
         img = affine_transform(img, matrix.T, offset)
         return img
+    
+    def transform_save_image(self, infile, outfile, T):
+        matrix = T[:2,:2]
+        offset = T[:2,2]
+        offset = np.flip(offset)
+        img = read_image(infile)
+        img = affine_transform(img, matrix.T, offset)
+        write_image(outfile, img)
 
     def get_transformations(self):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
@@ -470,6 +471,8 @@ class ElastixManager(FileLogger):
 
         :param transforms (dict): dictionary of transformations indexed by id of moving sections
         """
+        image_manager = ImageManager(self.input)        
+        self.bgcolor = image_manager.get_bgcolor(self.maskpath)
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
@@ -481,7 +484,7 @@ class ElastixManager(FileLogger):
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
-            file_keys.append([infile, outfile, T])
+            file_keys.append([infile, outfile, T, self.bgcolor])
 
         workers = self.get_nworkers() // 2
         start_time = timer()

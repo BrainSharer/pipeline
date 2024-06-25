@@ -1,6 +1,6 @@
 
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, String, Integer, ForeignKey,Enum,DateTime
+from sqlalchemy import JSON, Column, String, Integer, ForeignKey,Enum,DateTime
 from sqlalchemy.sql.sqltypes import Float
 import enum
 
@@ -22,6 +22,7 @@ class AnnotationSession(Base):
     annotation_type = Column(Enum(AnnotationType))    
     brain_region = relationship('BrainRegion', lazy=True, primaryjoin="AnnotationSession.FK_brain_region_id == BrainRegion.id")
     annotator = relationship('User', lazy=True)
+    annotation = Column(JSON)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
     updated = Column(DateTime)
@@ -41,12 +42,14 @@ class MarkedCell(Base):
     z = Column(Float, nullable=False)
     source = Column(Enum(CellSources))    
     FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
-    FK_cell_type_id = Column(Integer)
+    FK_cell_type_id = Column(Integer, ForeignKey('cell_type.id'), nullable=True)
     session = relationship('AnnotationSession', lazy=True)
+    cell_type = relationship('CellType', lazy=True, primaryjoin="MarkedCell.FK_cell_type_id == CellType.id")
 
-#class CellType(Base):
-#    id =  Column(Integer, primary_key=True, nullable=False)
-#    cell_type = Column(String, nullable=False)
+class CellType(Base):
+    __tablename__ = 'cell_type'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    cell_type = Column(String, nullable=False)
 
 
 class COMSources(enum.Enum):
