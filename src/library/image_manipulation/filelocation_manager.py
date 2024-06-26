@@ -47,6 +47,7 @@ class FileLocationManager(object):
         self.thumbnail = os.path.join(self.prep, "1", "thumbnail")
         self.thumbnail_original = os.path.join(self.prep, "thumbnail_original")
         self.thumbnail_web = os.path.join(self.www, "scene")
+        self.slide_thumbnail_web = os.path.join(self.www, "slide")
 
     def get_czi(self, czi=0):
         czi_path = self.czi
