@@ -327,6 +327,16 @@ class Pipeline(
             print(f'Dir={dir} exists.')
         else:
             print(f'Non-existent dir={dir}')
+        # neuroglancer progress dir
+        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
+        if os.path.exists(progress_dir):
+            completed_files = len(os.listdir(progress_dir))
+            if completed_files == section_count:
+                print(f'Progress dir={progress_dir} exists with {completed_files} files and matches section count={section_count}.')
+            else:
+                print(f'Progress dir={progress_dir} exists with {completed_files} files completed out of {section_count} total files.')
+        else:
+            print(f'Non-existent progress dir={progress_dir}')
 
     @staticmethod
     def check_programs():
