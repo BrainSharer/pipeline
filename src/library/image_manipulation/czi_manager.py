@@ -27,13 +27,12 @@ class CZIManager(FileLogger):
         self.czi_file = czi_file
         self.file = CziFile(czi_file)
 
-
         if "LOGFILE_PATH" in os.environ:
             LOGFILE_PATH = os.environ["LOGFILE_PATH"]
             super().__init__(LOGFILE_PATH)
 
 
-    def extract_metadata_from_czi_file(self, czi_file, czi_file_path):
+    def extract_metadata_from_czi_file(self, czi_file, czi_file_path, debug: bool = False):
         """This will parse the xml metadata and return the relevant data.
 
         :param czi_file: string of the CZI file name
@@ -41,6 +40,9 @@ class CZIManager(FileLogger):
         :return: dictionary of the metadata
         """
 
+        if debug:
+            print(f"DEBUG: START CZIManager::extract_metadata_from_czi_file")
+            
         czi_aics = AICSImage(czi_file_path)
         total_scenes = czi_aics.scenes
 
@@ -52,7 +54,12 @@ class CZIManager(FileLogger):
             dimensions = (czi_aics.dims.X, czi_aics.dims.Y)
             channels = czi_aics.dims.C
 
-            print(f"CZI file: {czi_file}, scene: {czi_aics.current_scene}, dimensions: {dimensions}, channels: {channels}")
+            if debug:
+                print(f'EXTRACTING SCENES [FOR QC] FROM {czi_file_path}; CHANNEL 1')
+
+
+            if debug:
+                print(f"DEBUG: EXTRACTING META-DATA FROM CZI file: {czi_file}, scene: {czi_aics.current_scene}, dimensions: {dimensions}, channels: {channels}")
 
             scenes[idx] = {
                 "scene_name": czi_aics.current_scene,
