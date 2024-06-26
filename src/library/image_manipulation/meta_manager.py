@@ -21,13 +21,12 @@ class MetaUtilities:
     def extract_slide_meta_data_and_insert_to_database(self):
         """
         -Scans the czi dir to extract the meta information for each tif file
-        JUNE-2024 REVISION: EXTRACT SCENES CONCURRENT WITH META-DATA
         """
-        if self.debug:
-            print(f"DEBUG: START MetaUtilities::extract_slide_meta_data_and_insert_to_database")
 
         workers = self.get_nworkers()
-        file_keys = []
+        if self.debug:
+            print(f"DEBUG: START MetaUtilities::extract_slide_meta_data_and_insert_to_database")
+            workers = 1
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
@@ -40,19 +39,18 @@ class MetaUtilities:
             print("ERROR IN CZI FILES OR DB COUNTS")
             sys.exit()
         else:
-            #FOR CZI FILES ALREADY PROCESSED; CHECK FOR EXTRACTED SCENE IMAGES
+            #FOR CZI FILES ALREADY PROCESSED; CHECK FOR SLIDE PREVIEW
             if self.debug:
-                print(f"DEBUG: CHECKING FOR RAW SLIDE PREVIEW, EXTRACTED SCENE IMAGES AND RESPECTIVE CHECKSUMS")
+                print(f"DEBUG: CHECKING FOR RAW SLIDE PREVIEW IMAGES")
+            file_keys = []
             for czi_file in processed_czifiles:
                 infile = os.path.join(self.input, czi_file)
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
 
-            self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers)
+            #self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
 
-                
-        print('DUANE: CONT')
-
+        #PROCESS OUTSTANDING EXTRACTIONS (SCENES FROM SLIDE FILES)
         if len(unprocessed_czifiles) > 0:
             file_keys = []
             for unprocessed_czifile in unprocessed_czifiles:
@@ -60,17 +58,20 @@ class MetaUtilities:
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
 
-            self.logevent(f"Working on {infile}")
+            if self.debug:
+                print(f"DEBUG: ANALYZING {infile}")
+            self.logevent(f"ANALYZING {infile}")
             
-            # workers = self.get_nworkers()
             if self.debug:
                 print(f'DEBUG: extract_slide_meta_data_and_insert_to_database: FILES: {len(file_keys)}; WORKERS: {workers}')
 
-            #self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers) - DEPRECATED JUNE-2024
-            self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers)
+            #self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
+            self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
+            
         else:
             msg = "NOTHING TO PROCESS - SKIPPING"
-            print(msg)
+            if self.debug:
+                print(msg)
             self.logevent(msg)
 
     def get_user_entered_scan_id(self):
@@ -195,15 +196,11 @@ class MetaUtilities:
 
     def extract_slide_scene_data(self, file_keys: tuple):
         '''
-        1) Extracts "raw" slide preview image from CZI file and stores it as a tiff file (with checksum)
-        2) Extracts meta-data, slide, scenes from the CZI file and stores them in the database
-        3) Extracts individual scenes from the CZI file and stores them as tiff files (with checksum)
-
-        NOTE: Parallel use of this method should be split on number of slides to avoid duplicate reading of CZI files
+        Extracts "raw" slide preview image from CZI file and stores it as a tiff file (with checksum)
         '''
         input_czi_file, scan_id = file_keys
         if self.debug:
-            print(f"STARTING: START MetaUtilities::extract_slide_scene_data")
+            print(f"DEBUG: START MetaUtilities::extract_slide_scene_data")
 
         czi_file = os.path.basename(os.path.normpath(input_czi_file))
         czi = CZIManager(input_czi_file)
@@ -226,29 +223,44 @@ class MetaUtilities:
                 checksum_file = slide_preview.with_suffix('.tif.sha256')
                 with open(checksum_file, 'w') as f:
                     f.write(readable_hash)
-        czi_metadata = czi.extract_metadata_from_czi_file(czi_file, input_czi_file, self.debug)
+        else:
+            if self.debug:
+                print(f'SLIDE PREVIEW EXISTS: {slide_preview}')
 
-
-    def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):
-        """
-        DEPRECATED (JUNE-2024): REPLACED WITH 'extract_slide_scene_data'
-
-        A helper method to define some methods for extracting metadata.
-        """
-        infile, scan_id = file_key
-        #czi_metadata = load_metadata(infile)
-        czi_file = os.path.basename(os.path.normpath(infile))
-        czi = CZIManager(infile)
-        czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
-        
         #CREATE meta-data.json [IF !EXISTS]
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
         if not os.path.isfile(meta_store):
             if self.debug:
                 print(f'DEBUG: meta-data.json NOT FOUND; CREATING @ {meta_store}')
+                
+            czi_metadata = czi.extract_metadata_from_czi_file(czi_file, input_czi_file)
             with open(meta_store, 'w') as fh:
                 json.dump(czi_metadata["json_meta"], fh, indent=4)
+
+
+    def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):
+        """
+        A helper method to define some methods for extracting metadata.
+        """
+        infile, scan_id = file_key
+        if self.debug:
+            print(f"DEBUG: START MetaUtilities::parallel_extract_slide_meta_data_and_insert_to_database")
+
+        #czi_metadata = load_metadata(infile)
+        
+        czi_file = os.path.basename(os.path.normpath(infile))
+        czi = CZIManager(infile)
+        czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
+        
+        # #CREATE meta-data.json [IF !EXISTS]
+        # meta_data_file = 'meta-data.json'
+        # meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
+        # if not os.path.isfile(meta_store):
+        #     if self.debug:
+        #         print(f'DEBUG: meta-data.json NOT FOUND; CREATING @ {meta_store}')
+        #     with open(meta_store, 'w') as fh:
+        #         json.dump(czi_metadata["json_meta"], fh, indent=4)
         
         slide = Slide()
         slide.scan_run_id = scan_id
