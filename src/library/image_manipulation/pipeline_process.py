@@ -63,7 +63,7 @@ class Pipeline(
     TASK_ALIGN = "Creating alignment process"
     TASK_REALIGN = "Creating alignment improvements"
     TASK_EXTRA_CHANNEL = "Creating separate channel"
-    TASK_NEUROGLANCER = "Neuroglancer"
+    TASK_NEUROGLANCER = "Creating Neuroglancer data"
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
 
