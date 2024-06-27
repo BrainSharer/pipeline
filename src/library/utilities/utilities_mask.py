@@ -102,7 +102,7 @@ def normalize_image(img):
     return img
 
 
-def scaled(img, scale=20000):
+def scaled(img, scale=45000):
     """Stretch values out to scale
     """
     dtype = img.dtype
