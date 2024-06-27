@@ -203,21 +203,25 @@ class MetaUtilities:
         #EXTRACT SLIDE PREVIEW IMAGE [IF !EXISTS]
         scale_factor = 0.5 #REMOVE HARD-CODING; WHERE?
         czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
-        if not os.path.exists(self.fileLocationManager.slide_thumbnail_web):
-            Path(self.fileLocationManager.slide_thumbnail_web).mkdir(parents=True, exist_ok=True)
-        slide_preview = Path(self.fileLocationManager.slide_thumbnail_web, czi_filename_without_extension + '.tif')
+        if not os.path.exists(self.fileLocationManager.slides_preview):
+            Path(self.fileLocationManager.slides_preview).mkdir(parents=True, exist_ok=True)
+        slide_preview = Path(self.fileLocationManager.slides_preview, czi_filename_without_extension + '.tif')
         if not os.path.isfile(slide_preview): #CREATE SLIDE PREVIEW WITH CHECKSUM
             if self.debug:
                 print(f'CREATING SLIDE PREVIEW: {slide_preview}')
             mosaic_data = czi.file.read_mosaic(C=0, scale_factor=scale_factor) #captures first channel
             image_data = ((mosaic_data - mosaic_data.min()) / (mosaic_data.max() - mosaic_data.min()) * 65535).astype(np.uint16)
             tifffile.imwrite(slide_preview, image_data, compression='zlib', bigtiff=True)
-            with open(slide_preview, 'rb') as f:
+
+            #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
+            org_file = Path(slide_preview)
+            with open(org_file, 'rb') as f:
                 bytes = f.read()  # Read the entire file as bytes
                 readable_hash = hashlib.sha256(bytes).hexdigest()
-                checksum_file = slide_preview.with_suffix('.tif.sha256')
+                checksum_file = org_file.with_suffix('.sha256')
                 with open(checksum_file, 'w') as f:
                     f.write(readable_hash)
+
         else:
             if self.debug:
                 print(f'SLIDE PREVIEW EXISTS: {slide_preview}')
