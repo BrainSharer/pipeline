@@ -25,6 +25,9 @@ class TiffExtractor(ParallelManager):
         :param compression: Compression used to store the tiff files default is LZW compression
         """
 
+        if self.debug:
+            print(f"DEBUG: START TiffExtractor::extract_tiffs_from_czi")
+
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
             scale_factor = DOWNSCALING_FACTOR
@@ -74,6 +77,8 @@ class TiffExtractor(ParallelManager):
         viewed on the Django admin portal.
         These images are used for Quality Control.
         """
+        if self.debug:
+            print(f"DEBUG: START TiffExtractor::create_web_friendly_image")
 
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
         self.output = self.fileLocationManager.thumbnail_web
@@ -100,11 +105,10 @@ class TiffExtractor(ParallelManager):
             file_keys.append([i, infile, outfile, scene, scale])
 
         if files_skipped > 0:
-            print(f" SKIPPED [PRE-EXISTING] FILES: {files_skipped}", end=" ")
             self.logevent(f"SKIPPED [PRE-EXISTING] FILES: {files_skipped}")
+
         n_processing_elements = len(file_keys)
         self.logevent(f"PROCESSING [NOT PRE-EXISTING] FILES: {n_processing_elements}")
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(extract_png_from_czi, file_keys, workers)
-

@@ -8,6 +8,8 @@ from PIL import Image
 from aicspylibczi import CziFile
 from aicsimageio import AICSImage
 import xml.etree.ElementTree as ET
+from pathlib import Path
+import hashlib
 
 from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import write_image
@@ -53,10 +55,6 @@ class CZIManager(FileLogger):
             czi_aics.set_scene(scene)
             dimensions = (czi_aics.dims.X, czi_aics.dims.Y)
             channels = czi_aics.dims.C
-
-            if debug:
-                print(f'EXTRACTING SCENES [FOR QC] FROM {czi_file_path}; CHANNEL 1')
-
 
             if debug:
                 print(f"DEBUG: EXTRACTING META-DATA FROM CZI file: {czi_file}, scene: {czi_aics.current_scene}, dimensions: {dimensions}, channels: {channels}")
@@ -147,28 +145,34 @@ class CZIManager(FileLogger):
         return self.file.read_mosaic(region=region, scale_factor=scale, C=channel - 1)[0]
 
 
-def extract_tiff_from_czi(file_key):
+def extract_tiff_from_czi(file_key: tuple):
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
     :param file_key: a tuple of: czi_file, output_path, scenei, channel, scale
     """
-    czi_file, output_path, scenei, channel, scale = file_key
+    czi_file, outfile, scenei, channel, scale = file_key
     czi = CZIManager(czi_file)
     data = None
     try:
-        data = czi.get_scene(scale=scale, scene_index=scenei, channel=channel)
+        data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
     except Exception as e:
-        message = f" ERROR READING SCENE {scenei} CHANNEL {channel} [extract_tiff_from_czi] IN FILE {czi_file} to file {os.path.basename(output_path)} {e}"
-        print(message)
-        czi.logevent(message)
+        czi.logevent(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
         return
 
-    message = f"ERROR WRITING SCENE - [extract_tiff_from_czi] FROM FILE {czi_file} -> {output_path}; SCENE: {scenei}; CHANNEL: {channel} ... SKIPPING"
-    write_image(output_path, data, message=message)
+    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+    write_image(outfile, data, message=message)
+
+    #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
+    org_file = Path(outfile)
+    with open(org_file, 'rb') as f:
+        bytes = f.read()  # Read the entire file as bytes
+        readable_hash = hashlib.sha256(bytes).hexdigest()
+        checksum_file = org_file.with_suffix('.sha256')
+        with open(checksum_file, 'w') as f:
+            f.write(readable_hash)
 
 
-
-def extract_png_from_czi(file_key, normalize = True):
+def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing
     on a web page.
     
@@ -177,15 +181,23 @@ def extract_png_from_czi(file_key, normalize = True):
     """
 
     _, infile, outfile, scene_index, scale = file_key
-
     czi = CZIManager(infile)
+    data = None
     try:
         data = czi.get_scene(scene_index=scene_index, channel=1, scale=scale)
         if normalize:
             data = equalized(data)
         im = Image.fromarray(data)
         im.save(outfile)
+
+        #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
+        org_file = Path(outfile)
+        with open(org_file, 'rb') as f:
+            bytes = f.read()  # Read the entire file as bytes
+            readable_hash = hashlib.sha256(bytes).hexdigest()
+            checksum_file = org_file.with_suffix('.sha256')
+            with open(checksum_file, 'w') as f:
+                f.write(readable_hash)
+
     except Exception as e:
-        message = f"ERROR READING SCENE - [extract_png_from_czi] IN FILE {infile} ERR: {e}"
-        print(message)
-        czi.logevent(message)
+        czi.logevent(f"ERROR READING SCENE - [extract_png_from_czi] IN FILE {infile}; {e=}")
