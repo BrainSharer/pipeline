@@ -221,6 +221,8 @@ class Pipeline(
         We also define the input, output and progress directories.
         """
 
+        use_scatch = False # set to True to use scratch space, might speed up writing, but then you have to transfer to final location
+
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
             self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T_rechunkme')
@@ -229,9 +231,12 @@ class Pipeline(
             self.input = self.fileLocationManager.get_full_aligned(channel=self.channel)
             self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}_rechunkme')
 
-        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
-        scratch_tmp = get_scratch_dir()
-        self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
+        if use_scatch:
+            scratch_tmp = get_scratch_dir()
+            self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
+        else:
+            self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+    
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,
             channel=self.channel,
