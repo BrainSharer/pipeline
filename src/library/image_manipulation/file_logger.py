@@ -58,10 +58,14 @@ class FileLogger:
 
     def logevent(self, msg: str):
         '''
+        Implements output to terminal if debug is set to True (similar to linux command: tee)
+        
         :param msg: accepts string comment that gets inserted into file log
         :type msg: str
         :return: timestamp of event is returned [unclear if used as of 4-NO-2022]
         '''
         timestamp = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
         self.filelogger.info(f"{timestamp} - {msg}")
+        if self.debug:
+            print(f"{timestamp} - {msg}")
         return timestamp
