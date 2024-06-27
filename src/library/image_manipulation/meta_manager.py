@@ -21,6 +21,7 @@ class MetaUtilities:
     def extract_slide_meta_data_and_insert_to_database(self):
         """
         -Scans the czi dir to extract the meta information for each tif file
+        -ALSO CREATES SLIDE PREVIEW IMAGE
         """
 
         workers = self.get_nworkers()
@@ -36,7 +37,6 @@ class MetaUtilities:
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(unique_files) #CHECK FOR DB SECTION ENTRIES
         if not file_validation_status and not db_validation_status:
             self.logevent("ERROR IN CZI FILES OR DB COUNTS")
-            print("ERROR IN CZI FILES OR DB COUNTS")
             sys.exit()
         else:
             #FOR CZI FILES ALREADY PROCESSED; CHECK FOR SLIDE PREVIEW
@@ -47,8 +47,8 @@ class MetaUtilities:
                 infile = os.path.join(self.input, czi_file)
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
-
-            #self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
+            
+            self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
 
         #PROCESS OUTSTANDING EXTRACTIONS (SCENES FROM SLIDE FILES)
         if len(unprocessed_czifiles) > 0:
@@ -58,21 +58,16 @@ class MetaUtilities:
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
 
-            if self.debug:
-                print(f"DEBUG: ANALYZING {infile}")
             self.logevent(f"ANALYZING {infile}")
             
             if self.debug:
                 print(f'DEBUG: extract_slide_meta_data_and_insert_to_database: FILES: {len(file_keys)}; WORKERS: {workers}')
 
-            #self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
+            self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
             self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
             
         else:
-            msg = "NOTHING TO PROCESS - SKIPPING"
-            if self.debug:
-                print(msg)
-            self.logevent(msg)
+            self.logevent("NOTHING TO PROCESS - SKIPPING")
 
     def get_user_entered_scan_id(self):
         """Get id in the "scan run" table for the current microscopy scan that 
@@ -247,20 +242,9 @@ class MetaUtilities:
         if self.debug:
             print(f"DEBUG: START MetaUtilities::parallel_extract_slide_meta_data_and_insert_to_database")
 
-        #czi_metadata = load_metadata(infile)
-        
         czi_file = os.path.basename(os.path.normpath(infile))
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
-        
-        # #CREATE meta-data.json [IF !EXISTS]
-        # meta_data_file = 'meta-data.json'
-        # meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
-        # if not os.path.isfile(meta_store):
-        #     if self.debug:
-        #         print(f'DEBUG: meta-data.json NOT FOUND; CREATING @ {meta_store}')
-        #     with open(meta_store, 'w') as fh:
-        #         json.dump(czi_metadata["json_meta"], fh, indent=4)
         
         slide = Slide()
         slide.scan_run_id = scan_id
@@ -302,7 +286,6 @@ class MetaUtilities:
             if len(tif_list) > 0:
                 self.session.add_all(tif_list)
                 self.session.commit()
-
         return
 
 
