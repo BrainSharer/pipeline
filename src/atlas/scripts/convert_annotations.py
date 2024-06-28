@@ -34,26 +34,26 @@ def load_annotation_sessions():
     # coms and cells have no centroid or source and are of type com/cell
     # coms
     for annotation_session in com_sessions:
-        continue
         # coms below is always just one for each session 
         com = comController.get_data_per_session(annotation_session.id)
         annotation = {}
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
         user = annotation_session.annotator.first_name
-        #print(f'{annotation_session.id} {animal} {brain_region} {user}')
-        x = com.x / 1000000
-        y = com.y / 1000000
-        z = com.z / 1000000
-        annotation['type'] = 'com'
+        x = com.x / m_um_scale
+        y = com.y / m_um_scale
+        z = com.z / m_um_scale
+        annotation['type'] = 'point'
         annotation['point'] = [x, y, z]
-        annotation['description'] = brain_region
+        annotation['centroid'] = [x, y, z]
         annotation['props'] =  ["#ffff00",1]
         # update the code below for the new JSON format
         update_dict = {'annotation': annotation }
+        print(f'{annotation_session.id} {animal} {brain_region} {user} and com {x} {y} {z}')
+        continue
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # cells
-    for annotation_session in cell_sessions:
+    for annotation_session in tqdm(cell_sessions):
         continue
         # coms below is always just one for each session 
         points = markedCellController.get_data_per_session(annotation_session.id)
@@ -81,6 +81,7 @@ def load_annotation_sessions():
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # polygons
     for annotation_session in tqdm(polygon_sessions):
+        continue
         # coms below is always just one for each session 
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
