@@ -13,14 +13,27 @@ class AnnotationType(enum.Enum):
     MARKED_CELL = 'MARKED_CELL'
     STRUCTURE_COM = 'STRUCTURE_COM'
 
+
+class AnnotationLabel(Base):
+    __tablename__ = 'annotation_label'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    label = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    color = Column(String, nullable=False)
+    active =  Column(Integer,default=1)
+    created =  Column(DateTime)
+    updated = Column(DateTime)
+
 class AnnotationSession(Base):
     __tablename__ = 'annotation_session'
     id =  Column(Integer, primary_key=True, nullable=False)
     FK_prep_id = Column(String, nullable=False)
     FK_user_id = Column(Integer, ForeignKey('auth_user.id'), nullable=True)
-    FK_brain_region_id = Column(Integer, ForeignKey('brain_region.id'),nullable=True)
+    FK_brain_region_id = Column(Integer, ForeignKey('brain_region.id'), nullable=True)
+    FK_label_id = Column(Integer, ForeignKey('annotation_label.id'), nullable=True)
     annotation_type = Column(Enum(AnnotationType))    
     brain_region = relationship('BrainRegion', lazy=True, primaryjoin="AnnotationSession.FK_brain_region_id == BrainRegion.id")
+    label = relationship('AnnotationLabel', lazy=True, primaryjoin="AnnotationSession.FK_label_id == AnnotationLabel.id")
     annotator = relationship('User', lazy=True)
     annotation = Column(JSON)
     active =  Column(Integer,default=1)
