@@ -144,7 +144,7 @@ class CZIManager(FileLogger):
         region = self.get_scene_dimension(scene_index)
         return self.file.read_mosaic(region=region, scale_factor=scale, C=channel - 1)[0]
 
-
+ 
 def extract_tiff_from_czi(file_key: tuple):
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
