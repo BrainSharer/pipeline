@@ -160,7 +160,8 @@ def extract_tiff_from_czi(file_key: tuple):
         return
 
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
-    write_image(outfile, data, message=message)
+    if not os.path.exists(outfile):
+        write_image(outfile, data, message=message)
 
     #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
     org_file = Path(outfile)
