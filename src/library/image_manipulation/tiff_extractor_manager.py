@@ -30,13 +30,16 @@ class TiffExtractor(ParallelManager):
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
+            self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'thumbnail')
             scale_factor = DOWNSCALING_FACTOR
         else:
             self.output = self.fileLocationManager.tif
+            self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'full')
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
         os.makedirs(self.output, exist_ok=True)
+        os.makedirs(self.checksum, exist_ok=True)
         starting_files = glob.glob(
             os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
         )
@@ -58,6 +61,7 @@ class TiffExtractor(ParallelManager):
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             output_path = os.path.join(self.output, tif_file)
+            checksum_filepath = os.path.join(self.checksum, str(tif_file).replace('.tif', '.sha256'))
             if self.debug:
                 print(f'creating thumbnail={output_path}')
             if not os.path.exists(czi_file):
@@ -65,7 +69,7 @@ class TiffExtractor(ParallelManager):
             if os.path.exists(output_path):
                 continue
             scene = section.scene_index
-            file_keys.append([czi_file, output_path, scene, self.channel, scale_factor])
+            file_keys.append([czi_file, output_path, checksum_filepath, scene, self.channel, scale_factor])
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} thumbnails')
         workers = self.get_nworkers()

@@ -2,11 +2,12 @@ import os
 import numpy as np
 import tifffile
 from skimage import io
-
+import glob
 
 class ImageManager:
-    def __init__(self, directory):
-        self.files = sorted(os.listdir(directory))
+    def __init__(self, directory, filetype='tif'):
+        #self.files = sorted(os.listdir(directory))
+        self.files = sorted(glob.glob( os.path.join(directory, f'*.{filetype}') ))
         self.len_files = len(self.files)
         self.midpoint = self.len_files // 2
         self.midfile = self.files[self.midpoint]

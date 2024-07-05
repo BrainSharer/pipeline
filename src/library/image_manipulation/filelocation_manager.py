@@ -32,7 +32,7 @@ class FileLocationManager(object):
         self.prep = os.path.join(self.root, stack, "preps")
         self.masks = os.path.join(self.prep, "masks")
         self.www = os.path.join(self.stack, "www")
-        self.slides_preview = os.path.join(self.prep, "slides_preview")
+        self.slides_preview = os.path.join(self.www, "slides_preview")
         
         # The rest
         self.brain_info = os.path.join(self.root, stack, "brains_info")

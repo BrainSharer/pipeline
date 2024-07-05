@@ -5,11 +5,12 @@ import os, sys, time, re, json
 from datetime import datetime
 from pathlib import Path
 import numpy as np
-import tifffile
+from PIL import Image
 import hashlib
 
 from library.database_model.slide import Slide, SlideCziTif
 from library.image_manipulation.czi_manager import CZIManager
+from library.utilities.utilities_mask import scaled
 
 
 class MetaUtilities:
@@ -31,6 +32,8 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'preview')
+        os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.get_user_entered_scan_id()
         file_validation_status, unique_files = self.file_validation(czi_files) #CHECK FOR DUPLICATE SLIDES
@@ -197,6 +200,7 @@ class MetaUtilities:
         if self.debug:
             print(f"DEBUG: START MetaUtilities::extract_slide_scene_data")
 
+
         czi_file = os.path.basename(os.path.normpath(input_czi_file))
         czi = CZIManager(input_czi_file)
 
@@ -205,26 +209,41 @@ class MetaUtilities:
         czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
         if not os.path.exists(self.fileLocationManager.slides_preview):
             Path(self.fileLocationManager.slides_preview).mkdir(parents=True, exist_ok=True)
-        slide_preview = Path(self.fileLocationManager.slides_preview, czi_filename_without_extension + '.tif')
-        if not os.path.isfile(slide_preview): #CREATE SLIDE PREVIEW WITH CHECKSUM
+        #slide_preview = Path(self.fileLocationManager.slides_preview, czi_filename_without_extension + '.png')
+        slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
+        if not os.path.isfile(slide_preview_path): #CREATE SLIDE PREVIEW WITH CHECKSUM
             if self.debug:
-                print(f'CREATING SLIDE PREVIEW: {slide_preview}')
+                print(f'CREATING SLIDE PREVIEW: {slide_preview_path}')
             mosaic_data = czi.file.read_mosaic(C=0, scale_factor=scale_factor) #captures first channel
             image_data = ((mosaic_data - mosaic_data.min()) / (mosaic_data.max() - mosaic_data.min()) * 65535).astype(np.uint16)
-            tifffile.imwrite(slide_preview, image_data, compression='zlib', bigtiff=True)
+            # downsample preview image, normalize and save as PNG
+            if image_data.shape[0] == 1:
+                image_data = image_data.reshape(image_data.shape[1], image_data.shape[2])
+            image_data = scaled(image_data)
+            img = Image.fromarray(image_data)
+            img = img.resize((image_data.shape[1]//32, image_data.shape[0]//32))
+            img.save(slide_preview_path)
 
-            #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
-            org_file = Path(slide_preview)
-            with open(org_file, 'rb') as f:
+        checksum_file = os.path.join(self.checksum, f'{czi_filename_without_extension}.sha256')
+        if not os.path.isfile(checksum_file):
+            #CHECKSUM FOR FILE (STORED IN different dir AS FILE)
+            with open(slide_preview_path, 'rb') as f:
                 bytes = f.read()  # Read the entire file as bytes
                 readable_hash = hashlib.sha256(bytes).hexdigest()
-                checksum_file = org_file.with_suffix('.sha256')
                 with open(checksum_file, 'w') as f:
                     f.write(readable_hash)
 
-        else:
-            if self.debug:
-                print(f'SLIDE PREVIEW EXISTS: {slide_preview}')
+
+        if self.debug:
+            if os.path.isfile(slide_preview_path):
+                print(f'Slide preview exists: {slide_preview_path}')
+            else:
+                print(f'Slide preview does not exist, creating: {slide_preview_path}')
+
+            if os.path.isfile(checksum_file):
+                print(f'Slide checksum exists: {checksum_file}')
+            else:
+                print(f'Slide checksum does not exist, creating: {checksum_file}')
 
         #CREATE meta-data.json [IF !EXISTS]
         meta_data_file = 'meta-data.json'
