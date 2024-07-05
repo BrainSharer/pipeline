@@ -148,29 +148,29 @@ class CZIManager(FileLogger):
 def extract_tiff_from_czi(file_key: tuple):
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
-    :param file_key: a tuple of: czi_file, output_path, scenei, channel, scale
+    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale
     """
-    czi_file, outfile, scenei, channel, scale = file_key
-    czi = CZIManager(czi_file)
-    data = None
-    try:
-        data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
-    except Exception as e:
-        czi.logevent(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
-        return
-
-    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+    czi_file, outfile, checksum_filepath, scenei, channel, scale = file_key
     if not os.path.exists(outfile):
+        czi = CZIManager(czi_file)
+        data = None
+        try:
+            data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
+        except Exception as e:
+            czi.logevent(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
+            return
+
+        message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
         write_image(outfile, data, message=message)
 
     #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
-    org_file = Path(outfile)
-    with open(org_file, 'rb') as f:
-        bytes = f.read()  # Read the entire file as bytes
-        readable_hash = hashlib.sha256(bytes).hexdigest()
-        checksum_file = org_file.with_suffix('.sha256')
-        with open(checksum_file, 'w') as f:
-            f.write(readable_hash)
+    if not os.path.exists(checksum_filepath):
+        org_file = Path(outfile)
+        with open(org_file, 'rb') as f:
+            bytes = f.read()  # Read the entire file as bytes
+            readable_hash = hashlib.sha256(bytes).hexdigest()
+            with open(checksum_filepath, 'w') as f:
+                f.write(readable_hash)
 
 
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):

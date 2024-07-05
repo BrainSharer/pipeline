@@ -212,16 +212,16 @@ def convert_size(size_bytes: int) -> str:
 
 
 def write_image(file_path:str, data, message: str = "Error") -> None:
-    """Writes an image to the filesystem
+    """Writes an TIFF image to the filesystem
     """
     
     try:
-        cv2.imwrite(file_path, data)
+        imwrite(file_path, data, compression='LZW', bigtiff=True)
     except Exception as e:
         print(message, e)
         print("Unexpected error:", sys.exc_info()[0])
         try:
-            imwrite(file_path, data)
+            cv2.imwrite(file_path, data)
         except Exception as e:
             print(message, e)
             print("Unexpected error:", sys.exc_info()[0])
@@ -248,3 +248,4 @@ def read_image(file_path: str):
         sys.exit()
 
     return img
+
