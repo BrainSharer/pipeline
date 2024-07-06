@@ -83,6 +83,8 @@ def load_annotation_sessions(debug):
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # polygons
     for annotation_session in polygon_sessions:
+        if debug:
+            continue
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
         user = annotation_session.annotator.first_name
@@ -152,7 +154,7 @@ def load_annotation_sessions(debug):
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
         user = annotation_session.annotator.first_name
-        points = polygonController.get_data_per_session(7947)
+        points = polygonController.get_data_per_session(3477)
         index_points = defaultdict(list)
         index_orders = defaultdict(list)
         for point in points:
@@ -160,20 +162,21 @@ def load_annotation_sessions(debug):
                 index = int(point.polygon_index)
             except ValueError:
                 index = int(point.z)
+            print(f'point order {point.point_order} index {index}')
             index_points[index].append([point.x, point.y, point.z])
             index_orders[index].append(point.point_order)
         index_points_sorted = {}
+        #print(f'index_orders {index_orders}')
         for index, points in index_points.items():
             points = np.array(points)
             point_indices = np.array(index_orders[index])
             point_indices = point_indices - point_indices.min()
 
             sorted_points = np.array(points)[point_indices, :] / m_um_scale
-            print(f'sorted_points {sorted_points}')
             index_points_sorted[index] = sorted_points
 
 
 
 if __name__ == '__main__':
-    debug = False
+    debug = True
     load_annotation_sessions(debug)
