@@ -19,7 +19,7 @@ from library.controller.polygon_sequence_controller import PolygonSequenceContro
 default_props = ["#ffff00", 1, 1, 5, 3, 1]
 m_um_scale = 1000000
 
-def load_annotation_sessions():
+def load_annotation_sessions(debug):
     """x,y,z data fetched here is in micrometers
     """
     annotationSessionController = AnnotationSessionController('Allen')
@@ -34,7 +34,7 @@ def load_annotation_sessions():
     # coms and cells have no centroid or source and are of type com/cell
     # coms
     for annotation_session in tqdm(com_sessions):
-        
+        continue
         # coms below is always just one for each session 
         com = comController.get_data_per_session(annotation_session.id)
         annotation = {}
@@ -55,7 +55,7 @@ def load_annotation_sessions():
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # cells
     for annotation_session in tqdm(cell_sessions):
-        
+        continue
         # coms below is always just one for each session 
         points = markedCellController.get_data_per_session(annotation_session.id)
         annotation = {}
@@ -82,11 +82,10 @@ def load_annotation_sessions():
         update_dict = {'annotation': annotation }
         annotationSessionController.update_session(annotation_session.id, update_dict)
     # polygons
-    for annotation_session in tqdm(polygon_sessions):
+    for annotation_session in polygon_sessions:
         animal = annotation_session.FK_prep_id
         brain_region = annotation_session.brain_region.abbreviation
         user = annotation_session.annotator.first_name
-        
         points = polygonController.get_data_per_session(annotation_session.id)
         index_points = defaultdict(list)
         index_orders = defaultdict(list)
@@ -97,7 +96,6 @@ def load_annotation_sessions():
                 index = int(point.z)
             index_points[index].append([point.x, point.y, point.z])
             index_orders[index].append(point.point_order)
-        
         index_points_sorted = {}
         for index, points in index_points.items():
             points = np.array(points)
@@ -149,5 +147,33 @@ def load_annotation_sessions():
         update_dict = {'annotation': volume }
         annotationSessionController.update_session(annotation_session.id, update_dict)
 
+    
+    if debug:
+        animal = annotation_session.FK_prep_id
+        brain_region = annotation_session.brain_region.abbreviation
+        user = annotation_session.annotator.first_name
+        points = polygonController.get_data_per_session(7947)
+        index_points = defaultdict(list)
+        index_orders = defaultdict(list)
+        for point in points:
+            try:
+                index = int(point.polygon_index)
+            except ValueError:
+                index = int(point.z)
+            index_points[index].append([point.x, point.y, point.z])
+            index_orders[index].append(point.point_order)
+        index_points_sorted = {}
+        for index, points in index_points.items():
+            points = np.array(points)
+            point_indices = np.array(index_orders[index])
+            point_indices = point_indices - point_indices.min()
+
+            sorted_points = np.array(points)[point_indices, :] / m_um_scale
+            print(f'sorted_points {sorted_points}')
+            index_points_sorted[index] = sorted_points
+
+
+
 if __name__ == '__main__':
-    load_annotation_sessions()
+    debug = False
+    load_annotation_sessions(debug)
