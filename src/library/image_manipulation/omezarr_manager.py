@@ -118,6 +118,6 @@ class OmeZarrManager():
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
 
-            finally:
-                omezarr.cleanup()
+            #finally:
+            #    omezarr.cleanup()
 
