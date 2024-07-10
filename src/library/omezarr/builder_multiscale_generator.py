@@ -29,14 +29,13 @@ from library.omezarr import utils
 
 class BuilderMultiscaleGenerator:
 
-
     def write_resolution_0(self, client):
         start_time = timer()
         resolution_0_path = os.path.join(self.output, 'scale0')
         if os.path.exists(resolution_0_path):
             print(f'Resolution 0 already exists at {resolution_0_path}')
             return
-        
+
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
         stack = []
         for color in self.filesList:
@@ -100,7 +99,7 @@ class BuilderMultiscaleGenerator:
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Resolution {mip} completed in {total_elapsed_time} seconds")
-        
+
         if minmax and self.omero_dict['channels']['window'] is None:
             self.min = []
             self.max = []
@@ -120,15 +119,12 @@ class BuilderMultiscaleGenerator:
 
         print('Getting Parent Zarr as Dask Array with shape=', end=" ")
         parent_array = self.open_store(mip-1, mode='r')
-        print(parent_array.shape, end=" ")
         new_array_store = self.get_store(mip)
 
         new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
-        print(f'and new shape={new_shape}')
         new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.compressor,dtype=self.dtype)
-        print(f'new_array shape={new_array.shape} chunks={new_array.chunks}')
 
         # Other downsample methods could be substituted here
         dsamp_algo = self.fast_downsample
@@ -241,15 +237,10 @@ class BuilderMultiscaleGenerator:
             dsamp_method = self.local_mean_downsample
         elif self.downSampType == 'max':
             dsamp_method = self.local_max_downsample
-        # print(self.downSampType)
-        # dsamp_method = self.local_mean_downsample
 
         from_array = self.open_store(from_mip, mode='r')
         to_array = self.open_store(to_mip)
-        print(f'downsample_by_chunk from mip={from_mip} to mip={to_mip}', end=" ")
-
         data = from_array[from_slice]
-        print(f'data shape={data.shape}')
 
         # Calculate min/max of input data
         if minmax:
@@ -423,15 +414,22 @@ class BuilderMultiscaleGenerator:
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.compressor, dtype=self.dtype)
-        print(f'new_array shape={new_array.shape} chunks={new_array.chunks}')
+
+
 
         from_array_shape_chunks = (
-            (self.TimePoints,self.Channels,*self.pyramidMap[mip-1]['shape']),
-            (1,1,*self.pyramidMap[mip-1]['chunk'])
+            (self.TimePoints, self.Channels, *self.pyramidMap[mip - 1]["shape"]),
+            (1, 1, *self.pyramidMap[mip - 1]["chunk"]),
         )
+        shape = (*self.pyramidMap[mip - 1]["shape"],)
+        chunk = (*self.pyramidMap[mip - 1]["chunk"],)
+        print(f'mip={mip-1} shape={shape}')
+        print(f'chunk={chunk}')
+        print()
+
         to_array_shape_chunks = (
-            (self.TimePoints,self.Channels,*self.pyramidMap[mip]['shape']),
-            (1,1,*self.pyramidMap[mip]['chunk'])
+            (self.TimePoints, self.Channels, *self.pyramidMap[mip]["shape"]),
+            (1, 1, *self.pyramidMap[mip]["chunk"]),
         )
 
         down_sample_ratio = self.pyramidMap[mip]['downsamp']

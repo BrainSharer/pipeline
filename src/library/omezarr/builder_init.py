@@ -79,7 +79,9 @@ class builder(BuilderDownsample,
         testImage = TiffManager(self.filesList[0][0])
         self.dtype = testImage.dtype
         self.ndim = testImage.ndim
-        self.shape_3d = (len(self.filesList[0]),*testImage.shape)
+        #self.shape_3d = (len(self.filesList[0]),*testImage.shape)
+        # hardcoding this for Xiang's data
+        self.shape_3d = (4750,*testImage.shape)
         self.shape = (self.TimePoints, self.Channels, *self.shape_3d)
         out_shape = self.shape_3d
         initial_chunk = self.originalChunkSize[2:]
