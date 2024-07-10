@@ -50,7 +50,6 @@ class BuilderMultiscaleGenerator:
                 test_image.dtype,
                 self.res0_chunk_limit_GB
             )
-            import numpy as np
             test_image.chunks = optimum_chunks
             print(f'Using optimumm chunks={optimum_chunks} for resolution 0')
             s = [test_image.clone_manager_new_file_list(x) for x in s]
@@ -247,8 +246,10 @@ class BuilderMultiscaleGenerator:
 
         from_array = self.open_store(from_mip, mode='r')
         to_array = self.open_store(to_mip)
+        print(f'downsample_by_chunk from mip={from_mip} to mip={to_mip}', end=" ")
 
         data = from_array[from_slice]
+        print(f'data shape={data.shape}')
 
         # Calculate min/max of input data
         if minmax:
@@ -418,12 +419,11 @@ class BuilderMultiscaleGenerator:
         new_array_store = self.get_store(mip)
 
         new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
-        # new_chunks = (1, 1, 16, 512, 4096)
         new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.compressor, dtype=self.dtype)
-        # print('new_array, {}, {}'.format(new_array.shape, new_array.chunks))
+        print(f'new_array shape={new_array.shape} chunks={new_array.chunks}')
 
         from_array_shape_chunks = (
             (self.TimePoints,self.Channels,*self.pyramidMap[mip-1]['shape']),
@@ -528,6 +528,5 @@ class BuilderMultiscaleGenerator:
                 if countException == 100:
                     break
                 pass
-
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
