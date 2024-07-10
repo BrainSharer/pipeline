@@ -30,11 +30,11 @@ class TiffExtractor(ParallelManager):
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
-            self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'thumbnail')
+            self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'thumbnail')
             scale_factor = DOWNSCALING_FACTOR
         else:
             self.output = self.fileLocationManager.tif
-            self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'full')
+            self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'full')
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
@@ -63,7 +63,7 @@ class TiffExtractor(ParallelManager):
             output_path = os.path.join(self.output, tif_file)
             checksum_filepath = os.path.join(self.checksum, str(tif_file).replace('.tif', '.sha256'))
             if self.debug:
-                print(f'creating thumbnail={output_path}')
+                print(f'creating image={output_path}')
             if not os.path.exists(czi_file):
                 continue
             if os.path.exists(output_path):

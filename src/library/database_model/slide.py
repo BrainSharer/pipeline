@@ -29,6 +29,7 @@ class Slide(Base, AtlasModel):
     processed = Column(Boolean(), default=False)
     file_size = Column(Float, nullable=False)
     file_name = Column(String, nullable=False)
+    checksum = Column(String, nullable=True)
     comments = Column(String)
 
 class SlideCziTif(Base, AtlasModel):
