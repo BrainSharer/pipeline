@@ -32,7 +32,7 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
-        self.checksum = os.path.join(self.fileLocationManager.brain_info, 'checksums', 'preview')
+        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'preview')
         os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.get_user_entered_scan_id()
@@ -60,8 +60,6 @@ class MetaUtilities:
                 infile = os.path.join(self.input, unprocessed_czifile)
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
-
-            self.logevent(f"ANALYZING {infile}")
             
             if self.debug:
                 print(f'DEBUG: extract_slide_meta_data_and_insert_to_database: FILES: {len(file_keys)}; WORKERS: {workers}')
@@ -278,6 +276,11 @@ class MetaUtilities:
         slide.file_name = os.path.basename(os.path.normpath(infile))
         slide.created = datetime.fromtimestamp(Path(os.path.normpath(infile)).stat().st_mtime)
         slide.scenes = len([elem for elem in czi_metadata.values()][0].keys())
+        checksum_file = os.path.join(self.checksum, str(slide.file_name).replace('.czi', '.sha256'))
+
+        with open(checksum_file) as f: # The with keyword automatically closes the file when you are done
+            readable_hash = f.read()
+        slide.checksum = readable_hash
         self.session.begin()
         self.session.add(slide)
         self.session.commit()
