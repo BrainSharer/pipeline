@@ -415,17 +415,10 @@ class BuilderMultiscaleGenerator:
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.compressor, dtype=self.dtype)
 
-
-
         from_array_shape_chunks = (
             (self.TimePoints, self.Channels, *self.pyramidMap[mip - 1]["shape"]),
             (1, 1, *self.pyramidMap[mip - 1]["chunk"]),
         )
-        shape = (*self.pyramidMap[mip - 1]["shape"],)
-        chunk = (*self.pyramidMap[mip - 1]["chunk"],)
-        print(f'mip={mip-1} shape={shape}')
-        print(f'chunk={chunk}')
-        print()
 
         to_array_shape_chunks = (
             (self.TimePoints, self.Channels, *self.pyramidMap[mip]["shape"]),
