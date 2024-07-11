@@ -24,8 +24,9 @@ import dask.array as da
 from distributed import progress
 
 # Project specific imports
-from library.omezarr.builder_image_utils import TiffManager3d, get_size_GB
+from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
+from library.utilities.dask_utilities import get_pyramid
 
 class BuilderMultiscaleGenerator:
 
@@ -33,7 +34,17 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         resolution_0_path = os.path.join(self.output, 'scale0')
         if os.path.exists(resolution_0_path):
+            shape0 = zarr.open(resolution_0_path).shape
+            out_shape = shape0[2:]
+            initial_chunk = self.originalChunkSize[2:]
+            final_chunk_size = self.finalChunkSize[2:]
+            resolution = self.geometry[2:]
+            self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
+            for k, v in self.pyramidMap.items():
+                print(k,v)
+
             print(f'Resolution 0 already exists at {resolution_0_path}')
+            print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
@@ -104,121 +115,12 @@ class BuilderMultiscaleGenerator:
             self.min = []
             self.max = []
             for ch in range(self.Channels):
-                print('Sorting Min/Max')
                 # Sort by channel
                 tmp = [x[-1] for x in results if x[-1][-1] == ch]
                 # Append vlues to list in channel order
                 self.min.append( min([x[0] for x in tmp]) )
                 self.max.append( max([x[1] for x in tmp]) )
             self.set_omero_window()
-
-    def down_samp(self, mip, client, minmax=False):
-
-        out_location = self.scale_name(mip)
-        parent_location = self.scale_name(mip-1)
-
-        print('Getting Parent Zarr as Dask Array with shape=', end=" ")
-        parent_array = self.open_store(mip-1, mode='r')
-        new_array_store = self.get_store(mip)
-
-        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
-        new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
-
-        new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True, compressor=self.compressor,dtype=self.dtype)
-
-        # Other downsample methods could be substituted here
-        dsamp_algo = self.fast_downsample
-
-        to_run = []
-        # Currently hardcoded - works well for 32core, 512GB RAM
-        # 4^3 is the break even point for surface area == volume
-        # Higher numbers are better to limt io
-        zz,yy,xx = self.determine_chunks_size_for_downsample(mip)
-        z_depth = new_chunks[-3] * zz
-        y_depth = new_chunks[-2] * yy
-        x_depth = new_chunks[-1] * xx
-        # print(z_depth)
-        idx = 0
-        idx_reference=[]
-        for t in range(self.TimePoints):
-            for c in range(self.Channels):
-
-                ## How to deal with overlap?
-                overlap = 2
-                for y in range(0,parent_array.shape[-2],y_depth):
-                    y_info = self.overlap_helper(y, parent_array.shape[-2], y_depth, overlap)
-                    for x in range(0,parent_array.shape[-1],x_depth):
-                        x_info = self.overlap_helper(x, parent_array.shape[-1], x_depth, overlap)
-                        for z in range(0,parent_array.shape[-3],z_depth):
-                            z_info = self.overlap_helper(z, parent_array.shape[-3], z_depth, overlap)
-
-                            info = {
-                                't':t,
-                                'c':c,
-                                'z':z_info,
-                                'y':y_info,
-                                'x':x_info
-                                }
-
-                            # working = delayed(smooth_downsample)(parent_location,out_location,1,info,store=H5Store)
-                            # working = delayed(local_mean_3d_downsample)(parent_location,out_location,info,store=H5Store)
-                            if mip == 1:
-                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=True,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[mip]['downsamp'])
-                            else:
-                                working = delayed(dsamp_algo)(parent_location,out_location,info,minmax=False,idx=idx,store=self.zarr_store_type,down_sample_ratio=self.pyramidMap[mip]['downsamp'])
-                            print('{},{},{},{},{}'.format(t,c,z,y,x))
-                            to_run.append(working)
-                            idx_reference.append((idx,(parent_location,out_location,info)))
-                            idx+=1
-
-        random.seed(42)
-        random.shuffle(to_run)
-        random.seed(42)
-        random.shuffle(idx_reference)
-        print('Computing {} chunks'.format(len(to_run)))
-
-        future = self.compute_batch(to_run,round(self.cpu_cores*1.25),client)
-
-        future_tmp = future
-
-        while True:
-            result_idx = [x[0] for x in future]
-            reference_idx = [x[0] for x in idx_reference]
-            print('Completed # {} : Queued # {}'.format(len(result_idx),len(reference_idx)))
-            re_process = []
-            for ii in reference_idx:
-                if ii not in result_idx:
-                    tmp = [x for x in idx_reference if x[0] == ii]
-                    re_process.append(tmp[0])
-                    print('Missing {}'.format(tmp[0]))
-            if re_process == []:
-                print('None missing: continuing')
-                # x = input('Enter your name:')
-                break
-
-            idx_reference = []
-            to_run = []
-            for ii in re_process:
-                if mip == 1:
-                    working = delayed(dsamp_algo)(ii[1][0],ii[1][1],ii[1][2],minmax=True,idx=ii[0],store=self.zarr_store_type)
-                else:
-                    working = delayed(dsamp_algo)(ii[1][0],ii[1][1],ii[1][2],minmax=False,idx=ii[0],store=self.zarr_store_type)
-                to_run.append(working)
-                idx_reference.append(ii)
-
-            print(to_run)
-            print('requeuing {} jobs'.format(len(to_run)))
-            # x = input('Enter your name:')
-            future = client.compute(to_run)
-            progress(future)
-            future = client.gather(future)
-
-            future_tmp = future_tmp + future
-
-        future = future_tmp
-        future = [x for x in future if isinstance(x,tuple) and not isinstance(x[0],bool)]
-
-        return future
 
     ##############################################################################################################
     '''
@@ -275,28 +177,15 @@ class BuilderMultiscaleGenerator:
 
             if z < image_shape[0]:
                 z = z + starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-            # elif y < image_shape[1]:
-            #     y = y + starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-            # elif x < image_shape[2]:
-            #     x = x + starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
             else:
                 break
-
-            # if x < image_shape[2]:
-            #     x = x + starting_chunks[2] if starting_chunks[2] < image_shape[2] else image_shape[2]
-            # elif y < image_shape[1]:
-            #     y = y + starting_chunks[1] if starting_chunks[1] < image_shape[1] else image_shape[1]
-            # elif z < image_shape[0]:
-            #     z = z + starting_chunks[0] if starting_chunks[0] < image_shape[0] else image_shape[0]
-            # else:
-            #     break
 
             current_chunks = (z,y,x)
 
         return current_chunks
 
-    def chunk_slice_generator_for_downsample(self,from_array, to_array, down_sample_ratio=(2, 2, 2), length=False):
-        '''
+    def chunk_slice_generator_for_downsample(self, from_array, to_array, down_sample_ratio=(2, 2, 2), length=False):
+        """
         Generate slice for each chunk in array for shape and chunksize
         Also generate slices for each chunk for an array of 2x size in each dim.
 
@@ -311,7 +200,7 @@ class BuilderMultiscaleGenerator:
 
         Assume dims are (t,c,z,y,x)
         downsample ratio is a tuple if int (z,y,x)
-        '''
+        """
         if isinstance(to_array, tuple):
             chunksize = to_array[1]
             shape = to_array[0]
@@ -405,8 +294,6 @@ class BuilderMultiscaleGenerator:
 
     def down_samp_by_chunk_no_overlap(self, mip, client, minmax=False):
 
-        parent_array = self.open_store(mip - 1, mode='r')
-        print(f'Getting Parent Zarr as Dask Array with shape={parent_array.shape} at resolution={mip}')
         new_array_store = self.get_store(mip)
 
         new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
@@ -478,6 +365,7 @@ class BuilderMultiscaleGenerator:
             """
         from time import sleep
         sleep(5) # give the system time to finish writing
+        """
         countKeyboardInterrupt = 0
         countException = 0
         print('Cleaning up tmp dir and orphaned lock files')
@@ -519,5 +407,6 @@ class BuilderMultiscaleGenerator:
                 if countException == 100:
                     break
                 pass
+        """
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)

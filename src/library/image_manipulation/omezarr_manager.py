@@ -114,10 +114,9 @@ class OmeZarrManager():
                         for mip in range(1, len(omezarr.pyramidMap)):
                             omezarr.write_resolutions(mip, client)
 
+
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
 
-            #finally:
-            #    omezarr.cleanup()
 
