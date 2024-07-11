@@ -310,7 +310,7 @@ class Pipeline(
 
         if self.downsample:
             directories = ['thumbnail_original', f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
-                           f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned',
+                           f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned', 'C1/normalized',
                            f'C{self.channel}/thumbnail_cropped', f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
