@@ -27,12 +27,13 @@ class Normalizer:
                     continue
                 
                 img = read_image(infile)
+                dtype = img.dtype
                 if self.debug:
                     print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
 
-                if img.dtype == np.uint16:
-                    img = (img / 256).astype(np.uint8)
-
-                if img.ndim == 2:
-                    img = equalized(img)
-                write_image(outfile, img.astype(np.uint8))
+                if dtype == np.uint16:
+                    scale = 45000
+                else:
+                    scale = 200
+                img = scaled(img, scale=scale)
+                write_image(outfile, img.astype(dtype))
