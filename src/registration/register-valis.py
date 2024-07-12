@@ -7,9 +7,9 @@ def run_valis(animal):
 
     ROOT = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data'
 
-    slide_src_dir = os.path.join(ROOT, animal, 'preps/CH1/thumbnail')
-    results_dst_dir = os.path.join(ROOT, animal, 'preps/CH1/registration_results')
-    registered_slide_dst_dir = os.path.join(ROOT, animal, 'preps/CH1/registered')
+    slide_src_dir = os.path.join(ROOT, animal, 'preps/C1/thumbnail')
+    results_dst_dir = os.path.join(ROOT, animal, 'preps/C1/registration_results')
+    registered_slide_dst_dir = os.path.join(ROOT, animal, 'preps/C1/registered')
 
     os.makedirs(results_dst_dir, exist_ok=True)
     os.makedirs(registered_slide_dst_dir, exist_ok=True)
@@ -23,13 +23,14 @@ def run_valis(animal):
     affine_optimizer_cls = affine_optimizer.AffineOptimizerMattesMI
 
     # Create a Valis object and use it to register the slides in slide_src_dir
-    registrar = registration.Valis(slide_src_dir, results_dst_dir,
+    registrar = registration.Valis(slide_src_dir, 
+                                   results_dst_dir,
                                 feature_detector_cls=feature_detector_cls,
                                 affine_optimizer_cls=affine_optimizer_cls,
                                 non_rigid_registrar_cls=non_rigid_registrar_cls)
 
     registrar.imgs_ordered=True
-    registrar.max_processed_image_dim_px=2000
+    registrar.max_processed_image_dim_px=119
 
     rigid_registrar, non_rigid_registrar, error_df = registrar.register()
     
