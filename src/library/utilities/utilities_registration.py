@@ -22,7 +22,8 @@ import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from tifffile import imwrite, imread
-import SimpleITK as sitk
+from scipy.ndimage import affine_transform
+from skimage.transform import AffineTransform, warp
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
 NUM_ITERATIONS = "1500"
@@ -178,39 +179,37 @@ def align_image_to_affine(file_key):
     :return: nothing
     """
     infile, outfile, T, fillcolor = file_key
-    try:
-        im1 = Image.open(infile)
-    except:
-        
-        try:
-            im = imread(infile)
-        except Exception as e:
-            print(f'Could not use tifffile to open={infile}')
-            print(f'Error={e}')
-            sys.exit()
-        
-        try:
-            im1 = Image.fromarray(im)
-        except Exception as e:
-            print(f'Could not convert file type={type(im)} to PIL ')
-            print(f'Error={e}')
-            sys.exit()
-        del im
+    basepath = os.path.basename(os.path.normpath(infile))
 
     try:
-        im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+        im0 = imread(infile)
     except Exception as e:
-        print(f'align image to affine, could not transform {infile} to:')
-        print(outfile)
+        print(f'Could not use tifffile to open={basepath}')
         print(f'Error={e}')
         sys.exit()
-    
-    del im1
 
-    try:
-        im2.save(outfile)
-    except:
+    if im0.ndim == 3 and im0.dtype == np.uint16:
+        # PIL can't handle sRGB 16bit images
+        im2 = (im0/256).astype(np.uint8)
+    else:
+        try:
+            im1 = Image.fromarray(im0)
+        except Exception as e:
+            print(f'Could not convert file {basepath} to PIL ')
+            print(f'Error={e}')
+            sys.exit()
+        del im0
+        try:
+            im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+        except Exception as e:
+            print(f'align image to affine, could not transform {infile} to:')
+            print(outfile)
+            print(f'Error={e}')
+            sys.exit()
+        
+        del im1
 
+    if isinstance(im2, Image.Image):
         try:
             im2 = np.asarray(im2)
         except Exception as e:
@@ -218,12 +217,14 @@ def align_image_to_affine(file_key):
             print(f'Error={e}')
             sys.exit()
 
-        try:
-            imwrite(outfile, im2)
-        except Exception as e:
-            print('could not save {outfile} with tifffile')
-            print(f'Error={e}')
-            sys.exit()
+    # The final image: im2 is now a numpy array so we can use
+    # tifffile to save the image
+    try:
+        imwrite(outfile, im2, bigtiff=True, compression='LZW')
+    except Exception as e:
+        print('could not save {outfile} with tifffile')
+        print(f'Error={e}')
+        sys.exit()
 
     del im2
     return

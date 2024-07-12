@@ -28,6 +28,9 @@ class ImageManager:
         """align needs either an integer or a tuple of integers for the fill color"""
 
         self.masks = sorted(os.listdir(maskpath))
+        if len(self.masks) == 0:
+            print('Warning: no masks are available for this image')
+            return 0
         midmaskfile = self.masks[self.midpoint]
         midmaskpath = os.path.join(maskpath, midmaskfile)
 
