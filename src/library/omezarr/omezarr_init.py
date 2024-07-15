@@ -77,7 +77,7 @@ class OmeZarrBuilder(_builder_downsample,
         
 
         self.filesList = filesList
-        self.Channels = len(self.filesList)
+        self.channels = len(self.filesList)
         self.TimePoints = 1
 
         testImage = tiff_manager(self.filesList[0][0])
@@ -85,7 +85,7 @@ class OmeZarrBuilder(_builder_downsample,
         self.ndim = testImage.ndim
         self.shape_3d = (len(self.filesList[0]),*testImage.shape)
 
-        self.shape = (self.TimePoints, self.Channels, *self.shape_3d)
+        self.shape = (self.TimePoints, self.channels, *self.shape_3d)
 
         # self.pyramidMap = self.imagePyramidNum()
         self.pyramidMap = self.imagePyramidNum_converge_isotropic()

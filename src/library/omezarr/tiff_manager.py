@@ -37,7 +37,7 @@ each file.
 
 class TiffManager:
     
-    def __init__(self,file,desired_chunk_depth=64):
+    def __init__(self,file, desired_chunk_depth=64):
         self.file = file
         
         self.ext = os.path.splitext(file)[-1]

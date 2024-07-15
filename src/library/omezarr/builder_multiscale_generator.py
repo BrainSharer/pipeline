@@ -24,9 +24,11 @@ import dask.array as da
 from distributed import progress
 
 # Project specific imports
-from library.omezarr.builder_image_utils import TiffManager3d
+#from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
+from library.omezarr.builder_image_utils import TiffManager3d
 from library.utilities.dask_utilities import get_pyramid
+from library.image_manipulation.image_manager import ImageManager
 
 class BuilderMultiscaleGenerator:
 
@@ -48,26 +50,27 @@ class BuilderMultiscaleGenerator:
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
-        stack = []
-        for color in self.filesList:
+        print(f'Stack has {self.channels} channels and {len(self.filesList)} files')
 
-            s = self.organize_by_groups(color, self.originalChunkSize[2])
-            test_image = TiffManager3d(s[0])
-            optimum_chunks = utils.optimize_chunk_shape_3d_2(
-                test_image.shape,
-                test_image.chunks,
-                self.originalChunkSize[2:],
-                test_image.dtype,
-                self.res0_chunk_limit_GB
-            )
-            test_image.chunks = optimum_chunks
-            print(f'Using optimumm chunks={optimum_chunks} for resolution 0')
-            s = [test_image.clone_manager_new_file_list(x) for x in s]
-            s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-            s = da.concatenate(s)
-            stack.append(s)
-        stack = da.stack(stack)
+        s = [[x] for x in self.filesList]
+        test_image = TiffManager3d(s[0])
+        optimum_chunks = utils.optimize_chunk_shape_3d_2(
+            test_image.shape,
+            test_image.chunks,
+            self.originalChunkSize[2:],
+            test_image.dtype,
+            self.res0_chunk_limit_GB
+        )
+        test_image.chunks = optimum_chunks
+        print(f'Using optimum chunks={optimum_chunks} for resolution 0')
+        print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
+        #return
+        s = [test_image.clone_manager_new_file_list(x) for x in s]
+        s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
+        s = da.concatenate(s)
+        stack = da.stack([s])
         stack = stack[None, ...]
+        print(f'stack shape={stack.shape} originalChunkSize={self.originalChunkSize}')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,
@@ -114,7 +117,7 @@ class BuilderMultiscaleGenerator:
         if minmax and self.omero_dict['channels']['window'] is None:
             self.min = []
             self.max = []
-            for ch in range(self.Channels):
+            for ch in range(self.channels):
                 # Sort by channel
                 tmp = [x[-1] for x in results if x[-1][-1] == ch]
                 # Append vlues to list in channel order
@@ -296,19 +299,19 @@ class BuilderMultiscaleGenerator:
 
         new_array_store = self.get_store(mip)
 
-        new_shape = (self.TimePoints, self.Channels, *self.pyramidMap[mip]['shape'])
+        new_shape = (self.TimePoints, self.channels, *self.pyramidMap[mip]['shape'])
         new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.compressor, dtype=self.dtype)
 
         from_array_shape_chunks = (
-            (self.TimePoints, self.Channels, *self.pyramidMap[mip - 1]["shape"]),
+            (self.TimePoints, self.channels, *self.pyramidMap[mip - 1]["shape"]),
             (1, 1, *self.pyramidMap[mip - 1]["chunk"]),
         )
 
         to_array_shape_chunks = (
-            (self.TimePoints, self.Channels, *self.pyramidMap[mip]["shape"]),
+            (self.TimePoints, self.channels, *self.pyramidMap[mip]["shape"]),
             (1, 1, *self.pyramidMap[mip]["chunk"]),
         )
 

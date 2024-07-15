@@ -161,6 +161,7 @@ class BuilderUtils:
 
     @staticmethod
     def organize_by_groups(a_list,group_len):
+        print(f'organize_by_groups: {group_len}')
 
         new = []
         working = []
