@@ -12,6 +12,7 @@ from numcodecs import Blosc
 
 
 ## Import mix-in classes
+from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_img_processing import BuilderDownsample
 from library.omezarr.builder_utils import BuilderUtils
 from library.omezarr.builder_ome_zarr_utils import BuilderOmeZarrUtils
@@ -71,16 +72,15 @@ class builder(BuilderDownsample,
 
         #####store = self.get_store_from_path(self.output) # location: _builder_utils
 
-        self.Channels = len(self.filesList)
         self.TimePoints = 1
-        # print(self.Channels)
-        # print(self.filesList)
 
-        testImage = TiffManager(self.filesList[0][0])
-        self.dtype = testImage.dtype
-        self.ndim = testImage.ndim
-        self.shape_3d = (len(self.filesList[0]),*testImage.shape)
-        self.shape = (self.TimePoints, self.Channels, *self.shape_3d)
+        #testImage = TiffManager(self.filesList[0])
+        image_manager = ImageManager(self.input)
+        self.dtype = image_manager.dtype
+        self.ndim = image_manager.ndim
+        self.channels = image_manager.num_channels
+        self.shape_3d = (len(self.filesList),*image_manager.shape)
+        self.shape = (self.TimePoints, self.channels, *self.shape_3d)
         out_shape = self.shape_3d
         initial_chunk = self.originalChunkSize[2:]
         final_chunk_size = self.finalChunkSize[2:]

@@ -46,7 +46,7 @@ class OmeZarrManager():
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)
             filesList.append(filepath)
-        filesList = [filesList]
+        #filesList = [filesList
         omero = {}
         omero['channels'] = {}
         omero['channels']['color'] = None

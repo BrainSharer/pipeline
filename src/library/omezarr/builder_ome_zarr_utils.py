@@ -83,12 +83,12 @@ class BuilderOmeZarrUtils:
                 'FF00FF'  #blue
                 ]
             colors = {}
-            for idx in range(self.Channels):
+            for idx in range(self.channels):
                 colors[idx] = colors_palette[idx%len(colors_palette)]
 
         labels = self.omero_dict['channels']['label']
         channels = []
-        for chn in range(self.Channels):
+        for chn in range(self.channels):
             new = {}
             new["active"] = True
             new["coefficient"] = 1
@@ -158,7 +158,7 @@ class BuilderOmeZarrUtils:
     def set_omero_window(self):
         
         channels = self.get_omero_attr('channels')
-        for ch in range(self.Channels):
+        for ch in range(self.channels):
             #set in write_resolution()
             #print(ch)
             channel_dict = channels[ch]
