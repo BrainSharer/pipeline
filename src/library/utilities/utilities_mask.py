@@ -70,11 +70,7 @@ def place_image(file_key, bgcolor = 0):
             g[startr:endr, startc:endc] = img[:,:,1]
             b[startr:endr, startc:endc] = img[:,:,2]
 
-
             placed_img = cv2.merge((b,g,r)) # put them back in the correct order for cv2
-
-
-
 
         except:
             raise Exception(f'Could not place 3DIM {infile} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
@@ -282,7 +278,6 @@ def get_image_box(mask):
 
     BUFFER = 10
     mask = np.array(mask)
-    print(f'mask shape={mask.shape} mask dtype={mask.dtype} mask ndim={mask.ndim}')
     mask[mask > 0] = 255
     _, thresh = cv2.threshold(mask, 200, 255, 0)
     contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
