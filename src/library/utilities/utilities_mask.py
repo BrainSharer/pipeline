@@ -217,38 +217,41 @@ def clean_and_rotate_image(file_key):
 
     img = read_image(infile)
     mask = read_image(maskfile)
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-
-    if cleaned.dtype == np.uint8:
-        #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
-        r = cleaned[:,:,0]
-        g = cleaned[:,:,1]
-        b = cleaned[:,:,2]
-        r[r == 0] = bgcolor[0]
-        g[g == 0] = bgcolor[1]
-        b[b == 0] = bgcolor[2]
-        cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
+    if mask.ndim == 3:
+        cleaned = img
     else:
-        cleaned = scaled(cleaned)
-        
 
-    if mask_image == FULL_MASK:
-        cleaned = crop_image(cleaned, mask)
-    del img
-    del mask
-    if rotation > 0:
-        cleaned = rotate_image(cleaned, infile, rotation)
-    if flip == "flip":
-        cleaned = np.flip(cleaned)
-    if flip == "flop":
-        cleaned = np.flip(cleaned, axis=1)
+        try:
+            cleaned = cv2.bitwise_and(img, img, mask=mask)
+        except:
+            print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+            print("Are the shapes exactly the same?")
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+
+        if cleaned.dtype == np.uint8:
+            #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
+            r = cleaned[:,:,0]
+            g = cleaned[:,:,1]
+            b = cleaned[:,:,2]
+            r[r == 0] = bgcolor[0]
+            g[g == 0] = bgcolor[1]
+            b[b == 0] = bgcolor[2]
+            cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
+        else:
+            cleaned = scaled(cleaned)
+            
+
+        if mask_image == FULL_MASK:
+            cleaned = crop_image(cleaned, mask)
+        del img
+        del mask
+        if rotation > 0:
+            cleaned = rotate_image(cleaned, infile, rotation)
+        if flip == "flip":
+            cleaned = np.flip(cleaned)
+        if flip == "flop":
+            cleaned = np.flip(cleaned, axis=1)
 
     message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
     write_image(outfile, cleaned, message=message)
@@ -279,6 +282,7 @@ def get_image_box(mask):
 
     BUFFER = 10
     mask = np.array(mask)
+    print(f'mask shape={mask.shape} mask dtype={mask.dtype} mask ndim={mask.ndim}')
     mask[mask > 0] = 255
     _, thresh = cv2.threshold(mask, 200, 255, 0)
     contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
