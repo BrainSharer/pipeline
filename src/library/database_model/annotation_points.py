@@ -5,13 +5,22 @@ from sqlalchemy.sql.sqltypes import Float
 import enum
 
 from library.database_model.atlas_model import Base
-from library.database_model.brain_region import BrainRegion
 from library.database_model.user import User
 
-class AnnotationType(enum.Enum):
-    POLYGON_SEQUENCE = 'POLYGON_SEQUENCE'
-    MARKED_CELL = 'MARKED_CELL'
-    STRUCTURE_COM = 'STRUCTURE_COM'
+
+
+class AnnotationSession(Base):
+    __tablename__ = 'annotation_session'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    FK_prep_id = Column(String, nullable=False)
+    FK_user_id = Column(Integer, ForeignKey('auth_user.id'), nullable=True)
+    labels = relationship('AnnotationLabel', secondary='annotation_session_labels', back_populates='annotation_session')
+    annotator = relationship('User', lazy=True)
+    annotation = Column(JSON)
+    active =  Column(Integer,default=1)
+    created =  Column(DateTime)
+    updated = Column(DateTime)
+
 
 
 class AnnotationLabel(Base):
@@ -23,22 +32,15 @@ class AnnotationLabel(Base):
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
     updated = Column(DateTime)
+    annotation_session = relationship('AnnotationSession', secondary='annotation_session_labels', back_populates='labels')
 
-class AnnotationSession(Base):
-    __tablename__ = 'annotation_session'
+
+class AnnotationSessionLabel(Base):
+    __tablename__ = 'annotation_session_labels'
     id =  Column(Integer, primary_key=True, nullable=False)
-    FK_prep_id = Column(String, nullable=False)
-    FK_user_id = Column(Integer, ForeignKey('auth_user.id'), nullable=True)
-    FK_brain_region_id = Column(Integer, ForeignKey('brain_region.id'), nullable=True)
-    FK_label_id = Column(Integer, ForeignKey('annotation_label.id'), nullable=True)
-    annotation_type = Column(Enum(AnnotationType))    
-    brain_region = relationship('BrainRegion', lazy=True, primaryjoin="AnnotationSession.FK_brain_region_id == BrainRegion.id")
-    label = relationship('AnnotationLabel', lazy=True, primaryjoin="AnnotationSession.FK_label_id == AnnotationLabel.id")
-    annotator = relationship('User', lazy=True)
-    annotation = Column(JSON)
-    active =  Column(Integer,default=1)
-    created =  Column(DateTime)
-    updated = Column(DateTime)
+    annotationsession_id = Column('annotationsession_id', Integer, ForeignKey('annotation_session.id'))
+    annotationlabel_id = Column('annotationlabel_id', Integer, ForeignKey('annotation_label.id'))
+
 
 class CellSources(enum.Enum):
     MACHINE_SURE = 'MACHINE-SURE'

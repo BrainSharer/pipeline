@@ -1,13 +1,15 @@
+from collections import defaultdict
 import datetime
 
-from library.controller.sql_controller import SqlController
 from library.database_model.brain_region import BrainRegion
-from library.database_model.annotation_points import StructureCOM
-from library.database_model.annotation_points import AnnotationSession, AnnotationType
+from library.database_model.annotation_points import AnnotationLabel, StructureCOM
+from library.database_model.annotation_points import AnnotationSession
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
+
+FIDUCIAL = 8 # label ID in table annotation_label
 
 
-
-class AnnotationSessionController(SqlController):
+class AnnotationSessionController():
     """The class that queries and addes entry to the annotation_session table
     """
 
@@ -32,14 +34,13 @@ class AnnotationSessionController(SqlController):
             self.session.rollback()
 
     
-    def get_existing_session(self, annotation_type=AnnotationType.STRUCTURE_COM):
+    def get_existing_sessionXXXXXXXXX(self):
         """retruns a list of available session objects that is currently active in the database
 
         Returns:
             list: list of volume sessions
         """ 
         active_sessions = self.session.query(AnnotationSession) \
-                .filter(AnnotationSession.annotation_type==annotation_type)\
                 .filter(AnnotationSession.active==True).all()
         return active_sessions
     
@@ -110,4 +111,68 @@ class AnnotationSessionController(SqlController):
         self.add_row(data)
         self.session.commit()
         return data.id
+
+
+    def get_fiducials(self, prep_id):
+        """Fiducials will be marked on downsampled images. You will need the resolution
+        to convert from micrometers back to pixels of the downsampled images.
+        """
+
+        fiducials = defaultdict(list)
+        annotation_session = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.active==True)\
+            .filter(AnnotationSession.FK_prep_id==prep_id)\
+            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([FIDUCIAL]))).first()
+
+        #session.query(ZKUser).filter(ZKUser.groups.any(ZKGroup.id.in_([1,2,3])))
+
+        if not annotation_session:
+            print('No fiducial data for this animal was found.')
+            return fiducials
+        
+
+        xy_resolution = self.scan_run.resolution
+        z_resolution = self.scan_run.zresolution
+        downsample_factor = SCALING_FACTOR
+        data = annotation_session.annotation
+
+        # first test data to make sure it has the right keys    
+        try:
+            polygon_data = data['childJsons']
+        except KeyError:
+            return "No childJsons key in data. Check the data you are sending."
+        
+        for polygon in polygon_data:
+            try:
+                lines = polygon['childJsons']
+            except KeyError:
+                return "No data. Check the data you are sending."
+            x0,y0,z0 = lines[0]['pointA']
+            x0 = x0 * M_UM_SCALE / xy_resolution / downsample_factor
+            y0 = y0 * M_UM_SCALE / xy_resolution / downsample_factor
+            z0 = int(round(z0 * M_UM_SCALE / self.zresolution))
+            for line in lines:
+                x,y,z = line['pointA']
+                x = x * M_UM_SCALE / self.resolution / self.downsample_factor
+                y = y * M_UM_SCALE / self.resolution / self.downsample_factor
+                z = z * M_UM_SCALE / 10
+                xy = (x, y)
+                section = int(round(z))
+                fiducials[section].append(xy)
+            fiducials[z0].append((x0, y0))
+
+        
+        return fiducials
+
+
+
+
+
+        for row in rows:
+            x = row.x / xy_resolution
+            y = row.y / xy_resolution
+            section = row.z / z_resolution
+            fiducials[section].append((x,y))
+
+        return fiducials
 

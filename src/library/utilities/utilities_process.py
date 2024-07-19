@@ -12,6 +12,7 @@ import math
 from tifffile import imread, imwrite
 
 SCALING_FACTOR = 32.0
+M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
 
