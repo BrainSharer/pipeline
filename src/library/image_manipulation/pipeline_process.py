@@ -193,7 +193,7 @@ class Pipeline(
             return
         if not os.path.exists(neuroglancer_cropped):
             print(f'Missing {neuroglancer_cropped}')
-            print('Creating cropped data first.')
+            print('Creating neuroglancer data from unaligned cropped data.')
             self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
             self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,

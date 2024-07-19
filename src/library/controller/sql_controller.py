@@ -15,6 +15,7 @@ from sqlalchemy.orm import scoped_session
 from sqlalchemy.pool import NullPool
 import urllib
 
+from library.controller.annotation_session_controller import AnnotationSessionController
 from library.controller.animal_controller import AnimalController
 from library.controller.elastix_controller import ElastixController
 from library.controller.histology_controller import HistologyController
@@ -32,7 +33,7 @@ except ImportError as fe:
     raise
 
 
-class SqlController(AnimalController, ElastixController, HistologyController,
+class SqlController(AnnotationSessionController, AnimalController, ElastixController, HistologyController,
                      ScanRunController, SectionsController, SlideCZIToTifController):
     """ This is the base controller class for all things SQL.  
     Each parent class of SqlController would correspond to one table in the database, and include all the 
