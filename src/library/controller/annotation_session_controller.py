@@ -1,5 +1,6 @@
 from collections import defaultdict
 import datetime
+import numpy as np
 
 from library.database_model.brain_region import BrainRegion
 from library.database_model.annotation_points import AnnotationLabel, StructureCOM
@@ -32,6 +33,7 @@ class AnnotationSessionController():
         except Exception as e:
             print(f'No merge for  {e}')
             self.session.rollback()
+
 
     
     def get_existing_sessionXXXXXXXXX(self):
@@ -117,51 +119,40 @@ class AnnotationSessionController():
         """Fiducials will be marked on downsampled images. You will need the resolution
         to convert from micrometers back to pixels of the downsampled images.
         """
-
+        
         fiducials = defaultdict(list)
         annotation_session = self.session.query(AnnotationSession)\
             .filter(AnnotationSession.active==True)\
             .filter(AnnotationSession.FK_prep_id==prep_id)\
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([FIDUCIAL]))).first()
 
-        #session.query(ZKUser).filter(ZKUser.groups.any(ZKGroup.id.in_([1,2,3])))
-
         if not annotation_session:
             print('No fiducial data for this animal was found.')
             return fiducials
         
-
         xy_resolution = self.scan_run.resolution
         z_resolution = self.scan_run.zresolution
-        downsample_factor = SCALING_FACTOR
-        data = annotation_session.annotation
+
+
+        #data = annotation_session.annotation['childJsons']
+        #print(f'data: {data}  type: {type(data)}')
+        #return {}
 
         # first test data to make sure it has the right keys    
         try:
-            polygon_data = data['childJsons']
+            data = annotation_session.annotation['childJsons']
         except KeyError:
-            return "No childJsons key in data. Check the data you are sending."
+            print("No childJsons key in data")
+            return fiducials
         
-        for polygon in polygon_data:
-            try:
-                lines = polygon['childJsons']
-            except KeyError:
-                return "No data. Check the data you are sending."
-            x0,y0,z0 = lines[0]['pointA']
-            x0 = x0 * M_UM_SCALE / xy_resolution / downsample_factor
-            y0 = y0 * M_UM_SCALE / xy_resolution / downsample_factor
-            z0 = int(round(z0 * M_UM_SCALE / self.zresolution))
-            for line in lines:
-                x,y,z = line['pointA']
-                x = x * M_UM_SCALE / self.resolution / self.downsample_factor
-                y = y * M_UM_SCALE / self.resolution / self.downsample_factor
-                z = z * M_UM_SCALE / 10
-                xy = (x, y)
-                section = int(round(z))
-                fiducials[section].append(xy)
-            fiducials[z0].append((x0, y0))
+        for point in data:
+            x,y,z = point['point']
+            x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
+            y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
+            section = int( np.round((z * M_UM_SCALE / z_resolution),2) )
+            print(x,y,section)
+            fiducials[section].append((x,y))
 
-        
         return fiducials
 
 
