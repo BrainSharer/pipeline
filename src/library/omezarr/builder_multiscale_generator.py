@@ -99,6 +99,13 @@ class BuilderMultiscaleGenerator:
         # These values are added to zattrs omero:channels
         # out is a list of tuple (min,max,channel)
 
+        resolution_path = os.path.join(self.output, f'scale{mip}')
+        if os.path.exists(resolution_path):
+            print(f'Resolution {mip} already exists at {resolution_path}')
+            return
+
+
+
         minmax = False
         where_to_calculate_min_max = 2
         if len(self.pyramidMap) == 2 and mip == 1:
