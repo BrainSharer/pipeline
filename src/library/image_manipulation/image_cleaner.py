@@ -52,7 +52,6 @@ class ImageCleaner:
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.debug:
             print(f'Updating scan run.')
-        print(f'self mask is {self.mask_image}')
         if self.mask_image > 0:
             self.set_crop_size()
         self.setup_parallel_place_images()
