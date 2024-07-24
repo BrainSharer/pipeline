@@ -10,7 +10,10 @@ class Normalizer:
 
 
     def create_normalized_image(self):
-        """Normalize the downsampled images with QC applied"""
+        """Normalize the downsampled images with QC applied
+        Note, normalized images must be of type unit8. We use pillow and torchvision to create
+        the masks and 16bit images do not work.
+        """
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             self.output = self.fileLocationManager.get_normalized(self.channel)
@@ -32,8 +35,8 @@ class Normalizer:
                     print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
 
                 if dtype == np.uint16:
-                    scale = 45000
-                else:
-                    scale = 200
+                    img = (img / 256).astype(np.uint8)
+
+                scale = 250
                 img = scaled(img, scale=scale)
-                write_image(outfile, img.astype(dtype))
+                write_image(outfile, img.astype(np.uint8))
