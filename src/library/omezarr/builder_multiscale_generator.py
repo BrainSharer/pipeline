@@ -104,8 +104,6 @@ class BuilderMultiscaleGenerator:
             print(f'Resolution {mip} already exists at {resolution_path}')
             return
 
-
-
         minmax = False
         where_to_calculate_min_max = 2
         if len(self.pyramidMap) == 2 and mip == 1:
