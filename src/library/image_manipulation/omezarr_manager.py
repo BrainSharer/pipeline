@@ -31,7 +31,7 @@ class OmeZarrManager():
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
             input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
-            mips = 4
+            mips = 1
             originalChunkSize = [1, 1, 1, 512, 512]
             finalChunkSize=(1, 1, 32, 32, 32)
         else:
