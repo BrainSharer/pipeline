@@ -119,7 +119,7 @@ class MaskManager:
         print(f' using CPU with {workers} workers at a batch size of {batch_size}')
 
         if os.path.exists(modelpath):
-            self.loaded_model.load_state_dict(torch.load(modelpath, map_location = device))
+            self.loaded_model.load_state_dict(torch.load(modelpath, map_location = device, weights_only=False))
         else:
             print("no model to load")
             return

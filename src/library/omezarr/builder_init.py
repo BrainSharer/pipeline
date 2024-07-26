@@ -74,7 +74,6 @@ class builder(BuilderDownsample,
 
         self.TimePoints = 1
 
-        #testImage = TiffManager(self.filesList[0])
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
         self.ndim = image_manager.ndim
