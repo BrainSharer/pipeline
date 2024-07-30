@@ -30,7 +30,7 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-def place_image(file_key, bgcolor = 0):
+def place_image(file_key: tuple, bgcolor: int = 0):
 
     """Places the image in a padded one size container with the correct background
 

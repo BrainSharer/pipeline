@@ -50,7 +50,7 @@ def get_image_size(filepath: str):
     return int(width), int(height)
 
 
-def test_dir(animal: str, directory, section_count, downsample: bool = True, same_size: bool = False) -> int:
+def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False) -> int:
     """Verify image stack directory for section count and max width, height
 
     :param animal: string of animal name.
