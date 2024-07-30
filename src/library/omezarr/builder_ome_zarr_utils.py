@@ -125,7 +125,19 @@ class BuilderOmeZarrUtils:
         r.attrs['omero'] = omero
         
         return
-    
+
+    def build_zarr_json(self):
+        """TODO: Implement this function to build the zarr json file
+        """
+        
+        store = self.get_store_from_path(self.output)
+        r = zarr.open(store)
+        
+        multiscales = {}
+        return
+
+
+
     def edit_omero_channels(self,channel_num,attr_name,new_value):
         # store = self.zarr_store_type(self.output,verbose=1)
         store = self.get_store_from_path(self.output)

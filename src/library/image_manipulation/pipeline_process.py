@@ -212,6 +212,7 @@ class Pipeline(
 
     def affine_align(self):
         """Perform the section to section alignment (registration)
+        This method needs work. It is not currently used.
         """
 
         self.create_affine_transformations()
