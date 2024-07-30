@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import tifffile
 from skimage import io
@@ -35,6 +36,9 @@ class ImageManager:
     def __init__(self, directory, filetype='tif'):
         self.files = sorted(glob.glob( os.path.join(directory, f'*.{filetype}') ))
         self.len_files = len(self.files)
+        if self.len_files == 0:
+            print(f'No image files found in: {directory}')
+            sys.exit(1)
         self.midpoint = self.len_files // 2
         self.midfile = self.files[self.midpoint]
         midfilepath = os.path.join(directory, self.midfile)
@@ -57,7 +61,7 @@ class ImageManager:
         if len(self.masks) != self.len_files:
             print('Warning: no masks are available for this image')
             if self.ndim == 3:
-                return (200,200,200)
+                return (255,255,255)
             else:
                 return 0
         midmaskfile = self.masks[self.midpoint]

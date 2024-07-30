@@ -48,6 +48,8 @@ class ImageCleaner:
         else:
             self.bgcolor = 0
 
+        print(f'bg color={self.bgcolor}')
+
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.debug:

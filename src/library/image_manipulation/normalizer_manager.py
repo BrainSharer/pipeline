@@ -13,6 +13,8 @@ class Normalizer:
         """Normalize the downsampled images with QC applied
         Note, normalized images must be of type unit8. We use pillow and torchvision to create
         the masks and 16bit images do not work.
+        Converting from 16bit sRGB to 8bit grayscale uses: 
+        https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.convert
         """
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
@@ -30,11 +32,14 @@ class Normalizer:
                     continue
                 
                 img = read_image(infile)
-                dtype = img.dtype
+                if img.ndim == 3:
+                    img = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
+                    img = img.astype(np.uint8)
+
                 if self.debug:
                     print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
 
-                if dtype == np.uint16:
+                if img.dtype == np.uint16:
                     img = (img / 256).astype(np.uint8)
 
                 scale = 250
