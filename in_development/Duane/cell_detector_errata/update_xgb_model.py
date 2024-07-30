@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 import xgboost as xgb
 import joblib
+import pandas as pd
 from compress_pickle import dump, load
 
 model_file = Path(os.getcwd(), 'models_example.pkl')
