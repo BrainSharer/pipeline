@@ -1,4 +1,4 @@
-abakit @ file:///home/eddyod/programming/abakit
+#abakit @ file:///home/eddyod/programming/abakit
 absl-py==2.0.0
 affine==2.4.0
 aicsimageio==4.14.0
