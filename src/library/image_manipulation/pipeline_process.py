@@ -160,9 +160,12 @@ class Pipeline(
 
     def histogram(self):
         print(self.TASK_HISTOGRAM)
-        self.make_histogram()
-        self.make_combined_histogram()
-        print(f'Finished {self.TASK_HISTOGRAM}.')
+        if self.downsample:
+            self.make_histogram()
+            self.make_combined_histogram()
+            print(f'Finished {self.TASK_HISTOGRAM}.')
+        else:
+            print(f'No histogram for full resolution images')
 
     def align(self):
         """Perform the section to section alignment (registration)

@@ -96,7 +96,6 @@ class ImageCleaner:
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
 
 
-
     def setup_parallel_place_images(self):
         """Do the image placing in parallel. Cleaning and cropping has already taken place.
         We first need to get all the correct image sizes and then update the DB.
@@ -124,16 +123,15 @@ class ImageCleaner:
 
         file_keys = []
         for file in files:
-            infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
-            if os.path.exists(outfile):
-                continue
-            file_keys.append([infile, outfile, max_width, max_height, self.bgcolor])
+            if not os.path.exists(outfile):
+                infile = os.path.join(self.input, file)
+                file_keys.append((infile, outfile, max_width, max_height, self.bgcolor))
 
         if self.debug:
             print(f'len of file keys in place={len(file_keys)}')
         workers = self.get_nworkers() // 2
-        self.run_commands_concurrently(place_image, file_keys, workers)
+        self.run_commands_concurrently(place_image, tuple(file_keys), workers)
 
     def set_crop_size(self):
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
