@@ -318,7 +318,7 @@ class Pipeline(
                            f'C{self.channel}/thumbnail_cropped', f'C{self.channel}/thumbnail_aligned']
             ndirectory = f'C{self.channel}T'
         else:
-            directories = [f'masks/C{self.channel}/full_masked', f'C{self.channel}/full', 
+            directories = [f'masks/C1/full_masked', f'C{self.channel}/full', 
                            f'C{self.channel}/full_cleaned', f'C{self.channel}/full_cropped', f'C{self.channel}/full_aligned']
             ndirectory = f'C{self.channel}'
 

@@ -51,9 +51,7 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join(
-        "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/mask.model.pth"
-    )
+    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/mask.model.pth")
     loaded_model = get_model_instance_segmentation(num_classes=2)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -83,8 +81,8 @@ def predict(animal, debug=False):
         torch_input = torch_input.unsqueeze(0)
         loaded_model.eval()
         with torch.no_grad():
-            pred = loaded_model(torch_input)
-        masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+            prediction = loaded_model(torch_input)
+        masks = [(prediction[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
         mask = masks[0]
         if mask.shape[0] == 0:
             continue

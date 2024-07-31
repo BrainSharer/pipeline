@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 import numpy as np
@@ -28,8 +29,6 @@ from library.utilities.utilities_mask import combine_dims
 from library.utilities.utilities_process import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.controller.structure_com_controller import StructureCOMController
-from library.database_model.annotation_points import AnnotationType, PolygonSequence
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.mask_utilities.mask_class import (
     MaskDataset,
@@ -57,12 +56,13 @@ class MaskPrediction:
         self.epochs = epochs
         self.debug = debug
         self.num_classes = 2 # 1 class (person) + background. This is different then detectron2!
-        self.modelpath = os.path.join(self.mask_root, "structures/mask.model.pth")
+        self.modelpath = os.path.join(self.mask_root, f"structures/{self.abbreviation}/mask.model.pth")
         self.annotator_id = 1
 
         if self.animal is not None:
             self.fileLocationManager = FileLocationManager(animal)
             self.input = self.fileLocationManager.get_thumbnail_aligned()
+            self.sqlController = SqlController(self.animal)
 
 
         if self.abbreviation is not None:
@@ -93,15 +93,24 @@ class MaskPrediction:
 
     def load_machine_learning_model(self):
         """Load the CNN model used to generate image masks"""
+
+        loaded_model = self.get_model_instance_segmentation()
+        workers = 2
+        torch.multiprocessing.set_sharing_strategy('file_system')
+
+        device = torch.device('cpu')
+        print(f' using CPU with {workers} workers')
+
         if os.path.exists(self.modelpath):
-            self.model.load_state_dict(
-                torch.load(self.modelpath, map_location=torch.device("cpu"))
-            )
+            loaded_model.load_state_dict(torch.load(self.modelpath, map_location = device))
         else:
-            print("no model to load")
+            print('No model to load.')
             sys.exit()
+
         if self.debug:
             print(f'Loading model from: {self.modelpath}')
+            
+        return loaded_model
 
     def mask_trainer(self):
 
@@ -229,12 +238,11 @@ class MaskPrediction:
         print("Finished with loss plot")
 
     def predict_masks(self):
-        self.model = self.get_model_instance_segmentation()
-        self.load_machine_learning_model()
+        loaded_model = self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
 
         files = sorted(os.listdir(self.input))
-        for file in tqdm(files):
+        for file in tqdm(files[80:133], disable=self.debug):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (
                 os.path.splitext(file)[0] + ".tif"
@@ -247,140 +255,145 @@ class MaskPrediction:
             pimg = Image.fromarray(img)
             img_transformed = transform(pimg)
             img_transformed = img_transformed.unsqueeze(0)
-            self.model.eval()
+            loaded_model.eval()
             with torch.no_grad():
-                prediction = self.model(img_transformed)
-
-            """
-            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
-            #masks = [pred[0]["masks"].squeeze().detach().cpu().numpy()]
+                prediction = loaded_model(img_transformed)
+            threshold = 0.5
+            masks = [(prediction[0]["masks"] > threshold).squeeze().detach().cpu().numpy()]
             mask = masks[0]
-            #ids, counts = np.unique(mask, return_counts=True)
-            #print(f'file={file} len masks={len(masks)}')
-            #print(f'file={file} dtype={mask.dtype} ids={ids} counts={counts}')
-            #return
-            dims = mask.ndim
-            if dims > 2:
-                mask = combine_dims(mask)
+            del masks
+            if mask.shape[0] == 0:
+                continue
+            if mask.ndim == 3:
+                mask = mask[0, ...]
             mask = mask.astype(np.uint8)
             mask[mask > 0] = 255
-            merged_img = merge_mask(img, mask)
-            cv2.imwrite(maskpath, merged_img)
-            """
 
-            for i in range(len(prediction[0]["masks"])):
-                # iterate over masks
-                mask = prediction[0]["masks"][i, 0] > 0.5
-                mask = mask.mul(255).byte().cpu().numpy()
-                contours, _ = cv2.findContours(
-                    mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
-                )
-                cv2.drawContours(img, contours, -1, 255, 2, cv2.LINE_AA)
-
+            contours, _ = cv2.findContours(mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+            if self.debug:
+                print(f'{file} threshold={threshold} #contours={len(contours)}')
+            cv2.drawContours(img, contours, -1, 255, 2, cv2.LINE_AA)
             cv2.imwrite(maskpath, img)
 
-    def get_insert_mask_points(self):
-        annotationSessionController = AnnotationSessionController(self.animal)
-        structureController = StructureCOMController(self.animal)
-        self.brainManager = BrainStructureManager(self.animal)
-        self.sqlController = SqlController(self.animal)
-        FK_brain_region_id = structureController.structure_abbreviation_to_id(
-            abbreviation=self.abbreviation)
-        if FK_brain_region_id is None:
+    def update_session(self):
+        annotation_label = self.sqlController.get_annotation_label(self.abbreviation)
+        loaded_model = self.load_machine_learning_model()
+        if annotation_label is None:
             print(f'Could not find database entry for structure={self.abbreviation}')
             print('Exiting. Try again with a real structure abbreviation')
             sys.exit()
         
-        self.annotation_session = (
-            annotationSessionController.get_annotation_session(
-                self.animal, FK_brain_region_id, self.annotator_id, AnnotationType.POLYGON_SEQUENCE
-            )
-        )
-        self.model = self.get_model_instance_segmentation()
-        self.load_machine_learning_model()
+        annotation_session = self.sqlController.get_annotation_session(self.animal, annotation_label.id, self.annotator_id)
+        annotation = {}
 
         transform = torchvision.transforms.ToTensor()
-        source = "NA"
         files = sorted(os.listdir(self.input))
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-        for i, file in enumerate(files):
-            vlist = []
+        index_points = defaultdict(list)
+        index_orders = defaultdict(list)
+        index_points_sorted = {}
+        default_props = ["#ffff00", 1, 1, 5, 3, 1]
+        m_um_scale = 1000000
+
+        for file in tqdm(files[80:134], disable=self.debug):
             filepath = os.path.join(self.input, file)
             section = os.path.splitext(file)[0]
-            img8 = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
-            pimg = Image.fromarray(img8)
+
+            img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+            pimg = Image.fromarray(img)
             img_transformed = transform(pimg)
             img_transformed = img_transformed.unsqueeze(0)
-            self.model.eval()
-
-
-
+            loaded_model.eval()
             with torch.no_grad():
-                pred = self.model(img_transformed)
-            masks = [(pred[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
+                prediction = loaded_model(img_transformed)
+            masks = [(prediction[0]["masks"] > 0.5).squeeze().detach().cpu().numpy()]
             mask = masks[0]
-            dims = mask.ndim
-            if dims > 2:
-                mask = combine_dims(mask)
+            del masks
+            if mask.shape[0] == 0:
+                continue
+            if mask.ndim == 3:
+                mask = mask[0, ...]
+            if self.debug:
+                print(f'{file} mask type={type(mask)} shape={mask.shape} ndim={mask.ndim}')
             mask = mask.astype(np.uint8)
             mask[mask > 0] = 255
-            ids, counts = np.unique(mask, return_counts=True)
+            contours, _ = cv2.findContours(mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+
             areaArray = []
-            point_count = []
-            if len(ids) > 1:
-                _, thresh = cv2.threshold(mask, 254, 255, 0)
-                contours, _ = cv2.findContours(
-                    thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-                )
-                for i, c in enumerate(contours):
-                    area = cv2.contourArea(c)
-                    areaArray.append(area)
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                areaArray.append(area)
+            # first sort the array by area
+            sorteddata = sorted(zip(areaArray, contours), key=lambda x: x[0], reverse=True)
+            largest_contour = sorteddata[0][1]
+            approx = cv2.approxPolyDP(largest_contour, 0.0009 * cv2.arcLength(largest_contour, True), True)
+            for j in range(approx.shape[0]):
+                x = approx[j][0][0] * SCALING_FACTOR * xy_resolution
+                y = approx[j][0][1] * SCALING_FACTOR * xy_resolution
+                z = float(section) * z_resolution
+                index = int(z)
+                point_order = j
+                index_points[index].append([x, y, z])
+                index_orders[index].append(point_order)
 
-                # first sort the array by area
-                sorteddata = sorted(
-                    zip(areaArray, contours), key=lambda x: x[0], reverse=True
-                )
-                largest_contour = sorteddata[0][1]
-                approx = cv2.approxPolyDP(
-                    largest_contour, 0.0009 * cv2.arcLength(largest_contour, True), True
-                )
-                for j in range(approx.shape[0]):
-                    x = approx[j][0][0] * SCALING_FACTOR * xy_resolution
-                    y = approx[j][0][1] * SCALING_FACTOR * xy_resolution
-                    z = float(section) * z_resolution
-                    polygon_index = z
-                    point_order = j
-                    polygon_sequence = PolygonSequence(
-                        x=x,
-                        y=y,
-                        z=z,
-                        source=source,
-                        polygon_index=polygon_index,
-                        point_order=point_order,
-                        FK_session_id=self.annotation_session.id,
-                    )
-                    vlist.append(polygon_sequence)
-                    point_count.append(len(vlist))
+        for index, points in index_points.items():
+            points = np.array(points)
+            point_indices = np.array(index_orders[index])
+            point_indices = point_indices - point_indices.min()
+            sorted_points = np.array(points)[point_indices, :] / m_um_scale
+            index_points_sorted[index] = sorted_points
+            
+        polygons = []
+        for index in sorted(list(index_points_sorted.keys())):
+            if index not in index_points_sorted: 
+                continue
+            points = index_points_sorted[index]
 
-                if self.debug:
-                    print(f"Finished creating {len(vlist)} points on section={section}")
-                else:
-                    try:
-                        self.brainManager.sqlController.session.bulk_save_objects(vlist)
-                        self.brainManager.sqlController.session.commit()
-                    except pymysql.err.IntegrityError:
-                        self.brainManager.sqlController.session.rollback()
-                    except exc.IntegrityError:
-                        self.brainManager.sqlController.session.rollback()
-                    except Exception:
-                        self.brainManager.sqlController.session.rollback()
+            lines = []
+            for i in range(len(points) - 1):
+                lines.append({
+                    "type": "line",
+                    "props": default_props,
+                    "pointA": points[i].tolist(),
+                    "pointB": points[i + 1].tolist(),
+                })
+            lines.append({
+                "type": "line",
+                "props": default_props,
+                "pointA": points[-1].tolist(),
+                "pointB": points[0].tolist(),
+            })
+
+            polygons.append({
+                "type": "polygon",
+                "props": default_props,
+                "source": points[0].tolist(),
+                "centroid": np.mean(points, axis=0).tolist(),
+                "childJsons": lines
+            })
+
+        if len(polygons) > 0:
+            volume = {
+                "type": "volume",
+                "props": default_props,
+                "source": polygons[0]["source"],
+                "centroid": polygons[len(polygons) // 2]["centroid"],
+                "childJsons": polygons,
+                "description": self.abbreviation
+            }
+
+
         if self.debug:
             action = "finding"
         else:
             action = "inserting"
+            annotation = volume
+            annotation_session.annotation = annotation
+            annotation_session.updated = datetime.now()
+            self.sqlController.update_row(annotation_session)
         print(
-            f"Finished {action} {sum(point_count)} points for {self.abbreviation} of animal={self.animal} with session ID={self.annotation_session.id}"
+            f"Finished {action} {len(polygons)} polygons for {self.abbreviation} of animal={self.animal} with session ID={annotation_session.id}"
         )
 
 

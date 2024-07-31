@@ -53,31 +53,25 @@ class AnnotationSessionController():
         return brain_region
     
 
-    def get_annotation_session(self, prep_id, brain_region_id, annotator_id, annotation_type):
-        annotation_session = self.session.query(AnnotationSession).filter(AnnotationSession.active==True)\
-            .filter(AnnotationSession.annotation_type==annotation_type)\
+    def get_annotation_session(self, prep_id, label_id, annotator_id):
+
+        annotation_session = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.active==True)\
             .filter(AnnotationSession.FK_prep_id==prep_id)\
-            .filter(AnnotationSession.FK_brain_region_id==brain_region_id)\
             .filter(AnnotationSession.FK_user_id==annotator_id)\
-            .order_by(AnnotationSession.created.desc()).first()
-
-        if annotation_session is None:
-            annotation_session = AnnotationSession(
-                FK_prep_id=prep_id,
-                FK_user_id=annotator_id,
-                FK_brain_region_id=brain_region_id,
-                annotation_type=annotation_type,
-                active=True,
-                created=datetime.datetime.now())
-
-            self.session.add(annotation_session)
-            self.session.commit()
-            self.session.refresh(annotation_session)
-        else:
-            annotation_session.updated=datetime.datetime.now()
-            self.session.refresh(annotation_session)
-
+            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([label_id])))\
+            .order_by(AnnotationSession.updated.desc()).first()
+            
         return annotation_session
+
+
+    def get_annotation_label(self, label):
+
+        annotation_label = self.session.query(AnnotationLabel)\
+            .filter(AnnotationLabel.label==label).first()
+            
+        return annotation_label
+
 
     def upsert_structure_com(self, entry):
         """Method to do update/insert. It first checks if there is already an entry. If not,
