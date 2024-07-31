@@ -173,11 +173,16 @@ class Pipeline(
         """
 
         print(self.TASK_ALIGN)
-        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        self.create_within_stack_transformations()
-        transformations = self.get_transformations()
-        self.align_downsampled_images(transformations)
-        self.align_full_size_image(transformations)
+	if self.channel == 1 and self.downsample:
+            self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run once for each brain)
+
+        #self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
+        #self.create_within_stack_transformations()
+        #transformations = self.get_transformations()
+        #self.align_downsampled_images(transformations)
+        #self.align_full_size_image(transformations)
+
+	self.start_image_alignment()
         self.create_web_friendly_sections()
         print(f'Finished {self.TASK_ALIGN}.')
 
@@ -226,6 +231,9 @@ class Pipeline(
         """
 
         use_scatch = False # set to True to use scratch space, might speed up writing, but then you have to transfer to final location
+        scratch_tmp = get_scratch_dir()
+        SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
+	#TODO: rechunkme should be stored on scratch and final output on birdstore
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
