@@ -173,16 +173,10 @@ class Pipeline(
         """
 
         print(self.TASK_ALIGN)
-	if self.channel == 1 and self.downsample:
+        if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run once for each brain)
 
-        #self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        #self.create_within_stack_transformations()
-        #transformations = self.get_transformations()
-        #self.align_downsampled_images(transformations)
-        #self.align_full_size_image(transformations)
-
-	self.start_image_alignment()
+        self.start_image_alignment()
         self.create_web_friendly_sections()
         print(f'Finished {self.TASK_ALIGN}.')
 
