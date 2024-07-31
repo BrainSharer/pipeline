@@ -55,7 +55,8 @@ class ImageManager:
 
 
     def get_bgcolor(self, maskpath):
-        """align needs either an integer or a tuple of integers for the fill color"""
+        """align needs either an integer or a tuple of integers for the fill color
+        """
 
         self.masks = sorted(os.listdir(maskpath))
         if len(self.masks) != self.len_files:
