@@ -28,10 +28,8 @@ class AnnotationLabel(Base):
     id =  Column(Integer, primary_key=True, nullable=False)
     label = Column(String, nullable=False)
     description = Column(String, nullable=False)
-    color = Column(String, nullable=False)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
-    updated = Column(DateTime)
     annotation_session = relationship('AnnotationSession', secondary='annotation_session_labels', back_populates='labels')
 
 

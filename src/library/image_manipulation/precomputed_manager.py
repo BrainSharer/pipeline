@@ -64,7 +64,7 @@ class NgPrecomputedMaker:
         image_manager = ImageManager(self.input)
         scales = self.get_scales()
         self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
-        print(f'volume_size={image_manager.volume_size} num_channels={image_manager.num_channels} dtype={image_manager.dtype}')
+        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype}')
             
         ng = NumpyToNeuroglancer(
             self.animal,
