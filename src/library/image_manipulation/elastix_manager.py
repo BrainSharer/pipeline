@@ -50,17 +50,16 @@ class ElastixManager(FileLogger):
         each brain. 
         """
         test_dir(self.animal, self.input, self.section_count, True, same_size=True)
-        if self.channel == 1 and self.downsample:
-            files = sorted(os.listdir(self.input))
-            nfiles = len(files)
-            self.logevent(f"Input FOLDER: {self.input}")
-            self.logevent(f"FILE COUNT: {nfiles}")
-            for i in range(1, nfiles):
-                fixed_index = os.path.splitext(files[i - 1])[0]
-                moving_index = os.path.splitext(files[i])[0]
-                if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                    rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False)
-                    self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
+        files = sorted(os.listdir(self.input))
+        nfiles = len(files)
+        self.logevent(f"Input FOLDER: {self.input}")
+        self.logevent(f"FILE COUNT: {nfiles}")
+        for i in range(1, nfiles):
+            fixed_index = os.path.splitext(files[i - 1])[0]
+            moving_index = os.path.splitext(files[i])[0]
+            if not self.sqlController.check_elastix_row(self.animal, moving_index):
+                rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
 
 
     def update_within_stack_transformations(self):
@@ -423,7 +422,8 @@ class ElastixManager(FileLogger):
                 transformations[filename] = T_composed
         return transformations
 
-    def align_full_size_image(self, transforms):
+    
+    def start_image_alignment(self):
         """align the full resolution tif images with the transformations provided.
            All the sections are aligned to the middle sections, the transformation
            of a given section to the middle section is the composite of the transformation
@@ -431,25 +431,21 @@ class ElastixManager(FileLogger):
 
         :param transforms: (dict): dictionary of transformations that are index by the id of moving sections
         """
+        transformations = self.get_transformations()
+
         if not self.downsample:
-            transforms = create_downsampled_transforms(transforms, downsample=False, scaling_factor=self.scaling_factor)
+            transforms = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
-            self.logevent(f"Input FOLDER: {self.input}")
             starting_files = os.listdir(self.input)
             self.logevent(f"FILE COUNT: {len(starting_files)} with {len(transforms)} transforms")
+            self.logevent(f"Input FOLDER: {self.input}")
             self.logevent(f"Output FOLDER: {self.output}")
             self.align_images(transforms)
-
-    def align_downsampled_images(self, transforms):
-        """align the downsample tiff images
-
-        :param transforms: (dict) dictionary of transformations indexed by id of moving sections
-        """
-
-        if self.downsample:
+        else:
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
-            print(f'Aligning {len(os.listdir(self.input))} images from {os.path.basename(os.path.normpath(self.input))} to {os.path.basename(os.path.normpath(self.output))}', end=" ")
-            self.align_images(transforms)
+            self.logevent(f'Aligning {len(os.listdir(self.input))} images from {os.path.basename(os.path.normpath(self.input))} to {os.path.basename(os.path.normpath(self.output))}')
+            self.align_images(transformations)
+
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  
@@ -507,15 +503,15 @@ class ElastixManager(FileLogger):
         files = sorted(os.listdir(self.input))
         file_keys = []
         for file in files:
-            png = str(file).replace(".tif", ".png")
-            infile = os.path.join(self.input, file)
-            outfile = os.path.join(self.output, png)
-            if os.path.exists(outfile):
-                continue
-            file_keys.append([infile, outfile])
-
+            base, _ = os.path.splitext(file)
+            png_file = base + ".png"
+            outfile = os.path.join(self.output, png_file)
+            if not os.path.exists(outfile):
+                infile = os.path.join(self.input, file)    
+                file_keys.append((infile, outfile))
         workers = self.get_nworkers()
         self.run_commands_concurrently(tif_to_png, file_keys, workers)
+
 
     @staticmethod
     def get_metric(logpath):
