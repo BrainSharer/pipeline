@@ -7,6 +7,7 @@ from skimage import io
 import numpy as np
 import cv2
 
+from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_process import test_dir, read_image
 
 COLORS = {1: "b", 2: "r", 3: "g"}
@@ -67,8 +68,9 @@ class HistogramMaker:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
             self.output = self.fileLocationManager.get_histogram(self.channel)
-            files = os.listdir(self.input)
-            files = [os.path.basename(i) for i in files]
+            image_manager = ImageManager(self.input)
+            files = image_manager.files
+            dtype = image_manager.dtype
             lfiles = len(files)
             os.makedirs(self.output, exist_ok=True)
             hist_dict = Counter({})
@@ -76,67 +78,60 @@ class HistogramMaker:
             outpath = os.path.join(self.output, outfile)
             if os.path.exists(outpath):
                 return
-            midindex = lfiles // 2
-            midfilepath = os.path.join(self.input, files[midindex])
-            img = io.imread(midfilepath)
-            bits = img.dtype
-            del img
             for file in files:
+                file = os.path.basename(file)
                 input_path = os.path.join(self.input, file)
                 mask_path = os.path.join(MASKS, file)
                 try:
                     img = io.imread(input_path)
                 except:
-                    self.logevent(f"Could not read {input_path}")
+                    print(f"Could not read {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     mask = io.imread(mask_path)
                     img = cv2.bitwise_and(img, img, mask=mask)
+                    img = img[img > 0]
                 except:
-                    self.logevent(
-                        f"ERROR WITH FILE OR DIMENSIONS: {mask_path}{mask.shape}{img.shape}"
-                    )
+                    print(f"ERROR WITH FILE OR DIMENSIONS: {mask_path}{mask.shape}{img.shape}")
                     break
                 try:
                     flat = img.flatten()
                     del img
                 except:
-                    self.logevent(f"Could not flatten file {input_path}")
+                    print(f"Could not flatten file {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     img_counts = np.bincount(flat)
                 except:
-                    self.logevent(f"Could not create counts {input_path}")
+                    print(f"Could not create counts {input_path}")
                     lfiles -= 1
                     continue
                 try:
-                    img_dict = Counter(
-                        dict(zip(np.unique(flat), img_counts[img_counts.nonzero()]))
-                    )
+                    img_dict = Counter(dict(zip(np.unique(flat), img_counts[img_counts.nonzero()])))
                 except:
-                    self.logevent(f"Could not create counter {input_path}")
+                    print(f"Could not create counter {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     hist_dict = hist_dict + img_dict
                 except:
-                    self.logevent(f"Could not add files {input_path}")
+                    print(f"Could not add files {input_path}")
                     lfiles -= 1
                     continue
-            if lfiles > 10:
-                hist_dict = dict(hist_dict)
-                hist_values = [i / lfiles for i in hist_dict.values()]
-                fig = plt.figure()
-                plt.rcParams["figure.figsize"] = [10, 6]
-                plt.bar(list(hist_dict.keys()), hist_values, color=COLORS[self.channel])
-                plt.yscale("log")
-                plt.grid(axis="y", alpha=0.75)
-                plt.xlabel("Value")
-                plt.ylabel("Frequency (log scale)")
-                plt.title(f"{self.animal} channel {self.channel} @{bits}bit with {lfiles} tif files", fontsize=8)
-                fig.savefig(outpath, bbox_inches="tight")
+
+            hist_dict = dict(hist_dict)
+            hist_values = [i / lfiles for i in hist_dict.values()]
+            fig = plt.figure()
+            plt.rcParams["figure.figsize"] = [10, 6]
+            plt.bar(list(hist_dict.keys()), hist_values, color=COLORS[self.channel])
+            #plt.yscale("log")
+            plt.grid(axis="y", alpha=0.75)
+            plt.xlabel("Value")
+            plt.ylabel("Frequency")
+            plt.title(f"{self.animal} channel {self.channel} @{dtype}bit with {lfiles} tif files", fontsize=8)
+            fig.savefig(outpath, bbox_inches="tight")
 
 
 def make_single_histogram(file_key):
@@ -147,29 +142,37 @@ def make_single_histogram(file_key):
 
     input_path, mask_path, channel, file, output_path = file_key
     img = read_image(input_path)
+    dtype = img.dtype
     if img.dtype == np.uint8:
         end = 255
     else:
         end = 65535
     mask = read_image(mask_path)
-    img = cv2.bitwise_and(img, img, mask=mask)
+    try:
+        img = cv2.bitwise_and(img, img, mask=mask)
+    except Exception as e:
+        print(f"Could not apply mask {mask_path} to {input_path}")
+        print(e)
+        return
 
+    img = img[img > 0]
     try:
         flat = img.flatten()
     except:
         print(f"Could not flatten {input_path}")
         return
+    
     del img
     del mask
     fig = plt.figure()
     plt.rcParams["figure.figsize"] = [10, 6]
     plt.hist(flat, flat.max(), [0, end], color=COLORS[channel])
     plt.style.use("ggplot")
-    plt.yscale("log")
+    #plt.yscale("log")
     plt.grid(axis="y", alpha=0.75)
     plt.xlabel("Value")
-    plt.ylabel("Frequency (log scale)")
-    plt.title(f"{file.file_name} @16bit", fontsize=8)
+    plt.ylabel("Frequency")
+    plt.title(f"{file.file_name} @{dtype}", fontsize=8)
     plt.close()
     fig.savefig(output_path, bbox_inches="tight")
     return
