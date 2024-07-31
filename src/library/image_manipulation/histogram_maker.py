@@ -50,9 +50,6 @@ class HistogramMaker:
                 file_keys.append(
                     [input_path, mask_path, self.channel, file, output_path]
                 )
-            count_physical_files = len(np.unique([i.file_name for i in files]))
-            self.logevent(f"UNIQUE PHYSICAL FILE COUNT: {count_physical_files}")
-            self.logevent(f"SECTION COUNT IN DATABASE: {len(files)}")
 
             workers = self.get_nworkers()
             self.run_commands_concurrently(make_single_histogram, file_keys, workers)
@@ -70,12 +67,9 @@ class HistogramMaker:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
             self.output = self.fileLocationManager.get_histogram(self.channel)
-            self.logevent(f"Input FOLDER: {self.input}")
             files = os.listdir(self.input)
             files = [os.path.basename(i) for i in files]
             lfiles = len(files)
-            self.logevent(f"CURRENT FILE COUNT: {lfiles}")
-            self.logevent(f"Output FOLDER: {self.output}")
             os.makedirs(self.output, exist_ok=True)
             hist_dict = Counter({})
             outfile = f"{self.animal}.png"
@@ -140,10 +134,8 @@ class HistogramMaker:
                 plt.yscale("log")
                 plt.grid(axis="y", alpha=0.75)
                 plt.xlabel("Value")
-                plt.ylabel("Frequency")
-                plt.title(
-                    f"{self.animal} channel {self.channel} @{bits}bit with {lfiles} tif files"
-                )
+                plt.ylabel("Frequency (log scale)")
+                plt.title(f"{self.animal} channel {self.channel} @{bits}bit with {lfiles} tif files", fontsize=8)
                 fig.savefig(outpath, bbox_inches="tight")
 
 
@@ -155,11 +147,13 @@ def make_single_histogram(file_key):
 
     input_path, mask_path, channel, file, output_path = file_key
     img = read_image(input_path)
+    if img.dtype == np.uint8:
+        end = 255
+    else:
+        end = 65535
     mask = read_image(mask_path)
     img = cv2.bitwise_and(img, img, mask=mask)
-    if img.shape[0] * img.shape[1] > 1000000000:
-        scale = 1 / float(2)
-        img = img[:: int(1.0 / scale), :: int(1.0 / scale)]
+
     try:
         flat = img.flatten()
     except:
@@ -169,13 +163,13 @@ def make_single_histogram(file_key):
     del mask
     fig = plt.figure()
     plt.rcParams["figure.figsize"] = [10, 6]
-    plt.hist(flat, flat.max(), [0, 10000], color=COLORS[channel])
+    plt.hist(flat, flat.max(), [0, end], color=COLORS[channel])
     plt.style.use("ggplot")
     plt.yscale("log")
     plt.grid(axis="y", alpha=0.75)
     plt.xlabel("Value")
-    plt.ylabel("Frequency")
-    plt.title(f"{file.file_name} @16bit")
+    plt.ylabel("Frequency (log scale)")
+    plt.title(f"{file.file_name} @16bit", fontsize=8)
     plt.close()
     fig.savefig(output_path, bbox_inches="tight")
     return
