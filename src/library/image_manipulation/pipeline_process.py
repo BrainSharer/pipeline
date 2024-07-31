@@ -240,7 +240,7 @@ class Pipeline(
             self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
         else:
             self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
-    
+
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,
             channel=self.channel,
@@ -273,7 +273,7 @@ class Pipeline(
         USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
         """
         print(self.TASK_CELL_LABELS)
-        
+
         scratch_tmp = get_scratch_dir()
         self.check_prerequisites(scratch_tmp)
 
@@ -313,14 +313,26 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = ['thumbnail_original', f'masks/C1/thumbnail_colored', f'masks/C1/thumbnail_masked',
-                           f'C{self.channel}/thumbnail', f'C{self.channel}/thumbnail_cleaned', 'C1/normalized',
-                           f'C{self.channel}/thumbnail_cropped', f'C{self.channel}/thumbnail_aligned']
-            ndirectory = f'C{self.channel}T'
+            directories = [
+                "thumbnail_original",
+                f"masks/C1/thumbnail_colored",
+                f"masks/C1/thumbnail_masked",
+                f"C{self.channel}/thumbnail",
+                f"C{self.channel}/thumbnail_cleaned",
+                "C1/normalized",
+                f"C{self.channel}/thumbnail_cropped",
+                f"C{self.channel}/thumbnail_aligned",
+            ]
+            ndirectory = f"C{self.channel}T"
         else:
-            directories = [f'masks/C1/full_masked', f'C{self.channel}/full', 
-                           f'C{self.channel}/full_cleaned', f'C{self.channel}/full_cropped', f'C{self.channel}/full_aligned']
-            ndirectory = f'C{self.channel}'
+            directories = [
+                f"masks/C1/full_masked",
+                f"C{self.channel}/full",
+                f"C{self.channel}/full_cleaned",
+                f"C{self.channel}/full_cropped",
+                f"C{self.channel}/full_aligned",
+            ]
+            ndirectory = f"C{self.channel}"
 
         for directory in directories:
             dir = os.path.join(prep, directory)
@@ -338,14 +350,16 @@ class Pipeline(
             print(f'Non-existent dir={dir}')
         # neuroglancer progress dir
         progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
-        if os.path.exists(progress_dir):
-            completed_files = len(os.listdir(progress_dir))
-            if completed_files == section_count:
-                print(f'Progress dir={progress_dir} exists with {completed_files} files and matches section count={section_count}.')
+        histogram_dir = self.fileLocationManager.get_histogram(self.channel)
+        for directory in [progress_dir, histogram_dir]:
+            if os.path.exists(directory):
+                completed_files = len(os.listdir(directory))
+                if completed_files == section_count:
+                    print(f'Dir={directory} exists with {completed_files} files and matches section count={section_count}.')
+                else:
+                    print(f'Dir={directory} exists with {completed_files} files completed out of {section_count} total files.')
             else:
-                print(f'Progress dir={progress_dir} exists with {completed_files} files completed out of {section_count} total files.')
-        else:
-            print(f'Non-existent progress dir={progress_dir}')
+                print(f'Non-existent dir={directory}')
 
     @staticmethod
     def check_programs():
