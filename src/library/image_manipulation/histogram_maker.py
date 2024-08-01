@@ -28,7 +28,10 @@ class HistogramMaker:
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
+            self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
+            if not os.path.exists(self.masks):
+                print(f"Mask path does not exist {self.masks}")
+                return
             files = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
             test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
             if len(files) == 0:
@@ -39,7 +42,7 @@ class HistogramMaker:
             for i, file in enumerate(files):
                 filename = str(i).zfill(3) + ".tif"
                 input_path = os.path.join(self.input, filename)
-                mask_path = os.path.join(MASKS, filename)
+                mask_path = os.path.join(self.masks, filename)
                 output_path = os.path.join(
                     self.output, os.path.splitext(file.file_name)[0] + ".png"
                 )
@@ -66,7 +69,8 @@ class HistogramMaker:
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
+            self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
+
             self.output = self.fileLocationManager.get_histogram(self.channel)
             image_manager = ImageManager(self.input)
             files = image_manager.files
@@ -81,7 +85,7 @@ class HistogramMaker:
             for file in files:
                 file = os.path.basename(file)
                 input_path = os.path.join(self.input, file)
-                mask_path = os.path.join(MASKS, file)
+                mask_path = os.path.join(self.masks, file)
                 try:
                     img = io.imread(input_path)
                 except:
