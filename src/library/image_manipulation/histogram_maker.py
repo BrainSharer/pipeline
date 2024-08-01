@@ -90,11 +90,12 @@ class HistogramMaker:
                     continue
                 try:
                     mask = io.imread(mask_path)
-                    img = cv2.bitwise_and(img, img, mask=mask)
-                    img = img[img > 0]
-                except:
-                    print(f"ERROR WITH FILE OR DIMENSIONS: {mask_path}{mask.shape}{img.shape}")
+                except Exception as e:
+                    print(f"ERROR WITH {e}")
                     break
+                img = cv2.bitwise_and(img, img, mask=mask)
+                img = img[img > 0]
+
                 try:
                     flat = img.flatten()
                     del img
@@ -120,7 +121,9 @@ class HistogramMaker:
                     print(f"Could not add files {input_path}")
                     lfiles -= 1
                     continue
-
+            
+            if lfiles < 10:
+                return
             hist_dict = dict(hist_dict)
             hist_values = [i / lfiles for i in hist_dict.values()]
             fig = plt.figure()
