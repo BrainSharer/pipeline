@@ -28,6 +28,9 @@ class HistogramMaker:
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            if not os.path.exists(self.input):
+                print(f"Input path does not exist {self.input}")
+                return
             self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) # hard code this to channel 1
             if not os.path.exists(self.masks):
                 print(f"Mask path does not exist {self.masks}")
@@ -69,7 +72,13 @@ class HistogramMaker:
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            if not os.path.exists(self.input):
+                print(f"Input path does not exist {self.input}")
+                return
             self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
+            if not os.path.exists(self.masks):
+                print(f"Mask path does not exist {self.masks}")
+                return
 
             self.output = self.fileLocationManager.get_histogram(self.channel)
             image_manager = ImageManager(self.input)
