@@ -3,7 +3,11 @@ import sys
 import numpy as np
 import tifffile
 from skimage import io
+import cv2
 import glob
+
+from library.utilities.utilities_mask import rescaler
+from library.utilities.utilities_process import read_image
 
 class ImageManager:
     """
@@ -52,8 +56,6 @@ class ImageManager:
         self.volume_size = (self.width, self.height, self.len_files)
         self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
 
-
-
     def get_bgcolor(self, maskpath):
         """align needs either an integer or a tuple of integers for the fill color
         """
@@ -86,3 +88,22 @@ class ImageManager:
             bgcolor = int(bgcolor)
         return bgcolor
 
+    def get_reference_image(self, maskpath):
+        """Get the reference image for alignment
+
+        Args:
+            reference_file (str): The file path of the reference image.
+
+        Returns:
+            ndarray: The reference image data.
+        """
+        self.masks = sorted(os.listdir(maskpath))
+        midmaskfile = self.masks[self.midpoint]
+        midmaskpath = os.path.join(maskpath, midmaskfile)
+
+        self.mask = tifffile.imread(midmaskpath)
+        reference_file = self.files[self.midpoint]
+        reference_image = read_image(reference_file)
+        cleaned = cv2.bitwise_and(reference_image, reference_image, mask=self.mask)                                   
+        rescaled = rescaler(cleaned)
+        return rescaled

@@ -1,6 +1,7 @@
 """Simple methods to help in manipulating images.
 """
 
+import os
 import sys
 import cv2
 import numpy as np
@@ -8,8 +9,8 @@ from skimage.exposure import rescale_intensity
 from library.database_model.scan_run import FULL_MASK
 from skimage import color
 from scipy.ndimage import binary_fill_holes
+from skimage import exposure
 
-from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_process import read_image, write_image
 
 
@@ -113,6 +114,16 @@ def scaled(img, scale=45000):
     del img
     return scaled
 
+def rescaler(img):
+    # Contrast stretching
+    lower = 2
+    upper = 99.9
+    plower, pupper = np.percentile(img, (lower, upper))
+    img_rescale = exposure.rescale_intensity(img, in_range=(plower, pupper))
+    return img_rescale
+
+
+
 def mask_with_background(img, mask):
     """
     Masks the image with the given mask and replaces the masked region with the background color.
@@ -214,7 +225,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, reference = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -237,9 +248,11 @@ def clean_and_rotate_image(file_key):
         b[b == 0] = bgcolor[2]
         cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
 
-    cleaned = scaled(cleaned)
+    #cleaned = scaled(cleaned)
+    #if exposure.is_low_contrast(cleaned):
         
-
+    #cleaned = rescaler(cleaned)
+    cleaned = match_histograms(cleaned, reference)
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
     del img
@@ -406,3 +419,49 @@ def smooth_image(gray):
     mask = rescale_intensity(blur2, in_range=(127.5,255), out_range=(0,255))
     #return cv2.bitwise_and(gray, gray, mask=mask.astype(np.uint8))
     return cv2.bitwise_and(gray, mask.astype(np.uint8), mask=None)
+
+def match_histogramsXXX(source, template):
+    """
+    Adjust the pixel values of a grayscale image such that its histogram matches that of a target image
+
+    Arguments:
+    source -- a grayscale image which histogram will be modified
+    template -- a grayscale image which histogram will be used as a reference
+
+    Returns:
+    a grayscale image with the same size as source
+    """
+    oldshape = source.shape
+    source = source.ravel()
+    template = template.ravel()
+
+    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True, return_counts=True)
+    t_values, t_counts = np.unique(template, return_counts=True)
+
+    s_quantiles = np.cumsum(s_counts).astype(np.float64)
+    s_quantiles /= s_quantiles[-1]
+    t_quantiles = np.cumsum(t_counts).astype(np.float64)
+    t_quantiles /= t_quantiles[-1]
+
+    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+    return interp_t_values[bin_idx].reshape(oldshape)
+
+
+def match_histograms(cleaned, reference):
+    #basepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    #allenpath = os.path.join(basepath, 'Allen_25um_sagittal_mid.tif')
+    #referencepath = os.path.join(basepath, 'out.tif')
+    #referencepath = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK161/preps/out.tif'
+    #reference = read_image(referencepath)
+    #shapeto = cleaned.shape
+    #reference = midallenarr[midallenarr > 0]
+    #reference = reference.flatten()
+    #target = cleaned.flatten()
+    img = exposure.match_histograms(cleaned, reference)
+    #img = img.reshape(shapeto)
+    data = img / np.max(img) # normalize the data to 0 - 1
+    del img
+    data = 65535 * data # Now scale by bits
+    return data.astype(np.uint16)    
+

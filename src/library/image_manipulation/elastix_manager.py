@@ -41,6 +41,7 @@ class ElastixManager(FileLogger):
         super().__init__(LOGFILE_PATH)
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
 
     def create_within_stack_transformations(self):
         """Calculate and store the rigid transformation using elastix.  

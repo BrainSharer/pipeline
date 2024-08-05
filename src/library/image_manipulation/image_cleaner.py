@@ -48,8 +48,6 @@ class ImageCleaner:
         else:
             self.bgcolor = 0
 
-        print(f'bg color={self.bgcolor}')
-
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.debug:
@@ -68,11 +66,15 @@ class ImageCleaner:
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(self.input))
 
+        image_manager = ImageManager(self.input)
+        midfile = image_manager.midfile
+        reference = image_manager.get_reference_image(self.maskpath)
+
         file_keys = []
         for file in files:
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
-            if os.path.exists(outfile):
+            if os.path.exists(outfile) or file == midfile:
                 continue
             maskfile = os.path.join(self.maskpath, file)
 
@@ -84,7 +86,8 @@ class ImageCleaner:
                     rotation,
                     flip,
                     self.mask_image,
-                    self.bgcolor
+                    self.bgcolor,
+                    reference
                 ]
             )
 
