@@ -25,7 +25,6 @@ class HistogramMaker:
         :param channel: the channel of the stack to process  {1,2,3}
         :returns: nothing
         """
-
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             if not os.path.exists(self.input):
