@@ -50,10 +50,10 @@ class ImageCleaner:
 
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
-        if self.debug:
-            print(f'Updating scan run.')
-        if self.mask_image > 0:
+        if self.mask_image > 0 and self.channel == 1 and self.downsample:
             self.set_crop_size()
+            if self.debug:
+                print(f'Updating scan run.')
         self.setup_parallel_place_images()
         
 
@@ -66,15 +66,11 @@ class ImageCleaner:
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(self.input))
 
-        image_manager = ImageManager(self.input)
-        midfile = image_manager.midfile
-        reference = image_manager.get_reference_image(self.maskpath)
-
         file_keys = []
         for file in files:
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
-            if os.path.exists(outfile) or file == midfile:
+            if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(self.maskpath, file)
 
@@ -87,7 +83,7 @@ class ImageCleaner:
                     flip,
                     self.mask_image,
                     self.bgcolor,
-                    reference
+                    self.channel
                 ]
             )
 

@@ -105,8 +105,8 @@ class HistogramMaker:
                 except Exception as e:
                     print(f"ERROR WITH {e}")
                     break
+                #img = img[img > 0]                
                 img = cv2.bitwise_and(img, img, mask=mask)
-                img = img[img > 0]
 
                 try:
                     flat = img.flatten()
@@ -141,9 +141,11 @@ class HistogramMaker:
             fig = plt.figure()
             plt.rcParams["figure.figsize"] = [10, 6]
             plt.bar(list(hist_dict.keys()), hist_values, color=COLORS[self.channel])
-            #plt.yscale("log")
+            plt.yscale("log")
             plt.grid(axis="y", alpha=0.75)
             plt.xlabel("Value")
+            plt.xlim(0, 40000)
+            #plt.ylim(0, 4000)
             plt.ylabel("Frequency")
             plt.title(f"{self.animal} channel {self.channel} @{dtype}bit with {lfiles} tif files", fontsize=8)
             fig.savefig(outpath, bbox_inches="tight")

@@ -101,10 +101,11 @@ def normalize_image(img):
 
 def scaled(img, scale=45000):
     """Stretch values out to scale
+    Used to be 45000, but changing it down to 32000 as of 7 Aug 2024
     """
     dtype = img.dtype
     if dtype == np.uint16:
-        scale = 45000
+        scale = 32000
     else:
         scale = 250
 
@@ -116,7 +117,7 @@ def scaled(img, scale=45000):
 
 def rescaler(img):
     # Contrast stretching
-    lower = 2
+    lower = 0
     upper = 99.9
     plower, pupper = np.percentile(img, (lower, upper))
     img_rescale = exposure.rescale_intensity(img, in_range=(plower, pupper))
@@ -225,7 +226,7 @@ def clean_and_rotate_image(file_key):
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, reference = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -250,13 +251,17 @@ def clean_and_rotate_image(file_key):
 
     #cleaned = scaled(cleaned)
     #if exposure.is_low_contrast(cleaned):
-        
-    #cleaned = rescaler(cleaned)
-    cleaned = match_histograms(cleaned, reference)
+    #cleaned = match_histograms(cleaned, reference)
+
+    if channel == 1:    
+        cleaned = rescaler(cleaned)
+
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
+
     del img
     del mask
+
     if rotation > 0:
         cleaned = rotate_image(cleaned, infile, rotation)
     if flip == "flip":
