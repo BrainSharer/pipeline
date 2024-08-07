@@ -355,7 +355,7 @@ class Pipeline(
         histogram_dir = self.fileLocationManager.get_histogram(self.channel)
         for directory in [progress_dir, histogram_dir]:
             if os.path.exists(directory):
-                completed_files = len(os.listdir(directory))
+                completed_files = len(os.listdir(directory)) + 1
                 if completed_files == section_count:
                     print(f'Dir={directory} exists with {completed_files} files and matches section count={section_count}.')
                 else:
