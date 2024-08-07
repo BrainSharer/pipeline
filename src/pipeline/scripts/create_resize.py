@@ -4,7 +4,7 @@ import os
 import sys
 from scipy.ndimage import zoom
 from tifffile import imread
-
+import subprocess
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -14,6 +14,15 @@ from library.utilities.utilities_process import read_image, write_image
 
 
 def resize_images(animal, channel):
+    # Python 3
+    user = os.environ.get('USER')
+    print(user)
+    return
+    host = "ratto"
+    cmd = "ls /home/eodonnell/XXX"
+    subprocess.Popen(f"ssh {user}@{host} {cmd}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
+    return
+
     fileLocationManager = FileLocationManager(animal)
     input_path = fileLocationManager.get_full(channel=channel)
     output_path = fileLocationManager.get_thumbnail(channel=channel)
