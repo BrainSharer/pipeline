@@ -39,18 +39,15 @@ import igneous.task_creation as tc
 import pandas as pd
 import cv2
 
-from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.controller.structure_com_controller import StructureCOMController
-from library.database_model.annotation_points import AnnotationType
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
 from library.utilities.utilities_process import read_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
-from library.image_manipulation.image_manager import ImageManger
+from library.image_manipulation.image_manager import ImageManager
 
 # constants
 MOVING_CROP = 50
@@ -338,7 +335,7 @@ class VolumeRegistration:
            
             brain_region = sessionController.get_brain_region(structure)
             if brain_region is not None:
-                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, com_annotator_id, AnnotationType.STRUCTURE_COM)
+                annotation_session = sessionController.get_annotation_session(self.moving, brain_region.id, com_annotator_id)
                 entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
                 sessionController.upsert_structure_com(entry)
             else:
@@ -351,7 +348,8 @@ class VolumeRegistration:
 
     def transformix_polygons(self):
         sqlController = SqlController(self.moving)
-        polygon = PolygonSequenceController(animal=self.moving)        
+        #polygon = PolygonSequenceController(animal=self.moving)
+        polygon = None  
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
         #input_points = itk.PointSet[itk.F, 3].New()
@@ -427,7 +425,8 @@ class VolumeRegistration:
 
     def transformix_coms(self):
         com_annotator_id = 2
-        controller = StructureCOMController(self.moving)
+        #controller = StructureCOMController(self.moving)
+        controller = None
         coms = controller.get_COM(self.moving, annotator_id=com_annotator_id)
 
         
@@ -454,7 +453,8 @@ class VolumeRegistration:
         INPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_aligned')
         OUTPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_merged')
         os.makedirs(OUTPUT, exist_ok=True)
-        polygon = PolygonSequenceController(animal=self.moving)        
+        #polygon = PolygonSequenceController(animal=self.moving)        
+        polygon = None
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
         polygons = defaultdict(list)
@@ -726,8 +726,10 @@ class VolumeRegistration:
 
 
     def volume_origin_creation(self):
-        structureController = StructureCOMController('MD589')
-        polygonController = PolygonSequenceController('MD589')
+        #structureController = StructureCOMController('MD589')
+        #polygonController = PolygonSequenceController('MD589')
+        structureController = None
+        polygonController = None
         pg_sessions = polygonController.get_available_volumes_sessions()
         animal_users = {}
         animals = set()

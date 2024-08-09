@@ -227,7 +227,7 @@ class Pipeline(
         use_scatch = False # set to True to use scratch space, might speed up writing, but then you have to transfer to final location
         scratch_tmp = get_scratch_dir()
         SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
-	#TODO: rechunkme should be stored on scratch and final output on birdstore
+	    #TODO: rechunkme should be stored on scratch and final output on birdstore
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
@@ -355,7 +355,7 @@ class Pipeline(
         histogram_dir = self.fileLocationManager.get_histogram(self.channel)
         for directory in [progress_dir, histogram_dir]:
             if os.path.exists(directory):
-                completed_files = len(os.listdir(directory)) - 1
+                completed_files = len(os.listdir(directory))
                 if completed_files == section_count:
                     print(f'Dir={directory} exists with {completed_files} files and matches section count={section_count}.')
                 else:

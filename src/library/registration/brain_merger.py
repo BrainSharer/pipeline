@@ -16,9 +16,7 @@ from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
 from library.registration.brain_structure_manager import BrainStructureManager
-from library.controller.structure_com_controller import StructureCOMController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.database_model.annotation_points import AnnotationType, StructureCOM
 
 
 class BrainMerger():

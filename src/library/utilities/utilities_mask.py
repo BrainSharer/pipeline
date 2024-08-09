@@ -99,7 +99,7 @@ def normalize_image(img):
     return img
 
 
-def scaled(img, scale=45000):
+def scaled(img, scale=32000):
     """Stretch values out to scale
     Used to be 45000, but changing it down to 32000 as of 7 Aug 2024
     """
@@ -248,10 +248,6 @@ def clean_and_rotate_image(file_key):
         g[g == 0] = bgcolor[1]
         b[b == 0] = bgcolor[2]
         cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
-
-    #cleaned = scaled(cleaned)
-    #if exposure.is_low_contrast(cleaned):
-    #cleaned = match_histograms(cleaned, reference)
 
     if channel == 1:    
         cleaned = rescaler(cleaned)
