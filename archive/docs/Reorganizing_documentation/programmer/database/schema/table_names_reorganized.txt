@@ -1,0 +1,172 @@
+--
+-- Main Tables, used by all users of brainsharer.
+--
+
+animal
+structure      /* Does not include the 3D shape information? */
+transformation /* Does this store transformations between stack, does */
+-- /* not exist at this point. coordinates and atlas coordinates (both */
+-- /* ways)? does it support different types of transformation? (rigid, affine,beta spline?) */
+histology
+organic_label
+
+
+--
+--  injection related tables
+--
+
+injection
+injection_virus - many to many join table
+virus
+
+--
+-- Annotation related tables   ---------------------------------------------------------
+--
+
+--
+-- tables of brain locations (x,y,z location data)
+--
+
+layer_data - main annotation table where the x,y,z data is stored
+com_type - should be renamed to input_type, lookup table of manual, detected, corrected
+
+--
+-- tables of boundaries, does not exist yet. Will store 2D and 3D boundaries
+--
+
+
+--
+-- tables related to hardware/software --------------------------------------------------
+--
+
+--
+--  Scanner related tables
+--
+
+slide
+slide_czi_to_tif
+scan_run
+elastix_transformation
+
+--
+--  Neuroglancer related tables
+--
+
+neuroglancer_urls /* Information in this table should be short lived,a */
+-- new URL can be started from the web interface by specifying brain and
+-- viewing configuration. Once the user hits "save" the json, 
+-- information should be parsed and added to the appropriate
+-- tables. com,to coms tables and configuration to configuration tables
+-- (for storing the chosen histogram configuration, point of view, etc). */
+
+
+--
+--  Engine tables - tables related to CVAT
+--
+
+engine_attributespec
+engine_clientfile
+engine_data
+engine_image
+engine_job
+engine_jobcommit
+engine_label
+engine_labeledimage
+engine_labeledimageattributeval
+engine_labeledshape
+engine_labeledshapeattributeval
+engine_labeledtrack
+engine_labeledtrackattributeval
+engine_plugin
+engine_pluginoption
+engine_project
+engine_remotefile
+engine_segment
+engine_serverfile
+engine_task
+engine_trackedshape
+engine_trackedshapeattributeval
+engine_video
+git_gitdata
+
+--
+--   Administrative tables ---------------------------------------------------------------------
+-- 
+-- 
+--  Django administration tables that are used by the portal, used for user information and Django 
+--
+django_admin_log
+django_content_type
+django_migrations
+django_plotly_dash_dashapp
+django_plotly_dash_statelessapp
+django_session
+django_site
+auth_group
+auth_group_permissions
+auth_permission
+auth_user
+auth_user_groups
+auth_user_user_permissions
+authtoken_token
+
+--
+--  Social Account tables, oauth tables
+--
+
+socialaccount_socialaccount
+socialaccount_socialapp
+socialaccount_socialapp_sites
+socialaccount_socialtoken
+
+--
+--  Schedule Location related tables
+--
+schedule
+location
+location_primary_people
+
+--
+--  Tables related to logging throughout the workflow --------------------------------------
+--
+
+file_log
+file_operation
+logs
+
+--
+-- Tables related to slide QC
+--
+journals
+problem_category
+
+--
+-- Tables related to the preprocessing workflow
+-- 
+progress_lookup
+resource
+schedule
+
+--
+-- Task tables
+--
+
+task
+task_resources
+task_roles
+task_view
+
+--
+-- Tables to be deleted
+--
+
+layer_data_history - delete
+atlas_coms - deleted
+center_of_mass - deleted
+com_type - should be renamed to input_type, lookup table of manual, detected, corrected
+detected_soma - deleted
+foundation_coms - deleted
+~jobs - deleted
+~log - deleted
+seq  - deleted
+row_sequence - deleted
