@@ -4,6 +4,7 @@ https://elastix.lumc.nl/
 The libraries are contained within the SimpleITK-SimpleElastix library
 """
 
+import math
 import os
 import numpy as np
 from collections import OrderedDict
@@ -73,13 +74,13 @@ class ElastixManager(FileLogger):
         fiducials = self.sqlController.get_fiducials(self.animal)
         nchanges = len(fiducials)
         if nchanges == 0:
-            return
+            print('No fiducial points were found and so no changes have been made.')
+            return nchanges
         
         for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
             point_file = os.path.join(self.registration_output, f'{section}_points.txt')
             with open(point_file, 'w') as f:
-                f.write('point\n')
                 f.write(f'{len(points)}\n')
                 for point in points:
                     x = point[0]
@@ -89,19 +90,28 @@ class ElastixManager(FileLogger):
     
         files = sorted(os.listdir(self.input))
         nfiles = len(files)
-        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}\n')
+        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}')
+        aligned_sum = 0
+        realigned_sum = 0
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=True)
+            self.sqlController.check_elastix_row(self.animal, moving_index)
+            transformation = self.sqlController.get_elastix_row(self.animal, moving_index)
+
             if rotation != 0 and xshift != 0 and yshift != 0:
+                aligned_sum += abs(transformation.rotation) + abs(transformation.xshift) + abs(transformation.yshift)
+                realigned_sum += abs(rotation) + abs(xshift) + abs(yshift)
                 print(f'\tUpdating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}, metric={metric}')
                 updates = dict(rotation=rotation, xshift=xshift, yshift=yshift, metric=metric)
                 self.sqlController.update_elastix_row(self.animal, moving_index, updates)
 
-        if nchanges > 0:
-            print('\nChanges have been made. You need to remove the aligned images and run the alignment again.')
-            print('You will also need to rerun the neuroglancer task(s) again.\n')
+        sum_changes = abs(aligned_sum - realigned_sum)
+        if math.isclose(sum_changes, 0, abs_tol=0.01):
+            print(f'Changes have already been made to the alignment, so there is no need to rerurn the alignment and neuroglancer tasks.')
+            nchanges = 0
+        return nchanges
 
 
     def align_elastix(self, fixed_index, moving_index, use_points=False):
