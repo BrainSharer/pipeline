@@ -136,7 +136,7 @@ class FileLocationManager(object):
         if downsample:
             channel_outdir += "T"
 
-        if not rechunk:
+        if rechunk:
             channel_outdir += "_rechunkme"
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")

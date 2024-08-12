@@ -8,6 +8,7 @@ All imports are listed by the order in which they are used in the
 """
 
 import os
+import shutil
 import sys
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -191,8 +192,7 @@ class Pipeline(
         neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
         if not os.path.exists(neuroglancer_aligned):
             print(f'Missing {neuroglancer_aligned}')
-            print('You need to run the neuroglancer task first.')
-            return
+            self.neuroglancer()
         if not os.path.exists(neuroglancer_cropped):
             print(f'Missing {neuroglancer_cropped}')
             print('Creating neuroglancer data from unaligned cropped data.')
@@ -207,7 +207,25 @@ class Pipeline(
             self.output = neuroglancer_cropped
             self.run_neuroglancer()
 
-        self.update_within_stack_transformations()
+        nchanges = self.update_within_stack_transformations()
+        if nchanges > 0:
+            print('\nChanges have been made.')
+            print('Cleaning up the thumbnail aligned data and rerunning the alignment task.')
+            shutil.rmtree(self.fileLocationManager.get_thumbnail_aligned(channel=1))
+            self.align()
+            outputpath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=False) 
+            if os.path.exists(outputpath):
+                print(f'Removing {outputpath}')
+                shutil.rmtree(outputpath)
+            rechunkmepath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=True)
+            if os.path.exists(rechunkmepath):
+                print(f'Removing {rechunkmepath}')
+                shutil.rmtree(rechunkmepath)
+            progresspath = self.fileLocationManager.get_neuroglancer_progress(channel=1, downsample=True, cropped=False)
+            if os.path.exists(progresspath):
+                print(f'Removing {progresspath}')
+                shutil.rmtree(progresspath)
+            self.neuroglancer()
 
         #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
@@ -231,17 +249,15 @@ class Pipeline(
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T_rechunkme')
-
         else:
             self.input = self.fileLocationManager.get_full_aligned(channel=self.channel)
-            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}_rechunkme')
 
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
         if use_scatch:
             scratch_tmp = get_scratch_dir()
             self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
         else:
-            self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+            self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=False)
 
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,
