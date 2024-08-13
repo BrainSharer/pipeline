@@ -62,16 +62,16 @@ class TiffExtractor(ParallelManager):
             tif_file = os.path.basename(section.file_name)
             output_path = os.path.join(self.output, tif_file)
             checksum_filepath = os.path.join(self.checksum, str(tif_file).replace('.tif', '.sha256'))
-            if self.debug:
-                print(f'creating image={output_path}')
             if not os.path.exists(czi_file):
                 continue
             if os.path.exists(output_path):
                 continue
+            if self.debug:
+                print(f'creating image={output_path}')
             scene = section.scene_index
             file_keys.append([czi_file, output_path, checksum_filepath, scene, self.channel, scale_factor])
         if self.debug:
-            print(f'Extracting a total of {len(file_keys)} thumbnails')
+            print(f'Extracting a total of {len(file_keys)} files.')
         workers = self.get_nworkers()
         self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
