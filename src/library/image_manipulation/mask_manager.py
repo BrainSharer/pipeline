@@ -35,17 +35,17 @@ class MaskManager:
         """
         
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
         test_dir(self.animal, self.input, self.section_count, True, same_size=False)
-        os.makedirs(MASKS, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
         files = sorted(os.listdir(self.input))
         self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"MASKS FOLDER: {MASKS}")
+        self.logevent(f"MASKS FOLDER: {self.output}")
         for file in files:
             filepath = os.path.join(self.input, file)
-            maskpath = os.path.join(MASKS, file)
+            maskpath = os.path.join(self.output, file)
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
@@ -57,8 +57,8 @@ class MaskManager:
 
         if self.mask_image == BOTTOM_MASK:
             for file in files:
-                maskpath = os.path.join(MASKS, file)
-                maskfillpath = os.path.join(MASKS, file)   
+                maskpath = os.path.join(self.output, file)
+                maskfillpath = os.path.join(self.output, file)   
                 mask = read_image(maskfillpath)
                 white = np.where(mask==255)
                 whiterows = white[0]
@@ -130,21 +130,21 @@ class MaskManager:
         
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
-        MASKS = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
+        self.output = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"Input FOLDER: {self.input}")
         starting_files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"Output FOLDER: {MASKS}")
+        self.logevent(f"Output FOLDER: {self.output}")
         test_dir(
             self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
-        os.makedirs(MASKS, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
         files = sorted(os.listdir(self.input))
         file_keys = []
         for file in tqdm(files):
             infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
-            outfile = os.path.join(MASKS, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             try:
