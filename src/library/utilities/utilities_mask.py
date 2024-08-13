@@ -466,3 +466,19 @@ def match_histograms(cleaned, reference):
     data = 65535 * data # Now scale by bits
     return data.astype(np.uint16)    
 
+def create_mask(image):
+    if image.dtype == np.uint16:
+        image = (image/256).astype(np.uint8)
+
+    ret,thresh = cv2.threshold(image, 0, 200, 0)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    areaArray = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        print(area)
+        areaArray.append(area)
+    # first sort the array by area
+    sorteddata = sorted(zip(areaArray, contours), key=lambda x: x[0], reverse=True)
+    largest_contour = sorteddata[0][1]
+    output = cv2.fillPoly(image, pts =[largest_contour], color=255)
+    return output

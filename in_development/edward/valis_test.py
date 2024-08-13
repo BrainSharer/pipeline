@@ -26,7 +26,7 @@ import os
 import time
 import numpy as np
 from valis import registration
-from valis import registration, feature_detectors, non_rigid_registrars, affine_optimizer, feature_matcher
+from valis import registration, feature_detectors, non_rigid_registrars, affine_optimizer, serial_rigid
 
 
 """
@@ -52,6 +52,21 @@ class ValisManager:
             self.ordered_img_list.append(filepath)
 
         self.reference_slide = os.path.join(self.slide_src_dir, midfile)
+
+    def simple_reg(self):
+
+        registrar = registration.Valis(self.slide_src_dir, dst_dir = self.results_dst_dir, non_rigid_registrar_cls=None,
+            imgs_ordered=False,
+            image_type="fluorescence",
+            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            max_processed_image_dim_px=174,
+            max_image_dim_px=174,
+            align_to_reference=False,
+)
+        rigid_registrar, non_rigid_registrar, error_df = registrar.register()
+        #registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+
+
 
     def register_to_mid(self):
         feature_detector_cls = feature_detectors.CensureVggFD
@@ -128,5 +143,5 @@ if __name__ == '__main__':
     animal = args.animal
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     valisManager = ValisManager(animal, debug)
-    valisManager.register_to_mid()
+    valisManager.simple_reg()
     #valisManager.teardown()

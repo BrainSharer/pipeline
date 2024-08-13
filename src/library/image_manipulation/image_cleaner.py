@@ -47,13 +47,12 @@ class ImageCleaner:
             self.bgcolor = image_manager.get_bgcolor(self.maskpath)
         else:
             self.bgcolor = 0
-
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.mask_image > 0 and self.channel == 1 and self.downsample:
             self.set_crop_size()
             if self.debug:
-                print(f'Updating scan run.')
+                print(f'Updating scan run. and set bgcolor to {self.bgcolor}')
         self.setup_parallel_place_images()
         
 
