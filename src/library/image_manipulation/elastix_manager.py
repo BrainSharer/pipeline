@@ -359,11 +359,12 @@ class ElastixManager(FileLogger):
 
     def get_rotation_center(self):
         """return a rotation center for finding the parameters of a transformation from the transformation matrix
+        use channel 1 thumbnail cropped images to find the center
 
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+        self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
         image_manager = ImageManager(self.input)
         return image_manager.center
 
@@ -395,10 +396,11 @@ class ElastixManager(FileLogger):
         except OSError:
             print(f"Error: Could not find the input directory: {self.input}")
             return
-        
-        midpoint = len(files) // 2
+
         transformation_to_previous_sec = {}
-        center = self.get_rotation_center()
+        image_manager = ImageManager(self.input)
+        center = image_manager.center
+        midpoint = image_manager.midpoint 
 
         for i in range(1, len(files)):
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i)
