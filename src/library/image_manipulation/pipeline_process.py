@@ -179,7 +179,8 @@ class Pipeline(
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run once for each brain)
 
         self.start_image_alignment()
-        self.create_web_friendly_sections()
+        if self.channel == 1 and self.downsample:
+            self.create_web_friendly_sections()
         print(f'Finished {self.TASK_ALIGN}.')
 
     def realign(self):

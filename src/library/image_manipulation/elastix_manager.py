@@ -436,16 +436,20 @@ class ElastixManager(FileLogger):
 
         if self.downsample:
             self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution="thumbnail"))
-            self.align_images(transformations)
         else:
-            upsampled_transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
+            transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
-            self.align_images(upsampled_transformations)
 
-        starting_files = os.listdir(self.input)
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
         self.logevent(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
         self.logevent(f"Alignment input folder: {self.input}")
         self.logevent(f"Alignment utput output: {self.output}")
+        return
+        self.align_images(transformations)
 
 
     def align_section_masks(self, animal, transforms):
