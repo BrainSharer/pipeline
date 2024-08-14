@@ -389,8 +389,13 @@ class ElastixManager(FileLogger):
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(self.input))
+        self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1) # there is no need to get cropped images from somewhere else
+        try:
+            files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
+        
         midpoint = len(files) // 2
         transformation_to_previous_sec = {}
         center = self.get_rotation_center()
@@ -445,10 +450,10 @@ class ElastixManager(FileLogger):
         except OSError:
             print(f"Error: Could not find the input directory: {self.input}")
             return
-        self.logevent(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
-        self.logevent(f"Alignment input folder: {self.input}")
-        self.logevent(f"Alignment utput output: {self.output}")
-        return
+        
+        print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
+        print(f"Alignment input folder: {self.input}")
+        print(f"Alignment utput output: {self.output}")
         self.align_images(transformations)
 
 
