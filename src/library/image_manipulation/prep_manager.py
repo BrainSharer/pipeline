@@ -67,7 +67,8 @@ class PrepCreater:
         try:
             sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
         except:
-            return
+            raise Exception('Could not get sections from database')
+        
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)
             input_path = os.path.join(self.input, infile)
@@ -82,8 +83,11 @@ class PrepCreater:
             if os.path.exists(output_path):
                 continue
 
+            if self.debug:
+                print(f'Creating symlink to {output_path}')
+
             try:    
                 os.symlink(relative_input_path, output_path)
             except Exception as e:
-                print(f"CANNOT CREATE SYMBOLIC LINK (ALREADY EXISTS): {output_path} {e}")
+                print(f"CANNOT CREATE SYMBOLIC LINK: {output_path} {e}")
                 
