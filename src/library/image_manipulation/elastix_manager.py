@@ -436,20 +436,17 @@ class ElastixManager(FileLogger):
 
         if self.downsample:
             self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution="thumbnail"))
-            self.logevent(f"Aligning {len(os.listdir(self.input))} images 
-                          from {os.path.basename(os.path.normpath(self.input))} 
-                          to {os.path.basename(os.path.normpath(self.output))}")
             self.align_images(transformations)
         else:
-            transforms = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
+            upsampled_transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
-            self.align_images(transforms)
+            self.align_images(upsampled_transformations)
 
         starting_files = os.listdir(self.input)
-        self.logevent(f"File count: {len(starting_files)} with {len(transforms)} transforms")
-        self.logevent(f"Input folder: {self.input}")
-        self.logevent(f"Output output: {self.output}")
-        
+        self.logevent(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
+        self.logevent(f"Alignment input folder: {self.input}")
+        self.logevent(f"Alignment utput output: {self.output}")
+
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  
