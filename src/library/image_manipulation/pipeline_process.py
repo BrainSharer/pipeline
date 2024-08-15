@@ -68,20 +68,18 @@ class Pipeline(
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
 
-    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR,  
-                 task='status', debug=False):
+    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
-        Here is how the Class is instantiated:
-            pipeline = Pipeline(animal, self.channel, downsample, data_path, tg, debug)
 
            The pipeline performst the following steps:
            1. extracting the images from the microscopy formats (eg czi) to tiff format
            2. Prepare thumbnails of images for quality control
            3. clean the images
-           4. align the images
-           5. convert to Seung lab neuroglancer cloudvolume format
+           4. crop the images
+           5. align the images
+           6. convert to Seung lab neuroglancer cloudvolume format
 
-           step 3 and 4 are first performed on downsampled images, and the image masks(for step 3) and the within stack alignments(for step 4) are
+           steps 3, 4, and 5 are first performed on downsampled images, and the image masks(for step 3) and the within stack alignments(for step 5) are
            upsampled for use in the full resolution images
 
         Args:
@@ -105,7 +103,6 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
-        self.scaling_factor = scaling_factor
 
         self.mips = 7 
         if self.downsample:
@@ -119,8 +116,7 @@ class Pipeline(
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
-        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(
-            20), f"@ {str(self.scaling_factor)}".ljust(20))
+        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
@@ -372,14 +368,15 @@ class Pipeline(
         progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         histogram_dir = self.fileLocationManager.get_histogram(self.channel)
         for directory in [progress_dir, histogram_dir]:
+            display_directory = directory[57:]
             if os.path.exists(directory):
                 completed_files = len(os.listdir(directory))
                 if completed_files == section_count:
-                    print(f'Dir={directory} exists with {completed_files} files and matches section count={section_count}.')
+                    print(f'Dir={display_directory} exists with {completed_files} files and matches section count={section_count}.')
                 else:
-                    print(f'Dir={directory} exists with {completed_files} files completed out of {section_count} total files.')
+                    print(f'Dir={display_directory} exists with {completed_files} files completed out of {section_count} total files.')
             else:
-                print(f'Non-existent dir={directory}')
+                print(f'Non-existent dir={display_directory}')
 
     @staticmethod
     def check_programs():
