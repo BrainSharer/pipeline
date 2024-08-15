@@ -39,7 +39,13 @@ class ImageCleaner:
             self.input = self.fileLocationManager.get_full(self.channel)
             self.maskpath = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
-        starting_files = os.listdir(self.input)
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
+
+
         self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
         image_manager = ImageManager(self.input)

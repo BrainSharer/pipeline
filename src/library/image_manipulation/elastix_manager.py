@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
-from library.utilities.utilities_process import get_image_size, read_image, test_dir, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -444,7 +444,7 @@ class ElastixManager(FileLogger):
         if self.downsample:
             self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution="thumbnail"))
         else:
-            transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=self.scaling_factor)
+            transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=SCALING_FACTOR)
             self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
 
         try:
@@ -453,9 +453,15 @@ class ElastixManager(FileLogger):
             print(f"Error: Could not find the input directory: {self.input}")
             return
         
-        print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
-        print(f"Alignment input folder: {self.input}")
-        print(f"Alignment utput output: {self.output}")
+        print(f"Aligning images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
+
+        if len(starting_files) != len(transformations):
+            print("Error: The number of files in the input directory does not match the number of transformations")
+            print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
+            print(f"Alignment input folder: {self.input}")
+            print(f"Alignment output output: {self.output}")
+            return
+        
         self.align_images(transformations)
 
 

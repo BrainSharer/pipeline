@@ -63,7 +63,6 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.pipeline_process import Pipeline
-from library.utilities.utilities_process import SCALING_FACTOR
 
 
 if __name__ == "__main__":
@@ -87,13 +86,6 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--scaling_factor",
-        help="Used for downsampling, defaults to 32",
-        required=False,
-        default=SCALING_FACTOR,
-        type=float
-    )
-    parser.add_argument(
         "--debug", help="Enter true or false", required=False, default="false", type=str
     )
     parser.add_argument(
@@ -111,7 +103,6 @@ if __name__ == "__main__":
     rescan_number = int(args.rescan_number)
     channel = args.channel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
-    scaling_factor = args.scaling_factor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     process_hostname = socket.gethostname()
@@ -121,7 +112,6 @@ if __name__ == "__main__":
         rescan_number=rescan_number,
         channel=channel,
         downsample=downsample,
-        scaling_factor=scaling_factor,
         task=task,
         debug=debug,
     )
