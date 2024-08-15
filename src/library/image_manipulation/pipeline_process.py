@@ -360,10 +360,11 @@ class Pipeline(
                 print(f'Non-existent dir={dir}')
         del dir, directory, directories
         dir = os.path.join(neuroglancer, ndirectory)
+        display_directory = dir[57:]
         if os.path.exists(dir):
-            print(f'Dir={dir} exists.')
+            print(f'Dir={display_directory} exists.')
         else:
-            print(f'Non-existent dir={dir}')
+            print(f'Non-existent dir={display_directory}')
         # neuroglancer progress dir
         progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         histogram_dir = self.fileLocationManager.get_histogram(self.channel)
