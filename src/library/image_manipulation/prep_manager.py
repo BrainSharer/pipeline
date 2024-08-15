@@ -55,10 +55,11 @@ class PrepCreater:
             if not os.path.exists(self.input):
                 return
 
-        starting_files = os.listdir(self.input)
-        if len(starting_files) == 0:
-            print('No files to work with, check the thumbnail and/or the thumbnail_original dirs')
-            sys.exit()
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
             
         self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
