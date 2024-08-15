@@ -16,32 +16,31 @@ class Normalizer:
         Converting from 16bit sRGB to 8bit grayscale uses: 
         https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.convert
         """
-        if self.downsample:
-            self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            self.output = self.fileLocationManager.get_normalized(self.channel)
-            self.logevent(f"self.input FOLDER: {self.input}")
-            files = sorted(os.listdir(self.input))
-            self.logevent(f"CURRENT FILE COUNT: {len(files)}")
-            self.logevent(f"Output FOLDER: {self.output}")
-            os.makedirs(self.output, exist_ok=True)
+        self.input = self.fileLocationManager.get_thumbnail(self.channel)
+        self.output = self.fileLocationManager.get_normalized(self.channel)
+        self.logevent(f"self.input FOLDER: {self.input}")
+        files = sorted(os.listdir(self.input))
+        self.logevent(f"CURRENT FILE COUNT: {len(files)}")
+        self.logevent(f"Output FOLDER: {self.output}")
+        os.makedirs(self.output, exist_ok=True)
 
-            for file in files:
-                infile = os.path.join(self.input, file)
-                outfile = os.path.join(self.output, file)
-                if os.path.exists(outfile):
-                    continue
-                
-                img = read_image(infile)
-                if img.ndim == 3:
-                    img = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
-                    img = img.astype(np.uint8)
+        for file in files:
+            infile = os.path.join(self.input, file)
+            outfile = os.path.join(self.output, file)
+            if os.path.exists(outfile):
+                continue
+            
+            img = read_image(infile)
+            if img.ndim == 3:
+                img = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
+                img = img.astype(np.uint8)
 
-                if self.debug:
-                    print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
+            if self.debug:
+                print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
 
-                if img.dtype == np.uint16:
-                    img = (img / 256).astype(np.uint8)
+            if img.dtype == np.uint16:
+                img = (img / 256).astype(np.uint8)
 
-                scale = 250
-                img = scaled(img, scale=scale)
-                write_image(outfile, img.astype(np.uint8))
+            scale = 250
+            img = scaled(img, scale=scale)
+            write_image(outfile, img.astype(np.uint8))

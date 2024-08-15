@@ -99,11 +99,10 @@ class MaskManager:
         need to be done differently
         """
         
-        if self.channel == 1:
-            if self.downsample:
-                self.create_downsampled_mask()
-            else:
-                self.create_full_resolution_mask()
+        if self.downsample:
+            self.create_downsampled_mask()
+        else:
+            self.create_full_resolution_mask()
 
     def load_machine_learning_model(self):
         """Load the CNN model used to generate image masks
@@ -132,7 +131,11 @@ class MaskManager:
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         self.output = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.logevent(f"Input FOLDER: {self.input}")
-        starting_files = os.listdir(self.input)
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
         self.logevent(f"FILE COUNT: {len(starting_files)}")
         self.logevent(f"Output FOLDER: {self.output}")
         test_dir(
