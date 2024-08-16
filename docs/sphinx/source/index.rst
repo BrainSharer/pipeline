@@ -1,5 +1,14 @@
-Brainsharer Preprocessing Pipeline
-===================================
+Brainsharer documentation
+=========================
+
+Neuroglancer documentation: `neuroglancer link <https://webdev.dk.ucsd.edu/docs/neuroglancer/index.html>`_.
+
+Pre-processing pipeline documentation: `pipeline link <https://webdev.dk.ucsd.edu/docs/preprocessing-pipeline/index.html>`_.
+
+Database portal documentation: `portal link <https://webdev.dk.ucsd.edu/docs/brainsharer/index.html>`_.
+
+Preprocessing pipeline documentation
+====================================
 These pages contain documentation for the Kleinfeld lab's brain preprocessing pipeline.
 Specifically, the documentation includes:
 
@@ -10,7 +19,7 @@ Specifically, the documentation includes:
 * A HOWTO set of instructions to run the actual steps of the pipeline.
 
 
-Use the side navigation panel to view different documentation topics.
+Use the side navigation panel to view different documentation topics within this topic.
 
 ****
 

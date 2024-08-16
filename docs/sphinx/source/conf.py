@@ -1,4 +1,10 @@
 import sys
+from urllib.request import urlretrieve
+
+urlretrieve (
+    "https://raw.githubusercontent.com/12rambau/sepal_ui_template/master/doc/en.rst",
+    "modules/sepal_ui_template.rst"
+)
 
 from pathlib import Path
 ROOT = Path(__file__).parents[3]
