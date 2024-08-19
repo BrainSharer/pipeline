@@ -43,7 +43,7 @@ class MaskDataset(torch.utils.data.Dataset):
                 ymax = int(round(y+h))
                 color = (i+10) * 10
                 cv2.fillPoly(mask, [contour], color);
-                print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
+                #print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
                 boxes.append([xmin, ymin, xmax, ymax])
         
         obj_ids = np.unique(mask)
