@@ -20,7 +20,7 @@ from library.mask_utilities.engine import train_one_epoch, evaluate
 
 class MaskTrainer():
 
-    def __init__(self, animal, structures, epochs, num_classes, debug):
+    def __init__(self, animal, structures, epochs, num_classes, version=1, debug=False):
         self.root = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
         self.workers = 2
         self.batch_size = 4
@@ -36,6 +36,7 @@ class MaskTrainer():
             warnings.filterwarnings("ignore")
             self.device = torch.device('cpu')
             print('No Nvidia card found, using CPU.')
+        self.version = version
 
 
     def train_and_test(self):
@@ -98,7 +99,7 @@ class MaskTrainer():
             # evaluate on the test dataset
             evaluate(model, data_loader_test, device=self.device)
 
-        print("That's it!")    
+        print("Finished training and validating masks.")    
 
     def train(self):
 
@@ -132,10 +133,9 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        version = datetime.now().strftime("%Y%m%d%H")
-        modelpath = os.path.join(self.root, f'mask.model.{version}.pth')
+        modelpath = os.path.join(self.root, f'mask.model.v.{self.version}.pth')
         # create logging file
-        logpath = os.path.join(self.root, "mask.logger.txt")
+        logpath = os.path.join(self.root, "mask.v{self.version}.logger.txt")
         logfile = open(logpath, "w")
         logheader = f"Masking {datetime.now()} with {epochs} epochs from {dataset.img_root} with {n_files} files.\n"
         logfile.write(logheader)
@@ -202,6 +202,7 @@ if __name__ == '__main__':
     parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='false', type=str)
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
     parser.add_argument('--num_classes', help='# of structures', required=False, default=2, type=int)
+    parser.add_argument('--version', help='version number', required=False, default=1, type=int)
     
     args = parser.parse_args()
     structures = bool({'true': True, 'false': False}[args.structures.lower()])
@@ -210,7 +211,8 @@ if __name__ == '__main__':
     animal = args.animal
     epochs = args.epochs
     num_classes = args.num_classes
-    mask_trainer = MaskTrainer(animal, structures, epochs, num_classes, debug)
+    version = args.version
+    mask_trainer = MaskTrainer(animal, structures, epochs, num_classes, version, debug)
     if test:
         mask_trainer.train_and_test()
     else:
