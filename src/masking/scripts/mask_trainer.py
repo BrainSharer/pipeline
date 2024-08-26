@@ -132,7 +132,8 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelpath = os.path.join(self.root, 'mask.model.pth')
+        version = datetime.now().strftime("%Y%m%d%H")
+        modelpath = os.path.join(self.root, f'mask.model.{version}.pth')
         # create logging file
         logpath = os.path.join(self.root, "mask.logger.txt")
         logfile = open(logpath, "w")
