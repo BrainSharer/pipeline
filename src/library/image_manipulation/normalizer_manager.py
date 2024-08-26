@@ -24,6 +24,9 @@ class Normalizer:
         self.logevent(f"Output FOLDER: {self.output}")
         os.makedirs(self.output, exist_ok=True)
 
+        if self.debug:
+            print(f'NORMALIZING: {self.input} -> {self.output}')
+
         for file in files:
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)

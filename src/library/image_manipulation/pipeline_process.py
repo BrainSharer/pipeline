@@ -144,9 +144,14 @@ class Pipeline(
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC() # symlinks from tif/thumbnail_original to CX/thumbnail or CX/full are created
+        if self.debug:
+            print('DEBUG: apply_QC() COMPLETE')
+            
         if self.channel == 1 and self.downsample:
             self.create_normalized_image()
-
+        if self.debug:
+            print('DEBUG: create_normalized_image() COMPLETE')
+            
         if self.channel == 1:
             self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
