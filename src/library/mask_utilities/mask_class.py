@@ -36,12 +36,13 @@ class MaskDataset(torch.utils.data.Dataset):
         for i, contour in enumerate(contours):
             x,y,w,h = cv2.boundingRect(contour)
             area = cv2.contourArea(contour)
-            if area > 100:
+            if area > 1500:
                 xmin = int(round(x))
                 ymin = int(round(y))
                 xmax = int(round(x+w))
                 ymax = int(round(y+h))
-                color = (i+10) * 10
+                #color = (i+10) * 10
+                color = 255
                 cv2.fillPoly(mask, [contour], color);
                 #print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
                 boxes.append([xmin, ymin, xmax, ymax])

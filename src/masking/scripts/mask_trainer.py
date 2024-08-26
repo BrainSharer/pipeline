@@ -133,9 +133,9 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelpath = os.path.join(self.root, f'mask.model.v.{self.version}.pth')
+        modelpath = os.path.join(self.root, f'mask.model.v{self.version}.pth')
         # create logging file
-        logpath = os.path.join(self.root, "mask.v{self.version}.logger.txt")
+        logpath = os.path.join(self.root, f'mask.v{self.version}.logger.txt')
         logfile = open(logpath, "w")
         logheader = f"Masking {datetime.now()} with {epochs} epochs from {dataset.img_root} with {n_files} files.\n"
         logfile.write(logheader)
@@ -176,7 +176,7 @@ class MaskTrainer():
         print('Creating loss chart')
 
         fig = plt.figure()
-        output_path = os.path.join(self.root, 'loss_plot.png')
+        output_path = os.path.join(self.root, f'loss_plot.v{self.version}.png')
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]
