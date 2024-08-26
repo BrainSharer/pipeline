@@ -211,6 +211,15 @@ class MaskManager:
         files = os.listdir(self.input)
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"self.output FOLDER: {self.output}")
+        ##### The threshold value is key to how much border is left around the brain
+        ##### and also if it misses the brain stem end
+        # 0.15 gives a big border
+        # 0.20 gives a big border but captures the brain stem end
+        # 0.40 still misses the brain stem end
+        # 0.65 gives a big border
+        # 0.85 gives a smaller border with jagged edges starting to appear
+        # 0.95, smaller border, but still some jagged edges and misses the brain stem end
+        threshold = 0.20
         for file in tqdm(files):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
@@ -226,7 +235,8 @@ class MaskManager:
                 self.loaded_model.eval()
                 with torch.no_grad():
                     pred = self.loaded_model(torch_input)
-                masks = [(pred[0]["masks"] > 0.25).squeeze().detach().cpu().numpy()]
+
+                masks = [(pred[0]["masks"] > threshold).squeeze().detach().cpu().numpy()]
                 mask = masks[0]
                 dims = mask.ndim
                 if dims > 2:
