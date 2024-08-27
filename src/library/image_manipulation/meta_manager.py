@@ -175,12 +175,15 @@ class MetaUtilities:
         self.input = self.fileLocationManager.get_czi(self.rescan_number)
         if not os.path.exists(self.input):
             print(f"{self.input} does not exist, we are exiting.")
+            if self.rescan_number > 0:
+                print(f"You are working on an additional rescan, you need to have CZI files in:\n{self.input}")
             sys.exit()
+
         try:
             files = os.listdir(self.input)
             nfiles = len(files)
             if nfiles < 1:
-                print("There are no CZI files to work with, we are exiting.")
+                print(f"There are no CZI files in:\n{self.input}")
                 sys.exit()
             self.logevent(f"Input FOLDER: {self.input}")
             self.logevent(f"FILE COUNT: {nfiles}")
