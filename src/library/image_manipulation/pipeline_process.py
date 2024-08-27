@@ -125,7 +125,7 @@ class Pipeline(
 
     def get_section_count(self):
         section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
-        if section_count == 0:
+        if section_count == 0 and self.rescan_number == 0:
             INPUT = self.fileLocationManager.get_thumbnail(channel=1)
             if os.path.exists(INPUT):
                 section_count = len(os.listdir(INPUT))
@@ -334,7 +334,7 @@ class Pipeline(
         neuroglancer = self.fileLocationManager.neuroglancer_data
         print(f'Checking directory status in {prep}')
         section_count = self.section_count
-        print(f'Section count from DB={section_count}')
+        print(f'Section count from DB={section_count} at rescan number={self.rescan_number}')
 
         if self.downsample:
             directories = [
