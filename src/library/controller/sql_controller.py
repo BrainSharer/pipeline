@@ -67,8 +67,10 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
             self.scan_run = self.session.query(ScanRun)\
                 .filter(ScanRun.FK_prep_id == animal)\
                 .filter(ScanRun.rescan_number == rescan_number).one()
-        except NoResultFound:
-            print(f'No scan run for {animal}')
+        except NoResultFound as nrf:
+            print(f'No scan run for {animal} at scan_run {rescan_number}')
+            sys.exit()
+            
         
         self.slides = None
         self.tifs = None
