@@ -102,6 +102,7 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
+        self.scaling_factor = SCALING_FACTOR
 
         self.mips = 7 
         if self.downsample:
