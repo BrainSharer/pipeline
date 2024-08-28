@@ -61,7 +61,6 @@ class Section(Base, AtlasModel):
     __tablename__ = 'sections'
     id =  Column(Integer, primary_key=True, nullable=False)
     prep_id = Column(String, ForeignKey('animal.prep_id'), nullable=False)
-    rescan_number = Column(Integer, nullable=False)
     czi_file = Column(String, nullable=False)
     slide_physical_id = Column(Integer, nullable=False)
     file_name = Column(String, nullable=False)

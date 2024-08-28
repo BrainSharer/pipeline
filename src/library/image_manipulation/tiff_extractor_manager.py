@@ -37,7 +37,7 @@ class TiffExtractor(ParallelManager):
             self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'full')
             scale_factor = 1
 
-        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.input = self.fileLocationManager.get_czi()
         os.makedirs(self.output, exist_ok=True)
         os.makedirs(self.checksum, exist_ok=True)
         starting_files = glob.glob(
@@ -49,7 +49,7 @@ class TiffExtractor(ParallelManager):
         self.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
         self.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
 
-        sections = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
+        sections = self.sqlController.get_sections(self.animal, self.channel)
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
             print("Were the CZI file names correct on birdstore?")
@@ -84,12 +84,12 @@ class TiffExtractor(ParallelManager):
         if self.debug:
             print(f"DEBUG: START TiffExtractor::create_web_friendly_image")
 
-        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.input = self.fileLocationManager.get_czi()
         self.output = self.fileLocationManager.thumbnail_web
         channel = 1
         os.makedirs(self.output, exist_ok=True)
 
-        sections = self.sqlController.get_sections(self.animal, channel, self.rescan_number)
+        sections = self.sqlController.get_sections(self.animal, channel)
         self.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
         self.logevent(f"Output FOLDER: {self.output}")
 

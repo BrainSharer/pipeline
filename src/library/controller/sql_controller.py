@@ -40,7 +40,7 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
     methods to interact with that table
     """
 
-    def __init__(self, animal, rescan_number=0):
+    def __init__(self, animal):
         """ setup the attributes for the SlidesProcessor class
             Args:
                 animal: object of animal to process
@@ -65,16 +65,14 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
 
         try:
             self.scan_run = self.session.query(ScanRun)\
-                .filter(ScanRun.FK_prep_id == animal)\
-                .filter(ScanRun.rescan_number == rescan_number).one()
+                .filter(ScanRun.FK_prep_id == animal).one()
         except NoResultFound as nrf:
-            print(f'No scan run for {animal} at scan_run {rescan_number}')
+            print(f'No scan run for {animal}')
             sys.exit()
             
         
         self.slides = None
         self.tifs = None
-        self.rescan_number = rescan_number
         self.valid_sections = OrderedDict()
         self.session.close()
 

@@ -68,7 +68,7 @@ class Pipeline(
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
 
-    def __init__(self, animal, rescan_number=0, channel='C1', downsample=False, task='status', debug=False):
+    def __init__(self, animal, channel='C1', downsample=False, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -91,11 +91,10 @@ class Pipeline(
         """
         self.task = task
         self.animal = animal
-        self.rescan_number = rescan_number
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
-        self.sqlController = SqlController(animal, rescan_number)
+        self.sqlController = SqlController(animal)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.mask_image = self.sqlController.scan_run.mask
@@ -109,12 +108,12 @@ class Pipeline(
             self.mips = 4
 
         super().__init__(self.fileLocationManager.get_logdir())
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
         self.report_status()
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
-        print("\trescan_number:".ljust(20), f"{self.rescan_number}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
         print("\thost:".ljust(20), f"{host}".ljust(20))
@@ -124,8 +123,8 @@ class Pipeline(
         print()
 
     def get_section_count(self):
-        section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
-        if section_count == 0 and self.rescan_number == 0:
+        section_count = self.sqlController.get_section_count(self.animal)
+        if section_count == 0:
             INPUT = self.fileLocationManager.get_thumbnail(channel=1)
             if os.path.exists(INPUT):
                 section_count = len(os.listdir(INPUT))
@@ -135,7 +134,7 @@ class Pipeline(
     def extract(self):
         print(self.TASK_EXTRACT)
         self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
-        # self.correct_multiples()
+        self.correct_multiples()
         self.extract_tiffs_from_czi()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
@@ -334,7 +333,7 @@ class Pipeline(
         neuroglancer = self.fileLocationManager.neuroglancer_data
         print(f'Checking directory status in {prep}')
         section_count = self.section_count
-        print(f'Section count from DB={section_count} at rescan number={self.rescan_number}')
+        print(f'Section count from DB={section_count}')
 
         if self.downsample:
             directories = [
@@ -358,12 +357,17 @@ class Pipeline(
             ]
             ndirectory = f"C{self.channel}"
 
+        directories.append(self.fileLocationManager.get_czi() )
+
         for directory in directories:
             dir = os.path.join(prep, directory)
             if os.path.exists(dir):
                 filecount = len(os.listdir(dir))
-                print(f'Dir={directory} exists with {filecount} files.', end=' ') 
-                print(f'Sections count matches directory count: {section_count == filecount}')
+                print(f'Dir={directory} exists with {filecount} files.', end=' ')
+                if 'czi' in directory:
+                    print()
+                else:
+                    print(f'Sections count matches directory count: {section_count == filecount}')
             else:
                 print(f'Non-existent dir={dir}')
         del dir, directory, directories

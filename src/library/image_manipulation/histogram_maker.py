@@ -34,7 +34,7 @@ class HistogramMaker:
             if not os.path.exists(self.masks):
                 print(f"Mask path does not exist {self.masks}")
                 return
-            files = self.sqlController.get_sections(self.animal, self.channel, self.rescan_number)
+            files = self.sqlController.get_sections(self.animal, self.channel)
             test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
             if len(files) == 0:
                 print(" No sections in the database")
