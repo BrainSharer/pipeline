@@ -50,12 +50,8 @@ class FileLocationManager(object):
         self.thumbnail_web = os.path.join(self.www, "scene")
         self.slide_thumbnail_web = os.path.join(self.www, "slide")
 
-    def get_czi(self, rescan_number=0):
-        czi_path = self.czi
-        if rescan_number > 0:
-            czi_path = os.path.join(self.stack, f'czi_{rescan_number}')
-        
-        return czi_path
+    def get_czi(self):
+        return self.czi        
     
     def get_full(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full")

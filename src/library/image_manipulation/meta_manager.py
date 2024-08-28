@@ -31,15 +31,16 @@ class MetaUtilities:
             workers = 1
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
-        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.input = self.fileLocationManager.get_czi()
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'preview')
         os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
-        self.scan_id = self.get_user_entered_scan_id()
+        self.scan_id = self.sqlController.scan_run.id
         file_validation_status, unique_files = self.file_validation(czi_files) #CHECK FOR DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(unique_files) #CHECK FOR DB SECTION ENTRIES
         if not file_validation_status and not db_validation_status:
             self.logevent("ERROR IN CZI FILES OR DB COUNTS")
+            print("ERROR IN CZI FILES OR DB COUNTS")
             sys.exit()
         else:
             #FOR CZI FILES ALREADY PROCESSED; CHECK FOR SLIDE PREVIEW
@@ -70,12 +71,6 @@ class MetaUtilities:
         else:
             self.logevent("NOTHING TO PROCESS - SKIPPING")
 
-    def get_user_entered_scan_id(self):
-        """Get id in the "scan run" table for the current microscopy scan that 
-        was entered by the user in the preparation phase
-        """
-        
-        return self.sqlController.scan_run.id
 
     def file_validation(self, czi_files):
         """CHECK IF DUPLICATE SLIDE NUMBERS EXIST IN FILENAMES. If there are duplicates, record the ID.
@@ -172,11 +167,9 @@ class MetaUtilities:
         """Check that the CZI files are placed in the correct location
         """
         
-        self.input = self.fileLocationManager.get_czi(self.rescan_number)
+        self.input = self.fileLocationManager.get_czi()
         if not os.path.exists(self.input):
             print(f"{self.input} does not exist, we are exiting.")
-            if self.rescan_number > 0:
-                print(f"You are working on an additional rescan, you need to have CZI files in:\n{self.input}")
             sys.exit()
 
         try:
@@ -261,29 +254,32 @@ class MetaUtilities:
     def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):
         """
         A helper method to define some methods for extracting metadata.
+        First test if existing slide is in the database, if not, add it.
+        We find it by animal, slide physical id, and scan run id.
         """
         infile, scan_id = file_key
-        if self.debug:
-            print(f"DEBUG: START MetaUtilities::parallel_extract_slide_meta_data_and_insert_to_database")
 
         czi_file = os.path.basename(os.path.normpath(infile))
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
-        
+        slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
+        file_name = os.path.basename(os.path.normpath(infile))
+        # Start new Slide
         slide = Slide()
         slide.scan_run_id = scan_id
-        slide.slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
+        slide.slide_physical_id = slide_physical_id
         slide.slide_status = "Good"
         slide.processed = False
         slide.file_size = os.path.getsize(infile)
-        slide.file_name = os.path.basename(os.path.normpath(infile))
+        slide.file_name = file_name
         slide.created = datetime.fromtimestamp(Path(os.path.normpath(infile)).stat().st_mtime)
         slide.scenes = len([elem for elem in czi_metadata.values()][0].keys())
         checksum_file = os.path.join(self.checksum, str(slide.file_name).replace('.czi', '.sha256'))
+        if os.path.isfile(checksum_file):
+            with open(checksum_file) as f: # The with keyword automatically closes the file when you are done
+                readable_hash = f.read()
+            slide.checksum = readable_hash
 
-        with open(checksum_file) as f: # The with keyword automatically closes the file when you are done
-            readable_hash = f.read()
-        slide.checksum = readable_hash
         self.session.begin()
         self.session.add(slide)
         self.session.commit()
@@ -291,9 +287,18 @@ class MetaUtilities:
         """Add entry to the table that prepares the user Quality Control interface"""
         for series_index in range(slide.scenes):
             scene_number = series_index + 1
-            channels = range(czi_metadata[slide.file_name][series_index]["channels"])
-            channel_counter = 0 
-            width, height = czi_metadata[slide.file_name][series_index]["dimensions"]
+            try:
+                #channels = range(czi_metadata[slide.file_name][series_index]["channels"])
+                channels = range(czi_metadata[file_name][series_index]["channels"])
+            except KeyError:
+                print(f'Channel error with slide file name={slide.file_name} file system name= {file_name}')
+                sys.exit()
+            channel_counter = 0
+            try:
+                width, height = czi_metadata[file_name][series_index]["dimensions"]
+            except KeyError:
+                print(f'Width, height error with slide file name={slide.file_name} file system name= {file_name}')
+                sys.exit()
             tif_list = []
             for _ in channels:
                 tif = SlideCziTif()
