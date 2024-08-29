@@ -117,7 +117,7 @@ class VolumeRegistration:
         
     """
 
-    def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', debug=False):
+    def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
         self.data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
         self.moving = moving
@@ -126,11 +126,13 @@ class VolumeRegistration:
         self.fixed = fixed
         self.um = um
         self.mask_color = 254
-        self.channel = f'CH{channel}'
+        self.channel = f'C{channel}'
         self.orientation = orientation
+        self.bspline = bspline
         self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
         self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
         self.fileLocationManager = FileLocationManager(self.moving)
+        self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
         self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
@@ -307,7 +309,7 @@ class VolumeRegistration:
             sys.exit()
 
         com_annotator_id = 2
-        structureController = StructureCOMController(self.moving)
+        structureController = self.sql
         coms = structureController.get_coms(self.moving, annotator_id=com_annotator_id)
 
         point_or_index = 'OutputPoint'
@@ -450,9 +452,9 @@ class VolumeRegistration:
     def fill_contours(self):
         sqlController = SqlController(self.moving)
         # vars
-        INPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_aligned')
-        OUTPUT = os.path.join(self.movingLocationManager.prep, 'CH1', 'thumbnail_merged')
-        os.makedirs(OUTPUT, exist_ok=True)
+        self.input = os.path.join(self.movingLocationManager.prep, 'C1', 'thumbnail_aligned')
+        self.output = os.path.join(self.movingLocationManager.prep, 'C1', 'thumbnail_merged')
+        os.makedirs(self.output, exist_ok=True)
         #polygon = PolygonSequenceController(animal=self.moving)        
         polygon = None
         scale_xy = sqlController.scan_run.resolution
@@ -481,7 +483,7 @@ class VolumeRegistration:
                     
         for section, points in tqdm(polygons.items()):
             file = str(section).zfill(3) + ".tif"
-            inpath = os.path.join(INPUT, file)
+            inpath = os.path.join(self.input, file)
             if not os.path.exists(inpath):
                 print(f'{inpath} does not exist')
                 continue
@@ -489,14 +491,14 @@ class VolumeRegistration:
             points = np.array(points)
             points = points.astype(np.int32)
             cv2.fillPoly(img, pts = [points], color = color)
-            outpath = os.path.join(OUTPUT, file)
+            outpath = os.path.join(self.output, file)
             cv2.imwrite(outpath, img)
 
-        files = sorted(os.listdir(INPUT))
+        files = sorted(os.listdir(self.input))
         for file in tqdm(files):
-            inpath = os.path.join(INPUT, file)
+            inpath = os.path.join(self.input, file)
             img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-            outpath = os.path.join(OUTPUT, file)
+            outpath = os.path.join(self.output, file)
             if not os.path.exists(outpath):
                 cv2.imwrite(outpath, img)
 
@@ -504,7 +506,7 @@ class VolumeRegistration:
     def create_volume(self):
         """Create a 3D volume of the image stack
         """
-        image_manager = ImageManger(self.thumbnail_aligned)
+        image_manager = ImageManager(self.thumbnail_aligned)
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
@@ -586,7 +588,7 @@ class VolumeRegistration:
         elastixImageFilter = self.setup_registration(self.moving, self.fixed)
         elastixImageFilter.SetOutputDirectory(self.reverse_elastix_output)
         elastixImageFilter.Execute()
-        print(f'Done performing inverse')
+        print('Done performing inverse')
 
     def setup_registration(self, fixed, moving):
         
@@ -605,8 +607,6 @@ class VolumeRegistration:
         if self.debug:
             print(f'moving volume path={moving_path}')
             print(f'fixed volume path={fixed_path}')
-            print(f'moving point path={moving_point_path}')
-            print(f'fixed point path={fixed_point_path}')
         
         fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
         movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
@@ -626,20 +626,21 @@ class VolumeRegistration:
         affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
-        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
-        if not self.debug:
-            bsplineParameterMap["WriteResultImage"] = ["false"]
-            bsplineParameterMap["UseDirectionCosines"] = ["true"]
-            bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-            bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-            bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-            del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
+        if self.bspline:
+            bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+            bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+            if not self.debug:
+                bsplineParameterMap["WriteResultImage"] = ["false"]
+                bsplineParameterMap["UseDirectionCosines"] = ["true"]
+                bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+                bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+                bsplineParameterMap["NumberOfResolutions"]= ["6"]
+                bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+                del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
         elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.AddParameterMap(rigidParameterMap)
-        elastixImageFilter.AddParameterMap(affineParameterMap)
+        #elastixImageFilter.AddParameterMap(rigidParameterMap)
+        #elastixImageFilter.SetParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
@@ -654,10 +655,15 @@ class VolumeRegistration:
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-        elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        elastixImageFilter.SetParameter("NumberOfSpatialSamples", "16000")
-        elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
-        elastixImageFilter.SetParameter("SampleRegionSize", "150")
+            if self.debug:
+                print(f'moving point path={moving_point_path}')
+                print(f'fixed point path={fixed_point_path}')
+
+        if self.bspline:
+            elastixImageFilter.AddParameterMap(bsplineParameterMap)
+        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", "16000")
+        #elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
+        #elastixImageFilter.SetParameter("SampleRegionSize", "150")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()

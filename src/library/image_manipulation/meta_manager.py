@@ -324,6 +324,13 @@ class MetaUtilities:
 
 
     def correct_multiples(self):
+        """
+        This method will take care of slides that have multiple slide physical IDs. It will
+        take the one with the higher ID and update them to use the lower ID (the first one).
+        This way, rescans of the same slide can be placed in the CZI directory and the
+        end user can view/modify them in the slide QC area.
+        """
+        
         for slide_physical_id in self.multiple_slides:
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id)
             print(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
