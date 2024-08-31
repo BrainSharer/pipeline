@@ -44,7 +44,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
-from library.utilities.utilities_process import read_image
+from library.utilities.utilities_process import read_image, write_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
@@ -520,6 +520,17 @@ class VolumeRegistration:
         io.imsave(self.moving_volume_path, image_stack.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
+    def pad_volume(self):
+        pad = 200
+        volume = io.imread(self.fixed_volume_path)
+        print(f'volume shape={volume.shape} dtype={volume.dtype}')
+        volume = np.concatenate((volume, np.zeros((volume.shape[0], pad, volume.shape[2])) ), axis=1)
+        print(f'volume shape={volume.shape} dtype={volume.dtype}')
+        volume = np.concatenate((volume, np.zeros((volume.shape[0], volume.shape[1], pad)) ), axis=2)
+        print(f'volume shape={volume.shape} dtype={volume.dtype}')
+        outpath = os.path.join(self.data_path, f'{self.fixed}_{self.um}um_{self.orientation}_padded.tif')
+        write_image(outpath, volume.astype(np.uint16))
+
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
@@ -638,9 +649,9 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        elastixImageFilter.SetParameterMap(transParameterMap)
-        #elastixImageFilter.AddParameterMap(rigidParameterMap)
-        #elastixImageFilter.SetParameterMap(affineParameterMap)
+        #elastixImageFilter.SetParameterMap(transParameterMap)
+        #elastixImageFilter.SetParameterMap(rigidParameterMap)
+        elastixImageFilter.SetParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())

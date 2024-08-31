@@ -72,7 +72,8 @@ if __name__ == '__main__':
                         'create_average_volume': volumeRegistration.create_average_volume,
                         'crop': volumeRegistration.crop_volume,
                         'origins': volumeRegistration.volume_origin_creation,
-                        'transformix_origins': volumeRegistration.transformix_origins
+                        'transformix_origins': volumeRegistration.transformix_origins,
+                        'pad_volume': volumeRegistration.pad_volume,
     }
 
     if task in function_mapping:

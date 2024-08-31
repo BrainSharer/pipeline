@@ -10,6 +10,8 @@ All imports are listed by the order in which they are used in the
 import os
 import shutil
 import sys
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.meta_manager import MetaUtilities
@@ -391,6 +393,8 @@ class Pipeline(
                     print(f'Dir={display_directory} exists with {completed_files} files completed out of {section_count} total files.')
             else:
                 print(f'Non-existent dir={display_directory}')
+        url_status = self.check_url(self.animal)
+        print(url_status)
 
     @staticmethod
     def check_programs():
@@ -409,3 +413,25 @@ class Pipeline(
         if len(error) > 0:
             print(error)
             sys.exit()
+
+    @staticmethod
+    def check_url(animal):
+        status = ""
+        url = f"https://imageserv.dk.ucsd.edu/data/{animal}/"
+        url_response = Request(url)
+        try:
+            response = urlopen(url_response, timeout=10)
+        except HTTPError as e:
+            # do something
+            status += f"Warning: {url} does not exist. HTTP error code = {e.code}\n"
+            status += f"You need to create:\n ln -svi /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/www {animal}\n"
+            status += "on the imageserv.dk.ucsd.edu server in the /srv directory."
+        except URLError as e:
+            # do something
+            status += f"Reason:  {e.reason}"
+        else:
+            # do something
+            status = f"Imageserver link exists for {animal}"
+
+        return status
+
