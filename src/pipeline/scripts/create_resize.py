@@ -17,11 +17,9 @@ def resize_images(animal, channel):
     # Python 3
     user = os.environ.get('USER')
     print(user)
-    return
     host = "ratto"
     cmd = "ls /home/eodonnell/XXX"
     subprocess.Popen(f"ssh {user}@{host} {cmd}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
-    return
 
     fileLocationManager = FileLocationManager(animal)
     input_path = fileLocationManager.get_full(channel=channel)

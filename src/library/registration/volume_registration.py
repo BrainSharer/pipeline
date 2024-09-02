@@ -29,6 +29,7 @@ import os
 import sys
 import numpy as np
 from skimage import io
+from scipy.ndimage import zoom
 #from skimage.filters import gaussian        
 #from skimage.exposure import rescale_intensity
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
@@ -517,6 +518,10 @@ class VolumeRegistration:
             farr = smooth_image(farr)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
+        change_z = 456 / image_stack.shape[0]
+        change = (change_z, 1, 1) 
+        image_stack = zoom(image_stack, (change))
+
         io.imsave(self.moving_volume_path, image_stack.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
