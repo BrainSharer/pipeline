@@ -1,6 +1,8 @@
 from collections import defaultdict
 import datetime
 import numpy as np
+from sqlalchemy.types import Unicode
+
 
 from library.database_model.brain_region import BrainRegion
 from library.database_model.annotation_points import AnnotationLabel, StructureCOM
@@ -150,11 +152,51 @@ class AnnotationSessionController:
 
         return fiducials
 
+
+    def get_com_dictionary(self, prep_id, annotator_id):
+
+        coms = {}
+        annotation_sessions = (
+            self.session.query(AnnotationSession)
+            .filter(AnnotationSession.active == True)
+            .filter(AnnotationSession.FK_prep_id == prep_id)
+            .filter(AnnotationSession.FK_user_id == annotator_id)
+            .filter(AnnotationSession.annotation['type'] == 'point')
+            .all()
+        )
+
+        if not annotation_sessions:
+            print("No data for this animal was found.")
+            return coms
+
+        xy_resolution = self.scan_run.resolution
+        z_resolution = self.scan_run.zresolution
+
+
+        # first test data to make sure it has the right keys
+        for annotation_session in annotation_sessions:
+            try:
+                data = annotation_session.annotation["point"]
+            except KeyError:
+                print("No childJsons key in data")
+                return coms
+
+            label = annotation_session.labels[0].label
+
+            x, y, z = data
+            x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
+            y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
+            z = z * M_UM_SCALE / z_resolution
+            section = int(np.round((z), 2))
+            #print(label, x,y,z, section)
+            coms[label] = [x,y,z]
+
+        return coms
+
+
     def get_annotation(self, session_id):
 
-        # annotation_session = self.session.query(AnnotationSession).get(session_id)
-
-        annotation_session = self.session.get(AnnotationSession, session_id)
+        annotation_session = self.session.query(AnnotationSession).get(session_id)
 
         if not annotation_session:
             print("No data for this animal was found.")
