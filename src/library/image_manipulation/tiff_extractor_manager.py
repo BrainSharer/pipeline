@@ -1,6 +1,7 @@
 import os
 import glob
 import sys
+from pathlib import Path, PurePath
 
 from library.image_manipulation.parallel_manager import ParallelManager
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
@@ -30,7 +31,7 @@ class TiffExtractor(ParallelManager):
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
-            self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'thumbnail')
+            self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'thumbnail_original')
             scale_factor = DOWNSCALING_FACTOR
         else:
             self.output = self.fileLocationManager.tif
@@ -61,7 +62,11 @@ class TiffExtractor(ParallelManager):
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             output_path = os.path.join(self.output, tif_file)
-            checksum_filepath = os.path.join(self.checksum, str(tif_file).replace('.tif', '.sha256'))
+
+            # CREATE .sha256 CHECKSUM FILENAME
+            sha256_filename = Path(section.file_name).with_suffix('.sha256').name
+            checksum_filepath = Path(self.checksum, sha256_filename)
+
             if not os.path.exists(czi_file):
                 continue
             if os.path.exists(output_path):
@@ -84,10 +89,13 @@ class TiffExtractor(ParallelManager):
         if self.debug:
             print(f"DEBUG: START TiffExtractor::create_web_friendly_image")
 
+        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'scene')
+
         self.input = self.fileLocationManager.get_czi()
         self.output = self.fileLocationManager.thumbnail_web
         channel = 1
         os.makedirs(self.output, exist_ok=True)
+        os.makedirs(self.checksum, exist_ok=True)
 
         sections = self.sqlController.get_sections(self.animal, channel)
         self.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
@@ -106,8 +114,13 @@ class TiffExtractor(ParallelManager):
             scene = section.scene_index
 
             scale = 0.01
-            file_keys.append([i, infile, outfile, scene, scale])
 
+            # CREATE .sha256 CHECKSUM FILENAME
+            sha256_filename = Path(outfile).with_suffix('.sha256').name
+            checksum_filepath = Path(self.checksum, sha256_filename)
+            
+            file_keys.append([i, infile, outfile, checksum_filepath, scene, scale])
+            
         if files_skipped > 0:
             self.logevent(f"SKIPPED [PRE-EXISTING] FILES: {files_skipped}")
 
