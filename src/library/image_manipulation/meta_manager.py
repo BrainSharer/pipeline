@@ -226,7 +226,6 @@ class MetaUtilities:
                 with open(checksum_file, 'w') as f:
                     f.write(readable_hash)
 
-
         if self.debug:
             if os.path.isfile(slide_preview_path):
                 print(f'Slide preview exists: {slide_preview_path}')

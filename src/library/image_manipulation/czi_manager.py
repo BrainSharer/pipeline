@@ -151,6 +151,8 @@ def extract_tiff_from_czi(file_key: tuple):
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale
     """
     czi_file, outfile, checksum_filepath, scenei, channel, scale = file_key
+    print(f'DEBUG: CZIManager::extract_tiff_from_czi')
+    print(f'DEBUG: {checksum_filepath=}')
     if not os.path.exists(outfile):
         czi = CZIManager(czi_file)
         data = None
@@ -163,7 +165,7 @@ def extract_tiff_from_czi(file_key: tuple):
         message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
         write_image(outfile, data, message=message)
 
-    #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
+    #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
     if not os.path.exists(checksum_filepath):
         org_file = Path(outfile)
         with open(org_file, 'rb') as f:
@@ -180,8 +182,8 @@ def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     :param file_key: tuple of _, infile, outfile, scene_index, scale
     :param normalize: a boolean that determines if we should normalize the TIFF
     """
-
-    _, infile, outfile, scene_index, scale = file_key
+    
+    _, infile, outfile, checksum_filepath, scene_index, scale = file_key
     czi = CZIManager(infile)
     data = None
     try:
@@ -191,14 +193,14 @@ def extract_png_from_czi(file_key: tuple, normalize: bool = True):
         im = Image.fromarray(data)
         im.save(outfile)
 
-        #CHECKSUM FOR FILE (STORED IN SAME DIRECTORY AS FILE)
-        org_file = Path(outfile)
-        with open(org_file, 'rb') as f:
-            bytes = f.read()  # Read the entire file as bytes
-            readable_hash = hashlib.sha256(bytes).hexdigest()
-            checksum_file = org_file.with_suffix('.sha256')
-            with open(checksum_file, 'w') as f:
-                f.write(readable_hash)
+        #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
+        if not os.path.exists(checksum_filepath):
+            org_file = Path(outfile)
+            with open(org_file, 'rb') as f:
+                bytes = f.read()  # Read the entire file as bytes
+                readable_hash = hashlib.sha256(bytes).hexdigest()
+                with open(checksum_filepath, 'w') as f:
+                    f.write(readable_hash)
 
     except Exception as e:
         czi.logevent(f"ERROR READING SCENE - [extract_png_from_czi] IN FILE {infile}; {e=}")
