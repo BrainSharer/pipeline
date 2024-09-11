@@ -32,7 +32,7 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'preview')
+        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'slides_preview')
         os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.sqlController.scan_run.id
@@ -203,7 +203,6 @@ class MetaUtilities:
         czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
         if not os.path.exists(self.fileLocationManager.slides_preview):
             Path(self.fileLocationManager.slides_preview).mkdir(parents=True, exist_ok=True)
-        #slide_preview = Path(self.fileLocationManager.slides_preview, czi_filename_without_extension + '.png')
         slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
         if not os.path.isfile(slide_preview_path): #CREATE SLIDE PREVIEW WITH CHECKSUM
             if self.debug:
