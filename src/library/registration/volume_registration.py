@@ -505,25 +505,31 @@ class VolumeRegistration:
 
 
     def create_volume(self):
-        """Create a 3D volume of the image stack
         """
+        Create a 3D volume
+            image stack = 10.4um x 10.4um x 20um
+            atlas stack = 10um x 10um x 10um
+
+        """
+        image_stack_size = [20, 10.4, 10.4]
         image_manager = ImageManager(self.thumbnail_aligned)
+
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
         for ffile in tqdm(image_manager.files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
-            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
-            farr[farr > 250] = 0
-            farr = smooth_image(farr)
+            farr = read_image(fpath)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
-        change_z = 456 / image_stack.shape[0]
-        change = (change_z, 1, 1) 
-        image_stack = zoom(image_stack, (change))
+        change_z = image_stack_size[0] / self.um
+        change_y = image_stack_size[1] / self.um
+        change_x = image_stack_size[2] / self.um
+        change = (change_z, change_y, change_x) 
+        zoomed = zoom(image_stack, change)
 
-        io.imsave(self.moving_volume_path, image_stack.astype(image_manager.dtype))
-        print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
+        write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
+        print(f'Saved a 3D volume {self.moving_volume_path} with shape={zoomed.shape} and dtype={zoomed.dtype}')
 
     def pad_volume(self):
         pad = 200
