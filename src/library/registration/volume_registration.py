@@ -148,7 +148,7 @@ class VolumeRegistration:
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
         if self.debug:
-            iterations = "100"
+            iterations = "250"
             self.number_of_resolutions = "4"
             self.rigidIterations = iterations
             self.affineIterations = iterations
@@ -588,13 +588,12 @@ class VolumeRegistration:
         """
 
         os.makedirs(self.elastix_output, exist_ok=True)
-
         elastixImageFilter = self.setup_registration(self.fixed, self.moving)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
         if self.debug:
             elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
-        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
+        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
         sitk.WriteImage(resultImage, self.registered_volume)
         print(f'Saved img to {self.registered_volume}')
@@ -642,10 +641,10 @@ class VolumeRegistration:
         rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        affineParameterMap["UseDirectionCosines"] = ["true"]
+        affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
+        #affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
         if self.bspline:
