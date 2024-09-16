@@ -15,6 +15,10 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+# TESTING
+from torchvision.models.detection import maskrcnn_resnet50_fpn, MaskRCNN_ResNet50_FPN_Weights
+
+
 from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
@@ -77,7 +81,12 @@ class MaskManager:
         """
 
         # load an instance segmentation model pre-trained pre-trained on COCO
-        model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+        #model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+
+        # TESTING
+        weights = MaskRCNN_ResNet50_FPN_Weights.DEFAULT
+        model = maskrcnn_resnet50_fpn(weights=weights, progress=False)
+
         # get number of input features for the classifier
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         # replace the pre-trained head with a new one
