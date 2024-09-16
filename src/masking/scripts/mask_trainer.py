@@ -142,13 +142,12 @@ class MaskTrainer():
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
-        modeldictpath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth'
+        modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.v{self.version}.pth'
         if os.path.exists(modeldictpath):
             print(f"Loading model dictionary from {modeldictpath}")
-            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=True))
+            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
         else:
             print(f"Model dictionary not found at {modeldictpath}")
-            sys.exit()
 
         # move model to the right device
         model.to(self.device)
