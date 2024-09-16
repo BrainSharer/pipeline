@@ -145,7 +145,7 @@ class MaskTrainer():
         modeldictpath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth'
         if os.path.exists(modeldictpath):
             print(f"Loading model dictionary from {modeldictpath}")
-            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
+            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=True))
         else:
             print(f"Model dictionary not found at {modeldictpath}")
             sys.exit()
