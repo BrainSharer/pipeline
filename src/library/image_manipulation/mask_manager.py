@@ -56,6 +56,7 @@ class MaskManager:
             if self.mask_image > 0:
                 mask = mask[:, :, 2]
                 mask[mask > 0] = 255
+                mask = self.remove_small_contours(mask.astype(np.uint8))
 
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
@@ -313,3 +314,33 @@ class MaskManager:
             im.save(outpath)
         except IOError:
             print("cannot resize", thumbfile)
+
+    @staticmethod
+    def remove_small_contours(raw_img, debug=False):
+        """
+        Removes small contours from the given image.
+        This function processes the input image to find and remove contours with an area smaller than 200 pixels.
+        Optionally, it can also annotate the image with contour areas and bounding rectangles for debugging purposes.
+        Args:
+            raw_img (numpy.ndarray): The input image in which contours are to be detected and removed.
+            debug (bool, optional): If True, the function will annotate the image with contour areas and bounding rectangles. Defaults to False.
+        Returns:
+            numpy.ndarray: The processed image with small contours removed.
+        """
+        font = cv2.FONT_HERSHEY_PLAIN
+        ret, thresh = cv2.threshold(raw_img, 200, 255, 0)
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            x,y,w,h = cv2.boundingRect(contour)
+            area = cv2.contourArea(contour)
+            if area < 200:
+                cv2.fillPoly(raw_img, [contour], 0);
+                color = 100
+            else:
+                color = 255
+
+            if debug:
+                cv2.putText(raw_img, str(area), (x,y), font, 1, color, 1, cv2.LINE_AA)                
+                cv2.rectangle(raw_img, (x, y), (x+w, y+h), color, 1)
+
+        return raw_img
