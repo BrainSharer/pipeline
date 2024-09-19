@@ -239,7 +239,7 @@ def clean_and_rotate_image(file_key):
         print("Unexpected error:", sys.exc_info()[0])
         raise
 
-    if cleaned.dtype == np.uint8:
+    if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
         r = cleaned[:,:,0]
         g = cleaned[:,:,1]
@@ -261,7 +261,7 @@ def clean_and_rotate_image(file_key):
     if rotation > 0:
         cleaned = rotate_image(cleaned, infile, rotation)
     if flip == "flip":
-        cleaned = np.flip(cleaned)
+        cleaned = np.flip(cleaned, axis=1)
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
 

@@ -49,30 +49,22 @@ def create_mask(image):
 def redo_masks(animal):
 
     fileLocationManager = FileLocationManager(animal)
-    input_path = fileLocationManager.get_thumbnail_masked(channel=1)
-    output_path = os.path.join(fileLocationManager.masks, 'C1', 'thumbnail_masks_redone')
-    os.makedirs(output_path, exist_ok=True)
+    input_path = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_aligned')
+    flipped_path = os.path.join(fileLocationManager.prep, 'C1', 'flipped')
+    flopped_path = os.path.join(fileLocationManager.prep, 'C1', 'flopped')
+    os.makedirs(flipped_path, exist_ok=True)
+    os.makedirs(flopped_path, exist_ok=True)
     files = sorted(os.listdir(input_path))
     for file in tqdm(files):
         inpath = os.path.join(input_path, file)
-        outpath = os.path.join(output_path, file)
-        if not os.path.exists(outpath):
-            img = Image.open(inpath)
-            raw_img = np.array(img)
+        flipped_outpath = os.path.join(flipped_path, file)
+        flopped_outpath = os.path.join(flopped_path, file)
+        img = read_image(inpath)
+        flipped = np.flip(img, axis=0)
+        flopped = np.flip(img, axis=1)
+        write_image(flipped_outpath, flipped)
+        write_image(flopped_outpath, flopped)
 
-            #mask = create_mask(raw_img)
-            #merged = merge_mask(raw_img, mask)
-            ret, thresh = cv2.threshold(raw_img, 200, 255, 0)
-            contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            boxes = []
-            for i, contour in enumerate(contours):
-                x,y,w,h = cv2.boundingRect(contour)
-                area = cv2.contourArea(contour)
-                if area < 800:
-                    #raw_img[y:y+h, x:x+w] = 0
-                    cv2.fillPoly(raw_img, [contour], 0);
-                    #cv2.rectangle(raw_img, (x, y), (x+w, y+h), 255, -1)
-            cv2.imwrite(outpath, raw_img.astype(np.uint8))
 
 
 if __name__ == "__main__":
