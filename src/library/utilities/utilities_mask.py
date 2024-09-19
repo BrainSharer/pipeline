@@ -260,8 +260,10 @@ def clean_and_rotate_image(file_key):
 
     if rotation > 0:
         cleaned = rotate_image(cleaned, infile, rotation)
+    # flip = switch top to bottom
+    # flop = switch left to right
     if flip == "flip":
-        cleaned = np.flip(cleaned, axis=1)
+        cleaned = np.flip(cleaned, axis=0)
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
 
