@@ -10,6 +10,7 @@ import gc
 from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
+import subprocess
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
@@ -28,26 +29,54 @@ def get_hostname() -> str:
     return hostname
 
 
-def get_image_size(filepath: str):
-    """Returns width, height of single image
+# def get_image_size(filepath: str):
+#     """Returns width, height of single image
 
-    :param filepath: path of input file
-    :return: tuple of int width and height of the file
-    """
+#     :param filepath: path of input file
+#     :return: tuple of int width and height of the file
+#     """
 
-    try:
-        result_parts = str(check_output(["identify", filepath]))
-    except:
-        print(f'Could not identify file={filepath}')
-    results = result_parts.split()
-    try:
-        width, height = results[2].split("x")
-    except ValueError as ve:
-        print(f'Could not get width/height of {filepath}')
-        print(ve)
-        sys.exit()
+#     try:
+#         result_parts = str(check_output(["identify", filepath]))
+#     except:
+#         print(f'Could not identify file={filepath}')
+#     results = result_parts.split()
+#     try:
+#         width, height = results[2].split("x")
+#     except ValueError as ve:
+#         print(f'Could not get width/height of {filepath}')
+#         print(ve)
+#         sys.exit()
         
-    return int(width), int(height)
+#     return int(width), int(height)
+
+def get_image_size(filepath: str) -> tuple[int, int]:
+    """
+    Returns the width and height of a single image.
+
+    :param filepath: Path of the input file.
+    :return: Tuple containing the width and height as integers.
+    """
+    try:
+        # Use subprocess.run with capture_output and text=True to simplify decoding
+        result = subprocess.run(
+            ["identify", "-format", "%wx%h", filepath],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        # The width and height are returned directly in the desired format
+        width, height = result.stdout.strip().split("x")
+        return int(width), int(height)
+    
+    except subprocess.CalledProcessError:
+        print(f'Error: Could not identify file={filepath}')
+    except ValueError:
+        print(f'Error: Invalid output format from identify for file={filepath}')
+    except Exception as e:
+        print(f'Unexpected error processing file={filepath}: {e}')
+    
+    return 0, 0  # Return default values in case of error
 
 
 def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False) -> int:
@@ -76,19 +105,33 @@ def test_dir(animal: str, directory, section_count: int, downsample: bool = True
     except:
         error = f"{directory} does not exist\n"
         files = []
-
+    
     if section_count == 0:
         section_count = len(files)
     widths = set()
     heights = set()
+
     for f in files:
         filepath = os.path.join(directory, f)
-        width, height = get_image_size(filepath)
-        widths.add(int(width))
-        heights.add(int(height))
-        size = os.path.getsize(filepath)
-        if size < min_size:
-            error += f"File is too small. {size} is less than min: {min_size} {filepath} \n"
+
+        try:
+            file_stats = os.stat(filepath)
+            size = file_stats.st_size
+            
+            if size < min_size:
+                error += f"File is too small. {size} is less than min: {min_size} {filepath}\n"
+                continue
+
+            # Get width and height of the image
+            width, height = get_image_size(filepath)
+            
+            # Add to sets
+            widths.add(int(width))
+            heights.add(int(height))
+        
+        except Exception as e:
+            error += f"Error processing file {filepath}: {e}\n"
+
     # picked 100 as an arbitrary number. the min file count is usually around 380 or so
     if len(files) > 100:
         min_width = min(widths)

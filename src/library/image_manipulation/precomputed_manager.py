@@ -28,11 +28,14 @@ class NgPrecomputedMaker:
         """
         db_resolution = self.sqlController.scan_run.resolution
         zresolution = self.sqlController.scan_run.zresolution
-        if self.scaling_factor < SCALING_FACTOR:
-            zresolution *= self.scaling_factor
+        #28-AUG-2024 mod [self.scaling_factor was not defined]
+        # if self.scaling_factor < SCALING_FACTOR: 
+        #     zresolution *= self.scaling_factor
         resolution = int(db_resolution * 1000) 
         if self.downsample:
-          resolution = int(db_resolution * 1000 * self.scaling_factor)
+        #   resolution = int(db_resolution * 1000 * self.scaling_factor)
+          resolution = int(db_resolution * 1000 * SCALING_FACTOR) #28-AUG-2024 mod [self.scaling_factor was not defined]
+          
           self.mips = 4
         else:
             self.mips = 8
