@@ -23,6 +23,7 @@ from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
+SMALL_CONTOUR_AREA = 200
 
 class MaskManager:
     """Class containing all methods related to image masks
@@ -333,7 +334,7 @@ class MaskManager:
         for contour in contours:
             x,y,w,h = cv2.boundingRect(contour)
             area = cv2.contourArea(contour)
-            if area < 200:
+            if area < SMALL_CONTOUR_AREA:
                 cv2.fillPoly(raw_img, [contour], 0);
                 color = 100
             else:
