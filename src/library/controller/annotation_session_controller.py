@@ -126,7 +126,7 @@ class AnnotationSessionController:
         )
 
         if not annotation_session:
-            print("No fiducial data for this animal was found.")
+            print("No annotation session for this animal was found.")
             return fiducials
 
         xy_resolution = self.scan_run.resolution
