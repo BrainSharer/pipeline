@@ -233,7 +233,7 @@ class Pipeline(
             if os.path.exists(progresspath):
                 print(f'Removing {progresspath}')
                 shutil.rmtree(progresspath)
-            self.neuroglancer()
+            print('You will need to rerun the neuroglancer task.')
 
         #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
