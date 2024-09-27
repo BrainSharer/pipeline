@@ -151,8 +151,6 @@ def extract_tiff_from_czi(file_key: tuple):
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale
     """
     czi_file, outfile, checksum_filepath, scenei, channel, scale = file_key
-    print(f'DEBUG: CZIManager::extract_tiff_from_czi')
-    print(f'DEBUG: {checksum_filepath=}')
     if not os.path.exists(outfile):
         czi = CZIManager(czi_file)
         data = None
