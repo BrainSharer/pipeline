@@ -67,8 +67,7 @@ class ElastixManager(FileLogger):
 
         files, nfiles = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         
-        self.logevent(f"Input FOLDER: {self.input}")
-        self.logevent(f"FILE COUNT: {nfiles}")
+        self.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
         
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]

@@ -48,6 +48,7 @@ class MaskManager:
         self.logevent(f"Input FOLDER: {self.input}")
         self.logevent(f"FILE COUNT: {len(files)}")
         self.logevent(f"MASKS FOLDER: {self.output}")
+        
         for file in files:
             filepath = os.path.join(self.input, file)
             maskpath = os.path.join(self.output, file)
