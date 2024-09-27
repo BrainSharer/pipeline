@@ -231,6 +231,18 @@ def clean_and_rotate_image(file_key):
     img = read_image(infile)
     mask = read_image(maskfile)
 
+    # Ensure mask is binary and uint8
+    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+    mask = mask.astype(np.uint8)
+
+    # Handle different image types
+    if img.ndim == 2:  # Grayscale
+        img = img.astype(np.uint8)
+    elif img.ndim == 3:  # Color
+        img = img.astype(np.uint8)
+        if mask.ndim == 2:
+            mask = cv2.merge([mask] * 3)
+
     try:
         cleaned = cv2.bitwise_and(img, img, mask=mask)
     except:
