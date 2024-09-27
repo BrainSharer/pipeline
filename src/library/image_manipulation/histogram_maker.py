@@ -150,46 +150,99 @@ class HistogramMaker:
             plt.title(f"{self.animal} channel {self.channel} @{dtype}bit with {lfiles} tif files", fontsize=8)
             fig.savefig(outpath, bbox_inches="tight")
 
-
-def make_single_histogram(file_key):
+def make_single_histogram(file_key: tuple[str, str, str, str, str]) -> None:
     """Makes a histogram for a single image file
     
     :param file_key: tuple of input_path, mask_path, channel, file, output_path
     """
 
     input_path, mask_path, channel, file, output_path = file_key
-    img = read_image(input_path)
-    dtype = img.dtype
-    if img.dtype == np.uint8:
-        end = 255
-    else:
-        end = 65535
-    mask = read_image(mask_path)
+
+    # Read image and mask
+    img = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+
+    if img is None or mask is None:
+        print(f"Could not read image {input_path} or mask {mask_path}")
+        return
+
+    # Apply mask
     try:
         img = cv2.bitwise_and(img, img, mask=mask)
     except Exception as e:
-        print(f"Could not apply mask {mask_path} to {input_path}")
-        print(e)
-        return
-
-    img = img[img > 0]
-    try:
-        flat = img.flatten()
-    except:
-        print(f"Could not flatten {input_path}")
+        print(f"Could not apply mask {mask_path} to {input_path}: {e}")
         return
     
-    del img
-    del mask
-    fig = plt.figure()
-    plt.rcParams["figure.figsize"] = [10, 6]
-    plt.hist(flat, flat.max(), [0, end], color=COLORS[channel])
+    # Filter out zero values and flatten
+    flat = img[img > 0].ravel()
+
+    if flat.size == 0:
+        print(f"No non-zero pixels in masked image {input_path}")
+        return
+
+    # Determine histogram range
+    dtype = img.dtype
+    end = 255 if dtype == np.uint8 else 65535
+    
+    # Create and save histogram
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.hist(flat, bins=min(flat.max(), 1000), range=(0, end), color=COLORS[channel])
+    ax.set_yscale('log')
+    ax.grid(axis="y", alpha=0.75)
+    ax.set_xlabel("Value")
+    ax.set_ylabel("Frequency")
+    ax.set_title(f"{file} @{dtype}", fontsize=8)
     plt.style.use("ggplot")
-    #plt.yscale("log")
-    plt.grid(axis="y", alpha=0.75)
-    plt.xlabel("Value")
-    plt.ylabel("Frequency")
-    plt.title(f"{file.file_name} @{dtype}", fontsize=8)
-    plt.close()
     fig.savefig(output_path, bbox_inches="tight")
-    return
+    plt.close(fig)
+
+    #PREV. (PRIOR TO 27-SEP-2024) BELOW
+    #REVISIONS:
+    #-Combine filtering and flattening into one step: img[img > 0].ravel() instead of separate operations.
+    #-Use ravel() instead of flatten() as it's generally faster (returns a view instead of a copy when possible).
+    #-Use ax.hist() instead of plt.hist() for better control and to avoid creating multiple figures.
+    #-Set the number of bins to the minimum of flat.max() and 1000 to prevent excessive memory usage for high bit-depth images.
+    #-Enable log scale for y-axis by default, as it's often more informative for image histograms. (unclear if David/Beth wants this)
+    #-Create figure and axes in one step with fig, ax = plt.subplots().
+    #-Removed unnecessary del statements as Python's garbage collector will handle memory management.
+
+
+    # img = read_image(input_path)
+    # dtype = img.dtype
+    # if img.dtype == np.uint8:
+    #     end = 255
+    # else:
+    #     end = 65535
+
+    # mask = read_image(mask_path)
+
+    # try:
+    #     img = cv2.bitwise_and(img, img, mask=mask)
+    # except Exception as e:
+    #     print(f"Could not apply mask {mask_path} to {input_path}")
+    #     print(e)
+    #     return
+
+    # img = img[img > 0]
+    # try:
+    #     flat = img.flatten()
+    # except:
+    #     print(f"Could not flatten {input_path}")
+    #     return
+    
+    # del img
+    # del mask
+    # fig = plt.figure()
+    # plt.rcParams["figure.figsize"] = [10, 6]
+    # plt.hist(flat, flat.max(), [0, end], color=COLORS[channel])
+    # plt.style.use("ggplot")
+
+    #plt.yscale("log")
+
+    # plt.grid(axis="y", alpha=0.75)
+    # plt.xlabel("Value")
+    # plt.ylabel("Frequency")
+    # plt.title(f"{file.file_name} @{dtype}", fontsize=8)
+    # plt.close()
+    # fig.savefig(output_path, bbox_inches="tight")
+    # return

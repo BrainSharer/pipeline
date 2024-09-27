@@ -295,6 +295,7 @@ class NumpyToNeuroglancer():
         tq.insert(tasks)    
         tq.execute()
 
+
     def process_image(self, file_key: tuple[int, str, any, str]) -> None:
         """
         This reads the image and starts the precomputed data
