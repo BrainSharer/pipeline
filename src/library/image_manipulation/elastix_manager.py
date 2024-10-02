@@ -15,10 +15,8 @@ import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 from tqdm import tqdm
 #GPU alt TESTING
-import torch
 
-if torch.cuda.is_available():
-    import cupy as cp
+#import cupy as cp
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
