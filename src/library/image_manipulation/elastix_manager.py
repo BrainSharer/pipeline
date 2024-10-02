@@ -6,16 +6,19 @@ The libraries are contained within the SimpleITK-SimpleElastix library
 
 import math
 import os
-from pathlib import Path
 import numpy as np
 from collections import OrderedDict
 from PIL import Image
 from timeit import default_timer as timer
 Image.MAX_IMAGE_PIXELS = None
-from timeit import default_timer as timer
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 from tqdm import tqdm
+#GPU alt TESTING
+import torch
+
+if torch.cuda.is_available():
+    import cupy as cp
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.file_logger import FileLogger
@@ -31,8 +34,6 @@ from library.utilities.utilities_registration import (
 )
 from library.image_manipulation.image_manager import ImageManager
 
-#GPU alt TESTING
-import cupy as cp
 
 # import torch
 # import torch.nn as nn
@@ -63,7 +64,7 @@ class ElastixManager(FileLogger):
         each brain. 
         """
         if self.debug:
-            print(f"DEBUG: START ElastixManager::create_within_stack_transformations")
+            print("DEBUG: START ElastixManager::create_within_stack_transformations")
 
         files, nfiles = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         
@@ -122,7 +123,7 @@ class ElastixManager(FileLogger):
 
         sum_changes = abs(aligned_sum - realigned_sum)
         if math.isclose(sum_changes, 0, abs_tol=0.01):
-            print(f'Changes have already been made to the alignment, so there is no need to rerurn the alignment and neuroglancer tasks.')
+            print('Changes have already been made to the alignment, so there is no need to rerurn the alignment and neuroglancer tasks.')
             nchanges = 0
         return nchanges
 
