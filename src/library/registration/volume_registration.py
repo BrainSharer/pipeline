@@ -39,6 +39,7 @@ from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
+import json
 
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
@@ -138,6 +139,7 @@ class VolumeRegistration:
         self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
         self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
+        self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.data_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
@@ -511,23 +513,26 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
-        image_stack_size = [20, 10.4, 10.4]
+        image_stack_resolution = [20, 10.4, 10.4] # for neurotrace brains at 1/32 downsampling
         image_manager = ImageManager(self.thumbnail_aligned)
 
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in tqdm(image_manager.files):
+        for ffile in image_manager.files:
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = read_image(fpath)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
-        change_z = image_stack_size[0] / self.um
-        change_y = image_stack_size[1] / self.um
-        change_x = image_stack_size[2] / self.um
+        change_z = image_stack_resolution[0] / self.um
+        change_y = image_stack_resolution[1] / self.um
+        change_x = image_stack_resolution[2] / self.um
         change = (change_z, change_y, change_x) 
         zoomed = zoom(image_stack, change)
-
+        changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
+        with open(self.changes_path, 'w') as f:
+            json.dump(changes, f)            
+        
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={zoomed.shape} and dtype={zoomed.dtype}')
 
