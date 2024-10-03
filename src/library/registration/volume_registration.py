@@ -39,6 +39,8 @@ from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
+import json
+from tifffile import imread
 
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
@@ -138,6 +140,7 @@ class VolumeRegistration:
         self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
         self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
+        self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.data_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
@@ -147,14 +150,13 @@ class VolumeRegistration:
         self.unregistered_point_file = os.path.join(self.data_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
+        self.number_of_resolutions = "4"
         if self.debug:
             iterations = "250"
-            self.number_of_resolutions = "4"
             self.rigidIterations = iterations
             self.affineIterations = iterations
             self.bsplineIterations = iterations
         else:
-            self.number_of_resolutions = "6"
             self.rigidIterations = "1000"
             self.affineIterations = "2500"
             self.bsplineIterations = "15000"
@@ -511,23 +513,29 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
-        image_stack_size = [20, 10.4, 10.4]
+        scaling_factor = 1
+        if self.um == 25:
+            scaling_factor = 2
+        image_stack_resolution = [20, 10.4*scaling_factor, 10.4*scaling_factor] # for neurotrace brains at 1/32 downsampling
         image_manager = ImageManager(self.thumbnail_aligned)
 
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in tqdm(image_manager.files):
+        for ffile in image_manager.files:
             fpath = os.path.join(self.thumbnail_aligned, ffile)
-            farr = read_image(fpath)
+            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
-        change_z = image_stack_size[0] / self.um
-        change_y = image_stack_size[1] / self.um
-        change_x = image_stack_size[2] / self.um
+        change_z = image_stack_resolution[0] / self.um
+        change_y = image_stack_resolution[1] / self.um
+        change_x = image_stack_resolution[2] / self.um
         change = (change_z, change_y, change_x) 
         zoomed = zoom(image_stack, change)
-
+        changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
+        with open(self.changes_path, 'w') as f:
+            json.dump(changes, f)            
+        
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={zoomed.shape} and dtype={zoomed.dtype}')
 
@@ -618,10 +626,10 @@ class VolumeRegistration:
 
         if not os.path.exists(fixed_path):
             print(f'{fixed_path} does not exist')
-            return
+            sys.exit()
         if not os.path.exists(moving_path):
             print(f'{moving_path} does not exist')
-            return
+            sys.exit()
         # set point paths
         fixed_point_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
         moving_point_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.pts')
@@ -637,14 +645,14 @@ class VolumeRegistration:
 
         transParameterMap = sitk.GetDefaultParameterMap('translation')
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
-        rigidParameterMap["NumberOfResolutions"] = ["6"] # Takes lots of RAM
+        rigidParameterMap["NumberOfResolutions"] = [self.number_of_resolutions] # Takes lots of RAM
         rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        #affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
+        #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
         if self.bspline:
@@ -660,8 +668,8 @@ class VolumeRegistration:
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
         #elastixImageFilter.SetParameterMap(transParameterMap)
-        #elastixImageFilter.SetParameterMap(rigidParameterMap)
-        elastixImageFilter.SetParameterMap(affineParameterMap)
+        elastixImageFilter.SetParameterMap(rigidParameterMap)
+        elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
