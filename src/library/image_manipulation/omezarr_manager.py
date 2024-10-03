@@ -22,6 +22,11 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
 class OmeZarrManager():
 
     def create_omezarr(self):
+        """Create OME-Zarr (NGFF) data store. WIP
+        """
+        if self.debug:
+            print(f"DEBUG: START OmeZarrManager::create_omezarr")
+
         tmp_dir = get_scratch_dir()
         tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
         os.makedirs(tmp_dir, exist_ok=True)
@@ -41,12 +46,17 @@ class OmeZarrManager():
             mips = 8
             originalChunkSize = [1, 1, 1, 2048, 2048]
             finalChunkSize=(1, 1, 64, 64, 64)
+
         # vars from stack to multi
         filesList = []
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)
             filesList.append(filepath)
-        #filesList = [filesList
+        
+        if self.debug:
+            print(f'INPUT FOLDER: {input}')
+            print(f'INPUT FILES COUNT: {len(filesList)}')
+
         omero = {}
         omero['channels'] = {}
         omero['channels']['color'] = None
@@ -118,5 +128,3 @@ class OmeZarrManager():
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
-
-
