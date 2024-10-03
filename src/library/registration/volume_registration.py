@@ -40,6 +40,7 @@ import igneous.task_creation as tc
 import pandas as pd
 import cv2
 import json
+from tifffile import imread
 
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
@@ -149,14 +150,13 @@ class VolumeRegistration:
         self.unregistered_point_file = os.path.join(self.data_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
+        self.number_of_resolutions = "4"
         if self.debug:
             iterations = "250"
-            self.number_of_resolutions = "4"
             self.rigidIterations = iterations
             self.affineIterations = iterations
             self.bsplineIterations = iterations
         else:
-            self.number_of_resolutions = "6"
             self.rigidIterations = "1000"
             self.affineIterations = "2500"
             self.bsplineIterations = "15000"
@@ -524,7 +524,7 @@ class VolumeRegistration:
         file_list = []
         for ffile in image_manager.files:
             fpath = os.path.join(self.thumbnail_aligned, ffile)
-            farr = read_image(fpath)
+            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
         change_z = image_stack_resolution[0] / self.um
@@ -645,13 +645,13 @@ class VolumeRegistration:
 
         transParameterMap = sitk.GetDefaultParameterMap('translation')
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
-        rigidParameterMap["NumberOfResolutions"] = ["6"] # Takes lots of RAM
+        rigidParameterMap["NumberOfResolutions"] = [self.number_of_resolutions] # Takes lots of RAM
         rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+        #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
@@ -667,8 +667,8 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.AddParameterMap(rigidParameterMap)
+        #elastixImageFilter.SetParameterMap(transParameterMap)
+        elastixImageFilter.SetParameterMap(rigidParameterMap)
         elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
