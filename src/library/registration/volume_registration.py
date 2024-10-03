@@ -513,7 +513,10 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
-        image_stack_resolution = [20, 10.4, 10.4] # for neurotrace brains at 1/32 downsampling
+        scaling_factor = 1
+        if self.um == 25:
+            scaling_factor = 2
+        image_stack_resolution = [20, 10.4*scaling_factor, 10.4*scaling_factor] # for neurotrace brains at 1/32 downsampling
         image_manager = ImageManager(self.thumbnail_aligned)
 
 
