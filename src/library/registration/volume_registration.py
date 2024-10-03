@@ -623,10 +623,10 @@ class VolumeRegistration:
 
         if not os.path.exists(fixed_path):
             print(f'{fixed_path} does not exist')
-            return
+            sys.exit()
         if not os.path.exists(moving_path):
             print(f'{moving_path} does not exist')
-            return
+            sys.exit()
         # set point paths
         fixed_point_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
         moving_point_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.pts')
@@ -649,7 +649,7 @@ class VolumeRegistration:
         affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        #affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
+        affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
         affineParameterMap["WriteResultImage"] = ["false"]
 
         if self.bspline:
@@ -664,9 +664,9 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        #elastixImageFilter.SetParameterMap(transParameterMap)
-        #elastixImageFilter.SetParameterMap(rigidParameterMap)
-        elastixImageFilter.SetParameterMap(affineParameterMap)
+        elastixImageFilter.SetParameterMap(transParameterMap)
+        elastixImageFilter.AddParameterMap(rigidParameterMap)
+        elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
