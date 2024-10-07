@@ -164,7 +164,17 @@ class VolumeRegistration:
         if not os.path.exists(self.fixed_volume_path):
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()        
- 
+
+        self.report_status()
+
+    def report_status(self):
+        print("Running volume registration with the following settings:")
+        print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
+        print("\tum:".ljust(20), f"{str(self.um)}".ljust(20))
+        print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
+        print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print()
+
 
 
     def setup_transformix(self, outputpath):
@@ -352,8 +362,21 @@ class VolumeRegistration:
 
 
     def transformix_polygons(self):
+        """Marissa is ID=38, TG_L =80 and TG_R=81
+        """
+        
         sqlController = SqlController(self.moving)
         #polygon = PolygonSequenceController(animal=self.moving)
+        
+        annotation_session = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
+        annotation = annotation_session.annotation
+        print(annotation.keys())
+        childJsons = annotation['childJsons']
+        print(type(childJsons))
+        for child in childJsons:
+            for rows in child['childJsons']:
+                print(rows['pointA'])
+        return
         polygon = None  
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
@@ -647,13 +670,14 @@ class VolumeRegistration:
         rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
         rigidParameterMap["NumberOfResolutions"] = [self.number_of_resolutions] # Takes lots of RAM
         rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
+        rigidParameterMap["WriteResultImage"] = ["true"]
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
-        affineParameterMap["WriteResultImage"] = ["false"]
+        affineParameterMap["WriteResultImage"] = ["true"]
 
         if self.bspline:
             bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
@@ -667,9 +691,9 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        #elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.SetParameterMap(rigidParameterMap)
-        elastixImageFilter.AddParameterMap(affineParameterMap)
+        elastixImageFilter.SetParameterMap(transParameterMap)
+        #elastixImageFilter.SetParameterMap(rigidParameterMap)
+        #elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
