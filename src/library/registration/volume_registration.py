@@ -35,6 +35,8 @@ from scipy.ndimage import zoom
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
 import SimpleITK as sitk
+import itk
+
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
@@ -54,6 +56,8 @@ from library.utilities.utilities_registration import create_rigid_parameters
 
 # constants
 MOVING_CROP = 50
+M_UM_SCALE = 1000000
+
 
 
 def sort_from_center(polygon:list) -> list:
@@ -134,7 +138,7 @@ class VolumeRegistration:
         self.orientation = orientation
         self.bspline = bspline
         self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
-        self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
+        self.scaling_factor = 32 # This is the downsampling factor used to create the aligned volume at 10um
         self.fileLocationManager = FileLocationManager(self.moving)
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
@@ -191,12 +195,8 @@ class VolumeRegistration:
         transformixImageFilter = sitk.TransformixImageFilter()
         parameterMap0 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.0.txt'))
         parameterMap1 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.1.txt'))
-        parameterMap2 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.2.txt'))
-        #parameterMap3 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.3.txt'))
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
         transformixImageFilter.AddTransformParameterMap(parameterMap1)
-        transformixImageFilter.AddTransformParameterMap(parameterMap2)
-        #transformixImageFilter.AddTransformParameterMap(parameterMap3)
         transformixImageFilter.LogToFileOn()
         transformixImageFilter.LogToConsoleOff()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
@@ -265,7 +265,8 @@ class VolumeRegistration:
         The points in the pickle file need to be translated from full res pixel to
         the current resolution of the downsampled volume.
         Points are inserted in the DB in micrometers from the full resolution images
-
+        The TransformParameter.1.txt file is the one that contains the transformation
+        from the affine registration
         
         The points.pts file takes THIS format:
         point
@@ -278,7 +279,7 @@ class VolumeRegistration:
             print(f'{self.unregistered_point_file} does not exist, exiting.')
             sys.exit()
 
-        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.1.txt')
         if not os.path.exists(reverse_transformation_pfile):
             print(f'{reverse_transformation_pfile} does not exist, exiting.')
             sys.exit()
@@ -373,22 +374,25 @@ class VolumeRegistration:
         sqlController = SqlController(self.moving)
         #polygon = PolygonSequenceController(animal=self.moving)
         
-        annotation_session = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
-        annotation = annotation_session.annotation
-        print(annotation.keys())
-        childJsons = annotation['childJsons']
-        print(type(childJsons))
-        for child in childJsons:
-            for rows in child['childJsons']:
-                print(rows['pointA'])
-        return
-        polygon = None  
+        annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
+        annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
+        annotation_left = annotation_left.annotation
+        annotation_right = annotation_right.annotation
+        left_childJsons = annotation_left['childJsons']
+        right_childJsons = annotation_right['childJsons']
+        rows_left = []
+        rows_right = []
+        for child in left_childJsons:
+            for i, row in enumerate(child['childJsons']):
+                rows_left.append(row['pointA'])
+        for child in right_childJsons:
+            for i, row in enumerate(child['childJsons']):
+                rows_right.append(row['pointA'])
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
-        #input_points = itk.PointSet[itk.F, 3].New()
-        input_points = None
-        df_L = polygon.get_volume(self.moving, 38, 12)
-        df_R = polygon.get_volume(self.moving, 38, 13)
+        input_points = itk.PointSet[itk.F, 3].New()
+        df_L = pd.DataFrame(rows_left, columns=['x','y','z'])
+        df_R = pd.DataFrame(rows_right, columns=['x','y','z'])
         frames = [df_L, df_R]
         df = pd.concat(frames)
         len_L = df_L.shape[0]
@@ -396,16 +400,22 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
+        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output, "transformix_input_points.txt")        
         #df = polygon.get_volume(self.moving, 3, 33)
 
+        points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['coordinate'][0]/scale_xy/self.scaling_factor
-            y = row['coordinate'][1]/scale_xy/self.scaling_factor
-            z = row['coordinate'][2]/z_scale
+            x = row['x'] * M_UM_SCALE / self.um
+            y = row['y'] * M_UM_SCALE / self.um
+            z = row['z'] * M_UM_SCALE / self.um
             point = [x,y,z]
+            points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
+        new_df = pd.DataFrame(points, columns=['x','y','z'])
+        print(new_df.describe())
+        print(new_df.info())
         del df
+        del new_df
         
         with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
             f.write("point\n")
@@ -415,6 +425,14 @@ class VolumeRegistration:
                 point = input_points.GetPoint(idx)
                 f.write(f"{point[0]} {point[1]} {point[2]}\n")
                 
+        if not os.path.exists(TRANSFORMIX_POINTSET_FILE):
+            print(f'{TRANSFORMIX_POINTSET_FILE} does not exist, exiting.')
+            sys.exit()
+
+        if not os.path.exists(self.reverse_elastix_output):
+            print(f'{self.reverse_elastix_output} does not exist, exiting.')
+            sys.exit()
+
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
         transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
         transformixImageFilter.Execute()
