@@ -400,14 +400,20 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output, "transformix_input_points.txt")        
-        #df = polygon.get_volume(self.moving, 3, 33)
+        transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
+        if not os.path.exists(self.changes_path):
+            print(f'{self.changes_path} does not exist, exiting.')
+            sys.exit()
+
+        with open(self.changes_path, 'r') as file:
+            change = json.load(file)
+
 
         points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['x'] * M_UM_SCALE / self.um
-            y = row['y'] * M_UM_SCALE / self.um
-            z = row['z'] * M_UM_SCALE / self.um
+            x = row['x'] * change['change_x'] * M_UM_SCALE / self.um
+            y = row['y'] * change['change_y'] * M_UM_SCALE / self.um
+            z = row['z'] * change['change_z'] * M_UM_SCALE / self.um
             point = [x,y,z]
             points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
@@ -417,7 +423,7 @@ class VolumeRegistration:
         del df
         del new_df
         
-        with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
+        with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
             f.write(f"{input_points.GetNumberOfPoints()}\n")
             f.write(f"{point[0]} {point[1]} {point[2]}\n")
@@ -425,8 +431,8 @@ class VolumeRegistration:
                 point = input_points.GetPoint(idx)
                 f.write(f"{point[0]} {point[1]} {point[2]}\n")
                 
-        if not os.path.exists(TRANSFORMIX_POINTSET_FILE):
-            print(f'{TRANSFORMIX_POINTSET_FILE} does not exist, exiting.')
+        if not os.path.exists(transformix_pointset_file):
+            print(f'{transformix_pointset_file} does not exist, exiting.')
             sys.exit()
 
         if not os.path.exists(self.reverse_elastix_output):
@@ -434,7 +440,7 @@ class VolumeRegistration:
             sys.exit()
 
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
-        transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
+        transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.Execute()
         
         polygons = defaultdict(list)
@@ -486,8 +492,8 @@ class VolumeRegistration:
         coms = controller.get_COM(self.moving, annotator_id=com_annotator_id)
 
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
-        with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
+        transformix_pointset_file = os.path.join(self.registration_output,"transformix_input_points.txt")        
+        with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
             f.write(f"{len(coms)}\n")
 
@@ -499,7 +505,7 @@ class VolumeRegistration:
                 f.write(f"{x} {y} {z}\n")
                 
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
-        transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
+        transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.ExecuteInverse()
 
 
