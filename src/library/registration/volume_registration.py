@@ -438,7 +438,7 @@ class VolumeRegistration:
         transformixImageFilter.Execute()
         
         polygons = defaultdict(list)
-        with open(self.registration_point_file, "r") as f:                
+        with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
