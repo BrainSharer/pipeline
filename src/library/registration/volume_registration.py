@@ -40,7 +40,6 @@ import igneous.task_creation as tc
 import pandas as pd
 import cv2
 import json
-from tifffile import imread
 
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
@@ -51,6 +50,7 @@ from library.utilities.utilities_process import get_scratch_dir, read_image, wri
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
+from library.utilities.utilities_registration import create_rigid_parameters
 
 # constants
 MOVING_CROP = 50
@@ -174,6 +174,8 @@ class VolumeRegistration:
         print("\tum:".ljust(20), f"{str(self.um)}".ljust(20))
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
+        print("\rigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
         print()
 
 
@@ -669,10 +671,7 @@ class VolumeRegistration:
         elastixImageFilter.SetMovingImage(movingImage)
 
         transParameterMap = sitk.GetDefaultParameterMap('translation')
-        rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
-        rigidParameterMap["NumberOfResolutions"] = [self.number_of_resolutions] # Takes lots of RAM
-        rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
-        rigidParameterMap["WriteResultImage"] = ["true"]
+        rigidParameterMap = create_rigid_parameters(elastixImageFilter=elastixImageFilter, debug=self.debug)
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         affineParameterMap["UseDirectionCosines"] = ["false"]
@@ -720,8 +719,8 @@ class VolumeRegistration:
         #elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
         #elastixImageFilter.SetParameter("SampleRegionSize", "150")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-        #elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.LogToConsoleOn()
+        elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.LogToConsoleOff()
 
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
