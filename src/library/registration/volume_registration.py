@@ -452,6 +452,10 @@ class VolumeRegistration:
             section = int(np.round(z))
             polygons[section].append((x,y))
         resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
+        if not os.path.exists(self.registered_volume):
+            print(f'{self.registered_volume} does not exist, exiting.')
+            sys.exit()
+            
         resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
