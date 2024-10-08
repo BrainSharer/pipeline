@@ -460,7 +460,7 @@ class VolumeRegistration:
         #resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
-            points = sort_from_center(points)
+            #points = sort_from_center(points)
             points = np.array(points)
             points = points.astype(np.int32)
             cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
