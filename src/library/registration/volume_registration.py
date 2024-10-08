@@ -696,7 +696,7 @@ class VolumeRegistration:
 
         #elastixImageFilter.SetParameterMap(transParameterMap)
         elastixImageFilter.SetParameterMap(rigidParameterMap)
-        #elastixImageFilter.AddParameterMap(affineParameterMap)
+        elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
