@@ -720,8 +720,8 @@ class VolumeRegistration:
         #elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
         #elastixImageFilter.SetParameter("SampleRegionSize", "150")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-        elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.LogToConsoleOff()
+        #elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.LogToConsoleOn()
 
         elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
