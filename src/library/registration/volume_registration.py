@@ -211,7 +211,7 @@ class VolumeRegistration:
         transformixImageFilter = self.setup_transformix(self.elastix_output)
         transformixImageFilter.Execute()
         transformed = transformixImageFilter.GetResultImage()
-        sitk.WriteImage(transformed, os.path.join(self.registration_output, 'result.tif'))
+        sitk.WriteImage(transformed, os.path.join(self.registration_output, self.registered_volume))
 
     def transformix_com(self):
         """Helper method when you want to rerun the transform on a set of points.
@@ -451,7 +451,7 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
-        resultImage = io.imread(os.path.join(self.registration_output, 'result.tif'))
+        resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
         resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
@@ -600,7 +600,7 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        volumepath = os.path.join(self.registration_output, 'result.tif')
+        volumepath = os.path.join(self.registration_output, self.registered_volume)
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
@@ -876,7 +876,7 @@ class VolumeRegistration:
         if os.path.exists(self.moving_volume_path):
             status.append(f'\tMoving volume at {self.moving_volume_path}')
 
-        result_path = os.path.join(self.registration_output, 'result.tif')
+        result_path = os.path.join(self.registration_output, self.registered_volume)
         if os.path.exists(result_path):
             status.append(f'\tRegistered volume at {result_path}')
 
