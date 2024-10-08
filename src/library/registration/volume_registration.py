@@ -165,7 +165,8 @@ class VolumeRegistration:
         if not os.path.exists(self.fixed_volume_path):
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()        
-
+        self.threads = "4"
+        os.environ["OMP_NUM_THREADS"] = self.threads
         self.report_status()
 
     def report_status(self):
@@ -175,7 +176,8 @@ class VolumeRegistration:
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
-        print("\rigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
+        print("\trigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
+        print("\tthreads:".ljust(20), f"{str(self.threads)}".ljust(20))
         print()
 
 
