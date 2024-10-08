@@ -451,12 +451,13 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
-        resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
+        #resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
+        resultImage = io.imread(os.path.join(self.registration_output, self.fixed_volume_path))
         if not os.path.exists(self.registered_volume):
             print(f'{self.registered_volume} does not exist, exiting.')
             sys.exit()
-            
-        resultImage = normalize8(resultImage)
+
+        #resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
             points = sort_from_center(points)
@@ -473,7 +474,7 @@ class VolumeRegistration:
         #    if i == section:
         #        print(x,y,section)
         #        cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
-        outpath = os.path.join(self.registration_output, 'annotated.tif')
+        outpath = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
         io.imsave(outpath, resultImage)
         print(f'Saved a 3D volume {outpath} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
