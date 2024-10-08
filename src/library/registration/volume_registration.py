@@ -47,7 +47,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
-from library.utilities.utilities_process import read_image, write_image
+from library.utilities.utilities_process import get_scratch_dir, read_image, write_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
@@ -123,6 +123,7 @@ class VolumeRegistration:
     def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
         self.data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
+        self.tmp_dir = get_scratch_dir()
         self.moving = moving
         self.animal = moving
         self.debug = debug
@@ -142,7 +143,7 @@ class VolumeRegistration:
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
-        self.registration_output = os.path.join(self.data_path, self.output_dir)
+        self.registration_output = os.path.join(self.tmp_dir, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
         self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
         
@@ -553,6 +554,7 @@ class VolumeRegistration:
         change_z = image_stack_resolution[0] / self.um
         change_y = image_stack_resolution[1] / self.um
         change_x = image_stack_resolution[2] / self.um
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
         change = (change_z, change_y, change_x) 
         zoomed = zoom(image_stack, change)
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
@@ -691,8 +693,8 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        elastixImageFilter.SetParameterMap(transParameterMap)
-        #elastixImageFilter.SetParameterMap(rigidParameterMap)
+        #elastixImageFilter.SetParameterMap(transParameterMap)
+        elastixImageFilter.SetParameterMap(rigidParameterMap)
         #elastixImageFilter.AddParameterMap(affineParameterMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
