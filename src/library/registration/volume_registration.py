@@ -584,6 +584,7 @@ class VolumeRegistration:
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
+        """
         change_z = image_stack_resolution[0] / self.um
         change_y = image_stack_resolution[1] / self.um
         change_x = image_stack_resolution[2] / self.um
@@ -593,9 +594,9 @@ class VolumeRegistration:
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
-        
-        write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
-        print(f'Saved a 3D volume {self.moving_volume_path} with shape={zoomed.shape} and dtype={zoomed.dtype}')
+        """
+        write_image(self.moving_volume_path, image_stack.astype(image_manager.dtype))
+        print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
     def pad_volume(self):
         pad = 200
