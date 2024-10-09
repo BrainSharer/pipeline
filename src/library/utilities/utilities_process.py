@@ -1,5 +1,4 @@
 import os, sys
-from subprocess import check_output
 import socket
 from skimage import io
 from PIL import Image
@@ -10,7 +9,6 @@ import gc
 from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
-import subprocess
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
@@ -50,34 +48,21 @@ def get_hostname() -> str:
         
 #     return int(width), int(height)
 
+
 def get_image_size(filepath: str) -> tuple[int, int]:
     """
-    Returns the width and height of a single image.
+    Returns the width and height of a single image using Pillow.
 
     :param filepath: Path of the input file.
     :return: Tuple containing the width and height as integers.
     """
     try:
-        # Use subprocess.run with capture_output and text=True to simplify decoding
-        result = subprocess.run(
-            ["identify", "-format", "%wx%h", filepath],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        # The width and height are returned directly in the desired format
-        width, height = result.stdout.strip().split("x")
-        return int(width), int(height)
-    
-    except subprocess.CalledProcessError:
-        print(f'Error: Could not identify file={filepath}')
-    except ValueError:
-        print(f'Error: Invalid output format from identify for file={filepath}')
+        with Image.open(filepath) as img:
+            return img.size  # (width, height)
     except Exception as e:
-        print(f'Unexpected error processing file={filepath}: {e}')
+        print(f'Error processing file={filepath}: {e}')
+        return 0, 0  # Return default values in case of error
     
-    return 0, 0  # Return default values in case of error
-
 
 def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int]:
     """Verify image stack directory for section count and max width, height
