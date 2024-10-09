@@ -479,14 +479,24 @@ class VolumeRegistration:
             polygons[section].append((x,y))
         resultImage = io.imread(self.fixed_volume_path)
         
-        for section, points in polygons.items():
-            #points = sort_from_center(points)
-            points = np.array(points, dtype=np.int32)
-            try:
-                cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
-            except IndexError as e:
-                print(f'Section: {section} error: {e}')
-            #cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color),  thickness=4)
+
+        if self.debug:
+            for i in range(resultImage.shape[0]):
+                section = int(points[0][2])
+                x = int(points[0][0])
+                y = int(points[0][1])
+                if i == section:
+                    print(x,y,section)
+                    cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
+        else:
+            for section, points in polygons.items():
+                points = np.array(points, dtype=np.int32)
+                try:
+                    cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+                except IndexError as e:
+                    print(f'Section: {section} error: {e}')
+
+
         
         io.imsave(result_path, resultImage)
         print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
