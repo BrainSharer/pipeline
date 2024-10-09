@@ -48,7 +48,7 @@ from library.controller.annotation_session_controller import AnnotationSessionCo
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
-from library.utilities.utilities_process import get_scratch_dir, read_image, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
@@ -400,7 +400,9 @@ class VolumeRegistration:
             os.remove(self.changes_path)
 
         
-        sqlController = SqlController(self.moving)        
+        sqlController = SqlController(self.moving) 
+        scale_xy = sqlController.scan_run.resolution
+        z_scale = sqlController.scan_run.zresolution
         annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
         annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
         annotation_left = annotation_left.annotation
@@ -434,9 +436,9 @@ class VolumeRegistration:
 
         points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['x'] * M_UM_SCALE / self.um
-            y = row['y'] * M_UM_SCALE / self.um
-            z = row['z'] * M_UM_SCALE / self.um
+            x = row['x'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
+            y = row['y'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
+            z = row['z'] * M_UM_SCALE / z_scale
             point = [x,y,z]
             points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
@@ -446,7 +448,6 @@ class VolumeRegistration:
             new_df = pd.DataFrame(points, columns=['x','y','z'])
             print(new_df.describe())
             del new_df
-        
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -487,13 +488,6 @@ class VolumeRegistration:
                 print(f'Section: {section} error: {e}')
             #cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color),  thickness=4)
         
-        #for i in range(resultImage.shape[0]):
-        #    section = int(points[0][2])
-        #    x = int(points[0][0])
-        #    y = int(points[0][1])
-        #    if i == section:
-        #        print(x,y,section)
-        #        cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
         io.imsave(result_path, resultImage)
         print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
