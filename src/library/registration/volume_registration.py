@@ -486,7 +486,11 @@ class VolumeRegistration:
             #points = sort_from_center(points)
             points = np.array(points)
             points = points.astype(np.int32)
-            cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+            try:
+                cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+            except Exception as e:
+                print(f'Error: {e}')
+                print(f'Section: {section} min points = {points.min(axis=0)} max points = {points.max(axis=0)}')
             #cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color),  thickness=4)
         
         #for i in range(resultImage.shape[0]):
