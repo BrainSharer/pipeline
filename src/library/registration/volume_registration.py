@@ -388,21 +388,19 @@ class VolumeRegistration:
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()
         transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
-        if not os.path.exists(self.changes_path):
-            print(f'{self.changes_path} does not exist, exiting.')
-            sys.exit()
-        if not os.path.exists(transformix_pointset_file):
-            print(f'{transformix_pointset_file} does not exist, exiting.')
-            sys.exit()
-
+        if os.path.exists(transformix_pointset_file):
+            print(f'{transformix_pointset_file} exists, removing')
+            os.remove(transformix_pointset_file)
         if not os.path.exists(self.reverse_elastix_output):
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
             sys.exit()
+        result_path = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
+        if os.path.exists(self.changes_path):
+            print(f'{self.changes_path} exists, removing')
+            os.remove(self.changes_path)
 
         
-        sqlController = SqlController(self.moving)
-        #polygon = PolygonSequenceController(animal=self.moving)
-        
+        sqlController = SqlController(self.moving)        
         annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
         annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
         annotation_left = annotation_left.annotation
@@ -449,6 +447,7 @@ class VolumeRegistration:
             print(new_df.describe())
             del new_df
         
+        # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
             f.write(f"{input_points.GetNumberOfPoints()}\n")
@@ -477,20 +476,15 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
-        #resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
         resultImage = io.imread(self.fixed_volume_path)
-
-        #resultImage = normalize8(resultImage)
         
         for section, points in polygons.items():
             #points = sort_from_center(points)
-            points = np.array(points)
-            points = points.astype(np.int32)
+            points = np.array(points, dtype=np.int32)
             try:
                 cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
-            except Exception as e:
-                print(f'Error: {e}')
-                print(f'Section: {section} min points = {points.min(axis=0)} max points = {points.max(axis=0)}')
+            except IndexError as e:
+                print(f'Section: {section} error: {e}')
             #cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color),  thickness=4)
         
         #for i in range(resultImage.shape[0]):
@@ -500,9 +494,8 @@ class VolumeRegistration:
         #    if i == section:
         #        print(x,y,section)
         #        cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
-        outpath = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
-        io.imsave(outpath, resultImage)
-        print(f'Saved a 3D volume {outpath} with shape={resultImage.shape} and dtype={resultImage.dtype}')
+        io.imsave(result_path, resultImage)
+        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
 
     def transformix_coms(self):
