@@ -189,13 +189,25 @@ class VolumeRegistration:
         
         os.makedirs(self.registration_output, exist_ok=True)
 
+        transform_parameter0_path = os.path.join(outputpath, 'TransformParameters.0.txt')
+        transform_parameter1_path = os.path.join(outputpath, 'TransformParameters.1.txt')
+
+        if not os.path.exists(transform_parameter0_path):
+            print(f'{transform_parameter0_path} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(transform_parameter1_path):
+            print(f'{transform_parameter1_path} does not exist, exiting.')
+            sys.exit()
+            
+
+
         transformixImageFilter = sitk.TransformixImageFilter()
-        parameterMap0 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.0.txt'))
-        parameterMap1 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.1.txt'))
+        parameterMap0 = sitk.ReadParameterFile(transform_parameter0_path)
+        parameterMap1 = sitk.ReadParameterFile(transform_parameter1_path)
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
         transformixImageFilter.AddTransformParameterMap(parameterMap1)
         transformixImageFilter.LogToFileOn()
-        transformixImageFilter.LogToConsoleOff()
+        transformixImageFilter.LogToConsoleOn()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
         movingImage = sitk.ReadImage(self.moving_volume_path)
         transformixImageFilter.SetMovingImage(movingImage)
@@ -379,6 +391,13 @@ class VolumeRegistration:
         if not os.path.exists(self.changes_path):
             print(f'{self.changes_path} does not exist, exiting.')
             sys.exit()
+        if not os.path.exists(transformix_pointset_file):
+            print(f'{transformix_pointset_file} does not exist, exiting.')
+            sys.exit()
+
+        if not os.path.exists(self.reverse_elastix_output):
+            print(f'{self.reverse_elastix_output} does not exist, exiting.')
+            sys.exit()
 
         
         sqlController = SqlController(self.moving)
@@ -410,26 +429,26 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        with open(self.changes_path, 'r') as file:
-            change = json.load(file)
+        #with open(self.changes_path, 'r') as file:
+        #    change = json.load(file)
 
-        change['change_x'] = 1
-        change['change_y'] = 1
-        change['change_z'] = 1
+        #change['change_x'] = 1
+        #change['change_y'] = 1
+        #change['change_z'] = 1
 
-        points = []
+        #points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['x'] * change['change_x'] * M_UM_SCALE / self.um
-            y = row['y'] * change['change_y'] * M_UM_SCALE / self.um
-            z = row['z'] * change['change_z'] * M_UM_SCALE / self.um
+            x = row['x'] * M_UM_SCALE / self.um
+            y = row['y'] * M_UM_SCALE / self.um
+            z = row['z'] * M_UM_SCALE / self.um
             point = [x,y,z]
-            points.append(point)
+            #points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
-        new_df = pd.DataFrame(points, columns=['x','y','z'])
-        print(new_df.describe())
-        print(new_df.info())
+        #new_df = pd.DataFrame(points, columns=['x','y','z'])
+        #print(new_df.describe())
+        #print(new_df.info())
         del df
-        del new_df
+        #del new_df
         
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -439,18 +458,13 @@ class VolumeRegistration:
                 point = input_points.GetPoint(idx)
                 f.write(f"{point[0]} {point[1]} {point[2]}\n")
                 
-        if not os.path.exists(transformix_pointset_file):
-            print(f'{transformix_pointset_file} does not exist, exiting.')
-            sys.exit()
-
-        if not os.path.exists(self.reverse_elastix_output):
-            print(f'{self.reverse_elastix_output} does not exist, exiting.')
-            sys.exit()
-
+    
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
         transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.Execute()
         
+        return
+            
         polygons = defaultdict(list)
         with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
