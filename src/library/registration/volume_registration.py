@@ -475,8 +475,7 @@ class VolumeRegistration:
             points = np.array(points)
             points = points.astype(np.int32)
             cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
-            cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color), 
-                          thickness=4)
+            #cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color),  thickness=4)
         
         #for i in range(resultImage.shape[0]):
         #    section = int(points[0][2])
