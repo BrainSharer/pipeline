@@ -367,6 +367,19 @@ class VolumeRegistration:
     def transformix_polygons(self):
         """Marissa is ID=38, TG_L =80 and TG_R=81
         """
+
+        # check for necessar files
+        if not os.path.exists(self.registered_volume):
+            print(f'{self.registered_volume} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(self.fixed_volume_path):
+            print(f'{self.fixed_volume_path} does not exist, exiting.')
+            sys.exit()
+        transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
+        if not os.path.exists(self.changes_path):
+            print(f'{self.changes_path} does not exist, exiting.')
+            sys.exit()
+
         
         sqlController = SqlController(self.moving)
         #polygon = PolygonSequenceController(animal=self.moving)
@@ -397,14 +410,12 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
-        if not os.path.exists(self.changes_path):
-            print(f'{self.changes_path} does not exist, exiting.')
-            sys.exit()
-
         with open(self.changes_path, 'r') as file:
             change = json.load(file)
 
+        change['change_x'] = 1
+        change['change_y'] = 1
+        change['change_z'] = 1
 
         points = []
         for idx, (_, row) in enumerate(df.iterrows()):
@@ -455,10 +466,7 @@ class VolumeRegistration:
             section = int(np.round(z))
             polygons[section].append((x,y))
         #resultImage = io.imread(os.path.join(self.registration_output, self.registered_volume))
-        resultImage = io.imread(os.path.join(self.registration_output, self.fixed_volume_path))
-        if not os.path.exists(self.registered_volume):
-            print(f'{self.registered_volume} does not exist, exiting.')
-            sys.exit()
+        resultImage = io.imread(self.fixed_volume_path)
 
         #resultImage = normalize8(resultImage)
         
