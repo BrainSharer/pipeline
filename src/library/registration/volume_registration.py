@@ -207,7 +207,7 @@ class VolumeRegistration:
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
         transformixImageFilter.AddTransformParameterMap(parameterMap1)
         transformixImageFilter.LogToFileOn()
-        transformixImageFilter.LogToConsoleOn()
+        transformixImageFilter.LogToConsoleOff()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
         movingImage = sitk.ReadImage(self.moving_volume_path)
         transformixImageFilter.SetMovingImage(movingImage)
@@ -417,8 +417,6 @@ class VolumeRegistration:
         for child in right_childJsons:
             for i, row in enumerate(child['childJsons']):
                 rows_right.append(row['pointA'])
-        scale_xy = sqlController.scan_run.resolution
-        z_scale = sqlController.scan_run.zresolution
         input_points = itk.PointSet[itk.F, 3].New()
         df_L = pd.DataFrame(rows_left, columns=['x','y','z'])
         df_R = pd.DataFrame(rows_right, columns=['x','y','z'])
@@ -436,19 +434,20 @@ class VolumeRegistration:
         #change['change_y'] = 1
         #change['change_z'] = 1
 
-        #points = []
+        points = []
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x'] * M_UM_SCALE / self.um
             y = row['y'] * M_UM_SCALE / self.um
             z = row['z'] * M_UM_SCALE / self.um
             point = [x,y,z]
-            #points.append(point)
+            points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
-        #new_df = pd.DataFrame(points, columns=['x','y','z'])
-        #print(new_df.describe())
-        #print(new_df.info())
+
         del df
-        #del new_df
+        if self.debug:
+            new_df = pd.DataFrame(points, columns=['x','y','z'])
+            print(new_df.describe())
+            del new_df
         
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -463,7 +462,6 @@ class VolumeRegistration:
         transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.Execute()
         
-        return
             
         polygons = defaultdict(list)
         with open(self.registered_point_file, "r") as f:                
