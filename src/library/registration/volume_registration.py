@@ -147,7 +147,7 @@ class VolumeRegistration:
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
-        self.registration_output = os.path.join(self.tmp_dir, self.output_dir)
+        self.registration_output = os.path.join(self.data_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
         self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
         
@@ -169,8 +169,6 @@ class VolumeRegistration:
         if not os.path.exists(self.fixed_volume_path):
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()        
-        self.threads = "4"
-        os.environ["OMP_NUM_THREADS"] = self.threads
         self.report_status()
 
     def report_status(self):
@@ -181,7 +179,6 @@ class VolumeRegistration:
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
         print("\trigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
-        print("\tthreads:".ljust(20), f"{str(self.threads)}".ljust(20))
         print()
 
 
@@ -579,7 +576,7 @@ class VolumeRegistration:
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in image_manager.files:
+        for ffile in tqdm(image_manager.files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
