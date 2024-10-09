@@ -234,6 +234,8 @@ class Pipeline(
                 print(f'Removing {progresspath}')
                 shutil.rmtree(progresspath)
             print('You will need to rerun the neuroglancer task.')
+        else:
+            self.logevent(f"NO TRANSFORMATION CHANGES DETECTED. REALIGNMENT NOT PERFORMED")
 
         #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
