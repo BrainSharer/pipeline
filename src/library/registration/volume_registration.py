@@ -35,25 +35,29 @@ from scipy.ndimage import zoom
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
 import SimpleITK as sitk
+import itk
+
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
 import json
-from tifffile import imread
 
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize8, smooth_image
-from library.utilities.utilities_process import read_image, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
+from library.utilities.utilities_registration import create_rigid_parameters
 
 # constants
 MOVING_CROP = 50
+M_UM_SCALE = 1000000
+
 
 
 def sort_from_center(polygon:list) -> list:
@@ -123,6 +127,7 @@ class VolumeRegistration:
     def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
         self.data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
+        self.tmp_dir = get_scratch_dir()
         self.moving = moving
         self.animal = moving
         self.debug = debug
@@ -133,7 +138,7 @@ class VolumeRegistration:
         self.orientation = orientation
         self.bspline = bspline
         self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
-        self.scaling_factor = 64 # This is the downsampling factor used to create the aligned volume
+        self.scaling_factor = 32 # This is the downsampling factor used to create the aligned volume at 10um
         self.fileLocationManager = FileLocationManager(self.moving)
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
@@ -164,7 +169,18 @@ class VolumeRegistration:
         if not os.path.exists(self.fixed_volume_path):
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()        
- 
+        self.report_status()
+
+    def report_status(self):
+        print("Running volume registration with the following settings:")
+        print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
+        print("\tum:".ljust(20), f"{str(self.um)}".ljust(20))
+        print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
+        print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
+        print("\trigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
+        print()
+
 
 
     def setup_transformix(self, outputpath):
@@ -173,15 +189,23 @@ class VolumeRegistration:
         
         os.makedirs(self.registration_output, exist_ok=True)
 
+        transform_parameter0_path = os.path.join(outputpath, 'TransformParameters.0.txt')
+        transform_parameter1_path = os.path.join(outputpath, 'TransformParameters.1.txt')
+
+        if not os.path.exists(transform_parameter0_path):
+            print(f'{transform_parameter0_path} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(transform_parameter1_path):
+            print(f'{transform_parameter1_path} does not exist, exiting.')
+            sys.exit()
+            
+
+
         transformixImageFilter = sitk.TransformixImageFilter()
-        parameterMap0 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.0.txt'))
-        parameterMap1 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.1.txt'))
-        parameterMap2 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.2.txt'))
-        #parameterMap3 = sitk.ReadParameterFile(os.path.join(outputpath, 'TransformParameters.3.txt'))
+        parameterMap0 = sitk.ReadParameterFile(transform_parameter0_path)
+        parameterMap1 = sitk.ReadParameterFile(transform_parameter1_path)
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
         transformixImageFilter.AddTransformParameterMap(parameterMap1)
-        transformixImageFilter.AddTransformParameterMap(parameterMap2)
-        #transformixImageFilter.AddTransformParameterMap(parameterMap3)
         transformixImageFilter.LogToFileOn()
         transformixImageFilter.LogToConsoleOff()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
@@ -196,7 +220,7 @@ class VolumeRegistration:
         transformixImageFilter = self.setup_transformix(self.elastix_output)
         transformixImageFilter.Execute()
         transformed = transformixImageFilter.GetResultImage()
-        sitk.WriteImage(transformed, os.path.join(self.registration_output, 'result.tif'))
+        sitk.WriteImage(transformed, os.path.join(self.registration_output, self.registered_volume))
 
     def transformix_com(self):
         """Helper method when you want to rerun the transform on a set of points.
@@ -250,7 +274,8 @@ class VolumeRegistration:
         The points in the pickle file need to be translated from full res pixel to
         the current resolution of the downsampled volume.
         Points are inserted in the DB in micrometers from the full resolution images
-
+        The TransformParameter.1.txt file is the one that contains the transformation
+        from the affine registration
         
         The points.pts file takes THIS format:
         point
@@ -263,7 +288,7 @@ class VolumeRegistration:
             print(f'{self.unregistered_point_file} does not exist, exiting.')
             sys.exit()
 
-        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.1.txt')
         if not os.path.exists(reverse_transformation_pfile):
             print(f'{reverse_transformation_pfile} does not exist, exiting.')
             sys.exit()
@@ -352,15 +377,49 @@ class VolumeRegistration:
 
 
     def transformix_polygons(self):
-        sqlController = SqlController(self.moving)
-        #polygon = PolygonSequenceController(animal=self.moving)
-        polygon = None  
+        """Marissa is ID=38, TG_L =80 and TG_R=81
+        """
+
+        # check for necessar files
+        if not os.path.exists(self.registered_volume):
+            print(f'{self.registered_volume} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(self.fixed_volume_path):
+            print(f'{self.fixed_volume_path} does not exist, exiting.')
+            sys.exit()
+        transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
+        if os.path.exists(transformix_pointset_file):
+            print(f'{transformix_pointset_file} exists, removing')
+            os.remove(transformix_pointset_file)
+        if not os.path.exists(self.reverse_elastix_output):
+            print(f'{self.reverse_elastix_output} does not exist, exiting.')
+            sys.exit()
+        result_path = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
+        if os.path.exists(self.changes_path):
+            print(f'{self.changes_path} exists, removing')
+            os.remove(self.changes_path)
+
+        
+        sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
-        #input_points = itk.PointSet[itk.F, 3].New()
-        input_points = None
-        df_L = polygon.get_volume(self.moving, 38, 12)
-        df_R = polygon.get_volume(self.moving, 38, 13)
+        annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
+        annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
+        annotation_left = annotation_left.annotation
+        annotation_right = annotation_right.annotation
+        left_childJsons = annotation_left['childJsons']
+        right_childJsons = annotation_right['childJsons']
+        rows_left = []
+        rows_right = []
+        for child in left_childJsons:
+            for i, row in enumerate(child['childJsons']):
+                rows_left.append(row['pointA'])
+        for child in right_childJsons:
+            for i, row in enumerate(child['childJsons']):
+                rows_right.append(row['pointA'])
+        input_points = itk.PointSet[itk.F, 3].New()
+        df_L = pd.DataFrame(rows_left, columns=['x','y','z'])
+        df_R = pd.DataFrame(rows_right, columns=['x','y','z'])
         frames = [df_L, df_R]
         df = pd.concat(frames)
         len_L = df_L.shape[0]
@@ -368,18 +427,29 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
-        #df = polygon.get_volume(self.moving, 3, 33)
+        #with open(self.changes_path, 'r') as file:
+        #    change = json.load(file)
 
+        #change['change_x'] = 1
+        #change['change_y'] = 1
+        #change['change_z'] = 1
+
+        points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['coordinate'][0]/scale_xy/self.scaling_factor
-            y = row['coordinate'][1]/scale_xy/self.scaling_factor
-            z = row['coordinate'][2]/z_scale
+            x = row['x'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
+            y = row['y'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
+            z = row['z'] * M_UM_SCALE / z_scale
             point = [x,y,z]
+            points.append(point)
             input_points.GetPoints().InsertElement(idx, point)
+
         del df
-        
-        with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
+        if self.debug:
+            new_df = pd.DataFrame(points, columns=['x','y','z'])
+            print(new_df.describe())
+            del new_df
+        # Write points to be transformed
+        with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
             f.write(f"{input_points.GetNumberOfPoints()}\n")
             f.write(f"{point[0]} {point[1]} {point[2]}\n")
@@ -387,12 +457,14 @@ class VolumeRegistration:
                 point = input_points.GetPoint(idx)
                 f.write(f"{point[0]} {point[1]} {point[2]}\n")
                 
+    
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
-        transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
+        transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.Execute()
         
+            
         polygons = defaultdict(list)
-        with open(self.registration_point_file, "r") as f:                
+        with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
@@ -405,27 +477,29 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
-        resultImage = io.imread(os.path.join(self.registration_output, 'result.tif'))
-        resultImage = normalize8(resultImage)
+        resultImage = io.imread(self.fixed_volume_path)
         
-        for section, points in polygons.items():
-            points = sort_from_center(points)
-            points = np.array(points)
-            points = points.astype(np.int32)
-            cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
-            cv2.polylines(resultImage[section,:,:], [points], isClosed=True, color=(self.mask_color), 
-                          thickness=4)
+
+        if self.debug:
+            for i in range(resultImage.shape[0]):
+                section = int(points[0][2])
+                x = int(points[0][0])
+                y = int(points[0][1])
+                if i == section:
+                    print(x,y,section)
+                    cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
+        else:
+            for section, points in polygons.items():
+                points = np.array(points, dtype=np.int32)
+                try:
+                    cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+                except IndexError as e:
+                    print(f'Section: {section} error: {e}')
+
+
         
-        #for i in range(resultImage.shape[0]):
-        #    section = int(points[0][2])
-        #    x = int(points[0][0])
-        #    y = int(points[0][1])
-        #    if i == section:
-        #        print(x,y,section)
-        #        cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
-        outpath = os.path.join(self.registration_output, 'annotated.tif')
-        io.imsave(outpath, resultImage)
-        print(f'Saved a 3D volume {outpath} with shape={resultImage.shape} and dtype={resultImage.dtype}')
+        io.imsave(result_path, resultImage)
+        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
 
     def transformix_coms(self):
@@ -435,8 +509,8 @@ class VolumeRegistration:
         coms = controller.get_COM(self.moving, annotator_id=com_annotator_id)
 
         
-        TRANSFORMIX_POINTSET_FILE = os.path.join(self.registration_output,"transformix_input_points.txt")        
-        with open(TRANSFORMIX_POINTSET_FILE, "w") as f:
+        transformix_pointset_file = os.path.join(self.registration_output,"transformix_input_points.txt")        
+        with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
             f.write(f"{len(coms)}\n")
 
@@ -448,7 +522,7 @@ class VolumeRegistration:
                 f.write(f"{x} {y} {z}\n")
                 
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
-        transformixImageFilter.SetFixedPointSetFileName(TRANSFORMIX_POINTSET_FILE)
+        transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.ExecuteInverse()
 
 
@@ -522,22 +596,24 @@ class VolumeRegistration:
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in image_manager.files:
+        for ffile in tqdm(image_manager.files):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
+        """
         change_z = image_stack_resolution[0] / self.um
         change_y = image_stack_resolution[1] / self.um
         change_x = image_stack_resolution[2] / self.um
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
         change = (change_z, change_y, change_x) 
         zoomed = zoom(image_stack, change)
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
-        
-        write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
-        print(f'Saved a 3D volume {self.moving_volume_path} with shape={zoomed.shape} and dtype={zoomed.dtype}')
+        """
+        write_image(self.moving_volume_path, image_stack.astype(image_manager.dtype))
+        print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
     def pad_volume(self):
         pad = 200
@@ -553,7 +629,7 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        volumepath = os.path.join(self.registration_output, 'result.tif')
+        volumepath = os.path.join(self.registration_output, self.registered_volume)
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
@@ -644,16 +720,14 @@ class VolumeRegistration:
         elastixImageFilter.SetMovingImage(movingImage)
 
         transParameterMap = sitk.GetDefaultParameterMap('translation')
-        rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
-        rigidParameterMap["NumberOfResolutions"] = [self.number_of_resolutions] # Takes lots of RAM
-        rigidParameterMap["MaximumNumberOfIterations"] = [self.rigidIterations] 
+        rigidParameterMap = create_rigid_parameters(elastixImageFilter=elastixImageFilter, debug=self.debug)
 
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         affineParameterMap["UseDirectionCosines"] = ["false"]
         affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
         #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
         affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
-        affineParameterMap["WriteResultImage"] = ["false"]
+        affineParameterMap["WriteResultImage"] = ["true"]
 
         if self.bspline:
             bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
@@ -831,7 +905,7 @@ class VolumeRegistration:
         if os.path.exists(self.moving_volume_path):
             status.append(f'\tMoving volume at {self.moving_volume_path}')
 
-        result_path = os.path.join(self.registration_output, 'result.tif')
+        result_path = os.path.join(self.registration_output, self.registered_volume)
         if os.path.exists(result_path):
             status.append(f'\tRegistered volume at {result_path}')
 
