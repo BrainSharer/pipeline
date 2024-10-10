@@ -125,8 +125,11 @@ class VolumeRegistration:
     """
 
     def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
-        self.data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        self.data_path = os.path.join(self.registration_path, moving)
+        os.makedirs(self.data_path, exist_ok=True)
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
+        self.allen_path = os.path.join(self.registration_path, 'atlas/Allen')
         self.tmp_dir = get_scratch_dir()
         self.moving = moving
         self.animal = moving
@@ -143,7 +146,7 @@ class VolumeRegistration:
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
-        self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
+        self.fixed_volume_path = os.path.join(self.allen_path, f'{self.fixed}_{um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
@@ -258,7 +261,7 @@ class VolumeRegistration:
     def create_unregistered_pointfile(self):
         origin_dir = os.path.join(self.atlas_path, 'origin')
         origin_files = sorted(os.listdir(origin_dir))
-        pointfile = os.path.join(self.data_path, 'Atlas_25um_sagittal_unregistered.pts')
+        pointfile = os.path.join(self.registration_path, 'Atlas_25um_sagittal_unregistered.pts')
         with open(pointfile, 'w') as f:
             f.write('point\n')
             f.write(f'{len(origin_files)}\n')
@@ -395,10 +398,9 @@ class VolumeRegistration:
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
             sys.exit()
         result_path = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
-        if os.path.exists(self.changes_path):
-            print(f'{self.changes_path} exists, removing')
-            os.remove(self.changes_path)
-
+        if not os.path.exists(self.changes_path):
+            print(f'{self.changes_path} does not exist, exiting.')
+            sys.exit()
         
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
@@ -427,28 +429,30 @@ class VolumeRegistration:
         len_total = df.shape[0]
         assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
-        #with open(self.changes_path, 'r') as file:
-        #    change = json.load(file)
+        with open(self.changes_path, 'r') as file:
+            change = json.load(file)
 
-        #change['change_x'] = 1
-        #change['change_y'] = 1
-        #change['change_z'] = 1
-
+        OldMax = df['z'].max()
+        OldMin = df['z'].min()
+        OldRange = (OldMax - OldMin)
+        NewMax = OldMax * change['change_z']
+        NewMin = OldMin  
+        NewRange = (NewMax - NewMin)  
         points = []
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
             y = row['y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
             z = row['z'] * M_UM_SCALE / z_scale
+            stretched_z = (((z - OldMin) * NewRange) / OldRange) + NewMin
             point = [x,y,z]
-            points.append(point)
+            points.append([x,y,z, stretched_z])
             input_points.GetPoints().InsertElement(idx, point)
 
         del df
         if self.debug:
-            new_df = pd.DataFrame(points, columns=['x','y','z'])
+            new_df = pd.DataFrame(points, columns=['x','y','z', 'stretched_z'])
             print(new_df.describe())
             del new_df
-
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -471,7 +475,7 @@ class VolumeRegistration:
 
         point_or_index = 'OutputPoint'
         points = []
-        for i in range(len(lines)):        
+        for i in tqdm(range(len(lines))):        
             lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
             lf = [float(f) for f in lx]
             x = lf[0]
@@ -483,7 +487,7 @@ class VolumeRegistration:
         resultImage = io.imread(self.fixed_volume_path)
         
 
-        for section, points in polygons.items():
+        for section, points in tqdm(polygons.items()):
             if self.debug:
                 for point in points:
                     x = int(point[0])
@@ -601,17 +605,17 @@ class VolumeRegistration:
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
-        """
+        
         change_z = image_stack_resolution[0] / self.um
         change_y = image_stack_resolution[1] / self.um
         change_x = image_stack_resolution[2] / self.um
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
         change = (change_z, change_y, change_x) 
-        zoomed = zoom(image_stack, change)
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
-        """
+        return
+        zoomed = zoom(image_stack, change)
         write_image(self.moving_volume_path, image_stack.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
@@ -623,7 +627,7 @@ class VolumeRegistration:
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
         volume = np.concatenate((volume, np.zeros((volume.shape[0], volume.shape[1], pad)) ), axis=2)
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
-        outpath = os.path.join(self.data_path, f'{self.fixed}_{self.um}um_{self.orientation}_padded.tif')
+        outpath = os.path.join(self.registration_path, f'{self.fixed}_{self.um}um_{self.orientation}_padded.tif')
         write_image(outpath, volume.astype(np.uint16))
 
     def create_precomputed(self):
@@ -697,7 +701,7 @@ class VolumeRegistration:
 
     def setup_registration(self, fixed, moving):
         
-        fixed_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
+        fixed_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
         moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
 
         if not os.path.exists(fixed_path):
@@ -707,7 +711,7 @@ class VolumeRegistration:
             print(f'{moving_path} does not exist')
             sys.exit()
         # set point paths
-        fixed_point_path = os.path.join(self.data_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
         moving_point_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.pts')
         if self.debug:
             print(f'moving volume path={moving_path}')
@@ -780,7 +784,7 @@ class VolumeRegistration:
 
         moving_volume = io.imread(self.moving_volume_path)
         moving_volume = moving_volume[:,MOVING_CROP:500, MOVING_CROP:725]
-        savepath = os.path.join(self.data_path, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.registration_path, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, moving_volume)
 
@@ -818,7 +822,7 @@ class VolumeRegistration:
 
         volumes = []
         for brain in brains:
-            brainpath = os.path.join(self.data_path, brain)
+            brainpath = os.path.join(self.registration_path, brain)
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 sys.exit()
@@ -829,7 +833,7 @@ class VolumeRegistration:
 
         merged_volume = np.sum(volumes, axis=0)
         average_volume = merged_volume
-        savepath = os.path.join(self.data_path, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.registration_path, f'Atlas_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, average_volume)
 
@@ -920,8 +924,8 @@ class VolumeRegistration:
             status.append(f'\tUnnregisted points at: {self.unregistered_point_file}')
 
 
-        fixed_point_path = os.path.join(self.data_path, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
-        moving_point_path = os.path.join(self.data_path, f'{self.moving}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.registration_path, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.registration_path, f'{self.moving}_{self.um}um_{self.orientation}.pts')
 
         if os.path.exists(fixed_point_path):
             status.append(f'\tFixed points at: {fixed_point_path}')
