@@ -705,10 +705,10 @@ class VolumeRegistration:
         moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
 
         if not os.path.exists(fixed_path):
-            print(f'{fixed_path} does not exist')
+            print(f'Fixed {fixed_path} does not exist')
             sys.exit()
         if not os.path.exists(moving_path):
-            print(f'{moving_path} does not exist')
+            print(f'Moving {moving_path} does not exist')
             sys.exit()
         # set point paths
         fixed_point_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
