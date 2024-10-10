@@ -676,7 +676,11 @@ class VolumeRegistration:
         """
 
         os.makedirs(self.elastix_output, exist_ok=True)
-        elastixImageFilter = self.setup_registration(self.fixed, self.moving)
+        fixed_path = self.allen_path
+        moving_path = self.data_path
+        fixed_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
+        moving_basename = f'{self.moving}_{self.um}um_{self.orientation}'
+        elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
         if self.debug:
             elastixImageFilter.PrintParameterMap()
@@ -693,16 +697,22 @@ class VolumeRegistration:
         """
        
         os.makedirs(self.reverse_elastix_output, exist_ok=True)
-
-        elastixImageFilter = self.setup_registration(self.moving, self.fixed)
+        # switch fixed and moving
+        fixed_path = self.data_path
+        moving_path = self.moving_path
+        fixed_basename = f'{self.moving}_{self.um}um_{self.orientation}'
+        moving_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
+        elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
         elastixImageFilter.SetOutputDirectory(self.reverse_elastix_output)
         elastixImageFilter.Execute()
         print('Done performing inverse')
 
-    def setup_registration(self, fixed, moving):
+    def setup_registration(self, fixed_path, moving_path, fixed_basename, moving_basename):
         
-        fixed_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
-        moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
+        #fixed_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
+        #moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
+        fixed_path = os.path.join(fixed_path, f'{fixed_basename}.tif' )
+        moving_path = os.path.join(moving_path, f'{moving_basename}.tif') 
 
         if not os.path.exists(fixed_path):
             print(f'Fixed {fixed_path} does not exist')
@@ -711,8 +721,8 @@ class VolumeRegistration:
             print(f'Moving {moving_path} does not exist')
             sys.exit()
         # set point paths
-        fixed_point_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.pts')
-        moving_point_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(fixed_path, f'{fixed_basename}.pts')
+        moving_point_path = os.path.join(moving_path, f'{moving_basename}.pts')
         if self.debug:
             print(f'moving volume path={moving_path}')
             print(f'fixed volume path={fixed_path}')
