@@ -436,8 +436,8 @@ class VolumeRegistration:
 
         points = []
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['x'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
-            y = row['y'] * M_UM_SCALE / scale_xy / SCALING_FACTOR
+            x = row['x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
+            y = row['y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
             z = row['z'] * M_UM_SCALE / z_scale
             point = [x,y,z]
             points.append(point)
@@ -448,6 +448,7 @@ class VolumeRegistration:
             new_df = pd.DataFrame(points, columns=['x','y','z'])
             print(new_df.describe())
             del new_df
+            
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
