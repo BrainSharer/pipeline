@@ -448,7 +448,7 @@ class VolumeRegistration:
             new_df = pd.DataFrame(points, columns=['x','y','z'])
             print(new_df.describe())
             del new_df
-            
+
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -470,6 +470,7 @@ class VolumeRegistration:
             f.close()
 
         point_or_index = 'OutputPoint'
+        points = []
         for i in range(len(lines)):        
             lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
             lf = [float(f) for f in lx]
@@ -478,6 +479,7 @@ class VolumeRegistration:
             z = lf[2]
             section = int(np.round(z))
             polygons[section].append((x,y))
+            points.append((x,y,section))
         resultImage = io.imread(self.fixed_volume_path)
         
 
