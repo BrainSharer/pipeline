@@ -382,6 +382,10 @@ class VolumeRegistration:
     def transformix_polygons(self):
         """Marissa is ID=38, TG_L =80 and TG_R=81
         """
+        def linear_stretch(old_min, old_max, x, stretch):
+            new_max = old_max * stretch
+            new_min = old_min
+            return (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
 
         # check for necessar files
         if not os.path.exists(self.registered_volume):
@@ -420,8 +424,8 @@ class VolumeRegistration:
             for i, row in enumerate(child['childJsons']):
                 rows_right.append(row['pointA'])
         input_points = itk.PointSet[itk.F, 3].New()
-        df_L = pd.DataFrame(rows_left, columns=['x','y','z'])
-        df_R = pd.DataFrame(rows_right, columns=['x','y','z'])
+        df_L = pd.DataFrame(rows_left, columns=['x1','y1','z1'])
+        df_R = pd.DataFrame(rows_right, columns=['x1','y1','z1'])
         frames = [df_L, df_R]
         df = pd.concat(frames)
         len_L = df_L.shape[0]
@@ -432,27 +436,23 @@ class VolumeRegistration:
         with open(self.changes_path, 'r') as file:
             change = json.load(file)
 
-        OldMax = df['z'].max()
-        OldMin = df['z'].min()
-        OldRange = (OldMax - OldMin)
-        NewMax = OldMax * change['change_z']
-        NewMin = OldMin  
-        NewRange = (NewMax - NewMin)  
-        points = []
+        df['x'] = df['x1'] * change['change_x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
+        df['y'] = df['y1'] * change['change_y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
+        df['z2'] = df['z1'] * M_UM_SCALE / z_scale
+        df['z'] = linear_stretch(df['z2'].min(), df['z2'].max(), df['z2'], change['change_z'])
         for idx, (_, row) in enumerate(df.iterrows()):
-            x = row['x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-            y = row['y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-            z = row['z'] * M_UM_SCALE / z_scale
-            stretched_z = (((z - OldMin) * NewRange) / OldRange) + NewMin
-            point = [x,y,z]
-            points.append([x,y,z, stretched_z])
+            x = row['x']
+            y = row['y']
+            z = int(round(row['z']))
+            point = [x,y, z]
             input_points.GetPoints().InsertElement(idx, point)
 
-        del df
         if self.debug:
-            new_df = pd.DataFrame(points, columns=['x','y','z', 'stretched_z'])
-            print(new_df.describe())
-            del new_df
+            print(df.describe())
+            print(df.head())
+            print(df.tail())
+        
+        del df
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
             f.write("point\n")
@@ -462,12 +462,10 @@ class VolumeRegistration:
                 point = input_points.GetPoint(idx)
                 f.write(f"{point[0]} {point[1]} {point[2]}\n")
                 
-    
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
         transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
         transformixImageFilter.Execute()
-        
-            
+                    
         polygons = defaultdict(list)
         with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
