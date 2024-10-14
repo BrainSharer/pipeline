@@ -406,6 +406,9 @@ class VolumeRegistration:
         if not os.path.exists(self.changes_path):
             print(f'{self.changes_path} does not exist, exiting.')
             sys.exit()
+        if not os.path.exists(self.registered_volume):
+            print(f'{self.registered_volume} does not exist, exiting.')
+            sys.exit()
         
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
@@ -479,8 +482,6 @@ class VolumeRegistration:
             del polygons
             return
 
-
-
         del df
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
@@ -512,8 +513,8 @@ class VolumeRegistration:
             polygons[section].append((x,y))
             points.append((x,y,section))
         resultImage = io.imread(self.fixed_volume_path)
+        registered_volume = io.imread(self.registered_volume)
         
-
         for section, points in tqdm(polygons.items()):
             if self.debug:
                 for point in points:
@@ -524,12 +525,14 @@ class VolumeRegistration:
                 points = np.array(points, dtype=np.int32)
                 try:
                     cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+                    cv2.fillPoly(registered_volume[section,:,:], pts = [points], color = self.mask_color)
                 except IndexError as e:
                     print(f'Section: {section} error: {e}')
 
-
-        
         io.imsave(result_path, resultImage)
+        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
+
+        io.imsave(self.registered_volume, registered_volume)
         print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
 
