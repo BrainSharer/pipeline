@@ -26,6 +26,7 @@ TODO, transform polygons in DB using the transformation below
 
 from collections import defaultdict
 import os
+import shutil
 import sys
 import numpy as np
 from skimage import io
@@ -387,7 +388,7 @@ class VolumeRegistration:
             new_min = old_min
             return (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
 
-        # check for necessar files
+        # check for necessary files
         if not os.path.exists(self.registered_volume):
             print(f'{self.registered_volume} does not exist, exiting.')
             sys.exit()
@@ -405,37 +406,46 @@ class VolumeRegistration:
         if not os.path.exists(self.changes_path):
             print(f'{self.changes_path} does not exist, exiting.')
             sys.exit()
+        if not os.path.exists(self.registered_volume):
+            print(f'{self.registered_volume} does not exist, exiting.')
+            sys.exit()
         
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
-        annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
+        #annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
         annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
-        annotation_left = annotation_left.annotation
+        #annotation_left = annotation_left.annotation
         annotation_right = annotation_right.annotation
-        left_childJsons = annotation_left['childJsons']
+        #left_childJsons = annotation_left['childJsons']
         right_childJsons = annotation_right['childJsons']
         rows_left = []
         rows_right = []
-        for child in left_childJsons:
-            for i, row in enumerate(child['childJsons']):
-                rows_left.append(row['pointA'])
+        polygons = defaultdict(list)
+        #for child in left_childJsons:
+        #    for i, row in enumerate(child['childJsons']):
+        #        rows_left.append(row['pointA'])
         for child in right_childJsons:
             for i, row in enumerate(child['childJsons']):
                 rows_right.append(row['pointA'])
         input_points = itk.PointSet[itk.F, 3].New()
-        df_L = pd.DataFrame(rows_left, columns=['x1','y1','z1'])
+        #df_L = pd.DataFrame(rows_left, columns=['x1','y1','z1'])
         df_R = pd.DataFrame(rows_right, columns=['x1','y1','z1'])
-        frames = [df_L, df_R]
+        #frames = [df_L, df_R]
+        frames = [df_R]
         df = pd.concat(frames)
-        len_L = df_L.shape[0]
+        #len_L = df_L.shape[0]
         len_R = df_R.shape[0]
         len_total = df.shape[0]
-        assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
+        #assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
         
         with open(self.changes_path, 'r') as file:
             change = json.load(file)
 
+        df['xn'] = df['x1'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
+        df['yn'] = df['y1'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
+        df['zn'] = df['z1'] * M_UM_SCALE / z_scale
+        
         df['x'] = df['x1'] * change['change_x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
         df['y'] = df['y1'] * change['change_y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
         df['z2'] = df['z1'] * M_UM_SCALE / z_scale
@@ -444,14 +454,34 @@ class VolumeRegistration:
             x = row['x']
             y = row['y']
             z = int(round(row['z']))
+            section = int(round(row['zn']))
             point = [x,y, z]
             input_points.GetPoints().InsertElement(idx, point)
+            polygons[section].append((x,y))
 
         if self.debug:
+            output_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_debug')
+            if os.path.exists(output_dir):
+                print(f'{output_dir} exists, removing')
+                shutil.rmtree(output_dir)
+
+            os.makedirs(output_dir, exist_ok=True)
             print(df.describe())
-            print(df.head())
-            print(df.tail())
-        
+            for section, points in tqdm(polygons.items()):
+                file = str(section).zfill(3) + ".tif"
+                inpath = os.path.join(self.thumbnail_aligned, file)
+                if not os.path.exists(inpath):
+                    print(f'{inpath} does not exist')
+                    continue
+                img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+                points = np.array(points)
+                points = points.astype(np.int32)
+                cv2.fillPoly(img, pts = [points], color = 255)
+                outpath = os.path.join(output_dir, file)
+                cv2.imwrite(outpath, img)
+            del polygons
+            return
+
         del df
         # Write points to be transformed
         with open(transformix_pointset_file, "w") as f:
@@ -483,8 +513,8 @@ class VolumeRegistration:
             polygons[section].append((x,y))
             points.append((x,y,section))
         resultImage = io.imread(self.fixed_volume_path)
+        registered_volume = io.imread(self.registered_volume)
         
-
         for section, points in tqdm(polygons.items()):
             if self.debug:
                 for point in points:
@@ -495,12 +525,14 @@ class VolumeRegistration:
                 points = np.array(points, dtype=np.int32)
                 try:
                     cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
+                    cv2.fillPoly(registered_volume[section,:,:], pts = [points], color = self.mask_color)
                 except IndexError as e:
                     print(f'Section: {section} error: {e}')
 
-
-        
         io.imsave(result_path, resultImage)
+        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
+
+        io.imsave(self.registered_volume, registered_volume)
         print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
 
