@@ -1,7 +1,7 @@
 """This module is responsible for extracting metadata from the CZI files.
 """
 
-import os, sys, time, re, json
+import os, sys, time, re, io, json
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -187,44 +187,87 @@ class MetaUtilities:
         return files
 
     def extract_slide_scene_data(self, file_keys: tuple):
-        '''
-        Extracts "raw" slide preview image from CZI file and stores it as a tiff file (with checksum)
-        '''
         input_czi_file, scan_id = file_keys
         if self.debug:
             print(f"DEBUG: START MetaUtilities::extract_slide_scene_data")
 
-
         czi_file = os.path.basename(os.path.normpath(input_czi_file))
         czi = CZIManager(input_czi_file)
 
-        #EXTRACT SLIDE PREVIEW IMAGE [IF !EXISTS]
         scale_factor = 0.5 #REMOVE HARD-CODING; WHERE?
         czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
         if not os.path.exists(self.fileLocationManager.slides_preview):
             Path(self.fileLocationManager.slides_preview).mkdir(parents=True, exist_ok=True)
+        
         slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
-        if not os.path.isfile(slide_preview_path): #CREATE SLIDE PREVIEW WITH CHECKSUM
+        slide_preview_full_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}_full.png')
+        checksum_file = os.path.join(self.checksum, f'{czi_filename_without_extension}.sha256')
+        checksum_full_file = os.path.join(self.checksum, f'{czi_filename_without_extension}_full.sha256')
+
+        if not os.path.isfile(slide_preview_path) or not os.path.isfile(slide_preview_full_path) or \
+        not os.path.isfile(checksum_file) or not os.path.isfile(checksum_full_file):
             if self.debug:
-                print(f'CREATING SLIDE PREVIEW: {slide_preview_path}')
+                print(f'CREATING SLIDE PREVIEWS: {slide_preview_path} and {slide_preview_full_path}')
+            
             mosaic_data = czi.file.read_mosaic(C=0, scale_factor=scale_factor) #captures first channel
-            image_data = ((mosaic_data - mosaic_data.min()) / (mosaic_data.max() - mosaic_data.min()) * 65535).astype(np.uint16)
-            # downsample preview image, normalize and save as PNG
+            image_data = ((mosaic_data - mosaic_data.min()) / (mosaic_data.max() - mosaic_data.min()) * 255).astype(np.uint8)
             if image_data.shape[0] == 1:
                 image_data = image_data.reshape(image_data.shape[1], image_data.shape[2])
             image_data = scaled(image_data)
-            img = Image.fromarray(image_data)
-            img = img.resize((image_data.shape[1]//32, image_data.shape[0]//32))
-            img.save(slide_preview_path)
+            
+            # Convert to PIL Image
+            img = Image.fromarray(image_data, mode='L')  # 'L' mode for 8-bit grayscale
 
-        checksum_file = os.path.join(self.checksum, f'{czi_filename_without_extension}.sha256')
-        if not os.path.isfile(checksum_file):
-            #CHECKSUM FOR FILE (STORED IN different dir AS FILE)
-            with open(slide_preview_path, 'rb') as f:
-                bytes = f.read()  # Read the entire file as bytes
-                readable_hash = hashlib.sha256(bytes).hexdigest()
-                with open(checksum_file, 'w') as f:
-                    f.write(readable_hash)
+            # Downsample full-size image to 30%
+            width, height = img.size
+            new_width = int(width * 0.3)
+            new_height = int(height * 0.3)
+            img_full = img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Save downsampled full-size image
+            img_full_byte_arr = io.BytesIO()
+            img_full.save(img_full_byte_arr, format='PNG')
+            img_full_byte_arr = img_full_byte_arr.getvalue()
+
+            # Calculate checksum for downsampled full-size image
+            readable_hash_full = hashlib.sha256(img_full_byte_arr).hexdigest()
+
+            # Save downsampled "full-size" image
+            with open(slide_preview_full_path, 'wb') as f:
+                f.write(img_full_byte_arr)
+
+            # Save checksum for downsampled "full-size" image
+            with open(checksum_full_file, 'w') as f:
+                f.write(readable_hash_full)
+
+            # Calculate the scaling factor to make width <= 1000px
+            max_width = 1000
+            width, height = img.size
+            scale = min(max_width / width, 1)  # Don't upscale if width is already <= 1000px
+            
+            # Calculate new dimensions
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            
+            # Resize the image proportionally
+            img_scaled = img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Save scaled image to a BytesIO object
+            img_scaled_byte_arr = io.BytesIO()
+            img_scaled.save(img_scaled_byte_arr, format='PNG')
+            img_scaled_byte_arr = img_scaled_byte_arr.getvalue()
+
+            # Calculate checksum for scaled image
+            readable_hash_scaled = hashlib.sha256(img_scaled_byte_arr).hexdigest()
+
+            # Save scaled image
+            with open(slide_preview_path, 'wb') as f:
+                f.write(img_scaled_byte_arr)
+
+            # Save checksum for scaled image
+            with open(checksum_file, 'w') as f:
+                f.write(readable_hash_scaled)
+
 
         if self.debug:
             if os.path.isfile(slide_preview_path):
@@ -331,4 +374,4 @@ class MetaUtilities:
         
         for slide_physical_id in self.multiple_slides:
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id)
-            print(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
+            self.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
