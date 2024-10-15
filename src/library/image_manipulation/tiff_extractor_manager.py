@@ -74,10 +74,13 @@ class TiffExtractor(ParallelManager):
             if self.debug:
                 print(f'creating image={output_path}')
             scene = section.scene_index
-            file_keys.append([czi_file, output_path, checksum_filepath, scene, self.channel, scale_factor])
+            
+            file_keys.append([czi_file, output_path, checksum_filepath, scene, self.channel, scale_factor, self.debug])
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
-        workers = self.get_nworkers()
+            workers = 1
+        else:
+            workers = self.get_nworkers()
         self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
 
