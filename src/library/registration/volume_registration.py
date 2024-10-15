@@ -533,7 +533,7 @@ class VolumeRegistration:
         print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
 
         io.imsave(self.registered_volume, registered_volume)
-        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
+        print(f'Saved a 3D volume {self.registered_volume} with shape={registered_volume.shape} and dtype={registered_volume.dtype}')
 
 
     def transformix_coms(self):
