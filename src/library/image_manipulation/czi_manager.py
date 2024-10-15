@@ -148,9 +148,14 @@ class CZIManager(FileLogger):
 def extract_tiff_from_czi(file_key: tuple):
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
-    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale
+    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
-    czi_file, outfile, checksum_filepath, scenei, channel, scale = file_key
+
+    czi_file, outfile, checksum_filepath, scenei, channel, scale, debug = file_key
+    if debug:
+        print(f"DEBUG: START czi_manager.py -> extract_tiff_from_czi")
+        print(f"DEBUG: {czi_file=}, {scenei=}")
+
     if not os.path.exists(outfile):
         czi = CZIManager(czi_file)
         data = None
