@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_process import test_dir, read_image
+from library.utilities.utilities_process import test_dir
 
 COLORS = {1: "b", 2: "r", 3: "g"}
 

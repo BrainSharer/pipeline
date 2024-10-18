@@ -3,7 +3,6 @@ the brain area by using masks.
 """
 import os
 import sys
-import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 

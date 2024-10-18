@@ -4,12 +4,11 @@ import sys
 from pathlib import Path
 import hashlib
 
-from library.image_manipulation.parallel_manager import ParallelManager
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
 from library.utilities.utilities_process import DOWNSCALING_FACTOR
 
 
-class TiffExtractor(ParallelManager):
+class TiffExtractor():
     """Includes methods to extract tiff images from czi source files and generate png files for quick viewing of
     downsampled images in stack
 
