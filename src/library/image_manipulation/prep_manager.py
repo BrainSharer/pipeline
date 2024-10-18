@@ -61,16 +61,16 @@ class PrepCreater:
             print(f"Error: Could not find the input directory: {self.input}")
             return
             
-        self.logevent(f"Input FOLDER: {self.input}")
-        self.logevent(f"INPUT FOLDER FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {self.output}")
+        self.fileLogger.logevent(f"Input FOLDER: {self.input}")
+        self.fileLogger.logevent(f"INPUT FOLDER FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {self.output}")
         os.makedirs(self.output, exist_ok=True)
         try:
             sections = self.sqlController.get_sections(self.animal, self.channel)
         except:
             raise Exception('Could not get sections from database')
         
-        self.logevent(f"DB SECTIONS [EXPECTED OUTPUT FOLDER FILE COUNT]: {len(sections)}")
+        self.fileLogger.logevent(f"DB SECTIONS [EXPECTED OUTPUT FOLDER FILE COUNT]: {len(sections)}")
 
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)

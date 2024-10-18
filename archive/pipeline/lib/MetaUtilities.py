@@ -68,7 +68,7 @@ class MetaUtilities:
                 mem_avail = psutil.virtual_memory().available
                 batch_size = mem_avail // (single_file_size * ram_coefficient)
                 msg = f"MEM AVAILABLE: {convert_size(mem_avail)}; [LARGEST] SINGLE FILE SIZE: {convert_size(single_file_size)}; BATCH SIZE: {round(batch_size,0)}"
-                self.logevent(msg)
+                self.fileLogger.logevent(msg)
                 
                 workers = self.get_nworkers()
                 self.run_commands_concurrently(parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
@@ -76,9 +76,9 @@ class MetaUtilities:
             else:
                 msg = "NOTHING TO PROCESS - SKIPPING"
                 print(msg)
-                self.logevent(msg)
+                self.fileLogger.logevent(msg)
         else:
-            self.logevent("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
+            self.fileLogger.logevent("ERROR IN CZI FILES (DUPLICATE) OR DB COUNTS")
             sys.exit()
 
     def get_user_entered_scan_id(self):
@@ -108,8 +108,8 @@ class MetaUtilities:
             msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); STOP"
             status = False
         print(msg, msg2, sep="\n")
-        self.logevent(msg)
-        self.logevent(msg2)
+        self.fileLogger.logevent(msg)
+        self.fileLogger.logevent(msg2)
 
         return status, czi_files
 
@@ -123,7 +123,7 @@ class MetaUtilities:
 
         msg = f"DB SLIDES COUNT: {db_slides_cnt}"
         print(msg)
-        self.logevent(msg)
+        self.fileLogger.logevent(msg)
         status = True
         if db_slides_cnt > len(czi_files):
             # clean slide table in db for prep_id; submit all
@@ -133,7 +133,7 @@ class MetaUtilities:
             except Exception as e:
                 msg = f"ERROR DELETING ENTRIES IN 'slide' TABLE: {e}"
                 print(msg)
-                self.logevent(msg)
+                self.fileLogger.logevent(msg)
                 status = False
         elif db_slides_cnt > 0 and db_slides_cnt < len(czi_files):
             completed_files = []
@@ -145,7 +145,7 @@ class MetaUtilities:
             czi_files = outstanding_files
             msg = f"OUTSTANDING SLIDES COUNT: {len(czi_files)}"
             print(msg)
-            self.logevent(msg)
+            self.fileLogger.logevent(msg)
         elif db_slides_cnt == len(czi_files):
             # all files processed (db_slides_cnt==filecount); continue with empty list
             czi_files = []
@@ -173,8 +173,8 @@ class MetaUtilities:
             if nfiles < 1:
                 print("There are no CZI files to work with, we are exiting.")
                 sys.exit()
-            self.logevent(f"INPUT FOLDER: {INPUT}")
-            self.logevent(f"FILE COUNT: {nfiles}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         except OSError as e:
             print(e)
             sys.exit()

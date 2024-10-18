@@ -39,10 +39,10 @@ class TiffExtractor(ParallelManager):
             os.path.join(OUTPUT, "*_C" + str(self.channel) + ".tif")
         )
         total_files = os.listdir(OUTPUT)
-        self.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
-        self.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
-        self.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
+        self.fileLogger.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+        self.fileLogger.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
+        self.fileLogger.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
 
         sections = self.sqlController.get_distinct_section_filenames(
             self.animal, self.channel
@@ -112,8 +112,8 @@ class TiffExtractor(ParallelManager):
         sections = self.sqlController.get_distinct_section_filenames(
             self.animal, channel
         )
-        self.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+        self.fileLogger.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
 
         file_keys = []
         files_skipped = 0
@@ -131,9 +131,9 @@ class TiffExtractor(ParallelManager):
 
         if files_skipped > 0:
             print(f" SKIPPED [PRE-EXISTING] FILES: {files_skipped}", end=" ")
-            self.logevent(f"SKIPPED [PRE-EXISTING] FILES: {files_skipped}")
+            self.fileLogger.logevent(f"SKIPPED [PRE-EXISTING] FILES: {files_skipped}")
         n_processing_elements = len(file_keys)
-        self.logevent(f"PROCESSING [NOT PRE-EXISTING] FILES: {n_processing_elements}")
+        self.fileLogger.logevent(f"PROCESSING [NOT PRE-EXISTING] FILES: {n_processing_elements}")
 
         workers = self.get_nworkers()
         self.run_commands_concurrently(extract_png_from_czi, file_keys, workers)

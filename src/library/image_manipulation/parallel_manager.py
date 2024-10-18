@@ -19,7 +19,7 @@ class ParallelManager:
         """
         usecpus = 4
         cpus = {}
-        cpus['rodan'] = 6
+        cpus['mothra'] = 1
         cpus['tobor'] = 6
         cpus['muralis'] = 10
         cpus['basalis'] = 4

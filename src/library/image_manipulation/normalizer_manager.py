@@ -18,10 +18,10 @@ class Normalizer:
         """
         self.input = self.fileLocationManager.get_thumbnail(self.channel)
         self.output = self.fileLocationManager.get_normalized(self.channel)
-        self.logevent(f"self.input FOLDER: {self.input}")
+        self.fileLogger.logevent(f"self.input FOLDER: {self.input}")
         files = sorted(os.listdir(self.input))
-        self.logevent(f"CURRENT FILE COUNT: {len(files)}")
-        self.logevent(f"Output FOLDER: {self.output}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(files)}")
+        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         os.makedirs(self.output, exist_ok=True)
 
         if self.debug:

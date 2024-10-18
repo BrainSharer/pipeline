@@ -124,15 +124,13 @@ if __name__ == "__main__":
 
     if task in function_mapping:
         start_time = timer()
-        pipeline.logevent(
-            f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}"
-        )
+        print(f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}")
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"{task} took {total_elapsed_time} seconds")
         sep = "*" * 40 + "\n"
-        pipeline.logevent(f"{task} took {total_elapsed_time} seconds\n{sep}")
+        pipeline.fileLogger.logevent(f"{task} took {total_elapsed_time} seconds\n{sep}")
 
     else:
         print(f"{task} is not a correct task. Choose one of these:")

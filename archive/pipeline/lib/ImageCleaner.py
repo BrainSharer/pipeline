@@ -45,13 +45,13 @@ class ImageCleaner:
         CLEANED = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
         INPUT = self.fileLocationManager.get_thumbnail(self.channel)
         MASKS = self.fileLocationManager.thumbnail_masked
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
         starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"MASK FOLDER: {MASKS}")
+        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"MASK FOLDER: {MASKS}")
         starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {CLEANED}")
+        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {CLEANED}")
         os.makedirs(CLEANED, exist_ok=True)
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
@@ -61,13 +61,13 @@ class ImageCleaner:
         os.makedirs(CLEANED, exist_ok=True)
         INPUT = self.fileLocationManager.get_full(self.channel)
         MASKS = self.fileLocationManager.full_masked
-        self.logevent(f"INPUT FOLDER: {INPUT}")
+        self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
         starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"MASK FOLDER: {MASKS}")
+        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"MASK FOLDER: {MASKS}")
         starting_files = os.listdir(INPUT)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {CLEANED}")
+        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {CLEANED}")
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
     def get_section_rotation(self, section: Section):

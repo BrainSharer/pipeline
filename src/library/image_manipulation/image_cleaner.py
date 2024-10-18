@@ -46,7 +46,7 @@ class ImageCleaner:
             return
 
 
-        self.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
+        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
         image_manager = ImageManager(self.input)
         if self.mask_image > 0: 

@@ -20,10 +20,10 @@ class Normalizer:
         if self.channel == 1 and self.downsample:
             INPUT = self.fileLocationManager.thumbnail
             OUTPUT = self.fileLocationManager.get_normalized(self.channel)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
             files = sorted(os.listdir(INPUT))
-            self.logevent(f"CURRENT FILE COUNT: {len(files)}")
-            self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+            self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(files)}")
+            self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
             os.makedirs(OUTPUT, exist_ok=True)
 
             for file in files:

@@ -60,13 +60,13 @@ class NgPrecomputedMaker:
         os.makedirs(self.progress_dir, exist_ok=True)
 
         starting_files = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
-        self.logevent(f"self.input FOLDER: {self.input}")
-        self.logevent(f"CURRENT FILE COUNT: {starting_files}")
-        self.logevent(f"Output FOLDER: {self.output}")
+        self.fileLogger.logevent(f"self.input FOLDER: {self.input}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         
         image_manager = ImageManager(self.input)
         scales = self.get_scales()
-        self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        self.fileLogger.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype}')
             
         ng = NumpyToNeuroglancer(
@@ -118,8 +118,8 @@ class NgPrecomputedMaker:
             print(f"DIR {self.rechunkme_path} does not exist, exiting.")
             sys.exit()
         cloudpath = f"file://{self.rechunkme_path}"
-        self.logevent(f"Input DIR: {self.rechunkme_path}")
-        self.logevent(f"Output DIR: {self.output}")
+        self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
+        self.fileLogger.logevent(f"Output DIR: {self.output}")
         workers =self.get_nworkers()
 
         tq = LocalTaskQueue(parallel=workers)

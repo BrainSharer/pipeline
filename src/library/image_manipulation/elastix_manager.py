@@ -40,15 +40,14 @@ from library.image_manipulation.image_manager import ImageManager
 # from torch.optim.optimizer import Optimizer, required
 
 
-class ElastixManager(FileLogger):
+class ElastixManager():
     """Class for generating, storing and applying transformations within 
     stack alignment [with the Elastix package]
     All methods relate to aligning images in stack
     """
 
-    def __init__(self, LOGFILE_PATH):
+    def __init__(self):
         self.pixelType = sitk.sitkFloat32
-        super().__init__(LOGFILE_PATH)
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
@@ -66,7 +65,7 @@ class ElastixManager(FileLogger):
 
         files, nfiles = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         
-        self.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
+        self.fileLogger.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
         
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]

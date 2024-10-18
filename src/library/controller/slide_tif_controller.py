@@ -23,6 +23,15 @@ class SlideCZIToTifController():
             self.session.rollback()
 
 
+    def update_slide(self, file_name: str, update_dict: dict):
+        try:
+            self.session.query(Slide)\
+                .filter(Slide.file_name == file_name).update(update_dict)
+            self.session.commit()
+        except Exception as e:
+            print(f'No merge for {file_name} error: {e}')
+            self.session.rollback()
+
     def get_slide(self, id):
         return self.session.query(Slide).filter(Slide.id == id)
     
@@ -56,16 +65,16 @@ class SlideCZIToTifController():
         for slide_row in slide_rows:
             slide_physical_ids.append(slide_row.id)
         print(f'Slide_physical_ids={slide_physical_ids}')
-        master_slide = min(slide_physical_ids)
-        print(f'Master slide={master_slide}')
-        slide_physical_ids.remove(master_slide)
+        master_slide_id = min(slide_physical_ids)
+        print(f'Master slide={master_slide_id}')
+        slide_physical_ids.remove(master_slide_id)
         print(f'Other slides = {slide_physical_ids}')
         for other_slide in slide_physical_ids:
-            print(f'Updating slideczitiff set FK_slide_id={master_slide} where FK_slideid={other_slide}')
+            print(f'Updating slideczitiff set FK_slide_id={master_slide_id} where FK_slideid={other_slide}')
             
             try:
                 self.session.query(SlideCziTif)\
-                    .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide})
+                    .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide_id})
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')
