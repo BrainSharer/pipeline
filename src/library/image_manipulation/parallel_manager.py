@@ -16,10 +16,11 @@ class ParallelManager:
         number is used for both downsampled and full resolution images.
         There is little point in setting two different levels in one host.
         Much effort was used to set these numbers.
+        The number must be 2 or greater
         """
         usecpus = 4
         cpus = {}
-        cpus['mothra'] = 1
+        cpus['mothra'] = 2
         cpus['tobor'] = 6
         cpus['muralis'] = 10
         cpus['basalis'] = 4

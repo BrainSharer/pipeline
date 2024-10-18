@@ -9,25 +9,27 @@ All imports are listed by the order in which they are used in the
 
 import os
 import shutil
+import SimpleITK as sitk
 import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.meta_manager import MetaUtilities
-from library.image_manipulation.prep_manager import PrepCreater
-from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
-from library.image_manipulation.tiff_extractor_manager import TiffExtractor
-from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.parallel_manager import ParallelManager
-from library.image_manipulation.normalizer_manager import Normalizer
-from library.image_manipulation.mask_manager import MaskManager
-from library.image_manipulation.image_cleaner import ImageCleaner
-from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
+from library.image_manipulation.file_logger import FileLogger
+from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.histogram_maker import HistogramMaker
+from library.image_manipulation.image_cleaner import ImageCleaner
+from library.image_manipulation.mask_manager import MaskManager
+from library.image_manipulation.meta_manager import MetaUtilities
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
+from library.image_manipulation.normalizer_manager import Normalizer
 from library.image_manipulation.omezarr_manager import OmeZarrManager
+from library.image_manipulation.parallel_manager import ParallelManager
+from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
+from library.image_manipulation.tiff_extractor_manager import TiffExtractor
+
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 
@@ -41,19 +43,19 @@ except ImportError:
 
 
 class Pipeline(
-    MetaUtilities,
-    TiffExtractor,
-    PrepCreater,
-    ParallelManager,
-    Normalizer,
-    MaskManager,
-    ImageCleaner,
-    HistogramMaker,
-    ElastixManager,
-    NgPrecomputedMaker,
-    FileLogger,
     CellMaker,
-    OmeZarrManager
+    ElastixManager,
+    FileLogger,
+    HistogramMaker,
+    ImageCleaner,
+    MaskManager,
+    MetaUtilities,
+    NgPrecomputedMaker,
+    Normalizer,
+    OmeZarrManager,
+    ParallelManager,
+    PrepCreater,
+    TiffExtractor
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -185,9 +187,14 @@ class Pipeline(
         """
 
         print(self.TASK_ALIGN)
-        if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run once for each brain)
+        self.pixelType = sitk.sitkFloat32
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
+        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
+        print(f'Elastix manager Input: {self.input}')
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
 
+        if self.channel == 1 and self.downsample:
+            self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
         self.start_image_alignment()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()

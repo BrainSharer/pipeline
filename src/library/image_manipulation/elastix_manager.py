@@ -10,6 +10,7 @@ import numpy as np
 from collections import OrderedDict
 from PIL import Image
 from timeit import default_timer as timer
+
 Image.MAX_IMAGE_PIXELS = None
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
@@ -19,7 +20,6 @@ from tqdm import tqdm
 #import cupy as cp
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
@@ -46,11 +46,6 @@ class ElastixManager():
     All methods relate to aligning images in stack
     """
 
-    def __init__(self):
-        self.pixelType = sitk.sitkFloat32
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
-        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         
 
     def create_within_stack_transformations(self):
@@ -71,8 +66,8 @@ class ElastixManager():
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                #rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False) #DEPRECATED IN SEP-2024; REMOVE IN 2025 IF NO LONGER NEEDED
-                rotation, xshift, yshift, metric = self.align_images_elastix_GPU(fixed_index, moving_index) #pyCUDA elastix GPU apt (WORKING + FASTER AS OF 20-SEP-2024)
+                rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False) #DEPRECATED IN SEP-2024; REMOVE IN 2025 IF NO LONGER NEEDED
+                #rotation, xshift, yshift, metric = self.align_images_elastix_GPU(fixed_index, moving_index) #pyCUDA elastix GPU apt (WORKING + FASTER AS OF 20-SEP-2024)
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
 
     def update_within_stack_transformations(self):

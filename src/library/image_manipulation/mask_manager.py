@@ -16,7 +16,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 # TESTING
-from torchvision.models.detection import maskrcnn_resnet50_fpn, MaskRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import MaskRCNN_ResNet50_FPN_Weights
 
 
 from library.database_model.scan_run import BOTTOM_MASK
