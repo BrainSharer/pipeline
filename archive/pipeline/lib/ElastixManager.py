@@ -41,8 +41,8 @@ class ElastixManager:
             INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_cleaned")
             files = sorted(os.listdir(INPUT))
             nfiles = len(files)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
-            self.logevent(f"FILE COUNT: {nfiles}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
 
             for i in range(1, nfiles):
                 fixed_index = os.path.splitext(files[i - 1])[0]
@@ -56,8 +56,8 @@ class ElastixManager:
             INPUT = os.path.join(self.fileLocationManager.prep, "CH1", "thumbnail_cleaned")
             files = sorted(os.listdir(INPUT))
             nfiles = len(files)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
-            self.logevent(f"FILE COUNT: {nfiles}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
 
             PIPELINE_ROOT = Path('./pipeline').absolute().as_posix()
             program = os.path.join(PIPELINE_ROOT, 'create_alignment_metrics.py')
@@ -217,10 +217,10 @@ class ElastixManager:
             transforms = create_downsampled_transforms(transforms, downsample=False)
             INPUT = self.fileLocationManager.get_full_cleaned(self.channel)
             OUTPUT = self.fileLocationManager.get_full_aligned(self.channel)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
             starting_files = os.listdir(INPUT)
-            self.logevent(f"FILE COUNT: {len(starting_files)}")
-            self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+            self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+            self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
             self.align_images(INPUT, OUTPUT, transforms)
             progress_id = self.sqlController.get_progress_id(
                 downsample=False, channel=self.channel, action="ALIGN"

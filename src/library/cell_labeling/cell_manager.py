@@ -66,17 +66,17 @@ class CellMaker():
         INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
         if self.debug:
             print(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
-        self.logevent(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
+        self.fileLogger.logevent(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
 
         self.OUTPUT = self.fileLocationManager.get_cell_labels()
         if self.debug:
             print(f'CELL LABELS OUTPUT DIR: {self.OUTPUT}')
-        self.logevent(f'CELL LABELS OUTPUT DIR: {self.OUTPUT}')
+        self.fileLogger.logevent(f'CELL LABELS OUTPUT DIR: {self.OUTPUT}')
 
         self.SCRATCH = SCRATCH #TODO SEE IF WE CAN AUTO-DETECT NVME
         if self.debug:
              print(f'TEMP STORAGE LOCATION: {SCRATCH}')
-        self.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
+        self.fileLogger.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
         
         #CHECK FOR PRESENCE OF meta-data.json
         meta_data_file = 'meta-data.json'
@@ -94,7 +94,7 @@ class CellMaker():
             # self.dyes = [item['description'] for item in info['Neuroanatomical_tracing']]
             # assert 'GFP' in self.dyes and 'NeurotraceBlue' in self.dyes
             # print('TWO CHANNELS READY')
-            # #self.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {self.dyes}")
+            # #self.fileLogger.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {self.dyes}")
   
         else:
             #CREATE META-DATA STORE (PULL FROM DATABASE)
@@ -115,17 +115,17 @@ class CellMaker():
         if self.avg_cell_img_file.is_file():
             if self.debug:
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
-            self.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
+            self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
         #CHECK FOR MODEL FILE (models_example.pkl)
         self.model_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example.pkl')
         if self.model_file.is_file():
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
-            self.logevent(f'FOUND MODEL FILE @ {self.model_file}')
+            self.fileLogger.logevent(f'FOUND MODEL FILE @ {self.model_file}')
         else:
             print(f'MODEL FILE NOT FOUND @ {self.model_file}')
-            self.logevent(f'MODEL FILE NOT FOUND @ {self.model_file}; EXITING')
+            self.fileLogger.logevent(f'MODEL FILE NOT FOUND @ {self.model_file}; EXITING')
             sys.exit(1)
 
 
@@ -147,16 +147,16 @@ class CellMaker():
                 @ start: csv file for each section with cell features [used in identification]
                 @ end of step: csv file for each section where putative CoM cells detected with classification (positive, negative, unknown)
         '''
-        self.logevent(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
+        self.fileLogger.logevent(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
         if self.debug:
             print(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
         for channel_number, channel_data in self.meta_channel_mapping.items():
             if channel_data['mode'] == 'dye':
                 self.dye_channel = channel_number
-                self.logevent(f'DYE CHANNEL DETECTED: {self.dye_channel}')
+                self.fileLogger.logevent(f'DYE CHANNEL DETECTED: {self.dye_channel}')
             else:
                 self.virus_channel = channel_number
-                self.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
+                self.fileLogger.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
 
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
         avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE

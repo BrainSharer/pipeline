@@ -105,12 +105,13 @@ class Pipeline(
         self.multiple_slides = []
         self.channel = channel
         self.scaling_factor = SCALING_FACTOR
+        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
 
         self.mips = 7 
         if self.downsample:
             self.mips = 4
 
-        super().__init__(self.fileLocationManager.get_logdir())
+        self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         self.report_status()
 
@@ -141,6 +142,9 @@ class Pipeline(
         self.extract_tiffs_from_czi()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
+        if self.channel == 1:
+            self.create_previews()
+            self.create_checksums()
         print(f'Finished {self.TASK_EXTRACT}.')
 
     def mask(self):
@@ -235,7 +239,7 @@ class Pipeline(
                 shutil.rmtree(progresspath)
             print('You will need to rerun the neuroglancer task.')
         else:
-            self.logevent(f"NO TRANSFORMATION CHANGES DETECTED. REALIGNMENT NOT PERFORMED")
+            self.fileLogger.logevent(f"NO TRANSFORMATION CHANGES DETECTED. REALIGNMENT NOT PERFORMED")
 
         #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')

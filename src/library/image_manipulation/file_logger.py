@@ -19,41 +19,37 @@ class FileLogger:
     Single method [outside of __init__] in class accepts log message as argument, creates current timestamp and saves to file
     """
 
-    def __init__(self, LOGFILE_PATH):
+    def __init__(self, LOGFILE_PATH, debug=False):
         """
         -SET CONFIG FOR LOGGING TO FILE; ABILITY TO OUTPUT TO STD OUTPUT AND FILE
 
         """
 
         LOGFILE = os.path.join(LOGFILE_PATH, "pipeline-process.log")
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
 
-        # SET ENV FOR OTHER [NON-PIPELINE] MODULES
-        if environ.get("LOGFILE_PATH") is None:
-            os.environ["LOGFILE_PATH"] = LOGFILE_PATH
+        # Create a file handler
+        LOGFILE = os.path.join(LOGFILE_PATH, "pipeline-process.log")
+        file_handler = logging.FileHandler(LOGFILE)
+        file_handler.setLevel(logging.DEBUG)
 
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG) #THRESHOLD FOR LOGGER
-        formatter = logging.Formatter("%(message)s")
+        # Create a formatter and add it to the handler
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
 
-        # 'FOR LOOP' REMOVES DUAL LOGGING TO CONSOLE + FILE
-        for handler in logging.root.handlers[:]:
-            logging.root.removeHandler(handler)
+        # Add the handler to the logger
+        self.logger.addHandler(file_handler)
+        self.debug = debug
 
-        # Create file handler for INFO and up (INFO, WARNING, ERROR, CRITICAL)
-        fh = logging.FileHandler(LOGFILE)
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
+    def log_info(self, message):
+        self.logger.info(message)
 
-        # CONSOLE + LOG FILE
-        # logger = logging.getLogger(__name__)
-        # logger.setLevel(logging.DEBUG)
-        # fh = logging.FileHandler(LOGFILE)
-        # formatter = logging.Formatter("%(message)s")
-        # fh.setFormatter(formatter)
-        # logger.addHandler(fh)
+    def log_warning(self, message):
+        self.logger.warning(message)
 
-        self.filelogger = logger
+    def log_error(self, message):
+        self.logger.error(message)
 
 
     def logevent(self, msg: str):
@@ -65,7 +61,8 @@ class FileLogger:
         :return: timestamp of event is returned [unclear if used as of 4-NO-2022]
         '''
         timestamp = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-        self.filelogger.info(f"{timestamp} - {msg}")
+        self.logger.info(f"{timestamp} - {msg}")
         if self.debug:
             print(f"{timestamp} - {msg}")
         return timestamp
+    

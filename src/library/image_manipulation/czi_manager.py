@@ -11,12 +11,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
 
-from library.image_manipulation.file_logger import FileLogger
 from library.utilities.utilities_process import write_image
 from library.utilities.utilities_mask import equalized
 
 
-class CZIManager(FileLogger):
+class CZIManager():
     """Methods to extract meta-data from czi files using AICSImage module (Allen Institute)
     """
     
@@ -28,11 +27,6 @@ class CZIManager(FileLogger):
         
         self.czi_file = czi_file
         self.file = CziFile(czi_file)
-
-        if "LOGFILE_PATH" in os.environ:
-            LOGFILE_PATH = os.environ["LOGFILE_PATH"]
-            super().__init__(LOGFILE_PATH)
-
 
     def extract_metadata_from_czi_file(self, czi_file, czi_file_path, debug: bool = False):
         """This will parse the xml metadata and return the relevant data.
@@ -150,24 +144,18 @@ def extract_tiff_from_czi(file_key: tuple):
 
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
+    czi_file, outfile, scenei, channel, scale = file_key    
+    czi = CZIManager(czi_file)
+    data = None
+    try:
+        data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
+    except Exception as e:
+        print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
+        return
 
-    czi_file, outfile, checksum_filepath, scenei, channel, scale, debug = file_key
-    if debug:
-        print(f"DEBUG: START czi_manager.py -> extract_tiff_from_czi")
-        print(f"DEBUG: {czi_file=}, {scenei=}")
-
-    if not os.path.exists(outfile):
-        czi = CZIManager(czi_file)
-        data = None
-        try:
-            data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
-        except Exception as e:
-            czi.logevent(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
-            return
-
-        message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
-        write_image(outfile, data, message=message)
-
+    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+    write_image(outfile, data, message=message)
+    """#####MOVED 
     #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
     if not os.path.exists(checksum_filepath):
         org_file = Path(outfile)
@@ -176,7 +164,7 @@ def extract_tiff_from_czi(file_key: tuple):
             readable_hash = hashlib.sha256(bytes).hexdigest()
             with open(checksum_filepath, 'w') as f:
                 f.write(readable_hash)
-
+    """
 
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing
