@@ -176,6 +176,9 @@ class ElastixManager():
         if torch.cuda.is_available():
             fixed = to_gpu(fixed)
             moving = to_gpu(moving)
+            print('Using CUDA on a GPU')
+        else:
+            print('No GPU available, using CPU')
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
