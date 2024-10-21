@@ -17,7 +17,9 @@ from scipy.ndimage import affine_transform
 from tqdm import tqdm
 #GPU alt TESTING
 
-#import cupy as cp
+import torch
+if torch.cuda.is_available():
+    import cupy as cp
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
@@ -33,7 +35,6 @@ from library.utilities.utilities_registration import (
 from library.image_manipulation.image_manager import ImageManager
 
 
-# import torch
 # import torch.nn as nn
 # import torch.nn.functional as F
 # from torchvision import transforms
@@ -54,6 +55,8 @@ class ElastixManager():
         This is done in a simple loop with no workers. Usually takes
         up to an hour to run for a stack. It only needs to be run once for
         each brain. 
+        If cuda and GPU is available, we will use it, otherwise don't. 
+        Home computers may not have a GPU
         """
         if self.debug:
             print("DEBUG: START ElastixManager::create_within_stack_transformations")
@@ -66,8 +69,7 @@ class ElastixManager():
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False) #DEPRECATED IN SEP-2024; REMOVE IN 2025 IF NO LONGER NEEDED
-                #rotation, xshift, yshift, metric = self.align_images_elastix_GPU(fixed_index, moving_index) #pyCUDA elastix GPU apt (WORKING + FASTER AS OF 20-SEP-2024)
+                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index, use_points=False)
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
 
     def update_within_stack_transformations(self):
@@ -102,7 +104,7 @@ class ElastixManager():
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
-            rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=True)
+            rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index, use_points=True)
             self.sqlController.check_elastix_row(self.animal, moving_index)
             transformation = self.sqlController.get_elastix_row(self.animal, moving_index)
 
@@ -119,75 +121,7 @@ class ElastixManager():
             nchanges = 0
         return nchanges
 
-    def align_elastix(self, fixed_index, moving_index, use_points=False):
-        """
-        DEPRECATED IN SEP-2024; REMOVE IN 2025 IF NO LONGER USED
-        Aligns two images using the Elastix registration algorithm.
-
-        Args:
-            fixed_index (int): The index of the fixed image.
-            moving_index (int): The index of the moving image.
-            use_points (bool, optional): Whether to use corresponding points for registration. Defaults to False.
-
-        Returns:
-            tuple: A tuple containing the rotation angle (R), translation in the x-axis (x), translation in the y-axis (y),
-            and the registration metric.
-
-        Raises:
-            AssertionError: If the number of fixed points does not match the number of moving points.
-
-        """
-        if use_points:
-            fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
-            moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
-            if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
-                print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
-                print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}')
-                with open(fixed_point_file, 'r') as fp:
-                    fixed_count = len(fp.readlines())
-                with open(moving_point_file, 'r') as fp:
-                    moving_count = len(fp.readlines())
-                assert fixed_count == moving_count, \
-                        f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-            else:
-                return 0, 0, 0, 0
-
-        elastixImageFilter = sitk.ElastixImageFilter()
-        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
-        fixed = sitk.ReadImage(fixed_file, self.pixelType)
-
-        moving_file = os.path.join(self.input, f"{moving_index}.tif")
-        moving = sitk.ReadImage(moving_file, self.pixelType)
-        elastixImageFilter.SetFixedImage(fixed)
-        elastixImageFilter.SetMovingImage(moving)
-
-        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
-        elastixImageFilter.SetParameterMap(rigid_params)
-
-        if use_points:
-            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-            elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
-
-        elastixImageFilter.SetLogToFile(True)
-        logpath =  os.path.join(self.registration_output, 'iteration_logs')
-        os.makedirs(logpath, exist_ok=True)
-        elastixImageFilter.SetOutputDirectory(logpath)        
-
-        elastixImageFilter.LogToConsoleOff()
-        if self.debug:
-            elastixImageFilter.PrintParameterMap()
-        elastixImageFilter.Execute()
-
-        R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        metric = self.get_metric(logpath)
-
-        return float(R), float(x), float(y), float(metric)
-
-    def align_images_elastix_GPU(self, fixed_index: str, moving_index: str, use_points: bool = False) -> tuple[float, float, float, float]:
+    def align_images_elastix(self, fixed_index: str, moving_index: str, use_points: bool = False) -> tuple[float, float, float, float]:
         """
         Aligns two images using the Elastix registration algorithm with GPU acceleration.
         expected to replace 'align_elastix' (TESTING)
@@ -239,12 +173,13 @@ class ElastixManager():
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
 
-        fixed_gpu = to_gpu(fixed)
-        moving_gpu = to_gpu(moving)
+        if torch.cuda.is_available():
+            fixed = to_gpu(fixed)
+            moving = to_gpu(moving)
 
         # Set the images in the filter
-        elastixImageFilter.SetFixedImage(fixed_gpu)
-        elastixImageFilter.SetMovingImage(moving_gpu)
+        elastixImageFilter.SetFixedImage(fixed)
+        elastixImageFilter.SetMovingImage(moving)
 
         rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
         elastixImageFilter.SetParameterMap(rigid_params)
@@ -273,10 +208,11 @@ class ElastixManager():
         metric = self.get_metric(logpath)
 
         # Transfer results back to CPU if needed
-        R = cp.asnumpy(R)
-        x = cp.asnumpy(x)
-        y = cp.asnumpy(y)
-        metric = cp.asnumpy(metric)
+        if torch.cuda.is_available():
+            R = cp.asnumpy(R)
+            x = cp.asnumpy(x)
+            y = cp.asnumpy(y)
+            metric = cp.asnumpy(metric)
 
         return float(R), float(x), float(y), float(metric)
 
