@@ -163,9 +163,6 @@ class ElastixManager():
         # Use CUDA-enabled SimpleITK
         #sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(16) #maybe host-dependent?
 
-        if self.debug:
-            sitk.ProcessObject.SetGlobalDefaultDebug(True)
-
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
@@ -203,6 +200,7 @@ class ElastixManager():
         elastixImageFilter.LogToConsoleOff()
         if self.debug:
             elastixImageFilter.PrintParameterMap()
+            sitk.ProcessObject.SetGlobalDefaultDebug(True)
         
         # Execute the registration on GPU
         elastixImageFilter.Execute()
