@@ -145,6 +145,7 @@ def get_pyramid(initial_shape, initial_chunk, final_chunk, initial_resolution, m
         else:
             chunks = (32, previous_chunks[1]//4, previous_chunks[2]//4)
 
+        print(f'previous resolution={previous_resolution}')
         resolution = (initial_resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
         transformations[mip] = {'shape': shape, 'chunk': chunks, 'resolution': resolution, 'downsamp': (1, 2, 2)}
     return transformations
