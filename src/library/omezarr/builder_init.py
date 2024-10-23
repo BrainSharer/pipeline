@@ -81,15 +81,21 @@ class builder(BuilderDownsample,
         self.shape_3d = (len(self.filesList),*image_manager.shape)
         self.shape = (self.TimePoints, self.channels, *self.shape_3d)
         out_shape = self.shape_3d
-        initial_chunk = self.originalChunkSize[2:]
-        final_chunk_size = self.finalChunkSize[2:]
-        resolution = self.geometry[2:]
+        #initial_chunk = self.originalChunkSize[2:]
+        #final_chunk_size = self.finalChunkSize[2:]
+        #resolution = self.geometry[2:]
+
+        initial_chunk = self.originalChunkSize[1:]
+        final_chunk_size = self.finalChunkSize[1:]
+        resolution = self.geometry[1:]
+
+        print(f'initial chunk = {initial_chunk}')
+        print(f'final chunk size = {final_chunk_size}')
+        print(f'resolution = {resolution}')
 
         self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
         for k, v in self.pyramidMap.items():
             print(k,v)
         
 
-        #import sys
-        #sys.exit()
         self.build_zattrs()

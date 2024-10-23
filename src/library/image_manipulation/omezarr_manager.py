@@ -35,18 +35,18 @@ class OmeZarrManager():
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
-            input = self.fileLocationManager.get_alignment_directories(self.channel, self.downsample)
-            mips = 1
-            originalChunkSize = [1, 1, 1, 512, 512]
-            finalChunkSize=(1, 1, 32, 32, 32)
+            input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
+            mips = 3
+            originalChunkSize = [1, 1, 512, 512]
+            finalChunkSize=(1, 32, 32, 32)
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
             input = self.fileLocationManager.get_full_aligned(self.channel)
             mips = 8
-            originalChunkSize = [1, 1, 1, 2048, 2048]
-            finalChunkSize=(1, 1, 64, 64, 64)
-
+            originalChunkSize = [1, 1, 2048, 2048]
+            finalChunkSize=(1, 64, 64, 64)
+            
         # vars from stack to multi
         filesList = []
         for file in sorted(os.listdir(input)):
@@ -72,7 +72,7 @@ class OmeZarrManager():
             self.fileLocationManager.www, "neuroglancer_data", storefile
         )
         xy = xy_resolution * scaling_factor
-        geometry = (1, 1, z_resolution, xy, xy)
+        geometry = (1, z_resolution, xy, xy)
 
         omezarr = builder(
             input,
@@ -87,10 +87,21 @@ class OmeZarrManager():
             mips=mips
         )
 
+        mem_per_worker = round(omezarr.mem / omezarr.workers)
+        print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
+        #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
+        mem_per_worker = str(mem_per_worker) + 'GB'
+
+
         if self.debug:
-            print(f'Starting debug non-dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
             omezarr.write_resolution_0(client=None)
-            omezarr.cleanup()
+            cluster = LocalCluster(n_workers=omezarr.workers,
+                threads_per_worker=1,
+                memory_limit=mem_per_worker)
+            client = Client(cluster)
+            print(f'Starting debug non-dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
+            for mip in range(1, len(omezarr.pyramidMap)):
+                omezarr.write_mips(mip, client)
         else:
 
 
@@ -122,8 +133,8 @@ class OmeZarrManager():
                     with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
                         for mip in range(1, len(omezarr.pyramidMap)):
-                            omezarr.write_resolutions(mip, client)
-
+                            #omezarr.write_resolutions(mip, client)
+                            omezarr.write_mips(mip, client)
 
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
