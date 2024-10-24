@@ -94,6 +94,7 @@ class BuilderMultiscaleGenerator:
 
 
     def write_mips(self, mip, client):
+        print()
         read_storepath = os.path.join(self.output, f'scale{mip-1}')
         if os.path.exists(read_storepath):
             print(f'Resolution {mip-1} exists at {read_storepath} loading ...')
@@ -104,11 +105,12 @@ class BuilderMultiscaleGenerator:
 
         previous_stack = da.from_zarr(url=read_storepath)
         print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
-        axis_scales = [1,2,2]
-        axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2]}
+        axis_scales = [1, 1,2,2]
+        axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2], 3:axis_scales[3]}
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        scaled_stack.rechunk('auto')
-        chunks = scaled_stack.chunksize
+        chunks = (1, ) + self.pyramidMap[mip]['chunk']
+        print(f'chunks = {chunks}')
+        scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
         #store = get_store(write_storepath, mip)
