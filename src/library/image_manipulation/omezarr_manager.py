@@ -16,10 +16,17 @@ import dask
 
 from dask.distributed import Client
 from distributed import LocalCluster
+from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
 
 class OmeZarrManager():
+    """
+    chunk size timings on downsampled images
+    256 = omezarr took 102.05 seconds
+    512 = omezarr took 44.06 seconds
+    1024 = omezarr took 33.65 seconds
+    """
 
     def create_omezarr(self):
         """Create OME-Zarr (NGFF) data store. WIP
@@ -36,15 +43,18 @@ class OmeZarrManager():
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
             input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
+            image_manager = ImageManager(input)
+            originalChunkSize = [1, 1, image_manager.height, image_manager.width] # 1796x984
             mips = 3
-            originalChunkSize = [1, 1, 512, 512]
             finalChunkSize=(1, 32, 32, 32)
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
             input = self.fileLocationManager.get_full_aligned(self.channel)
+            image_manager = ImageManager(input)
+            originalChunkSize = [1, 1, image_manager.height//16, image_manager.width//16] # 1796x984
             mips = 8
-            originalChunkSize = [1, 1, 2048, 2048]
+            #originalChunkSize = [1, 1, 2048, 2048]
             finalChunkSize=(1, 64, 64, 64)
             
         # vars from stack to multi
