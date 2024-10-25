@@ -12,6 +12,7 @@ distributed:
       terminate: False  # fraction at which we terminate the worker
 """
 import os
+import shutil
 import dask
 
 from dask.distributed import Client
@@ -36,6 +37,8 @@ class OmeZarrManager():
 
         tmp_dir = get_scratch_dir()
         tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
         os.makedirs(tmp_dir, exist_ok=True)
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
@@ -98,8 +101,6 @@ class OmeZarrManager():
         )
 
         mem_per_worker = round(omezarr.mem / omezarr.workers)
-        #omezarr.sim_jobs = 4
-        #omezarr.workers = 1
         print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
         cluster = LocalCluster(n_workers=omezarr.workers,
