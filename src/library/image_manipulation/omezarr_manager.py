@@ -101,20 +101,18 @@ class OmeZarrManager():
         print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
         mem_per_worker = str(mem_per_worker) + 'GB'
+        cluster = LocalCluster(n_workers=omezarr.workers,
+            threads_per_worker=1,
+            memory_limit=mem_per_worker)
 
 
         if self.debug:
             omezarr.write_resolution_0(client=None)
-            cluster = LocalCluster(n_workers=omezarr.workers,
-                threads_per_worker=1,
-                memory_limit=mem_per_worker)
             client = Client(cluster)
             print(f'Starting debug non-dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
             for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
         else:
-
-
             try:
                 with dask.config.set({'temporary_directory': tmp_dir, 
                                         'logging.distributed': 'error'}):
@@ -131,15 +129,8 @@ class OmeZarrManager():
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
                     print()
-                    mem_per_worker = round(omezarr.mem / omezarr.workers)
                     print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
-                    #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
-                    mem_per_worker = str(mem_per_worker) + 'GB'
-                    cluster = LocalCluster(n_workers=omezarr.workers,
-                       threads_per_worker=1,
-                       memory_limit=mem_per_worker)
                     client = Client(cluster)
-                    #with Client(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs) as client:
                     with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
                         for mip in range(1, len(omezarr.pyramidMap)):
