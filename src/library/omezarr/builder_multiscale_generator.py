@@ -24,7 +24,7 @@ import dask.array as da
 from distributed import progress
 
 # Project specific imports
-#from library.omezarr.builder_image_utils import TiffManager3d
+# from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
 from library.omezarr.builder_image_utils import TiffManager3d
 from library.utilities.dask_utilities import get_pyramid, get_store, mean_dtype
@@ -92,7 +92,6 @@ class BuilderMultiscaleGenerator:
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Resolution 0 completed in {total_elapsed_time} seconds")
 
-
     def write_mips(self, mip, client):
         print()
         read_storepath = os.path.join(self.output, f'scale{mip-1}')
@@ -105,21 +104,26 @@ class BuilderMultiscaleGenerator:
 
         previous_stack = da.from_zarr(url=read_storepath)
         print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
-        axis_scales = [1, 1,2,2]
-        axis_dict = {0:axis_scales[0], 1:axis_scales[1], 2:axis_scales[2], 3:axis_scales[3]}
+        axis_scales = [1, 1, 2, 2]
+        axis_dict = {
+            0: axis_scales[0],
+            1: axis_scales[1],
+            2: axis_scales[2],
+            3: axis_scales[3],
+        }
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         chunks = (1, ) + self.pyramidMap[mip]['chunk']
         print(f'chunks = {chunks}')
         scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
-        #store = get_store(write_storepath, mip)
-        #z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
-        #to_store = da.store(scaled_stack, z, lock=False, compute=False)
-        #print(f'Writing mip with data to: {write_storepath}')
-        #to_store = progress(client.compute(to_store))
-        #to_store = client.gather(to_store)
-        #print()
+        # store = get_store(write_storepath, mip)
+        # z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
+        # to_store = da.store(scaled_stack, z, lock=False, compute=False)
+        # print(f'Writing mip with data to: {write_storepath}')
+        # to_store = progress(client.compute(to_store))
+        # to_store = client.gather(to_store)
+        # print()
         store = self.get_store(mip)
         z = zarr.zeros(
             scaled_stack.shape,
@@ -137,11 +141,6 @@ class BuilderMultiscaleGenerator:
             to_store = client.compute(to_store)
             progress(to_store)
             to_store = client.gather(to_store)
-
-
-
-
-
 
     def write_resolutions(self, mip, client):
 
