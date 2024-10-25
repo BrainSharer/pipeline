@@ -98,11 +98,12 @@ class OmeZarrManager():
         )
 
         mem_per_worker = round(omezarr.mem / omezarr.workers)
+        #omezarr.sim_jobs = 4
+        #omezarr.workers = 1
         print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
-        #cluster = LocalCluster(n_workers=omezarr.workers, threads_per_worker=omezarr.sim_jobs, processes=False)
         mem_per_worker = str(mem_per_worker) + 'GB'
         cluster = LocalCluster(n_workers=omezarr.workers,
-            threads_per_worker=1,
+            threads_per_worker=omezarr.sim_jobs,
             memory_limit=mem_per_worker)
 
 
