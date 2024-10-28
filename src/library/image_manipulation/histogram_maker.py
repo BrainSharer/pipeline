@@ -25,6 +25,9 @@ class HistogramMaker:
         :param channel: the channel of the stack to process  {1,2,3}
         :returns: nothing
         """
+        if self.debug:
+            print(f"DEBUG: START HistogramMaker::make_histogram")
+
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             if not os.path.exists(self.input):
@@ -34,7 +37,7 @@ class HistogramMaker:
             if not os.path.exists(self.masks):
                 print(f"Mask path does not exist {self.masks}")
                 return
-            files = self.sqlController.get_sections(self.animal, self.channel)
+            files = self.sqlController.get_sections(self.animal, self.channel, self.debug)
             test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
             if len(files) == 0:
                 print(" No sections in the database")
