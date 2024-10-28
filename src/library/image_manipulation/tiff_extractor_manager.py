@@ -50,14 +50,17 @@ class TiffExtractor():
         self.fileLogger.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
         self.fileLogger.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
 
-        sections = self.sqlController.get_sections(self.animal, self.channel)
+        sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
+        if self.debug:
+            print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
+
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
             print("Were the CZI file names correct on birdstore?")
             print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
-        file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1
+        file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1, debug
         for section in sections:
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
@@ -75,11 +78,14 @@ class TiffExtractor():
             if self.debug:
                 print(f'creating image={output_path}')
             scene = section.scene_index
-            file_keys.append([czi_file, output_path, scene, self.channel, scale_factor])
+            file_keys.append([czi_file, output_path, scene, self.channel, scale_factor, self.debug])
+
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
-            
-        workers = self.get_nworkers()
+            workers = 1
+        else:
+            workers = self.get_nworkers()
+
         self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
         # Check for duplicates
@@ -115,7 +121,7 @@ class TiffExtractor():
         os.makedirs(self.output, exist_ok=True)
         os.makedirs(self.checksum, exist_ok=True)
 
-        sections = self.sqlController.get_sections(self.animal, channel)
+        sections = self.sqlController.get_sections(self.animal, channel, self.debug)
         self.fileLogger.logevent(f"SINGLE (FIRST) CHANNEL ONLY - SECTIONS: {len(sections)}")
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
 
