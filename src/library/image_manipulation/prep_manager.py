@@ -66,7 +66,7 @@ class PrepCreater:
         self.fileLogger.logevent(f"OUTPUT FOLDER: {self.output}")
         os.makedirs(self.output, exist_ok=True)
         try:
-            sections = self.sqlController.get_sections(self.animal, self.channel)
+            sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
         except:
             raise Exception('Could not get sections from database')
         
