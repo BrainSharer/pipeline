@@ -139,17 +139,18 @@ class CZIManager():
         return self.file.read_mosaic(region=region, scale_factor=scale, C=channel - 1)[0]
 
  
-def extract_tiff_from_czi(file_key: tuple):
+def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
+    
     czi_file, outfile, scenei, channel, scale, debug = file_key    
     czi = CZIManager(czi_file)
     data = None
     try:
         if debug:
-            print(f"DEBUG: [extract_tiff_from_czi]: {czi_file=}, {scenei=}, {channel=}, {scale=}, {outfile=}")
+            print(f"DEBUG: [extract_tiff_from_czi]: {czi_file=}, {scenei=}, {outfile=}")
         data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
     except Exception as e:
         print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")

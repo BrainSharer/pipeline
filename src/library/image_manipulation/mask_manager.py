@@ -245,6 +245,9 @@ class MaskManager:
         The output files are the colored merged files. 
         """
         
+        if self.debug:
+            print(f"DEBUG: MaskManager::create_downsampled_mask START")
+
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
         self.input = self.fileLocationManager.get_normalized(self.channel)
