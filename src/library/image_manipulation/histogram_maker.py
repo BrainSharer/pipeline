@@ -25,8 +25,10 @@ class HistogramMaker:
         :param channel: the channel of the stack to process  {1,2,3}
         :returns: nothing
         """
+        workers = self.get_nworkers()
         if self.debug:
             print(f"DEBUG: START HistogramMaker::make_histogram")
+            workers = 1
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
@@ -60,7 +62,6 @@ class HistogramMaker:
                     [input_path, mask_path, self.channel, file, output_path]
                 )
 
-            workers = self.get_nworkers()
             self.run_commands_concurrently(make_single_histogram, file_keys, workers)
 
 
