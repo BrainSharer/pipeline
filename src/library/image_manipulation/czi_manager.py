@@ -144,15 +144,17 @@ def extract_tiff_from_czi(file_key: tuple):
 
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
-    czi_file, outfile, scenei, channel, scale = file_key    
+    czi_file, outfile, scenei, channel, scale, debug = file_key    
     czi = CZIManager(czi_file)
     data = None
     try:
+        if debug:
+            print(f"DEBUG: [extract_tiff_from_czi]: {czi_file=}, {scenei=}, {channel=}, {scale=}, {outfile=}")
         data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
     except Exception as e:
         print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
         return
-
+    
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
     write_image(outfile, data, message=message)
     """#####MOVED 
