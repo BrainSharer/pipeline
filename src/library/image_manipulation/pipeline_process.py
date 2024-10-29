@@ -209,6 +209,7 @@ class Pipeline(
         print(self.TASK_REALIGN)
         neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
         neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         if not os.path.exists(neuroglancer_aligned):
             print(f'Missing {neuroglancer_aligned}')
             self.neuroglancer()
