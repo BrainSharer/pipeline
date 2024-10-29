@@ -138,6 +138,9 @@ class OmeZarrManager():
                     print(dask.config.get("distributed.worker.memory"))
                     print()
                     print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
+                    print(f'Using tmp dir={tmp_dir}')
+                    import sys
+                    sys.exit()
                     client = Client(cluster)
                     with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
@@ -150,3 +153,5 @@ class OmeZarrManager():
             except Exception as ex:
                 print('Exception in running builder in omezarr_manager')
                 print(ex)
+
+        omezarr.cleanup()
