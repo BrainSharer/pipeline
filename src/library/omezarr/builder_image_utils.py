@@ -9,129 +9,44 @@ import zarr
 import os
 import numpy as np
 import tifffile
-import skimage
-import io
 import math
-import glob
-import shutil
-# import imagecodecs
 from copy import deepcopy
+import sys
 
 
-
-class TiffManager:
-    def __init__(self,file,desired_chunk_depth=64):
-        self.file = file
-        
-        self.ext = os.path.splitext(file)[-1]
-        if self.ext == '.tiff' or self.ext == '.tif':
-            img = self._get_tiff_zarr_array()
-            self.shape = img.shape
-            self.nbytes = img.nbytes
-            self.ndim = img.ndim
-            self.chunks = img.chunks
-            self.dtype = img.dtype
-        
-        elif self.ext == '.jp2':
-            img = self._read_jp2(slice(None))
-            self.shape = img.shape
-            self.nbytes = img.nbytes
-            self.ndim = img.ndim
-            self.chunks = (1,self.shape[1])
-            self.dtype = img.dtype
-        del img
-        
-        self._desired_chunk_depth = desired_chunk_depth
-        self._adjust_chunk_depth()
-        
-    def __getitem__(self,key):
-        # if key == (np.s_[0:0],)*self.ndim:
-        if key == (slice(0,0,None),)*self.ndim:
-            #Hack to speed up dask array conversions
-            return np.asarray([],dtype=self.dtype)
-        return self._read_img(key)
-    
-    # def _read_tiff(self,key):
-    #     with tifffile.imread(self.file,aszarr=True) as store:
-    #         return zarr.open(store)[key]
-        
-    def _change_file(self,file):
-        self.file = file
-    
-    def _read_img(self,key):
-        if self.ext == '.tiff' or self.ext == '.tif':
-            return self._read_tiff(key)
-        elif self.ext == '.jp2':
-            return self._read_jp2(key)
-    
-    def _get_tiff_zarr_array(self):
-        with tifffile.imread(self.file,aszarr=True) as store:
-            return zarr.open(store)
-        
-    def _read_tiff(self,key):
-        print('Read {}'.format(self.file))
-        return self._get_tiff_zarr_array()[key]
-    
-    def _read_jp2(self,key):
-        print('Read {}'.format(self.file))
-        with open(self.file, 'rb') as f:
-            img = io.BytesIO(f.read())
-        return skimage.io.imread(img)[key]
-    
-    def clone_manager_new_file(self,file):
-        '''
-        Changes only the file associated with the class
-        Assumes that the new file shares all other properties
-        No attempt is made to verify this
-        
-        This method is designed for speed.
-        It is to be used when 1000s of tiff files must be referenced and 
-        it avoids opening each file to inspect metadata
-        
-        Returns: a new instance of the class with a different filename
-        '''
-        new = deepcopy(self)
-        new._change_file(file)
-        return new
-        
-    def _adjust_chunk_depth(self):
-        if self._desired_chunk_depth >= self.shape[0]:
-            self.chunks = (self.shape[0],*self.chunks[1:])
-        elif self._desired_chunk_depth % self.chunks[0] == 0:
-                self.chunks = (self._desired_chunk_depth,*self.chunks[1:])
-
-
+MINFILES = 5
 # Simple 3d tiff_manager without any chunk_depth options
 class TiffManager3d:
-    
-    def __init__(self,fileList):
-        assert isinstance(fileList,(list,tuple))
-        self.fileList = fileList
-        self.ext = os.path.splitext(fileList[0])[-1]
 
-        img = self._get_tiff_zarr_array(0)
+    def __init__(self, files, channel):
+        assert isinstance(files,(list,tuple))
+        assert len(files) > MINFILES, 'files must be a list of at least 5 tiff files'
+        self.files = files
+        self.channel = channel
+        self.num_channels = 1
+        self.ext = os.path.splitext(files[0][0])[1]
+        img = self._get_tiff_zarr_array(0, self.channel)
         self.shape = img.shape
+        print(f'tiff mananger individual tiff self.shape={self.shape}')
         self.nbytes = img.nbytes
         self.ndim = img.ndim
         self.chunks = img.chunks
         self.dtype = img.dtype
-
         del img
-
         self._conv_3d()
 
     def _conv_3d(self):
-        z_depth = len(self.fileList)
+        z_depth = len(self.files)
         self.shape = (z_depth, *self.shape)
-        #print(f'tiff mananger self.shape={self.shape}')
+        print(f'tiff mananger stack self.shape={self.shape}')
         self.nbytes = int(self.nbytes * z_depth)
         self.ndim = 3
         self.chunks = (z_depth, *self.chunks)
 
-    def __getitem__(self,key):
+    def __getitem__(self, key):
         # Hack to speed up dask array conversions
-        if key == (slice(0,0,None),)*self.ndim:
-            return np.asarray([],dtype=self.dtype)
+        if key == (slice(0, 0, None),) * self.ndim:
+            return np.asarray([], dtype=self.dtype)
 
         return self._get_3d(key)
 
@@ -183,49 +98,57 @@ class TiffManager3d:
         # print(out_shape)
         return out_shape
 
-    def _read_img(self,key,idx):
-        if self.ext == '.tiff' or self.ext == '.tif':
-            return self._read_tiff(key,idx)
-        elif self.ext == '.jp2':
-            return self._read_jp2(key,idx)
+    def _get_tiff_zarr_array(self, idx, channel=0):
+        infile = self.files[idx]
+        assert isinstance(idx, int) , 'idx must be an integer'
+        assert isinstance(channel, int) , 'channel must be an integer'
+        assert len(self.files) > idx, 'idx out of range'
+        if str(infile).endswith('.tif') == False:
+            infile = infile[0]
+        if str(infile).endswith('.tif') == False:
+            infile = infile[0]
+            sys.exit()
 
-    def _get_tiff_zarr_array(self,idx):
-        with tifffile.imread(self.fileList[idx],aszarr=True) as store:
-            return zarr.open(store)
+        print(f'Read channel={channel} {infile}')
+        with tifffile.imread(infile, aszarr=True) as store:
+            z = zarr.open(store, mode='r')
+            self.num_channels = z.ndim
+            if self.num_channels == 2:
+                return z
+            z = z[... ,channel]
+            z = zarr.array(z)            
+            return z
 
-    def _read_tiff(self,key,idx):
-        # print('Read {}'.format(self.fileList[idx]))
-        return self._get_tiff_zarr_array(idx)[key]
+    def _read_tiff(self, key, idx):
+        # print('Read {}'.format(self.files[idx]))
+        tif = self._get_tiff_zarr_array(idx, self.channel)
+        return tif[key]
 
     def _get_3d(self,key):
         key = self._format_slice(key)
         shape_of_output = self._slice_out_shape(key)
         canvas = np.zeros(shape_of_output,dtype=self.dtype)
-        # print(canvas.shape)
-
-        # if len(key) == 1:
-        #     key = key[slice(None)]
 
         for idx in range(canvas.shape[0]):
             two_d = key[1:]
-            # print(two_d)
             if len(two_d) == 1:
                 two_d = two_d[0]
-            # print(two_d)
-            canvas[idx] = self._read_img(two_d,idx)
+            canvas[idx] = self._read_tiff(two_d, idx)
         return canvas
 
-    def _change_file_list(self,fileList):
+    def _change_file_list(self, files):
         old_zdepth = self.shape[0]
 
-        self.fileList = fileList
+        self.files = files
 
-        new_zdepth = len(self.fileList)
-        self.shape = (new_zdepth,*self.shape[1:])
+        new_zdepth = len(self.files)
+        #self.shape = (new_zdepth,*self.shape[1:])
+        self.shape = (1,*self.shape[1:])
+        #print(f'_change_file_list stack self.shape={self.shape} old_zdepth={old_zdepth} new_zdepth={new_zdepth}')
         self.nbytes = int(self.nbytes / old_zdepth * new_zdepth)
         self.chunks = (new_zdepth,*self.chunks[1:])
 
-    def clone_manager_new_file_list(self,fileList):
+    def clone_manager_new_file_list(self, files):
         '''
         Changes only the file associated with the class
         Assumes that the new file shares all other properties
@@ -238,9 +161,9 @@ class TiffManager3d:
         Returns: a new instance of the class with a different filename
         '''
         new = deepcopy(self)
-        new._change_file_list(fileList)
+        new._change_file_list(files)
         return new
-
+    
 
 def get_size_GB(shape,dtype):
     

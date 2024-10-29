@@ -17,7 +17,6 @@ from library.omezarr.builder_img_processing import BuilderDownsample
 from library.omezarr.builder_utils import BuilderUtils
 from library.omezarr.builder_ome_zarr_utils import BuilderOmeZarrUtils
 from library.omezarr.builder_multiscale_generator import BuilderMultiscaleGenerator
-from library.omezarr.tiff_manager import TiffManager
 from library.utilities.dask_utilities import get_pyramid
 
 class builder(BuilderDownsample,
@@ -32,8 +31,8 @@ class builder(BuilderDownsample,
         self,
         in_location,
         out_location,
-        filesList,
-        geometry=(1, 1, 1),
+        files,
+        resolution,
         originalChunkSize=(1, 1, 1, 2048, 2048),
         finalChunkSize=(1, 1, 64, 64, 64),
         tmp_dir="/tmp",
@@ -44,8 +43,8 @@ class builder(BuilderDownsample,
 
         self.input = in_location
         self.output = out_location
-        self.filesList = filesList
-        self.geometry = tuple(geometry)
+        self.files = sorted(files)
+        self.resolution = resolution
         self.originalChunkSize = tuple(originalChunkSize)
         self.finalChunkSize = tuple(finalChunkSize)
         self.cpu_cores = os.cpu_count()
@@ -71,26 +70,24 @@ class builder(BuilderDownsample,
 
         #####store = self.get_store_from_path(self.output) # location: _builder_utils
 
-        self.TimePoints = 1
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
         self.ndim = image_manager.ndim
         self.channels = image_manager.num_channels
-        self.shape_3d = (len(self.filesList),*image_manager.shape)
-        self.shape = (self.TimePoints, self.channels, *self.shape_3d)
+        self.shape_3d = (len(self.files),*image_manager.shape)
         out_shape = self.shape_3d
+        #####CHANGE ignore time and channel elements
         #initial_chunk = self.originalChunkSize[2:]
         #final_chunk_size = self.finalChunkSize[2:]
         #resolution = self.geometry[2:]
 
-        initial_chunk = self.originalChunkSize[1:]
-        final_chunk_size = self.finalChunkSize[1:]
-        resolution = self.geometry[1:]
+        initial_chunk = self.originalChunkSize
+        final_chunk_size = self.finalChunkSize
 
         print(f'initial chunk = {initial_chunk}')
         print(f'final chunk size = {final_chunk_size}')
-        print(f'resolution = {resolution}')
+        print(f'resolution = {self.resolution}')
 
         self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
         for k, v in self.pyramidMap.items():
