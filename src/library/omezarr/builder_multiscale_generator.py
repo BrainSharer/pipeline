@@ -41,8 +41,7 @@ class BuilderMultiscaleGenerator:
             initial_chunk = self.originalChunkSize[1:]
             final_chunk_size = self.finalChunkSize[1:]
             ##### Change
-            resolution = self.geometry[1:]
-            self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
+            self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, self.resolution,  self.mips)
             for k, v in self.pyramidMap.items():
                 print(k,v)
 
@@ -51,26 +50,37 @@ class BuilderMultiscaleGenerator:
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
-        print(f'Stack has {self.channels} channels and {len(self.filesList)} files')
+        print(f'Stack has {self.channels} channels and {len(self.files)} files')
+        stacks = []
 
-        s = [[x] for x in self.filesList]
-        test_image = TiffManager3d(s[0])
-        optimum_chunks = utils.optimize_chunk_shape_3d_2(
-            test_image.shape,
-            test_image.chunks,
-            self.originalChunkSize[1:],
-            test_image.dtype,
-            self.res0_chunk_limit_GB
-        )
-        test_image.chunks = optimum_chunks
-        print(f'Using optimum chunks={optimum_chunks} for resolution 0')
-        print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
-        s = [test_image.clone_manager_new_file_list(x) for x in s]
-        s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-        s = da.concatenate(s)
-        stack = da.stack([s])
-        #####stack = stack[None, ...]
-        print(f'stack shape={stack.shape} originalChunkSize={self.originalChunkSize}')
+        for channel in range(0, self.channels):
+            s = sorted([[x] for x in self.files])
+            #s = sorted(self.files)
+            test_image = TiffManager3d(s, channel)
+            print(f'\nchannel={channel} test_image shape={test_image.shape} chunks={test_image.chunks}')
+            optimum_chunks = utils.optimize_chunk_shape_3d_2(
+                test_image.shape,
+                test_image.chunks,
+                self.originalChunkSize,
+                test_image.dtype,
+                self.res0_chunk_limit_GB
+            )
+            test_image.chunks = optimum_chunks
+            print(f'Using optimum chunks={optimum_chunks} for resolution 0')
+            print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
+            s = [test_image.clone_manager_new_file_list(x) for x in s]
+            s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
+            print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunks}')
+            print(f's[10] type={type(s[10])} shape={s[10].shape} chunks={s[10].chunks}')
+            s = da.concatenate(s)
+            stacks.append(s)
+
+        print(f'len(stack)={len(stacks)}')
+        stack = da.stack(stacks, axis=0)
+
+        print()
+        self.originalChunkSize = (1, *self.originalChunkSize)
+        print(f'stack shape={stack.shape} stack chunks={stack.chunksize} at originalChunkSize={self.originalChunkSize}')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,
@@ -80,6 +90,10 @@ class BuilderMultiscaleGenerator:
             compressor=self.compressor,
             dtype=stack.dtype,
         )
+        print('Stacked z info')
+        print(z.info)
+        import sys
+        #sys.exit()
         if client is None:
             to_store = da.store(stack, z, lock=True, compute=True)
         else:
