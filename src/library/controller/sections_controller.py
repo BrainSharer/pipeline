@@ -4,7 +4,7 @@ class SectionsController():
     """Class for controlling sections
     """
 
-    def get_sections(self, animal: str, channel: int, debug: bool) -> list:
+    def get_sections(self, animal: str, channel: int, debug: bool = False) -> list:
         """The sections table is a view and it is already filtered by active and file_status = 'good'
         The ordering is important. This needs to come from the histology table.
 
