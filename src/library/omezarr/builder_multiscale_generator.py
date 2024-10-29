@@ -13,7 +13,7 @@ These classes are designed to be inherited by the builder class (builder.py)
 
 import glob
 import os
-import random
+from time import sleep
 import shutil
 import time
 from itertools import product
@@ -27,8 +27,7 @@ from distributed import progress
 # from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
 from library.omezarr.builder_image_utils import TiffManager3d
-from library.utilities.dask_utilities import get_pyramid, get_store, mean_dtype
-from library.image_manipulation.image_manager import ImageManager
+from library.utilities.dask_utilities import get_pyramid, mean_dtype
 
 class BuilderMultiscaleGenerator:
 
@@ -449,12 +448,11 @@ class BuilderMultiscaleGenerator:
                 KeyboardInterrupt: If the cleanup process is interrupted by the user.
                 Exception: If an error occurs during the cleanup process.
             """
-        from time import sleep
+        print(f'\nCleaning up {self.tmp_dir} and orphaned lock files')
         sleep(5) # give the system time to finish writing
-        """
+        
         countKeyboardInterrupt = 0
         countException = 0
-        print('Cleaning up tmp dir and orphaned lock files')
         while True:
             try:
                 # Remove any existing files in the temp_dir
@@ -493,6 +491,6 @@ class BuilderMultiscaleGenerator:
                 if countException == 100:
                     break
                 pass
-        """
+        
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
