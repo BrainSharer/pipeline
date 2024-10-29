@@ -135,6 +135,8 @@ class OmeZarrManager():
                     client = Client(cluster)
                     with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
+
+                    with Client(cluster) as client:
                         for mip in range(1, len(omezarr.pyramidMap)):
                             #omezarr.write_resolutions(mip, client)
                             omezarr.write_mips(mip, client)
