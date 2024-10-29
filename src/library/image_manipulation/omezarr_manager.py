@@ -47,9 +47,9 @@ class OmeZarrManager():
             scaling_factor = SCALING_FACTOR
             input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
             image_manager = ImageManager(input)
-            originalChunkSize = [1, 1, image_manager.height, image_manager.width] # 1796x984
+            originalChunkSize = [1, image_manager.height, image_manager.width] # 1796x984
             mips = 3
-            finalChunkSize=(1, 32, 32, 32)
+            finalChunkSize=(32, 32, 32)
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
@@ -61,14 +61,14 @@ class OmeZarrManager():
             finalChunkSize=(1, 64, 64, 64)
 
         # vars from stack to multi
-        filesList = []
+        files = []
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)
-            filesList.append(filepath)
+            files.append(filepath)
         
         if self.debug:
             print(f'INPUT FOLDER: {input}')
-            print(f'INPUT FILES COUNT: {len(filesList)}')
+            print(f'INPUT FILES COUNT: {len(files)}')
 
         omero = {}
         omero['channels'] = {}
@@ -77,7 +77,7 @@ class OmeZarrManager():
         omero['channels']['window'] = None
         omero['name'] = self.animal
         omero['rdefs'] = {}
-        omero['rdefs']['defaultZ'] = len(filesList) // 2
+        omero['rdefs']['defaultZ'] = len(files) // 2
         omero_dict = omero
 
 
@@ -85,13 +85,13 @@ class OmeZarrManager():
             self.fileLocationManager.www, "neuroglancer_data", storefile
         )
         xy = xy_resolution * scaling_factor
-        geometry = (1, z_resolution, xy, xy)
+        resolution = (z_resolution, xy, xy)
 
         omezarr = builder(
             input,
             storepath,
-            filesList,
-            geometry=geometry,
+            files,
+            resolution,
             originalChunkSize=originalChunkSize,
             finalChunkSize=finalChunkSize,
             tmp_dir=tmp_dir,
@@ -113,6 +113,7 @@ class OmeZarrManager():
             client = Client(cluster)
             print(f'Starting debug non-dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory={omezarr.mem}GB')
             for mip in range(1, len(omezarr.pyramidMap)):
+                #continue
                 omezarr.write_mips(mip, client)
         else:
             try:
