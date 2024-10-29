@@ -109,7 +109,7 @@ class TiffManager3d:
             infile = infile[0]
             sys.exit()
 
-        print(f'Read channel={channel} {infile}')
+        #print(f'Read channel={channel} {infile}')
         with tifffile.imread(infile, aszarr=True) as store:
             z = zarr.open(store, mode='r')
             self.num_channels = z.ndim
