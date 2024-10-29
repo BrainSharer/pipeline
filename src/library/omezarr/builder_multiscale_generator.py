@@ -70,8 +70,7 @@ class BuilderMultiscaleGenerator:
             print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
             s = [test_image.clone_manager_new_file_list(x) for x in s]
             s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-            print(f's[0] type={type(s[0])} shape={s[0].shape} chunks={s[0].chunks}')
-            print(f's[10] type={type(s[10])} shape={s[10].shape} chunks={s[10].chunks}')
+            print(f's[0] type={type(s[0])} shape={s[0].shape} chunksize={s[0].chunksize}')
             s = da.concatenate(s)
             stacks.append(s)
 
