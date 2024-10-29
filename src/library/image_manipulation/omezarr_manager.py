@@ -127,14 +127,13 @@ class OmeZarrManager():
                     os.environ["MKL_NUM_THREADS"] = "1"
                     os.environ["OPENBLAS_NUM_THREADS"] = "1"
                     # os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
+                    os.environ["TMPDIR"] = tmp_dir
 
                     print('With Dask memory config:')
                     print(dask.config.get("distributed.worker.memory"))
                     print()
                     print(f'Starting distributed dask with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
                     print(f'Using tmp dir={tmp_dir}')
-                    import sys
-                    sys.exit()
                     client = Client(cluster)
                     with Client(cluster) as client:
                         omezarr.write_resolution_0(client)
