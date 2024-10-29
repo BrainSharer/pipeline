@@ -55,11 +55,16 @@ class OmeZarrManager():
             scaling_factor = 1
             input = self.fileLocationManager.get_full_aligned(self.channel)
             image_manager = ImageManager(input)
-            originalChunkSize = [1, 1, image_manager.height//16, image_manager.width//16] # 1796x984
+            originalChunkSize = [1, image_manager.height//16, image_manager.width//16] # 1796x984
             mips = 8
+<<<<<<< HEAD
             #originalChunkSize = [1, 1, 2048, 2048]
             finalChunkSize=(1, 64, 64, 64)
             
+=======
+            finalChunkSize=(64, 64, 64)
+
+>>>>>>> 1934f2d (Channels seems to be working in omezarr)
         # vars from stack to multi
         files = []
         for file in sorted(os.listdir(input)):
