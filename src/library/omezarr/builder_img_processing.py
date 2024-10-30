@@ -200,7 +200,7 @@ class BuilderDownsample:
         '''
         image = image[0:,...]
         image = img_as_float32(image)
-        print(f'image shape={image.shape}')
+        print(f'image shape={image.shape}', end=' ')
         canvas = np.zeros(
             (image.shape[0] // down_sample_ratio[0],
              image.shape[1] // down_sample_ratio[1],
@@ -208,13 +208,14 @@ class BuilderDownsample:
             dtype=np.dtype('float32')
         )
 
-        # print(canvas.shape)
+        print('canvas shape', canvas.shape)
         for z, y, x in product(range(down_sample_ratio[0]), range(down_sample_ratio[1]), range(down_sample_ratio[2])):
             tmp = image[
                   z::down_sample_ratio[0],
                   y::down_sample_ratio[1],
                   x::down_sample_ratio[2]
                   ][0:canvas.shape[0], 0:canvas.shape[1], 0:canvas.shape[2]]
+            #tmp = tmp[0, ...]
             print(f'tmp shape={tmp.shape}')
             canvas[0:tmp.shape[0], 0:tmp.shape[1], 0:tmp.shape[2]] += tmp
 
