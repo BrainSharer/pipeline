@@ -13,6 +13,9 @@ import SimpleITK as sitk
 import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+import concurrent.futures
+import subprocess
+from datetime import datetime
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
@@ -206,50 +209,75 @@ class Pipeline(
         and one from the aligned data. So first check if they both exist, if not, create them.
         """
 
-        print(self.TASK_REALIGN)
-        neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
-        neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        if not os.path.exists(neuroglancer_aligned):
-            print(f'Missing {neuroglancer_aligned}')
-            self.neuroglancer()
-        if not os.path.exists(neuroglancer_cropped):
-            print(f'Missing {neuroglancer_cropped}')
-            print('Creating neuroglancer data from unaligned cropped data.')
-            self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
-            self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
-            downsample=self.downsample,
-            channel=1,
-            cropped=True
-        )
+        def delete_in_background(path):
+            #NOTE: MOVE TO UTILITIES AFTER TESTING - DR (duplicate in run_neuroglancer)
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            old_path = f"{path}.old_{current_date}"
 
-            self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned_rechunked')
-            self.output = neuroglancer_cropped
-            self.run_neuroglancer()
+            if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
+                shutil.rmtree(old_path)
+
+            os.rename(path, old_path)  # Rename the directory
+
+            # Delete the renamed directory in the background
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(shutil.rmtree, old_path)
+            return future 
+        
+
+        print(self.TASK_REALIGN)
+
+        #unaligned Ng generated during initial C1T
+
+        # neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
+        # neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
+        # self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
+        # if not os.path.exists(neuroglancer_aligned):
+        #     print(f'Missing {neuroglancer_aligned}')
+        #     self.neuroglancer()
+        # if not os.path.exists(neuroglancer_cropped):
+        #     print(f'Missing {neuroglancer_cropped}')
+        #     print('Creating neuroglancer data from unaligned cropped data.')
+        #     self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
+        #     self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+        #     downsample=self.downsample,
+        #     channel=1,
+        #     cropped=True
+        # )
+
+        #     self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned_rechunked')
+        #     self.output = neuroglancer_cropped
+        #     self.run_neuroglancer()
+
+        
 
         nchanges = self.update_within_stack_transformations()
         if nchanges > 0:
             print('\nChanges have been made.')
             print('Cleaning up the thumbnail aligned data and rerunning the alignment task.')
-            shutil.rmtree(self.fileLocationManager.get_thumbnail_aligned(channel=1))
+            thumbnail_aligned_folder = self.fileLocationManager.get_thumbnail_aligned(channel=1)
+            delete_in_background(thumbnail_aligned_folder)
+            
             self.align()
+
             outputpath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=False) 
             if os.path.exists(outputpath):
                 print(f'Removing {outputpath}')
-                shutil.rmtree(outputpath)
+                delete_in_background(outputpath)
             rechunkmepath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=True)
             if os.path.exists(rechunkmepath):
                 print(f'Removing {rechunkmepath}')
-                shutil.rmtree(rechunkmepath)
+                delete_in_background(rechunkmepath)
             progresspath = self.fileLocationManager.get_neuroglancer_progress(channel=1, downsample=True, cropped=False)
             if os.path.exists(progresspath):
                 print(f'Removing {progresspath}')
-                shutil.rmtree(progresspath)
-            print('You will need to rerun the neuroglancer task.')
+                delete_in_background(progresspath)
+
+            print('Auto-reruning the neuroglancer task.')
+            self.neuroglancer(generate_preview=False) #auto rerun C1T
         else:
             self.fileLogger.logevent(f"NO TRANSFORMATION CHANGES DETECTED. REALIGNMENT NOT PERFORMED")
 
-        #####transformations = self.get_transformations()
         print(f'Finished {self.TASK_REALIGN}.')
 
     def affine_align(self):
@@ -259,48 +287,115 @@ class Pipeline(
 
         self.create_affine_transformations()
 
-    def neuroglancer(self):
+    def neuroglancer(self, generate_preview=True):
         """This is a convenience method to run the entire neuroglancer process.
         We also define the input, output and progress directories.
+
+        #CAN GENERATE C1T AND C1T_unaligned FOR PREVIEW
+        #pass through generate_preview=False on realign
         """
+        ####################################################### TESTING
+        use_scatch = True # set to True to use scratch space, might speed up writing, but then you have to transfer to final location
+        #generate_preview = True # generate C1T_unaligned for preview
+        #######################################################
 
-        use_scatch = False # set to True to use scratch space, might speed up writing, but then you have to transfer to final location
-        scratch_tmp = get_scratch_dir()
-        SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
-	    #TODO: rechunkme should be stored on scratch and final output on birdstore
-
+        scratch_tmp = get_scratch_dir()        
+        
         if self.downsample:
-            self.input = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+            input_path = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+            input_preview_path = self.fileLocationManager.get_thumbnail_cropped(channel=1)
         else:
-            self.input = self.fileLocationManager.get_full_aligned(channel=self.channel)
+            input_path = self.fileLocationManager.get_full_aligned(channel=self.channel)
 
-        self.rechunkme_path = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+        final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=False)
         if use_scatch:
-            scratch_tmp = get_scratch_dir()
-            self.output = os.path.join(scratch_tmp, self.animal, os.path.basename(self.output))
-        else:
-            self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=False)
+            #We can test for est. storage space needed for Ng creation (C1T_rechunk, C1T, C1T_unaligned, C1T_unaligned_rechunk)
 
-        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
+            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
+            rechunkme_folder = os.path.basename(self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True))
+            rechunkme_path = os.path.join(SCRATCH, rechunkme_folder)
+            output_folder = os.path.basename(self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=False))
+            staging_output = os.path.join(SCRATCH, output_folder)
+        else:
+            rechunkme_path = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=True)
+            staging_output = final_output
+
+        progress_dir = self.fileLocationManager.get_neuroglancer_progress(
             downsample=self.downsample,
             channel=self.channel,
             cropped=False,
         )
         if self.debug:
-            print(f'Input dir={self.input}')
-            print(f'Rechunkme dir={self.rechunkme_path}')
-            print(f'Output dir={self.output}')
+            print(f'Input dir={input_path}')
+            print(f'Rechunkme dir={rechunkme_path}')
+            print(f'Progress dir={progress_dir}')
+            print(f'SCRATCH DIR={SCRATCH}')
+            print(f'STAGING OUTPUT DIR={staging_output}')
+            print(f'FINAL OUTPUT DIR={final_output}')
 
-        self.run_neuroglancer()
+        self.run_neuroglancer(input_path, rechunkme_path, staging_output, final_output, progress_dir, SCRATCH)
 
-    def run_neuroglancer(self):
+        ####################################################### C1T_unaligned
+        if self.channel == 1 and self.downsample and generate_preview:
+            progress_dir = os.path.basename(progress_dir) + "_unaligned"
+            rechunkme_path = rechunkme_path.replace("C1T_", "C1T_unaligned_")
+            staging_output = staging_output.replace("C1T", "C1T_unaligned")
+            final_output = final_output.replace("C1T", "C1T_unaligned")
+
+            if self.debug:
+                print('*'*50)
+                print(f'GENERATING C1T_unaligned')
+                print(f'Input dir={input_preview_path}')
+                print(f'Rechunkme dir={rechunkme_path}')
+                print(f'Progress dir={progress_dir}')
+                print(f'SCRATCH DIR={SCRATCH}')
+                print(f'STAGING OUTPUT DIR={staging_output}')
+                print(f'FINAL OUTPUT DIR={final_output}')
+
+            self.run_neuroglancer(input_preview_path, rechunkme_path, staging_output, final_output, progress_dir, SCRATCH)
+        ####################################################### C1T_unaligned
+
+
+    def run_neuroglancer(self, input_path, rechunkme_path, staging_output, final_output, progress_dir, SCRATCH):
         """The input and output directories are set in either the self.neuroglancer method or
         the self.realign method.  This method is used to run the neuroglancer process.
         """
 
+        def delete_in_background(path):
+            #NOTE: MOVE TO UTILITIES AFTER TESTING - DR
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            old_path = f"{path}.old_{current_date}"
+
+            if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
+                shutil.rmtree(old_path)
+
+            os.rename(path, old_path)  # Rename the directory
+
+            # Delete the renamed directory in the background
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(shutil.rmtree, old_path)
+            return future 
+
+
         print(self.TASK_NEUROGLANCER)
-        self.create_neuroglancer()
-        self.create_downsamples()
+
+        # self.create_neuroglancer() #CONSOLIDATED INTO create_neuroglancer_stack
+        # self.create_downsamples() #CONSOLIDATED INTO create_neuroglancer_stack
+
+        #CREATE ALIGNED STACK IN PRECOMPUTED FORMAT
+        self.create_neuroglancer_stack(input_path, rechunkme_path, staging_output, progress_dir, SCRATCH)
+
+        if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
+            print(f'Moving {staging_output} to {final_output}')
+            os.makedirs(final_output, exist_ok=True)
+            # Use rclone to move the directory
+            subprocess.run(["rclone", "move", staging_output, final_output], check=True)
+
+        #CLEAN UP staging_output
+        if os.path.exists(staging_output):
+            print(f'Removing {staging_output}')
+            delete_in_background(staging_output)
+
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
     def omezarr(self):
