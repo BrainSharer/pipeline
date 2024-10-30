@@ -140,6 +140,7 @@ class ElastixManager():
         """
         # Transfer images to GPU memory
         def to_gpu(image):
+            self.fileLogger.logevent(f"ALIGNMENT USING GPU")
             array = sitk.GetArrayFromImage(image)
             gpu_array = cp.asarray(array)
             return sitk.GetImageFromArray(cp.asnumpy(gpu_array))

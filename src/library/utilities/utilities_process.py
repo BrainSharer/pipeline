@@ -170,14 +170,17 @@ def get_scratch_dir():
     Ratto can't use /scratch as it is not big enough
     """
 
-    usedir = {}
-    usedir['ratto'] = "/data"
+    # usedir = {}
+    # usedir['ratto'] = "/data"
 
-    hostname = get_hostname()
-    if hostname in usedir.keys():
-        tmp_dir = usedir[hostname]
-    else:
-        tmp_dir = "/scratch"
+    # hostname = get_hostname()
+    # if hostname in usedir.keys():
+    #     tmp_dir = usedir[hostname]
+    # else:
+    #     tmp_dir = "/scratch"
+    
+    #/scratch created on all servers (device or symbolic link to space with enough storage)
+    tmp_dir = "/scratch"
 
     return tmp_dir
 

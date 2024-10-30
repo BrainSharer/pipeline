@@ -142,7 +142,7 @@ class FileLocationManager(object):
         if downsample:
             channel_outdir += "T"
 
-        if cropped:
+        if cropped: #MAY NOT BE NECESSARY WITH 'PREVIEW' CODE: SEE pipeline_process.py, neuroglancer()
             channel_outdir += "_unaligned"
 
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
