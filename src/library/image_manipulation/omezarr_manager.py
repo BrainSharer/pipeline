@@ -49,7 +49,6 @@ class OmeZarrManager():
             image_manager = ImageManager(input)
             originalChunkSize = [1, image_manager.height, image_manager.width] # 1796x984
             mips = 3
-            finalChunkSize=(32, 32, 32)
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
@@ -57,14 +56,6 @@ class OmeZarrManager():
             image_manager = ImageManager(input)
             originalChunkSize = [1, image_manager.height//16, image_manager.width//16] # 1796x984
             mips = 8
-<<<<<<< HEAD
-            #originalChunkSize = [1, 1, 2048, 2048]
-            finalChunkSize=(1, 64, 64, 64)
-            
-=======
-            finalChunkSize=(64, 64, 64)
-
->>>>>>> 1934f2d (Channels seems to be working in omezarr)
         # vars from stack to multi
         files = []
         for file in sorted(os.listdir(input)):
@@ -98,7 +89,6 @@ class OmeZarrManager():
             files,
             resolution,
             originalChunkSize=originalChunkSize,
-            finalChunkSize=finalChunkSize,
             tmp_dir=tmp_dir,
             debug=self.debug,
             omero_dict=omero_dict,
@@ -112,43 +102,19 @@ class OmeZarrManager():
             threads_per_worker=omezarr.sim_jobs,
             memory_limit=mem_per_worker)
 
-
-        if self.debug:
-            omezarr.write_resolution_0(client=None)
-            client = Client(cluster)
+        dask.config.set(temporary_directory=tmp_dir)
+        """
+        Trial 1 = omezarr took 745.64 seconds
+        Trial 2 = omezarr took 624.88 seconds
+        omezarr.write_resolution_0(client=None)
+        client = Client(cluster)
+        for mip in range(1, len(omezarr.pyramidMap)):
+            omezarr.write_mips(mip, client)
+        """
+        with Client(cluster) as client:
+            omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):
-                #continue
                 omezarr.write_mips(mip, client)
-                #omezarr.write_resolutions(mip, client)
             
-        else:
-            try:
-                with dask.config.set({'temporary_directory': tmp_dir, 
-                                        'logging.distributed': 'error'}):
-
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__CONNECT"] = "160s"
-                    os.environ["DISTRIBUTED__COMM__TIMEOUTS__TCP"] = "160s"
-                    os.environ["DISTRIBUTED__DEPLOY__LOST_WORKER"] = "160s"
-                    # https://docs.dask.org/en/stable/array-best-practices.html#orient-your-chunks
-                    os.environ["OMP_NUM_THREADS"] = "1"
-                    os.environ["MKL_NUM_THREADS"] = "1"
-                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-                    # os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
-                    os.environ["TMPDIR"] = tmp_dir
-
-                    print('With Dask memory config:')
-                    print(dask.config.get("distributed.worker.memory"))
-                    print()
-                    print(f'Using tmp dir={tmp_dir}')
-                    client = Client(cluster)
-                    with Client(cluster) as client:
-                        omezarr.write_resolution_0(client)
-                        for mip in range(1, len(omezarr.pyramidMap)):
-                            omezarr.write_resolutions(mip, client)
-                            omezarr.write_mips(mip, client)
-
-            except Exception as ex:
-                print('Exception in running builder in omezarr_manager')
-                print(ex)
 
         omezarr.cleanup()
