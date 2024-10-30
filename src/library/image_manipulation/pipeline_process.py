@@ -395,6 +395,13 @@ class Pipeline(
         if os.path.exists(staging_output):
             print(f'Removing {staging_output}')
             delete_in_background(staging_output)
+        if os.path.exists(rechunkme_path):
+            print(f'Removing {rechunkme_path}')
+            delete_in_background(rechunkme_path)
+        progress_dir = os.path.dirname(progress_dir) #get 'progress' dir (1 level up)
+        if os.path.exists(progress_dir):
+            print(f'Removing {progress_dir}')
+            delete_in_background(progress_dir)
 
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
