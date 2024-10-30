@@ -128,26 +128,32 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
         transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
-def get_pyramid(initial_shape, initial_chunk, final_chunk, initial_resolution, mips) -> dict:
+def get_pyramid(initial_shape, initial_chunk, initial_resolution, mips) -> dict:
 
     transformations = {}
-    transformations[0] = {'shape': initial_shape, 'chunk': initial_chunk, 'resolution': initial_resolution, 'downsamp': (1, 1, 1)}
-    start_chunks = (64, 128, 128)
+    transformations[0] = {'shape': initial_shape, 'chunk': initial_chunk, 'resolution': initial_resolution, 'downsample': (1, 1, 1)}
     for mip in range(1, mips + 1):
-        previous_chunks = start_chunks
+        previous_chunks = transformations[mip-1]['chunk']
         previous_shape = transformations[mip-1]['shape']
         previous_resolution = transformations[mip-1]['resolution']
         shape = (initial_shape[0], previous_shape[1] // 2, previous_shape[2] // 2)
+        """
         if mip == 1:
-            chunks = (64, previous_chunks[1], previous_chunks[2])
+            chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
         elif mip in (2, 3, 4):
             chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
         else:
             chunks = (32, previous_chunks[1]//4, previous_chunks[2]//4)
+        """
+
+        if mip < 2:
+            chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
+        else:
+            chunks = (64, 64, 64)
 
         print(f'previous resolution={previous_resolution}')
         resolution = (initial_resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
-        transformations[mip] = {'shape': shape, 'chunk': chunks, 'resolution': resolution, 'downsamp': (1, 2, 2)}
+        transformations[mip] = {'shape': shape, 'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
     return transformations
 
 

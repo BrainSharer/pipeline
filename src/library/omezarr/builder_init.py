@@ -33,12 +33,11 @@ class builder(BuilderDownsample,
         out_location,
         files,
         resolution,
-        originalChunkSize=(1, 1, 1, 2048, 2048),
-        finalChunkSize=(1, 1, 64, 64, 64),
-        tmp_dir="/tmp",
-        debug=False,
-        omero_dict={},
-        mips=4,
+        originalChunkSize,
+        tmp_dir,
+        debug,
+        omero_dict,
+        mips,
     ):
 
         self.input = in_location
@@ -46,7 +45,6 @@ class builder(BuilderDownsample,
         self.files = sorted(files)
         self.resolution = resolution
         self.originalChunkSize = tuple(originalChunkSize)
-        self.finalChunkSize = tuple(finalChunkSize)
         self.cpu_cores = os.cpu_count()
         self.sim_jobs = self.cpu_cores - 2 
         self.workers = 1
@@ -77,21 +75,16 @@ class builder(BuilderDownsample,
         self.channels = image_manager.num_channels
         self.shape_3d = (len(self.files),*image_manager.shape)
         out_shape = self.shape_3d
-        #####CHANGE ignore time and channel elements
-        #initial_chunk = self.originalChunkSize[2:]
-        #final_chunk_size = self.finalChunkSize[2:]
-        #resolution = self.geometry[2:]
-
         initial_chunk = self.originalChunkSize
-        final_chunk_size = self.finalChunkSize
 
         print(f'initial chunk = {initial_chunk}')
-        print(f'final chunk size = {final_chunk_size}')
         print(f'resolution = {self.resolution}')
 
-        self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
+        self.pyramidMap = get_pyramid(out_shape, initial_chunk, resolution,  self.mips)
         for k, v in self.pyramidMap.items():
             print(k,v)
         
+        #import sys
+        #sys.exit()
 
         self.build_zattrs()

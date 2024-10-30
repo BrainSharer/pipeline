@@ -38,9 +38,8 @@ class BuilderMultiscaleGenerator:
             shape0 = zarr.open(resolution_0_path).shape
             out_shape = shape0[1:]
             initial_chunk = self.originalChunkSize[1:]
-            final_chunk_size = self.finalChunkSize[1:]
             ##### Change
-            self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, self.resolution,  self.mips)
+            self.pyramidMap = get_pyramid(out_shape, initial_chunk, self.resolution,  self.mips)
             for k, v in self.pyramidMap.items():
                 print(k,v)
 
@@ -201,7 +200,7 @@ class BuilderMultiscaleGenerator:
     def downsample_by_chunk(self, from_mip, to_mip, down_sample_ratio, from_slice, to_slice, minmax=False):
 
         '''
-        Slices are for dims (t,c,z,y,x), downsamp only works on 3 dims
+        Slices are for dims (t,c,z,y,x), downsample only works on 3 dims
         '''
         print(f'from_slice len={len(from_slice)} to_slice len={len(to_slice)}')
 
@@ -391,7 +390,7 @@ class BuilderMultiscaleGenerator:
             (self.channels, *self.pyramidMap[mip]["shape"]),
             (1, *self.pyramidMap[mip]["chunk"]),)
 
-        down_sample_ratio = self.pyramidMap[mip]['downsamp']
+        down_sample_ratio = self.pyramidMap[mip]['downsample']
 
         slices = self.chunk_slice_generator_for_downsample(from_array_shape_chunks, to_array_shape_chunks,
                                                       down_sample_ratio=down_sample_ratio, length=True)
@@ -449,7 +448,7 @@ class BuilderMultiscaleGenerator:
                 Exception: If an error occurs during the cleanup process.
             """
         print(f'\nCleaning up {self.tmp_dir} and orphaned lock files')
-        sleep(5) # give the system time to finish writing
+        sleep(1) # give the system time to finish writing
         
         countKeyboardInterrupt = 0
         countException = 0
@@ -494,3 +493,10 @@ class BuilderMultiscaleGenerator:
         
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
+
+
+        sleep(5)
+        tmp_dir = '/tmp/dask-scratch-space'
+        if os.path.exists(tmp_dir):
+            print(f'Removing {tmp_dir}')
+            shutil.rmtree(tmp_dir)
