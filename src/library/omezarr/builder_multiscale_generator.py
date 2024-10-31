@@ -35,6 +35,7 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         resolution_0_path = os.path.join(self.output, 'scale0')
         if os.path.exists(resolution_0_path):
+            """
             shape0 = zarr.open(resolution_0_path).shape
             out_shape = shape0[1:]
             initial_chunk = self.originalChunkSize[1:]
@@ -42,9 +43,9 @@ class BuilderMultiscaleGenerator:
             self.pyramidMap = get_pyramid(out_shape, initial_chunk, self.resolution,  self.mips)
             for k, v in self.pyramidMap.items():
                 print(k,v)
-
+            """
             print(f'Resolution 0 already exists at {resolution_0_path}')
-            print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
+            ###print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
@@ -495,8 +496,3 @@ class BuilderMultiscaleGenerator:
             shutil.rmtree(self.tmp_dir)
 
 
-        sleep(5)
-        tmp_dir = '/tmp/dask-scratch-space'
-        if os.path.exists(tmp_dir):
-            print(f'Removing {tmp_dir}')
-            shutil.rmtree(tmp_dir)
