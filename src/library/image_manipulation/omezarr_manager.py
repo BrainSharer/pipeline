@@ -106,10 +106,6 @@ class OmeZarrManager():
         """
         Trial 1 = omezarr took 745.64 seconds
         Trial 2 = omezarr took 624.88 seconds
-        omezarr.write_resolution_0(client=None)
-        client = Client(cluster)
-        for mip in range(1, len(omezarr.pyramidMap)):
-            omezarr.write_mips(mip, client)
         """
         with Client(cluster) as client:
             omezarr.write_resolution_0(client)
