@@ -137,16 +137,8 @@ def get_pyramid(initial_shape, initial_chunk, initial_resolution, mips) -> dict:
         previous_shape = transformations[mip-1]['shape']
         previous_resolution = transformations[mip-1]['resolution']
         shape = (initial_shape[0], previous_shape[1] // 2, previous_shape[2] // 2)
-        """
-        if mip == 1:
-            chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
-        elif mip in (2, 3, 4):
-            chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
-        else:
-            chunks = (32, previous_chunks[1]//4, previous_chunks[2]//4)
-        """
 
-        if mip < 2:
+        if mip < 3:
             chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
         else:
             chunks = (64, 64, 64)
@@ -194,9 +186,6 @@ def get_optimum_chunks(image_shape, leading_chunk):
 
     return (leading_chunk, y, x)
 
-
-
-
 def get_tiff_zarr_array(filepaths):
     with tifffile.imread(filepaths, aszarr=True) as store:
         return zarr.open(store)
@@ -216,85 +205,6 @@ def get_store_from_path(path, mode="a"):
     return store
 
 
-# def optimize_chunk_shape_3d_2(image_shape, origional_chunks, output_chunks, dtype, chunk_limit_GB):
-
-
-def optimize_chunk_shape(image_shape, existing_chunks, output_chunks):
-    '''
-    original chunks is actually chunks size from test image
-    Grows chunks shape by axis y and x by the original chunk shape until a
-    defined size in GB is reached
-
-    return tuple of new chunk shape
-    '''
-    dtype = np.uint16
-    mem = int((psutil.virtual_memory().free/1024**3)*.8)
-    cpu_cores = os.cpu_count()
-    chunk_limit_GB = mem / cpu_cores / 8
-
-    print(f'existing_chunks={existing_chunks}')
-
-    y = existing_chunks[1] if existing_chunks[1] > output_chunks[1] else output_chunks[1]
-    x = existing_chunks[2] if existing_chunks[2] > output_chunks[2] else output_chunks[2]
-
-    existing_chunks = (existing_chunks[0], y, x)
-    
-    current_chunks = existing_chunks
-    current_size = get_size_GB(current_chunks, dtype)
-
-    print('current_chunks', current_chunks)
-    print('current_size', current_size)
-
-    if current_size > chunk_limit_GB:
-        return current_chunks
-
-    idx = 0
-    chunk_bigger_than_z = True if current_chunks[0] >= image_shape[0] else False
-    chunk_bigger_than_y = True if current_chunks[1] >= image_shape[1] else False
-    chunk_bigger_than_x = True if current_chunks[2] >= image_shape[2] else False
-
-    while current_size <= chunk_limit_GB:
-
-        # last_size = get_size_GB(current_chunks,dtype)
-        last_shape = current_chunks
-
-        # chunk_iter_idx = idx % 2
-        # if chunk_iter_idx == 0 and chunk_bigger_than_y == False:
-        #     current_chunks = (existing_chunks[0], current_chunks[1] + output_chunks[1], current_chunks[2])
-        # elif chunk_iter_idx == 1 and chunk_bigger_than_x == False:
-        #     current_chunks = (existing_chunks[0], current_chunks[1], current_chunks[2] + output_chunks[2])
-
-        # Iterate over y first then x
-        if chunk_bigger_than_y == False:
-            current_chunks = (existing_chunks[0],current_chunks[1]+output_chunks[1],current_chunks[2])
-        elif chunk_bigger_than_x == False:
-            current_chunks = (existing_chunks[0],current_chunks[1],current_chunks[2]+output_chunks[2])
-        elif chunk_bigger_than_z == False:
-            current_chunks = (existing_chunks[0] + output_chunks[0], current_chunks[1], current_chunks[2])
-
-        current_size = get_size_GB(current_chunks, dtype)
-
-        #print(f'current_chunks={current_chunks}')
-        #print(f'current_size={current_size}')
-
-        if current_size > chunk_limit_GB:
-            return last_shape
-
-        if current_chunks[0] > image_shape[0]:
-            chunk_bigger_than_z = True
-
-        if current_chunks[1] > image_shape[1]:
-            chunk_bigger_than_y = True
-
-        if current_chunks[2] > image_shape[2]:
-            chunk_bigger_than_x = True
-
-        if all([chunk_bigger_than_z, chunk_bigger_than_y, chunk_bigger_than_x]):
-            return last_shape
-
-        idx += 1
-
-
 def get_size_GB(shape,dtype):
     
     current_size = math.prod(shape)/1024**3
@@ -308,36 +218,3 @@ def get_size_GB(shape,dtype):
         current_size *=8
     
     return current_size
-
-def organize_by_groups(a_list, group_len):
-    """
-    Organizes a list into groups of a specified length.
-
-    Args:
-        a_list (list): The list to be organized into groups.
-        group_len (int): The length of each group.
-
-    Returns:
-        list: A new list containing groups of elements from the original list.
-
-    Example:
-        >>> a_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        >>> group_len = 3
-        >>> organize_by_groups(a_list, group_len)
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10]]
-    """
-    new = []
-    working = []
-    idx = 0
-    for aa in a_list:
-        working.append(aa)
-        idx += 1
-
-        if idx == group_len:
-            new.append(working)
-            idx = 0
-            working = []
-
-    if working != []:
-        new.append(working)
-    return new
