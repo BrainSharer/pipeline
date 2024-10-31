@@ -39,6 +39,11 @@ class OmeZarrManager():
         tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
         if os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
+        scratch_space = '/tmp/dask-scratch-space'
+        if os.path.exists(scratch_space):
+            print(f'Removing {scratch_space}')
+            shutil.rmtree(scratch_space)
+
         os.makedirs(tmp_dir, exist_ok=True)
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
@@ -105,8 +110,6 @@ class OmeZarrManager():
 
         dask.config.set(temporary_directory=tmp_dir)
         """
-        Trial 1 = omezarr took 745.64 seconds
-        Trial 2 = omezarr took 624.88 seconds
         """
         with Client(cluster) as client:
             omezarr.write_resolution_0(client)
