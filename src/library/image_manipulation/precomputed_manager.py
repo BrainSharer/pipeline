@@ -184,7 +184,7 @@ class NgPrecomputedMaker:
             chunk_size=chunks,
         )
         
-        ng.init_precomputed(output, image_manager.volume_size)
+        ng.init_precomputed(rechunkme_path, image_manager.volume_size)
         file_keys = []
         orientation = self.sqlController.histology.orientation
         for i, f in enumerate(image_manager.files):
@@ -212,11 +212,11 @@ class NgPrecomputedMaker:
             print(f"DIR {output} already exists. Downsampling has already been performed.")
             return
         outpath = f"file://{output}"
-        if not os.path.exists(SCRATCH):
-            print(f"DIR {SCRATCH} does not exist, exiting.")
+        if not os.path.exists(rechunkme_path):
+            print(f"DIR {rechunkme_path} does not exist, exiting.")
             sys.exit()
-        cloudpath = f"file://{SCRATCH}"
-        self.fileLogger.logevent(f"Input DIR: {SCRATCH}")
+        cloudpath = f"file://{rechunkme_path}"
+        self.fileLogger.logevent(f"Input DIR: {rechunkme_path}")
         self.fileLogger.logevent(f"Output DIR: {output}")
         workers = self.get_nworkers()
         
