@@ -1,5 +1,8 @@
+from datetime import datetime
+import shutil
 import os, sys
 import socket
+import concurrent
 from skimage import io
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -14,6 +17,22 @@ SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
+
+
+def delete_in_background(path):
+    #NOTE: MOVE TO UTILITIES AFTER TESTING - DR (duplicate in run_neuroglancer)
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    old_path = f"{path}.old_{current_date}"
+
+    if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
+        shutil.rmtree(old_path)
+
+    os.rename(path, old_path)  # Rename the directory
+
+    # Delete the renamed directory in the background
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(shutil.rmtree, old_path)
+    return future 
 
 
 def get_hostname() -> str:

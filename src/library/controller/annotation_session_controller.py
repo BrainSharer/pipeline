@@ -143,13 +143,12 @@ class AnnotationSessionController:
             print("No childJsons key in data")
             return fiducials
 
-        for point in data:
-            x, y, z = point["point"]
+        for x,y,z in data:
             x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
             y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
             section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
             fiducials[section].append((x, y))
-
+            
         return fiducials
 
 

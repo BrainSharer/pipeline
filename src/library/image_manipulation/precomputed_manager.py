@@ -61,7 +61,7 @@ class NgPrecomputedMaker:
 
         starting_files = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         self.fileLogger.logevent(f"self.input FOLDER: {self.input}")
-        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         
         image_manager = ImageManager(self.input)
@@ -165,7 +165,7 @@ class NgPrecomputedMaker:
 
         starting_files = test_dir(self.animal, input_path, self.section_count, self.downsample, same_size=True)
         self.fileLogger.logevent(f"input_path FOLDER: {input_path}")
-        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
         self.fileLogger.logevent(f"Output FOLDER: {SCRATCH}")
 
         image_manager = ImageManager(input_path)

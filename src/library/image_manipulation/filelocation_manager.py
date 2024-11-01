@@ -4,6 +4,10 @@ import os
 import sys
 
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
+CROPPED = 0
+ALIGNED = 1
+REALIGNED = 2
+
 
 
 class FileLocationManager(object):
@@ -79,22 +83,50 @@ class FileLocationManager(object):
             validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
-    def get_alignment_directories(self, channel, resolution):
+    
+    def get_alignments(self, iteration=0):
+        aligments = {}
+        aligments[CROPPED] = "cropped"
+        aligments[ALIGNED] = "aligned"
+        aligments[REALIGNED] = "realigned"
 
-        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cropped')
-        output = os.path.join(self.prep, f'C{channel}', f'{resolution}_aligned')
+        try:
+            aligments[iteration]
+        except KeyError:
+            print(f'Invalid iteration {iteration}')
+            sys.exit(1)
 
-        os.makedirs(output, exist_ok=True)
+        return aligments[iteration]
+
+
+    def get_alignment_directories(self, channel, downsample, iteration=0):
+
+
+        if downsample:
+            resolution = "thumbnail"
+        else:
+            resolution = "full"
+
+        inpath = self.get_alignments(iteration=iteration)
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_{inpath}')
+
+        if iteration == REALIGNED:
+            outpath = "NA"
+        else:
+            outpath = self.get_alignments(iteration=iteration+1)
+
+        output = os.path.join(self.prep, f'C{channel}', f'{resolution}_{outpath}')
+
+        #os.makedirs(output, exist_ok=True)
         return input, output
 
-    def get_thumbnail_aligned(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "thumbnail_aligned")
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
     
     def get_thumbnail_cropped(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "thumbnail_cropped")
+        inpath = self.get_alignments(iteration=CROPPED)
+        return os.path.join(self.prep, f"C{channel}", f"thumbnail_{inpath}")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")
@@ -122,28 +154,40 @@ class FileLocationManager(object):
         '''
         return os.path.join(self.cell_labels_data)
 
-    def get_neuroglancer(self, downsample=True, channel=1, rechunk=False):
+    def get_neuroglancer(self, downsample=True, channel=1, iteration=0):
         '''
         Returns path to store neuroglancer files ('precomputed' format)
 
         Note: This path is also web-accessbile [@ UCSD]
         '''
+        outpath = self.get_alignments(iteration=iteration)
+
         channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir += "T"
-
-        if rechunk:
-            channel_outdir += "_rechunkme"
+            channel_outdir += f"T_{outpath}"
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel=1, cropped=False):
+    def get_neuroglancer_rechunkme(self, downsample=True, channel=1, iteration=0):
+        '''
+        Returns path to store neuroglancer files ('precomputed' format)
+
+        Note: This path is also web-accessbile [@ UCSD]
+        '''
+        outpath = self.get_alignments(iteration=iteration)
         channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir += "T"
+            channel_outdir += f"T_rechunkme_{outpath}"
 
-        if cropped: #MAY NOT BE NECESSARY WITH 'PREVIEW' CODE: SEE pipeline_process.py, neuroglancer()
-            channel_outdir += "_unaligned"
+
+        return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
+
+    def get_neuroglancer_progress(self, downsample=True, channel=1, iteration=0):
+        outpath = self.get_alignments(iteration=iteration)
+        channel_outdir = f"C{channel}"
+        if downsample:
+            channel_outdir += f"T_{outpath}"
+
 
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 

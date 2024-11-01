@@ -30,12 +30,16 @@ class FileLogger:
         self.logger.setLevel(logging.INFO)
 
         # Create a file handler
-        LOGFILE = os.path.join(LOGFILE_PATH, "pipeline-process.log")
         file_handler = logging.FileHandler(LOGFILE)
         file_handler.setLevel(logging.DEBUG)
 
         # Create a formatter and add it to the handler
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+        # 'FOR LOOP' REMOVES DUAL LOGGING TO CONSOLE + FILE
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+
         file_handler.setFormatter(formatter)
 
         # Add the handler to the logger
