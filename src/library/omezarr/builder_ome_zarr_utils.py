@@ -25,7 +25,6 @@ class BuilderOmeZarrUtils:
         multiscales["version"] = "0.5-dev"
         multiscales["name"] = self.omero_dict['name'] if self.omero_dict['name'] is not None else ""
         multiscales["axes"] = [
-            {"name": "t", "type": "time", "unit": "millisecond"}, #time dimension removed
             {"name": "c", "type": "channel"}, #channel dimension removed
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
@@ -42,7 +41,7 @@ class BuilderOmeZarrUtils:
             scale["coordinateTransformations"] = [{
                 "type": "scale",
                 "scale": [
-                    1, 1,
+                    1,
                     round(z,3),
                     round(y,3),
                     round(x,3)

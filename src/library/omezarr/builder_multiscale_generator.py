@@ -13,7 +13,7 @@ These classes are designed to be inherited by the builder class (builder.py)
 
 import glob
 import os
-import random
+from time import sleep
 import shutil
 import time
 from itertools import product
@@ -24,11 +24,10 @@ import dask.array as da
 from distributed import progress
 
 # Project specific imports
-#from library.omezarr.builder_image_utils import TiffManager3d
+# from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
 from library.omezarr.builder_image_utils import TiffManager3d
-from library.utilities.dask_utilities import get_pyramid
-from library.image_manipulation.image_manager import ImageManager
+from library.utilities.dask_utilities import get_pyramid, mean_dtype
 
 class BuilderMultiscaleGenerator:
 
@@ -36,41 +35,50 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         resolution_0_path = os.path.join(self.output, 'scale0')
         if os.path.exists(resolution_0_path):
+            """
             shape0 = zarr.open(resolution_0_path).shape
-            out_shape = shape0[2:]
-            initial_chunk = self.originalChunkSize[2:]
-            final_chunk_size = self.finalChunkSize[2:]
-            resolution = self.geometry[2:]
-            self.pyramidMap = get_pyramid(out_shape, initial_chunk, final_chunk_size, resolution,  self.mips)
+            out_shape = shape0[1:]
+            initial_chunk = self.originalChunkSize[1:]
+            ##### Change
+            self.pyramidMap = get_pyramid(out_shape, initial_chunk, self.resolution,  self.mips)
             for k, v in self.pyramidMap.items():
                 print(k,v)
-
+            """
             print(f'Resolution 0 already exists at {resolution_0_path}')
-            print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
+            ###print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
-        print(f'Stack has {self.channels} channels and {len(self.filesList)} files')
+        print(f'Stack has {self.channels} channels and {len(self.files)} files')
+        stacks = []
 
-        s = [[x] for x in self.filesList]
-        test_image = TiffManager3d(s[0])
-        optimum_chunks = utils.optimize_chunk_shape_3d_2(
-            test_image.shape,
-            test_image.chunks,
-            self.originalChunkSize[2:],
-            test_image.dtype,
-            self.res0_chunk_limit_GB
-        )
-        test_image.chunks = optimum_chunks
-        print(f'Using optimum chunks={optimum_chunks} for resolution 0')
-        print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
-        #return
-        s = [test_image.clone_manager_new_file_list(x) for x in s]
-        s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-        s = da.concatenate(s)
-        stack = da.stack([s])
-        stack = stack[None, ...]
-        print(f'stack shape={stack.shape} originalChunkSize={self.originalChunkSize}')
+        for channel in range(0, self.channels):
+            s = sorted([[x] for x in self.files])
+            #s = sorted(self.files)
+            test_image = TiffManager3d(s, channel)
+            print(f'\nchannel={channel} test_image shape={test_image.shape} chunks={test_image.chunks}')
+            optimum_chunks = utils.optimize_chunk_shape_3d_2(
+                test_image.shape,
+                test_image.chunks,
+                self.originalChunkSize,
+                test_image.dtype,
+                self.res0_chunk_limit_GB
+            )
+            test_image.chunks = optimum_chunks
+            print(f'Using optimum chunks={optimum_chunks} for resolution 0')
+            print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
+            s = [test_image.clone_manager_new_file_list(x) for x in s]
+            s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
+            print(f's[0] type={type(s[0])} shape={s[0].shape} chunksize={s[0].chunksize}')
+            s = da.concatenate(s)
+            stacks.append(s)
+
+        print(f'len(stack)={len(stacks)}')
+        stack = da.stack(stacks, axis=0)
+
+        print()
+        self.originalChunkSize = (1, *self.originalChunkSize)
+        print(f'stack shape={stack.shape} stack chunks={stack.chunksize} at originalChunkSize={self.originalChunkSize}')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,
@@ -80,6 +88,10 @@ class BuilderMultiscaleGenerator:
             compressor=self.compressor,
             dtype=stack.dtype,
         )
+        print('Stacked z info')
+        print(z.info)
+        import sys
+        #sys.exit()
         if client is None:
             to_store = da.store(stack, z, lock=True, compute=True)
         else:
@@ -91,6 +103,56 @@ class BuilderMultiscaleGenerator:
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Resolution 0 completed in {total_elapsed_time} seconds")
+
+    def write_mips(self, mip, client):
+        print()
+        read_storepath = os.path.join(self.output, f'scale{mip-1}')
+        if os.path.exists(read_storepath):
+            print(f'Resolution {mip-1} exists at {read_storepath} loading ...')
+        write_storepath = os.path.join(self.output, f'scale{mip}')
+        if os.path.exists(write_storepath):
+            print(f'Resolution {mip} exists at {write_storepath} returning')
+            return
+
+        previous_stack = da.from_zarr(url=read_storepath)
+        print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
+        axis_scales = [1, 1, 2, 2]
+        axis_dict = {
+            0: axis_scales[0],
+            1: axis_scales[1],
+            2: axis_scales[2],
+            3: axis_scales[3],
+        }
+        scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
+        chunks = (1, ) + self.pyramidMap[mip]['chunk']
+        print(f'chunks = {chunks}')
+        scaled_stack = scaled_stack.rechunk(chunks)
+        print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
+
+        # store = get_store(write_storepath, mip)
+        # z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
+        # to_store = da.store(scaled_stack, z, lock=False, compute=False)
+        # print(f'Writing mip with data to: {write_storepath}')
+        # to_store = progress(client.compute(to_store))
+        # to_store = client.gather(to_store)
+        # print()
+        store = self.get_store(mip)
+        z = zarr.zeros(
+            scaled_stack.shape,
+            chunks=chunks,
+            store=store,
+            overwrite=True,
+            compressor=self.compressor,
+            dtype=scaled_stack.dtype,
+        )
+
+        if client is None:
+            to_store = da.store(scaled_stack, z, lock=True, compute=True)
+        else:
+            to_store = da.store(scaled_stack, z, lock=False, compute=False)
+            to_store = client.compute(to_store)
+            progress(to_store)
+            to_store = client.gather(to_store)
 
     def write_resolutions(self, mip, client):
 
@@ -139,14 +201,11 @@ class BuilderMultiscaleGenerator:
     def downsample_by_chunk(self, from_mip, to_mip, down_sample_ratio, from_slice, to_slice, minmax=False):
 
         '''
-        Slices are for dims (t,c,z,y,x), downsamp only works on 3 dims
+        Slices are for dims (t,c,z,y,x), downsample only works on 3 dims
         '''
+        print(f'from_slice len={len(from_slice)} to_slice len={len(to_slice)}')
 
-        # Run proper downsampling method
-        if self.downSampType == 'mean':
-            dsamp_method = self.local_mean_downsample
-        elif self.downSampType == 'max':
-            dsamp_method = self.local_max_downsample
+        dsamp_method = self.local_mean_downsample
 
         from_array = self.open_store(from_mip, mode='r')
         to_array = self.open_store(to_mip)
@@ -156,9 +215,9 @@ class BuilderMultiscaleGenerator:
         if minmax:
             min, max = data.min(), data.max()
 
-        data = data[0,0]
+        #####data = data[0,0]
         data = dsamp_method(data,down_sample_ratio=down_sample_ratio)
-        data = data[None, None, ...]
+        #####data = data[None, None, ...]
         to_array[to_slice] = data
         if minmax:
             return True, (min, max, from_slice[1].start)
@@ -230,7 +289,8 @@ class BuilderMultiscaleGenerator:
             from_shape = from_array.shape
 
         # Chunks are calculated for to_array
-        optimum_chunks = self.chunk_increase_to_limit_3d(shape[2:], chunksize[2:],
+        ##### Change
+        optimum_chunks = self.chunk_increase_to_limit_3d(shape[1:], chunksize[1:],
                                                          self.res_chunk_limit_GB)
 
         chunksize = list(chunksize[:2]) + list(optimum_chunks)
@@ -304,23 +364,34 @@ class BuilderMultiscaleGenerator:
 
         new_array_store = self.get_store(mip)
 
-        new_shape = (self.TimePoints, self.channels, *self.pyramidMap[mip]['shape'])
-        new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
+        ##### Changes
+        #####new_shape = (self.TimePoints, self.channels, *self.pyramidMap[mip]['shape'])
+        #####new_chunks = (1, 1, *self.pyramidMap[mip]['chunk'])
+        new_shape = (self.channels, *self.pyramidMap[mip]['shape'])
+        new_chunks = (1, *self.pyramidMap[mip]['chunk'])
 
         new_array = zarr.zeros(new_shape, chunks=new_chunks, store=new_array_store, overwrite=True,
                                compressor=self.compressor, dtype=self.dtype)
 
+        ##### Changes
+        """
         from_array_shape_chunks = (
             (self.TimePoints, self.channels, *self.pyramidMap[mip - 1]["shape"]),
-            (1, 1, *self.pyramidMap[mip - 1]["chunk"]),
-        )
+            (1, 1, *self.pyramidMap[mip - 1]["chunk"]),)
 
         to_array_shape_chunks = (
             (self.TimePoints, self.channels, *self.pyramidMap[mip]["shape"]),
-            (1, 1, *self.pyramidMap[mip]["chunk"]),
-        )
+            (1, 1, *self.pyramidMap[mip]["chunk"]),)
+        """
+        from_array_shape_chunks = (
+            (self.channels, *self.pyramidMap[mip - 1]["shape"]),
+            (1, *self.pyramidMap[mip - 1]["chunk"]),)
 
-        down_sample_ratio = self.pyramidMap[mip]['downsamp']
+        to_array_shape_chunks = (
+            (self.channels, *self.pyramidMap[mip]["shape"]),
+            (1, *self.pyramidMap[mip]["chunk"]),)
+
+        down_sample_ratio = self.pyramidMap[mip]['downsample']
 
         slices = self.chunk_slice_generator_for_downsample(from_array_shape_chunks, to_array_shape_chunks,
                                                       down_sample_ratio=down_sample_ratio, length=True)
@@ -343,9 +414,15 @@ class BuilderMultiscaleGenerator:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
             else:
                 print(f'Computing chunks {num} of {total_slices} : {mins_remaining} mins remaining', end='\r')
-            tmp = delayed(self.downsample_by_chunk)(mip-1, mip, down_sample_ratio, from_slice, to_slice, minmax=minmax)
-            tmp = client.compute(tmp)
-            processing.append(tmp)
+            if client is not None:
+                tmp = delayed(self.downsample_by_chunk)(mip-1, mip, down_sample_ratio, from_slice, to_slice, minmax=minmax)
+                tmp = client.compute(tmp)
+                processing.append(tmp)
+            else:
+                tmp = self.downsample_by_chunk(mip-1, mip, down_sample_ratio, from_slice, to_slice, minmax=minmax)
+                if minmax:
+                    final_results.append(tmp)
+
             del tmp
             results, processing = self.compute_govenor(processing, num_at_once=round(self.cpu_cores*4), complete=False, keep_results=minmax)
 
@@ -371,12 +448,11 @@ class BuilderMultiscaleGenerator:
                 KeyboardInterrupt: If the cleanup process is interrupted by the user.
                 Exception: If an error occurs during the cleanup process.
             """
-        from time import sleep
-        sleep(5) # give the system time to finish writing
-        """
+        print(f'\nCleaning up {self.tmp_dir} and orphaned lock files')
+        sleep(1) # give the system time to finish writing
+        
         countKeyboardInterrupt = 0
         countException = 0
-        print('Cleaning up tmp dir and orphaned lock files')
         while True:
             try:
                 # Remove any existing files in the temp_dir
@@ -415,6 +491,8 @@ class BuilderMultiscaleGenerator:
                 if countException == 100:
                     break
                 pass
-        """
+        
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
+
+
