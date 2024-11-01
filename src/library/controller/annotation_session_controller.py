@@ -111,19 +111,24 @@ class AnnotationSessionController:
         self.session.commit()
         return data.id
 
-    def get_fiducials(self, prep_id):
+
+    def get_fiducials(self, prep_id, debug: bool = False):
         """Fiducials will be marked on downsampled images. You will need the resolution
         to convert from micrometers back to pixels of the downsampled images.
-        """
 
+        :param debug: whether to print the raw SQL query
+        """
         fiducials = defaultdict(list)
-        annotation_session = (
+
+        # Define query
+        query = (
             self.session.query(AnnotationSession)
             .filter(AnnotationSession.active == True)
             .filter(AnnotationSession.FK_prep_id == prep_id)
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([FIDUCIAL])))
-            .first()
         )
+        
+        annotation_session = query.first()
 
         if not annotation_session:
             print("No annotation session for this animal was found.")
@@ -132,23 +137,21 @@ class AnnotationSessionController:
         xy_resolution = self.scan_run.resolution
         z_resolution = self.scan_run.zresolution
 
-        # data = annotation_session.annotation['childJsons']
-        # print(f'data: {data}  type: {type(data)}')
-        # return {}
-
-        # first test data to make sure it has the right keys
         try:
             data = annotation_session.annotation["childJsons"]
         except KeyError:
             print("No childJsons key in data")
             return fiducials
 
-        for x,y,z in data:
+        for x, y, z in data:
             x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
             y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
             section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
             fiducials[section].append((x, y))
-            
+
+        if debug:  # Print the raw SQL query
+            print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
+
         return fiducials
 
 
