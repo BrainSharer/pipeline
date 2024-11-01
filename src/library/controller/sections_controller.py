@@ -38,8 +38,7 @@ class SectionsController():
                 .order_by(Section.slide_physical_id.desc())\
                 .order_by(Section.scene_number.asc())
 
-        if debug:
-            # Print the raw SQL query
+        if debug: # Print the raw SQL query
             print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
 
         sections = query.all()
@@ -52,6 +51,3 @@ class SectionsController():
             .filter(Section.channel == 1)\
             .count() 
         return count
-
-    
-
