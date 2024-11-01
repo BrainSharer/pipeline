@@ -8,19 +8,16 @@ All imports are listed by the order in which they are used in the
 """
 
 import os
-import shutil
 import SimpleITK as sitk
 import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-import concurrent.futures
 import subprocess
-from datetime import datetime
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED, REALIGNED, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.mask_manager import MaskManager
@@ -33,7 +30,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir
+from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 
 try:
@@ -184,101 +181,6 @@ class Pipeline(
         else:
             print(f'No histogram for full resolution images')
 
-    def align(self):
-        """Perform the section to section alignment (registration)
-        We need to set the maskpath to get information from ImageManager
-        """
-
-        print(self.TASK_ALIGN)
-        self.pixelType = sitk.sitkFloat32
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
-        print(f'Elastix manager Input: {self.input}')
-        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
-
-        if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
-        self.start_image_alignment()
-        if self.channel == 1 and self.downsample:
-            self.create_web_friendly_sections()
-        print(f'Finished {self.TASK_ALIGN}.')
-
-    def realign(self):
-        """Perform the improvement of the section to section alignment
-        We need two sets of neuroglancer data, one from the cropped data which is unaligned, 
-        and one from the aligned data. So first check if they both exist, if not, create them.
-        """
-
-        def delete_in_background(path):
-            #NOTE: MOVE TO UTILITIES AFTER TESTING - DR (duplicate in run_neuroglancer)
-            current_date = datetime.now().strftime('%Y-%m-%d')
-            old_path = f"{path}.old_{current_date}"
-
-            if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
-                shutil.rmtree(old_path)
-
-            os.rename(path, old_path)  # Rename the directory
-
-            # Delete the renamed directory in the background
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(shutil.rmtree, old_path)
-            return future 
-        
-
-        print(self.TASK_REALIGN)
-
-        #unaligned Ng generated during initial C1T
-
-        # neuroglancer_cropped = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned')
-        # neuroglancer_aligned = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T')
-        # self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        # if not os.path.exists(neuroglancer_aligned):
-        #     print(f'Missing {neuroglancer_aligned}')
-        #     self.neuroglancer()
-        # if not os.path.exists(neuroglancer_cropped):
-        #     print(f'Missing {neuroglancer_cropped}')
-        #     print('Creating neuroglancer data from unaligned cropped data.')
-        #     self.input = self.fileLocationManager.get_thumbnail_cropped(channel=1)
-        #     self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(
-        #     downsample=self.downsample,
-        #     channel=1,
-        #     cropped=True
-        # )
-
-        #     self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C1T_unaligned_rechunked')
-        #     self.output = neuroglancer_cropped
-        #     self.run_neuroglancer()
-
-        
-
-        nchanges = self.update_within_stack_transformations()
-        if nchanges > 0:
-            print('\nChanges have been made.')
-            print('Cleaning up the thumbnail aligned data and rerunning the alignment task.')
-            thumbnail_aligned_folder = self.fileLocationManager.get_thumbnail_aligned(channel=1)
-            delete_in_background(thumbnail_aligned_folder)
-            
-            self.align()
-
-            outputpath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=False) 
-            if os.path.exists(outputpath):
-                print(f'Removing {outputpath}')
-                delete_in_background(outputpath)
-            rechunkmepath = self.fileLocationManager.get_neuroglancer(channel=1, downsample=True, rechunk=True)
-            if os.path.exists(rechunkmepath):
-                print(f'Removing {rechunkmepath}')
-                delete_in_background(rechunkmepath)
-            progresspath = self.fileLocationManager.get_neuroglancer_progress(channel=1, downsample=True, cropped=False)
-            if os.path.exists(progresspath):
-                print(f'Removing {progresspath}')
-                delete_in_background(progresspath)
-
-            print('Auto-reruning the neuroglancer task.')
-            self.neuroglancer(generate_preview=False) #auto rerun C1T
-        else:
-            self.fileLogger.logevent(f"NO TRANSFORMATION CHANGES DETECTED. REALIGNMENT NOT PERFORMED")
-
-        print(f'Finished {self.TASK_REALIGN}.')
 
     def affine_align(self):
         """Perform the section to section alignment (registration)
@@ -287,7 +189,103 @@ class Pipeline(
 
         self.create_affine_transformations()
 
-    def neuroglancer(self, generate_preview=True):
+
+    def align(self):
+        """Perform the section to section alignment (registration)
+        We need to set the maskpath to get information from ImageManager
+        """
+
+        print(self.TASK_ALIGN)
+        self.pixelType = sitk.sitkFloat32
+        self.iteration = CROPPED
+        self.use_points = False
+        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
+        print(f'Initial elastix manager alignment input: {self.input}')
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+
+        if self.channel == 1 and self.downsample:
+            self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
+        self.start_image_alignment()
+        if self.channel == 1 and self.downsample:
+            self.create_web_friendly_sections()
+
+        neuroglancer_aligned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=ALIGNED)
+        if not os.path.exists(neuroglancer_aligned):
+            self.iteration = ALIGNED
+            self.neuroglancer()
+
+
+        print(f'Finished {self.TASK_ALIGN}.')
+
+    def realign(self):
+        """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
+        aligned image stack from thumnbail_aligned
+        
+        """        
+
+        print(self.TASK_REALIGN)
+        self.create_fiducial_points()
+        self.pixelType = sitk.sitkFloat32
+        self.iteration = ALIGNED
+        self.use_points = True
+        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
+        print(f'Second elastix manager alignment input: {self.input}')
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        if self.channel == 1 and self.downsample:
+            self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
+        self.start_image_alignment()
+
+        neuroglancer_realigned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=REALIGNED)
+        print(f'Neuroglancer realigned={neuroglancer_realigned}')
+        if not os.path.exists(neuroglancer_realigned):
+            self.iteration = REALIGNED
+            self.neuroglancer()
+        
+        print(f'Finished {self.TASK_REALIGN}.')
+
+    def neuroglancer(self):
+        """This is the main method to run the entire neuroglancer process.
+        We also define the input, output and progress directories.
+        This method may be run from the command line as a task, or it may
+        also be run from the align and realign methods
+        """
+
+        if self.iteration is None:
+            self.iteration = REALIGNED
+
+        print()
+        print(self.TASK_NEUROGLANCER)
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=self.iteration)
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+
+        print(f'Input dir={self.input}')
+        print(f'Rechunkme dir={self.rechunkme_path}')
+        print(f'Output dir={self.output}')
+        print(f'Progress dir={self.progress_dir}')
+        return        
+
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+    """Start new Duane methods to use scratch space"""
+
+
+    def run_neuroglancerXXX(self):
+        """The input and output directories are set in either the self.neuroglancer method or
+        the self.realign method.  This method is used to run the neuroglancer process.
+        """
+
+        print(self.TASK_NEUROGLANCER)
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+
+
+    def neuroglancerXXX(self, generate_preview=True):
         """This is a convenience method to run the entire neuroglancer process.
         We also define the input, output and progress directories.
 
@@ -301,11 +299,8 @@ class Pipeline(
 
         scratch_tmp = get_scratch_dir()        
         
-        if self.downsample:
-            input_path = self.fileLocationManager.get_thumbnail_aligned(channel=self.channel)
-            input_preview_path = self.fileLocationManager.get_thumbnail_cropped(channel=1)
-        else:
-            input_path = self.fileLocationManager.get_full_aligned(channel=self.channel)
+        input_path = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
+        input_preview_path = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=0)
 
         final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, rechunk=False)
         if use_scatch:
@@ -356,25 +351,11 @@ class Pipeline(
         ####################################################### C1T_unaligned
 
 
-    def run_neuroglancer(self, input_path, rechunkme_path, staging_output, final_output, progress_dir, SCRATCH):
+    def run_neuroglancerXXX(self, input_path, rechunkme_path, staging_output, final_output, progress_dir, SCRATCH):
         """The input and output directories are set in either the self.neuroglancer method or
         the self.realign method.  This method is used to run the neuroglancer process.
         """
 
-        def delete_in_background(path):
-            #NOTE: MOVE TO UTILITIES AFTER TESTING - DR
-            current_date = datetime.now().strftime('%Y-%m-%d')
-            old_path = f"{path}.old_{current_date}"
-
-            if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
-                shutil.rmtree(old_path)
-
-            os.rename(path, old_path)  # Rename the directory
-
-            # Delete the renamed directory in the background
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(shutil.rmtree, old_path)
-            return future 
 
 
         print(self.TASK_NEUROGLANCER)
@@ -462,8 +443,9 @@ class Pipeline(
                 f"C{self.channel}/thumbnail",
                 f"C{self.channel}/thumbnail_cleaned",
                 "C1/normalized",
-                f"C{self.channel}/thumbnail_cropped",
-                f"C{self.channel}/thumbnail_aligned",
+                f"C{self.channel}/thumbnail_{CROPPED}",
+                f"C{self.channel}/thumbnail_{ALIGNED}",
+                f"C{self.channel}/thumbnail_{REALIGNED}",
             ]
             ndirectory = f"C{self.channel}T"
         else:
