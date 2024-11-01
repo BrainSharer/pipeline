@@ -15,7 +15,6 @@ Image.MAX_IMAGE_PIXELS = None
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 from tqdm import tqdm
-#GPU alt TESTING
 
 import torch
 if torch.cuda.is_available():
@@ -35,19 +34,12 @@ from library.utilities.utilities_registration import (
 from library.image_manipulation.image_manager import ImageManager
 
 
-# import torch.nn as nn
-# import torch.nn.functional as F
-# from torchvision import transforms
-# from torch.optim.optimizer import Optimizer, required
-
-
 class ElastixManager():
     """Class for generating, storing and applying transformations within 
     stack alignment [with the Elastix package]
     All methods relate to aligning images in stack
     """
 
-        
 
     def create_within_stack_transformations(self):
         """Calculate and store the rigid transformation using elastix.  
@@ -78,7 +70,8 @@ class ElastixManager():
 
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         os.makedirs(self.registration_output, exist_ok=True)
-        fiducials = self.sqlController.get_fiducials(self.animal)
+
+        fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)
         if nchanges == 0:
             print('No fiducial points were found and so no changes have been made.')
@@ -95,6 +88,7 @@ class ElastixManager():
                     f.write(f'{x} {y}')
                     f.write('\n')
 
+
     def update_within_stack_transformations(self):
         """Takes the existing transformations and aligned images and improves the transformations
         Elastix needs the points to be in files so we need to write the data from the DB to the filesystem.
@@ -102,7 +96,7 @@ class ElastixManager():
         will be a point file containing 3 ponts for each section.
         """
         os.makedirs(self.registration_output, exist_ok=True)
-        fiducials = self.sqlController.get_fiducials(self.animal)
+        fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)
         if nchanges == 0:
             print('No fiducial points were found and so no changes have been made.')
