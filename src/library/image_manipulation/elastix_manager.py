@@ -22,7 +22,7 @@ if torch.cuda.is_available():
     import cupy as cp
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image, get_scratch_dir
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -161,7 +161,14 @@ class ElastixManager():
         Raises:
             AssertionError: If the number of fixed points does not match the number of moving points.
         """
+        use_scatch = True #LOCAL STORAGE OF ELASTIX FILES :: TODO: CLEANUP AFTER USE
         
+        # Transfer images to GPU memory
+        def to_gpu(image):
+            self.fileLogger.logevent(f"ALIGNMENT USING GPU")
+            array = sitk.GetArrayFromImage(image)
+            gpu_array = cp.asarray(array)
+            return sitk.GetImageFromArray(cp.asnumpy(gpu_array))
 
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
@@ -169,6 +176,13 @@ class ElastixManager():
 
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
+
+        if torch.cuda.is_available():
+            fixed = to_gpu(fixed)
+            moving = to_gpu(moving)
+            print(f'Using CUDA on GPU - SECTION:{fixed_index}')
+        else:
+            print(f'No GPU available, using CPU - SECTION:{fixed_index}')
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
@@ -198,8 +212,19 @@ class ElastixManager():
             elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
 
         elastixImageFilter.SetLogToFile(True)
-        logpath = os.path.join(self.registration_output, 'iteration_logs')
+        
+        if use_scatch:
+            scratch_tmp = get_scratch_dir()
+            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
+            logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
+        else:
+            logpath = os.path.join(self.registration_output, 'registration', 'iteration_logs')
+
         os.makedirs(logpath, exist_ok=True)
+
+        if self.debug:
+            print(f'SCRATCH DIR={SCRATCH}')
+
         elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
