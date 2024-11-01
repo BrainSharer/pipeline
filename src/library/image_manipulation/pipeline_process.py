@@ -264,7 +264,6 @@ class Pipeline(
         print(f'Rechunkme dir={self.rechunkme_path}')
         print(f'Output dir={self.output}')
         print(f'Progress dir={self.progress_dir}')
-        return        
 
         self.create_neuroglancer()
         self.create_downsamples()
