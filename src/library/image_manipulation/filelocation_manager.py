@@ -177,7 +177,9 @@ class FileLocationManager(object):
         outpath = self.get_alignments(iteration=iteration)
         channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir += f"T_rechunkme_{outpath}"
+            channel_outdir += "T"
+
+        channel_outdir += f"_rechunkme_{outpath}"
 
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")

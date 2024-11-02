@@ -101,6 +101,7 @@ class Pipeline(
         self.sqlController = SqlController(animal)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
+        self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
         self.check_programs()
         self.section_count = self.get_section_count()
@@ -210,7 +211,9 @@ class Pipeline(
             self.create_web_friendly_sections()
 
         neuroglancer_aligned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=ALIGNED)
-        if not os.path.exists(neuroglancer_aligned):
+        if os.path.exists(neuroglancer_aligned):
+            print(f'Neuroglancer aligned precomputed exists at aligned={neuroglancer_aligned}')
+        else:
             self.iteration = ALIGNED
             self.neuroglancer()
 
@@ -222,7 +225,9 @@ class Pipeline(
         aligned image stack from thumnbail_aligned
         
         """        
-
+        if not self.downsample:
+            print('Realign is only necessary with downsampled images.')
+            return
         print(self.TASK_REALIGN)
         self.create_fiducial_points()
         self.pixelType = sitk.sitkFloat32
@@ -236,8 +241,9 @@ class Pipeline(
         self.start_image_alignment()
 
         neuroglancer_realigned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=REALIGNED)
-        print(f'Neuroglancer realigned={neuroglancer_realigned}')
-        if not os.path.exists(neuroglancer_realigned):
+        if os.path.exists(neuroglancer_realigned):
+            print(f'Neuroglancer realigned precomputed exists at realigned={neuroglancer_realigned}')
+        else:
             self.iteration = REALIGNED
             self.neuroglancer()
         
@@ -251,7 +257,7 @@ class Pipeline(
         """
 
         if self.iteration is None:
-            self.iteration = REALIGNED
+            self.iteration = ALIGNED
 
         print()
         print(self.TASK_NEUROGLANCER)
