@@ -408,6 +408,8 @@ class ElastixManager():
         """
         self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration))
         transformations = self.get_transformations()
+        print(f"Start Alignment input folder: {self.input}")
+        print(f"Start Alignment output output: {self.output}")
 
         if not self.downsample:
             transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=SCALING_FACTOR)
