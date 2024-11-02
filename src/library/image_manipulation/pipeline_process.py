@@ -203,10 +203,12 @@ class Pipeline(
         self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
         print(f'Initial elastix manager alignment input: {self.input}')
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
+        os.makedirs(self.registration_output, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
-            
+
         self.start_image_alignment()
 
         if self.channel == 1 and self.downsample:
@@ -238,6 +240,7 @@ class Pipeline(
         self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
         print(f'Second elastix manager alignment input: {self.input}')
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
         self.start_image_alignment()
