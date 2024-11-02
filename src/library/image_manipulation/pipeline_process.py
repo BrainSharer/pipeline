@@ -206,10 +206,9 @@ class Pipeline(
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
-        else:
-            self.iteration = ALIGNED
+            
         self.start_image_alignment()
-        
+
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()
 
