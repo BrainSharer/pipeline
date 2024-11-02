@@ -367,10 +367,14 @@ class ElastixManager():
         else:
             for i in range(1, len(files)):
                 rotation0, xshift0, yshift0 = self.load_elastix_transformation(self.animal, i, 0)
-                rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, 1)
-                rotation = rotation0 + rotation1
-                xshift = xshift0 + xshift1
-                yshift = yshift0 + yshift1
+                #rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, 1)
+                #rotation = rotation0 + rotation1
+                #xshift = xshift0 + xshift1
+                #yshift = yshift0 + yshift1
+                #rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, 1)
+                rotation = rotation0
+                xshift = xshift0
+                yshift = yshift0
                 T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
                 transformation_to_previous_sec[i] = T
 
