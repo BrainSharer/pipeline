@@ -12,6 +12,7 @@ import gc
 from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
+from concurrent.futures import Future
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
@@ -19,8 +20,7 @@ DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
 
 
-def delete_in_background(path):
-    #NOTE: MOVE TO UTILITIES AFTER TESTING - DR (duplicate in run_neuroglancer)
+def delete_in_background(path: str) -> Future:
     current_date = datetime.now().strftime('%Y-%m-%d')
     old_path = f"{path}.old_{current_date}"
 
