@@ -21,7 +21,7 @@ import torch
 if torch.cuda.is_available():
     import cupy as cp
 
-from library.image_manipulation.filelocation_manager import REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, REALIGNED, FileLocationManager
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 from library.utilities.utilities_mask import equalized, normalize_image
 from library.utilities.utilities_registration import (
@@ -416,9 +416,24 @@ class ElastixManager():
             print(f"Alignment output output: {self.output}")
             return
         
-        return
         self.align_images(transformations)
 
+
+    def get_alignment_status(self):
+        iteration = None
+        aligned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+        realigned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
+        aligned_files = os.listdir(aligned_directory)
+        realigned_files = os.listdir(realigned_directory)
+        aligned_count = self.sqlController.get_elastix_count(self.animal, iteration=ALIGNED) + 1
+        realigned_count = self.sqlController.get_elastix_count(self.animal, iteration=REALIGNED) + 1
+        print(f'aligned_count={aligned_count} realigned_count={realigned_count}')
+        print(f'aligned_files={len(aligned_files)} realigned_files={len(realigned_files)}')
+        if len(aligned_files) == aligned_count and len(aligned_files) > 0:
+            iteration = ALIGNED
+        if len(realigned_files) == realigned_count and len(realigned_files) > 0:
+            iteration = REALIGNED
+        return iteration 
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  

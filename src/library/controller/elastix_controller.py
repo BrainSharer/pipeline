@@ -87,3 +87,10 @@ class ElastixController():
             .filter(ElastixTransformation.iteration == 0)\
             .filter(ElastixTransformation.section == section).update(updates)
         self.session.commit()
+
+    def get_elastix_count(self, animal, iteration):
+        count = self.session.query(ElastixTransformation)\
+            .filter(ElastixTransformation.FK_prep_id == animal)\
+            .filter(ElastixTransformation.iteration == iteration)\
+            .count() 
+        return count
