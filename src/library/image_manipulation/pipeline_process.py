@@ -214,7 +214,6 @@ class Pipeline(
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()
 
-
         print(f'Finished {self.TASK_ALIGN}.')
 
     def realign(self):
@@ -244,9 +243,10 @@ class Pipeline(
         also be run from the align and realign methods
         """
 
+        self.iteration = self.get_alignment_status()
         if self.iteration is None:
-            self.iteration = ALIGNED
-
+            print('No alignment iterations found.  Please run the alignment steps first.')
+            return
         print()
         print(self.TASK_NEUROGLANCER)
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
@@ -258,7 +258,6 @@ class Pipeline(
         print(f'Rechunkme dir={self.rechunkme_path}')
         print(f'Output dir={self.output}')
         print(f'Progress dir={self.progress_dir}')
-        return
 
         self.create_neuroglancer()
         self.create_downsamples()
