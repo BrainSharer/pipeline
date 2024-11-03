@@ -4,9 +4,8 @@ import os
 import sys
 
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
-CROPPED = 0
-ALIGNED = 1
-REALIGNED = 2
+ALIGNED = 0
+REALIGNED = 1
 
 
 
@@ -70,23 +69,16 @@ class FileLocationManager(object):
         return os.path.join(self.prep, f"C{channel}", "full_cropped")
 
     def get_full_aligned(self, channel=1):
-        if isinstance(channel, int):
-            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
-        else:
-            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
+        validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         return validated_path
     
     def get_ome_zarr(self, channel=1):
-        if isinstance(channel, int):
-            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
-        else:
-            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
+        validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
     
     def get_alignments(self, iteration=0):
         aligments = {}
-        aligments[CROPPED] = "cropped"
         aligments[ALIGNED] = "aligned"
         aligments[REALIGNED] = "realigned"
 
@@ -97,7 +89,6 @@ class FileLocationManager(object):
             sys.exit(1)
 
         return aligments[iteration]
-
 
     def get_alignment_directories(self, channel, downsample, iteration=0):
 
@@ -120,13 +111,21 @@ class FileLocationManager(object):
         #os.makedirs(output, exist_ok=True)
         return input, output
 
+    
+    def get_directory(self, channel: int, downsample: bool, inpath: str) -> str:
+        if downsample:
+            resolution = "thumbnail"
+        else:
+            resolution = "full"
+
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_{inpath}')
+        return input
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
     
     def get_thumbnail_cropped(self, channel=1):
-        inpath = self.get_alignments(iteration=CROPPED)
-        return os.path.join(self.prep, f"C{channel}", f"thumbnail_{inpath}")
+        return os.path.join(self.prep, f"C{channel}", f"thumbnail_cropped")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")
