@@ -74,6 +74,7 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     )
     shift = center + (xshift, yshift) - np.dot(R, center)
     T = np.vstack([np.column_stack([R, shift]), [0, 0, 1]])
+
     return T
 
 
@@ -126,7 +127,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     return rigid_params
 
 
-def create_downsampled_transforms(transforms: dict, downsample: bool, scaling_factor: float) -> dict:
+def rescale_transformations(transforms: dict) -> dict:
     """Changes the dictionary of transforms to the correct resolution
 
 
@@ -136,32 +137,18 @@ def create_downsampled_transforms(transforms: dict, downsample: bool, scaling_fa
     :return: corrected dictionary of filename: array  of transforms
     """
 
-    if downsample:
-        transforms_scale_factor = 1
-    else:
-        transforms_scale_factor = scaling_factor
-
-    tf_mat_mult_factor = np.array([[1, 1, transforms_scale_factor], [1, 1, transforms_scale_factor]])
+    tf_mat_mult_factor = np.array([[1, 1, SCALING_FACTOR], [1, 1, SCALING_FACTOR]])
 
     transforms_to_anchor = {}
     for img_name, tf in transforms.items():
         transforms_to_anchor[img_name] = \
             convert_2d_transform_forms(np.reshape(tf, (3, 3))[:2] * tf_mat_mult_factor)
+        
+    
     return transforms_to_anchor
 
-
-def create_scaled_transform(T):
-    """Creates a transform (T) to the correct resolution
-    """
-    transforms_scale_factor = SCALING_FACTOR
-
-    tf_mat_mult_factor = np.array([[1, 1, transforms_scale_factor], [1, 1, transforms_scale_factor]])
-    Ts = convert_2d_transform_forms(np.reshape(T, (3, 3))[:2] * tf_mat_mult_factor)
-    return Ts
-
-
 def convert_2d_transform_forms(arr):
-    """Helper method used by create_downsampled_transforms
+    """Helper method used by rescale_transformations
 
     :param arr: an array of data to vertically stack
     :return: a numpy array
@@ -181,6 +168,10 @@ def align_image_to_affine(file_key):
     """
     infile, outfile, T, fillcolor = file_key
     basepath = os.path.basename(os.path.normpath(infile))
+    print(f'aliging {basepath} to affine ', end="\t")
+    xtran = int(T[0,2])
+    ytran = int(T[1,2])
+    print(f'xtran={xtran} ytran={ytran}')
 
     try:
         im0 = imread(infile)
@@ -188,6 +179,7 @@ def align_image_to_affine(file_key):
         print(f'Could not use tifffile to open={basepath}')
         print(f'Error={e}')
         sys.exit()
+
 
     # If the image is sRGB 16bit, convert to 8bit
     if im0.ndim == 3 and im0.dtype == np.uint16:
@@ -201,7 +193,6 @@ def align_image_to_affine(file_key):
         print(f'Could not convert file {basepath} to PIL ')
         print(f'Error={e}')
         sys.exit()
-
     try:
         im1 = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
     except Exception as e:

@@ -32,6 +32,7 @@ from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
 from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
+from library.utilities.utilities_registration import rescale_transformations
 
 try:
     from settings import data_path, host, schema
@@ -202,14 +203,48 @@ class Pipeline(
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
         print(f'Initial elastix manager alignment input: {self.input}')
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        os.makedirs(self.registration_output, exist_ok=True)
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
+        
+        print(f"Aligning images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
+
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
 
-        self.start_image_alignment()
+        #self.start_image_alignment()
+        transformations = self.get_transformations()
 
+        T = transformations['000.tif']
+        xtran = int(T[0,2])
+        ytran = int(T[1,2])
+        print(f'Before rescale xtran={xtran} ytran={ytran}')
+
+
+        if not self.downsample:
+            transformations = rescale_transformations(transformations)
+
+        T = transformations['000.tif']
+        xtran = int(T[0,2])
+        ytran = int(T[1,2])
+        print(f'After rescale xtran={xtran} ytran={ytran}')
+
+        if len(starting_files) != len(transformations) and False:
+            print("Error: The number of files in the input directory does not match the number of transformations")
+            print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
+            print(f"Alignment input folder: {self.input}")
+            print(f"Alignment output output: {self.output}")
+            return
+
+        self.align_images(transformations)
+
+        
+        
+        
+        
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()
 
@@ -227,7 +262,6 @@ class Pipeline(
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
         print(f'Second elastix manager alignment input: {self.input}')
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
         self.start_image_alignment()

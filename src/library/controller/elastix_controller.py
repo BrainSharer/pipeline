@@ -59,7 +59,7 @@ class ElastixController():
             ElastixTransformation.metric != 0).first())
         return row_exists
     
-    def add_elastix_row(self, animal, section, rotation, xshift, yshift, metric=0, iteration=0):
+    def add_elastix_row(self, animal, section, rotation, xshift, yshift, metric, iteration):
         """adding a row in the elastix table
 
         :param animal: (str) Animal ID
@@ -75,7 +75,7 @@ class ElastixController():
         self.add_row(data)
 
 
-    def update_elastix_row(self, animal, section, updates):
+    def update_elastix_row(self, animal, section, updates, iteration):
         """Update a row
         
         :param animal: (str) Animal ID
@@ -84,7 +84,7 @@ class ElastixController():
         """
         self.session.query(ElastixTransformation)\
             .filter(ElastixTransformation.FK_prep_id == animal)\
-            .filter(ElastixTransformation.iteration == 0)\
+            .filter(ElastixTransformation.iteration == iteration)\
             .filter(ElastixTransformation.section == section).update(updates)
         self.session.commit()
 
