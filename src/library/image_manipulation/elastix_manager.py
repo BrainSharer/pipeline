@@ -298,22 +298,15 @@ class ElastixManager():
         :return: a dictionary of key=filename, value = coordinates
         """
 
-        try:
-            files = os.listdir(self.input)
-        except OSError:
-            print(f"Error: Could not find the input directory: {self.input}")
-            return
-
         transformation_to_previous_sec = {}
         image_manager = ImageManager(self.fileLocationManager.get_thumbnail_cropped())
         center = image_manager.center
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} {self.input}')
-        print(f'using center of {center} and midpoint of {midpoint}')
+        print(f'Using center of {center} and midpoint of {midpoint}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
-            print(i, xshift, yshift)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
@@ -335,11 +328,6 @@ class ElastixManager():
                 for i in range(midpoint + 1, moving_index + 1):
                     T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
                 transformations[filename] = T_composed
-
-        T = transformations['001.tif']
-        xtran = int(T[0,2])
-        ytran = int(T[1,2])
-        print(f'get transformations xtran={xtran} ytran={ytran}')
 
         return transformations
 

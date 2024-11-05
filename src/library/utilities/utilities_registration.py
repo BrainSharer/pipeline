@@ -168,10 +168,6 @@ def align_image_to_affine(file_key):
     """
     infile, outfile, T, fillcolor = file_key
     basepath = os.path.basename(os.path.normpath(infile))
-    print(f'aliging {basepath} to affine ', end="\t")
-    xtran = int(T[0,2])
-    ytran = int(T[1,2])
-    print(f'xtran={xtran} ytran={ytran}')
 
     try:
         im0 = imread(infile)
