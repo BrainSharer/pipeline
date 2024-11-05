@@ -456,7 +456,7 @@ class ElastixManager():
         :param transforms (dict): dictionary of transformations indexed by id of moving sections
         """
         image_manager = ImageManager(self.input)        
-        self.bgcolor = image_manager.get_bgcolor(self.maskpath)
+        self.bgcolor = image_manager.get_bgcolor()
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
