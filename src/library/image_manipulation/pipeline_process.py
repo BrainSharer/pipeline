@@ -215,19 +215,7 @@ class Pipeline(
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
 
-        transformations = self.get_transformations()
-
-        if not self.downsample:
-            transformations = rescale_transformations(transformations)
-
-        if len(starting_files) != len(transformations):
-            print("Error: The number of files in the input directory does not match the number of transformations")
-            print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
-            print(f"Alignment input folder: {self.input}")
-            print(f"Alignment output output: {self.output}")
-            return
-
-        self.align_images(transformations)
+        self.start_image_alignment()
         
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()

@@ -272,7 +272,7 @@ class ElastixManager():
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        self.input = self.fileLocationManager.get_aligned_directory(channel=1, downsample=True, iteration=0)
+        self.input = self.fileLocationManager.get_thumbnail_cropped()
         image_manager = ImageManager(self.input)
         return image_manager.center
 
