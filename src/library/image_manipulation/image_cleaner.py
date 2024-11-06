@@ -113,7 +113,7 @@ class ImageCleaner:
             if self.debug:
                 print(f'Updating scan run. and set bgcolor to {self.bgcolor}')
 
-            self.setup_parallel_place_images(staging_output) #ONLY APPLIES TO PAST 1ST RUN
+            self.setup_parallel_place_images(staging_output) #ONLY APPLIES PAST 1ST RUN
         
 
     def setup_parallel_create_cleaned(self, staging_output, final_output):

@@ -348,8 +348,7 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     
     # CONTINUE PROCESSING WITH place_image (CHAIN) IF PAST 1ST RUN
     if mask_image > 0 and channel == 1 and downsample:
-        print('downsample detected - WAIT FOR FILE!')
-        write_image(outfile, cleaned, message=message)
+        write_image(outfile, cleaned, message=message)#WAIT FOR FILE!
     else:
         if debug:
             print('BACKGROUND SAVE CLEANED IMAGE; CONTINUE WITH place_image USING ARRAY IN RAM')
