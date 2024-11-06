@@ -195,83 +195,6 @@ class Pipeline(
     def align(self):
         """Perform the section to section alignment (registration)
         We need to set the maskpath to get information from ImageManager
-
-        Note: Revised 1-NOV-2024 to include functionality of [prev] align and realign methods
-        """
-
-        print(self.TASK_ALIGN)
-
-        nfiducial_points = self.create_fiducial_points() #CHECK DB FOR FIDUCIAL POINTS (RE-ALIGN)
-        if nfiducial_points == 0:
-            iteration=CROPPED
-            self.use_points = False
-        else:
-            iteration=ALIGNED
-            self.use_points = True
-
-        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
-        self.pixelType = sitk.sitkFloat32
-        
-        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1
-
-        #######################################################
-        # PARAMETER SUMMARY
-        print('*'*50, '\n', 'PARAMETER SUMMARY')
-        print(f'Initial elastix manager alignment input: {self.input}')
-        print(f'IMG MASK [INPUT] LOCATION: {self.maskpath}')
-        print(f'DB FIDUCIAL COUNT, IF AVAILABLE: {nfiducial_points}')
-        print('*'*50, '\n')
-        #######################################################
-
-        if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations(iteration)#only applies to downsampled and channel 1
-        self.start_image_alignment(iteration)
-
-        if nfiducial_points == 0:
-            if self.channel == 1 and self.downsample:
-                self.create_web_friendly_sections(iteration)
-
-            print('You must run neuroglancer step manually')
-            #CREATE NG FOLDER - SEPARATE STEP (where use_points is used)
-            # neuroglancer_aligned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=ALIGNED)
-            # if not os.path.exists(neuroglancer_aligned):
-            #     self.iteration = ALIGNED
-            #     self.neuroglancer()
-        else: #REALIGN
-            #CREATE NG FOLDER
-            neuroglancer_realigned = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=REALIGNED)
-            print(f'Neuroglancer realigned={neuroglancer_realigned}')
-            if not os.path.exists(neuroglancer_realigned):
-                self.neuroglancer(REALIGNED)
-
-        #unclear if alignment benefits from scratch
-
-        # if self.use_scatch:
-        #     print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
-        #     if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
-        #         print(f'Moving {staging_output} to {final_output}')
-        #         os.makedirs(final_output, exist_ok=True)
-        #         # Use rclone to move the directory
-        #         subprocess.run(["rclone", "move", staging_output, final_output], check=True)
-
-        #     #CLEAN UP staging_output
-        #     if os.path.exists(staging_output):
-        #         print(f'Removing {staging_output}')
-        #         delete_in_background(staging_output)
-        #     if os.path.exists(rechunkme_path):
-        #         print(f'Removing {rechunkme_path}')
-        #         delete_in_background(rechunkme_path)
-        #     progress_dir = os.path.dirname(progress_dir) #get 'progress' dir (1 level up)
-        #     if os.path.exists(progress_dir):
-        #         print(f'Removing {progress_dir}')
-        #         delete_in_background(progress_dir)
-
-        print(f'Finished {self.TASK_ALIGN}.')
-
-
-    def align_old(self): #DEPRECATED
-        """Perform the section to section alignment (registration)
-        We need to set the maskpath to get information from ImageManager
         """
 
         print(self.TASK_ALIGN)
@@ -290,6 +213,7 @@ class Pipeline(
             self.create_web_friendly_sections()
 
         print(f'Finished {self.TASK_ALIGN}.')
+
 
     def realign(self): 
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
@@ -311,14 +235,12 @@ class Pipeline(
         
         print(f'Finished {self.TASK_REALIGN}.')
 
-    def neuroglancer(self, iteration : int = 1):
+
+    def neuroglancer(self):
         """This is the main method to run the entire neuroglancer process.
         We also define the input, output and progress directories.
         This method may be run from the command line as a task, or it may
         also be run from the align and realign methods
-
-        #REWORK TO DEFINE: staging_output, final_output, rechunkme_path, progress_dir
-        :param iteration: 0 for CROPPED (GENERATE INITIAL NG), 1 for ALIGNED, 2 for REALIGNED
         """
 
         self.iteration = self.get_alignment_status()
@@ -327,12 +249,12 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
-
-        input_path, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)            
-        final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=iteration)
-        rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=iteration)
-        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=iteration)
         
+        input_path, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
+        rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=self.iteration)
+        final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+
         if self.use_scratch:
             #We can test for est. storage space needed for Ng creation (C1T_rechunk, C1T, C1T_aligned, C1T_aligned_rechunk)
             scratch_tmp = get_scratch_dir()
@@ -357,7 +279,10 @@ class Pipeline(
         #######################################################
 
         self.create_neuroglancer_stack(input_path, rechunkme_path, staging_output, progress_dir)
+            # self.create_neuroglancer()
+            # self.create_downsamples()
 
+        #CLEANUP
         if self.use_scratch:
             print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
             if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)

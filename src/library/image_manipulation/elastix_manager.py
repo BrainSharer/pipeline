@@ -62,6 +62,7 @@ class ElastixManager():
                 rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
+
     def create_fiducial_points(self):
         """ Yanks the fiducial points from the database and writes them to a file
         """
@@ -309,7 +310,7 @@ class ElastixManager():
         img = affine_transform(img, matrix.T, offset)
         write_image(outfile, img)
 
-    def get_transformations(self, iteration: int):
+    def get_transformations(self):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
         
         :param iteration: (int) which iteration of the alignment are we working on
@@ -446,12 +447,12 @@ class ElastixManager():
         print(f'took {total_elapsed_time} seconds.')
 
 
-    def create_web_friendly_sections(self, iteration):
+    def create_web_friendly_sections(self):
         """A function to create section PNG files for the database portal.
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
+        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
         self.output = fileLocationManager.section_web
 
         os.makedirs(self.output, exist_ok=True)
