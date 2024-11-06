@@ -102,7 +102,7 @@ class ImageCleaner:
         os.makedirs(staging_output, exist_ok=True)
         image_manager = ImageManager(self.input)
         if self.mask_image > 0: 
-            self.bgcolor = image_manager.get_bgcolor(self.maskpath)
+            self.bgcolor = image_manager.get_bgcolor()
         else:
             self.bgcolor = 0
         self.setup_parallel_create_cleaned(staging_output, final_output)

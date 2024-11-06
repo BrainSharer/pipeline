@@ -56,32 +56,14 @@ class ImageManager:
         self.volume_size = (self.width, self.height, self.len_files)
         self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
 
-    def get_bgcolor(self, maskpath):
+    def get_bgcolor(self, maskpath=None):
         """align needs either an integer or a tuple of integers for the fill color
+        Get the background color of the image based on the the 10th row and 10th column of the image.
         """
-
-        self.masks = sorted(os.listdir(maskpath))
-        if len(self.masks) != self.len_files:
-            print('Warning: no masks are available for this image')
-            if self.ndim == 3:
-                return (255,255,255)
-            else:
-                return 0
-        midmaskfile = self.masks[self.midpoint]
-        midmaskpath = os.path.join(maskpath, midmaskfile)
-
-        self.mask = tifffile.imread(midmaskpath)
-
-        if self.mask is None:
-            print('Warning: no mask is availabe for this image')
+        if self.img.ndim == 2:
             return 0
-        
-        white = np.where(self.mask==255)
-        whiterows = white[0]
-        whitecols = white[1]
-        firstrow = whiterows[0]
-        firstcol = whitecols[1]
-        bgcolor = self.img[firstrow, firstcol]
+
+        bgcolor = self.img[10, 10]
         if isinstance(bgcolor, (list, np.ndarray)):
             bgcolor = tuple(bgcolor)
         else:
