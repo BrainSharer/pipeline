@@ -338,7 +338,7 @@ class Pipeline(
         rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=iteration)
         progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=iteration)
         
-        if self.use_scatch:
+        if self.use_scratch:
             #We can test for est. storage space needed for Ng creation (C1T_rechunk, C1T, C1T_aligned, C1T_aligned_rechunk)
             scratch_tmp = get_scratch_dir()
             SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
@@ -363,15 +363,7 @@ class Pipeline(
 
         self.create_neuroglancer_stack(input_path, rechunkme_path, staging_output, progress_dir)
 
-        #FOLLOWING METHODS USE OO VARIABLES: create_neuroglancer, create_downsamples
-        # self.input = input_path      
-        # self.output = staging_output
-        # self.rechunkme_path = rechunkme_path
-        # self.progress_dir = progress_dir
-        # self.create_neuroglancer(input_path, rechunkme_path, final_output, progress_dir)
-        # self.create_downsamples(input_path, rechunkme_path, final_output, progress_dir)
-
-        if self.use_scatch:
+        if self.use_scratch:
             print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
             if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
                 print(f'Moving {staging_output} to {final_output}')
