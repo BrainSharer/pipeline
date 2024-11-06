@@ -61,7 +61,7 @@ class NgPrecomputedMaker:
 
         starting_files = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         self.fileLogger.logevent(f"self.input FOLDER: {self.input}")
-        self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         
         image_manager = ImageManager(self.input)
@@ -144,7 +144,7 @@ class NgPrecomputedMaker:
             tq.insert(tasks)
             tq.execute()
 
-    def create_neuroglancer_stack(self, input_path, rechunkme_path, output, progress_dir, SCRATCH):
+    def create_neuroglancer_stack(self, input_path, rechunkme_path, output, progress_dir):
         """
         Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
         """
@@ -158,15 +158,13 @@ class NgPrecomputedMaker:
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
 
-        if SCRATCH:
-            os.makedirs(SCRATCH, exist_ok=True)
         os.makedirs(rechunkme_path, exist_ok=True)
         os.makedirs(progress_dir, exist_ok=True) #PROGRESS MAY STAY ON NFS
 
         starting_files = test_dir(self.animal, input_path, self.section_count, self.downsample, same_size=True)
         self.fileLogger.logevent(f"input_path FOLDER: {input_path}")
         self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
-        self.fileLogger.logevent(f"Output FOLDER: {SCRATCH}")
+        self.fileLogger.logevent(f"Output/staging FOLDER: {output}")
 
         image_manager = ImageManager(input_path)
         scales = self.get_scales()
@@ -211,6 +209,8 @@ class NgPrecomputedMaker:
         if os.path.exists(output):
             print(f"DIR {output} already exists. Downsampling has already been performed.")
             return
+        else:
+            os.makedirs(output, exist_ok=True)
         outpath = f"file://{output}"
         if not os.path.exists(rechunkme_path):
             print(f"DIR {rechunkme_path} does not exist, exiting.")

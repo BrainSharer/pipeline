@@ -108,7 +108,7 @@ class Pipeline(
         self.channel = channel
         self.scaling_factor = SCALING_FACTOR
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
-        self.use_scatch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
+        self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
 
         self.mips = 7 
         if self.downsample:
@@ -169,7 +169,7 @@ class Pipeline(
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-
+        
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
 
@@ -241,6 +241,28 @@ class Pipeline(
             print(f'Neuroglancer realigned={neuroglancer_realigned}')
             if not os.path.exists(neuroglancer_realigned):
                 self.neuroglancer(REALIGNED)
+
+        #unclear if alignment benefits from scratch
+
+        # if self.use_scatch:
+        #     print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
+        #     if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
+        #         print(f'Moving {staging_output} to {final_output}')
+        #         os.makedirs(final_output, exist_ok=True)
+        #         # Use rclone to move the directory
+        #         subprocess.run(["rclone", "move", staging_output, final_output], check=True)
+
+        #     #CLEAN UP staging_output
+        #     if os.path.exists(staging_output):
+        #         print(f'Removing {staging_output}')
+        #         delete_in_background(staging_output)
+        #     if os.path.exists(rechunkme_path):
+        #         print(f'Removing {rechunkme_path}')
+        #         delete_in_background(rechunkme_path)
+        #     progress_dir = os.path.dirname(progress_dir) #get 'progress' dir (1 level up)
+        #     if os.path.exists(progress_dir):
+        #         print(f'Removing {progress_dir}')
+        #         delete_in_background(progress_dir)
 
         print(f'Finished {self.TASK_ALIGN}.')
 
@@ -334,6 +356,7 @@ class Pipeline(
         print(f'FINAL OUTPUT DIR={final_output}')
         print(f'RECHUNKME DIR={rechunkme_path}')
         print(f'STAGING DIR={staging_output}')
+        print(f'USING SCRATCH: {self.use_scratch}')
         print(f'PROGRESS DIR={progress_dir}')
         print('*'*50, '\n')
         #######################################################

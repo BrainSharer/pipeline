@@ -7,8 +7,13 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, place_image
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir
+from library.utilities.utilities_mask import clean_and_rotate_image, clean_rotate_and_place_image, get_image_box, place_image
+from library.utilities.utilities_process import delete_in_background, SCALING_FACTOR, read_image, test_dir, get_scratch_dir
+
+#FOR BACKGROUND WRITING IMAGE & SCRATCH
+import shutil
+import subprocess
+
 
 
 class ImageCleaner:
@@ -28,51 +33,113 @@ class ImageCleaner:
         4. Get biggest box size from all contours from all files and update DB with that info
         5. Place images in new cropped image size with correct background color
         """
+        def get_directory_size(directory): #MOVE TO UTILITIES
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(directory):
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    if not os.path.islink(file_path):
+                        total_size += os.path.getsize(file_path)
+            return total_size
 
+        def get_available_space(path): #MOVE TO UTILITIES
+            total, used, free = shutil.disk_usage(path)
+            return free
+
+        #######################################################
+
+        #CLEANUP NESTED IF STATEMENTS
         if self.downsample:
-            self.output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            input_aggregate_size_in_bytes  = get_directory_size(self.input)
+            final_output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            staging_output = final_output
+            if self.use_scratch:
+                scratch_tmp = get_scratch_dir()
+                available_space_in_bytes = get_available_space(scratch_tmp)
+                if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
+                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masking')
+                    cleaned_folder_name = os.path.basename(final_output)
+                    staging_output = os.path.join(SCRATCH, cleaned_folder_name)
+                else:
+                    self.use_scratch = False
             self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
-            self.output = self.fileLocationManager.get_full_cleaned(self.channel)
             self.input = self.fileLocationManager.get_full(self.channel)
+            input_aggregate_size_in_bytes  = get_directory_size(self.input)
+            final_output = self.fileLocationManager.get_full_cleaned(self.channel)
+            staging_output = final_output
+            if self.use_scratch:
+                scratch_tmp = get_scratch_dir()
+                available_space_in_bytes = get_available_space(scratch_tmp)
+                if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
+                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masking')
+                    cleaned_folder_name = os.path.basename(final_output)
+                    staging_output = os.path.join(SCRATCH, cleaned_folder_name)
+                else:
+                    self.use_scratch = False
             self.maskpath = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
+            self.cropped_output = self.fileLocationManager.get_full_cropped(self.channel)
 
+        #######################################################
+        # PARAMETER SUMMARY
+        print('*'*50, '\n', 'PARAMETER SUMMARY')
+        print(f'SRC IMG LOCATION: {self.input}')
+        print(f'IMG MASK [INPUT] LOCATION: {self.maskpath}')
+        print(f'FINAL OUTPUT DIR={final_output}')
+        print(f'STAGING DIR={staging_output}')
+        print(f'USING SCRATCH: {self.use_scratch}')
+        print('*'*50, '\n')
+        #######################################################
+        
         try:
             starting_files = os.listdir(self.input)
         except OSError:
             print(f"Error: Could not find the input directory: {self.input}")
             return
-
         self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
-        os.makedirs(self.output, exist_ok=True)
+
+        os.makedirs(staging_output, exist_ok=True)
         image_manager = ImageManager(self.input)
         if self.mask_image > 0: 
             self.bgcolor = image_manager.get_bgcolor(self.maskpath)
         else:
             self.bgcolor = 0
-        self.setup_parallel_create_cleaned()
+        self.setup_parallel_create_cleaned(staging_output, final_output)
+        
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
         if self.mask_image > 0 and self.channel == 1 and self.downsample:
             self.set_crop_size()
             if self.debug:
                 print(f'Updating scan run. and set bgcolor to {self.bgcolor}')
-        self.setup_parallel_place_images()
+
+            self.setup_parallel_place_images(staging_output) #ONLY APPLIES TO PAST 1ST RUN
         
 
-    def setup_parallel_create_cleaned(self):
+    def setup_parallel_create_cleaned(self, staging_output, final_output):
         """Do the image cleaning in parallel
         """
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
+        max_width =self.sqlController.scan_run.width
+        max_height = self.sqlController.scan_run.height
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(self.input))
-
+        
         file_keys = []
         for file in files:
             infile = os.path.join(self.input, file)
-            outfile = os.path.join(self.output, file)
+            outfile = os.path.join(staging_output, file)
+            cropped_staging_output = os.path.join(self.cropped_output, file)
+            cropped_final_output = os.path.dirname(cropped_staging_output)
+
+            if self.use_scratch:
+                cleaned_path = os.path.dirname(staging_output)
+                dir_path = os.path.dirname(cropped_staging_output)
+                cropped_folder_name = os.path.basename(dir_path)
+                cropped_staging_output = os.path.join(cleaned_path, cropped_folder_name)
+
             if os.path.exists(outfile):
                 continue
             maskfile = os.path.join(self.maskpath, file)
@@ -87,10 +154,13 @@ class ImageCleaner:
                     self.mask_image,
                     self.bgcolor,
                     self.channel,
-                    self.debug
+                    self.debug,
+                    max_width,
+                    max_height,
+                    cropped_staging_output
                 ]
             )
-
+        
         # Cleaning images takes up around 20-25GB per full resolution image
         # so we cut the workers in half here
         # The method below will clean and crop. It will also rotate and flip if necessary
@@ -98,16 +168,42 @@ class ImageCleaner:
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
 
+        if self.use_scratch:
+            print(f'MOVE STAGING FILES [IN BACKGROUND] TO FINAL OUTPUT DIR (cleaned): {staging_output} -> {final_output}')
+            print(f'MOVE STAGING FILES [IN BACKGROUND] TO FINAL OUTPUT DIR (cropped): {cropped_staging_output} -> {cropped_final_output}')
 
-    def setup_parallel_place_images(self):
+            if not os.path.exists(final_output):#MOVE 'cleaned' DIR TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
+                print(f'Moving {staging_output} to {final_output}')
+                os.makedirs(final_output, exist_ok=True)
+                # Use rclone to move the directory
+                subprocess.run(["rclone", "move", staging_output, final_output], check=True)
+
+            if not os.path.exists(cropped_final_output):#MOVE  'cropped' DIR TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
+                print(f'Moving {cropped_staging_output} to {cropped_final_output}')
+                os.makedirs(cropped_final_output, exist_ok=True)
+                # Use rclone to move the directory
+                subprocess.run(["rclone", "move", cropped_staging_output, cropped_final_output], check=True)
+
+            #CLEAN UP staging_output, cropped_staging_output
+            if os.path.exists(staging_output):
+                print(f'Removing {staging_output}')
+                delete_in_background(staging_output)
+            if os.path.exists(cropped_staging_output):
+                print(f'Removing {cropped_staging_output}')
+                delete_in_background(cropped_staging_output)
+            
+    
+    def setup_parallel_place_images(self, staging_output):
         """Do the image placing in parallel. Cleaning and cropping has already taken place.
         We first need to get all the correct image sizes and then update the DB.
         """
         if self.downsample:
-            self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            #self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            self.input = staging_output
             self.output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
         else:
-            self.input = self.fileLocationManager.get_full_cleaned(self.channel)
+            #self.input = self.fileLocationManager.get_full_cleaned(self.channel)
+            self.input = staging_output
             self.output = self.fileLocationManager.get_full_cropped(self.channel)
 
         os.makedirs(self.output, exist_ok=True)
