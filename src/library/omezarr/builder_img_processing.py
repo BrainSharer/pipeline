@@ -16,6 +16,7 @@ from itertools import product
 from skimage import img_as_float32
 import math
 import zarr
+import dask.array as da
 
 class BuilderDownsample:
 
@@ -179,7 +180,16 @@ class BuilderDownsample:
             return False,
         return False,
 
-    def local_mean_downsample(self, image,down_sample_ratio=(2,2,2)):
+
+
+    def da_mean_downsample(self, image, down_sample_ratio=(2,2,2)):
+        def mean_dtype(arr, **kwargs):
+            return np.mean(arr, **kwargs).astype(arr.dtype)
+        axis_dict = {0:down_sample_ratio[0], 1:down_sample_ratio[1], 2:down_sample_ratio[2]}        
+        scaled_stack = da.coarsen(mean_dtype, image, axis_dict, trim_excess=True)
+        return scaled_stack
+
+    def local_mean_downsample(self, image, down_sample_ratio=(2,2,2)):
         '''
                 Inputs:
                 image: 3D numpy array
@@ -188,7 +198,9 @@ class BuilderDownsample:
                 Output:
                 3D numpy array that has been down sampled using a local mean function at ratios 1x or 2x according to the 'down_sample_ratio'
         '''
+        image = image[0:,...]
         image = img_as_float32(image)
+        print(f'image shape={image.shape}', end=' ')
         canvas = np.zeros(
             (image.shape[0] // down_sample_ratio[0],
              image.shape[1] // down_sample_ratio[1],
@@ -196,13 +208,15 @@ class BuilderDownsample:
             dtype=np.dtype('float32')
         )
 
-        # print(canvas.shape)
+        print('canvas shape', canvas.shape)
         for z, y, x in product(range(down_sample_ratio[0]), range(down_sample_ratio[1]), range(down_sample_ratio[2])):
             tmp = image[
                   z::down_sample_ratio[0],
                   y::down_sample_ratio[1],
                   x::down_sample_ratio[2]
                   ][0:canvas.shape[0], 0:canvas.shape[1], 0:canvas.shape[2]]
+            #tmp = tmp[0, ...]
+            print(f'tmp shape={tmp.shape}')
             canvas[0:tmp.shape[0], 0:tmp.shape[1], 0:tmp.shape[2]] += tmp
 
         canvas /= math.prod(down_sample_ratio)
