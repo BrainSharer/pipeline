@@ -40,8 +40,7 @@ class ElastixManager():
     All methods relate to aligning images in stack
     """
 
-
-    def create_within_stack_transformations(self):
+    def create_within_stack_transformations(self, iteration: int):
         """Calculate and store the rigid transformation using elastix.  
         The transformations are calculated from the next image to the previous
         This is done in a simple loop with no workers. Usually takes
@@ -60,9 +59,10 @@ class ElastixManager():
         for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
-            if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
-                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index, use_points=self.use_points)
-                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
+            if not self.sqlController.check_elastix_row(self.animal, moving_index, iteration):
+                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index, iteration)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, iteration)
+
 
     def create_fiducial_points(self):
         """ Yanks the fiducial points from the database and writes them to a file
@@ -138,7 +138,7 @@ class ElastixManager():
             nchanges = 0
         return nchanges
 
-    def align_images_elastix(self, fixed_index: str, moving_index: str, use_points: bool = False) -> tuple[float, float, float, float]:
+    def align_images_elastix(self, fixed_index: str, moving_index: str, iteration: int) -> tuple[float, float, float, float]:
         """
         Aligns two images using the Elastix registration algorithm with GPU acceleration.
         expected to replace 'align_elastix' (TESTING)
@@ -146,7 +146,7 @@ class ElastixManager():
         Args:
             fixed_index (str due to filename extraction): The index of the fixed image.
             moving_index (str due to filename extraction): The index of the moving image.
-            use_points (bool, optional): Whether to use corresponding points for registration. Defaults to False.
+            iteration (int): if > 0, we are re-aligning
 
         Returns:
             tuple: A tuple containing the rotation angle (R), translation in the x-axis (x), translation in the y-axis (y),
@@ -155,7 +155,6 @@ class ElastixManager():
         Raises:
             AssertionError: If the number of fixed points does not match the number of moving points.
         """
-        use_scatch = True #LOCAL STORAGE OF ELASTIX FILES :: TODO: CLEANUP AFTER USE
         
         # Transfer images to GPU memory
         def to_gpu(image):
@@ -185,7 +184,7 @@ class ElastixManager():
         rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
         elastixImageFilter.SetParameterMap(rigid_params)
 
-        if use_points:
+        if iteration > 0:
             fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
             moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
             if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
@@ -197,7 +196,7 @@ class ElastixManager():
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, \
                         f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-        if use_points and os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):        
+        if iteration > 0 and os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):        
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
             elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
@@ -207,7 +206,8 @@ class ElastixManager():
 
         elastixImageFilter.SetLogToFile(True)
         
-        if use_scatch:
+        #unclear if alignment benefits from scratch
+        if self.use_scatch:
             scratch_tmp = get_scratch_dir()
             SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
             logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
@@ -360,12 +360,17 @@ class ElastixManager():
         img = affine_transform(img, matrix.T, offset)
         write_image(outfile, img)
 
-    def get_transformations(self):
+    def get_transformations(self, iteration: int):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
         
-        :param animal: the animal
+        :param iteration: (int) which iteration of the alignment are we working on
         :return: a dictionary of key=filename, value = coordinates
         """
+
+        if self.debug:
+            print("DEBUG: START ElastixManager::get_transformations")
+            #print(f'elastix_manager::get_transformations #files={len(files)} in {self.input}')
+            #print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
 
         try:
             files = os.listdir(self.input)
@@ -377,10 +382,10 @@ class ElastixManager():
         image_manager = ImageManager(self.input)
         center = image_manager.center
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations {self.input}')
+        
         if self.downsample:
             for i in range(1, len(files)):
-                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, iteration)
                 T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
                 transformation_to_previous_sec[i] = T
         else:
@@ -394,11 +399,6 @@ class ElastixManager():
                 transformation_to_previous_sec[i] = T
 
         transformations = {}
-
-        if self.debug:
-            print(f'elastix_manager::get_transformations #files={len(files)} in {self.input}')
-            print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
-
         for moving_index in range(len(files)):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == midpoint:
@@ -417,16 +417,20 @@ class ElastixManager():
                 transformations[filename] = T_composed
         return transformations
 
-    def start_image_alignment(self):
+
+    def start_image_alignment(self, iteration: int):
         """align the full resolution tif images with the transformations provided.
            All the sections are aligned to the middle sections, the transformation
            of a given section to the middle section is the composite of the transformation
            from the given section through all the intermediate sections to the middle sections.
 
-        :param transforms: (dict): dictionary of transformations that are index by the id of moving sections
+        :param transforms: (dict): dictionary of transformations that are index by the id of moving sections #THIS ARGUMENT NOT ACTUALLY PASSED TO METHOD
         """
-        self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration))
-        transformations = self.get_transformations()
+        if self.debug:
+            print("DEBUG: START ElastixManager::start_image_alignment")
+
+        self.input, self.output = (self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration))
+        transformations = self.get_transformations(iteration)
 
         if not self.downsample:
             transformations = create_downsampled_transforms(transformations, downsample=False, scaling_factor=SCALING_FACTOR)
@@ -493,12 +497,13 @@ class ElastixManager():
         total_elapsed_time = round((end_time - start_time), 2)
         print(f'took {total_elapsed_time} seconds.')
 
-    def create_web_friendly_sections(self):
+
+    def create_web_friendly_sections(self, iteration):
         """A function to create section PNG files for the database portal.
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
+        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
         self.output = fileLocationManager.section_web
 
         os.makedirs(self.output, exist_ok=True)
@@ -513,6 +518,7 @@ class ElastixManager():
                 file_keys.append((infile, outfile))
         workers = self.get_nworkers()
         self.run_commands_concurrently(tif_to_png, file_keys, workers)
+
 
     @staticmethod
     def get_metric(logpath):
