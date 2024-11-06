@@ -47,17 +47,21 @@ class OmeZarrManager():
         os.makedirs(tmp_dir, exist_ok=True)
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
+        iteration = self.get_alignment_status()
+        if iteration is None:
+            print('No alignment iterations found.  Please run the alignment steps first.')
+            return
+        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)            
+
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
-            input = self.fileLocationManager.get_thumbnail_aligned(self.channel)
             image_manager = ImageManager(input)
             originalChunkSize = [1, image_manager.height, image_manager.width] # 1796x984
             mips = 3
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
-            input = self.fileLocationManager.get_full_aligned(self.channel)
             image_manager = ImageManager(input)
             originalChunkSize = [1, image_manager.height//16, image_manager.width//16] # 1796x984
             mips = 8

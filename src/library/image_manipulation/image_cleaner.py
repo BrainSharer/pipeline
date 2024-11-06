@@ -32,11 +32,9 @@ class ImageCleaner:
         if self.downsample:
             self.output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         else:
             self.output = self.fileLocationManager.get_full_cleaned(self.channel)
             self.input = self.fileLocationManager.get_full(self.channel)
-            self.maskpath = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
 
         try:
             starting_files = os.listdir(self.input)
@@ -48,7 +46,7 @@ class ImageCleaner:
         os.makedirs(self.output, exist_ok=True)
         image_manager = ImageManager(self.input)
         if self.mask_image > 0: 
-            self.bgcolor = image_manager.get_bgcolor(self.maskpath)
+            self.bgcolor = image_manager.get_bgcolor()
         else:
             self.bgcolor = 0
         self.setup_parallel_create_cleaned()
