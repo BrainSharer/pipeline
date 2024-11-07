@@ -177,8 +177,10 @@ class ElastixManager():
         elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
-        if self.debug:
+        if self.debug and moving_index == '001':
             elastixImageFilter.PrintParameterMap()
+
+        if self.debug:
             sitk.ProcessObject.SetGlobalDefaultDebug(True)
         
         # Execute the registration on GPU
