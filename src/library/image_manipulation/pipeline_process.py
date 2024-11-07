@@ -103,6 +103,7 @@ class Pipeline(
         self.hostname = get_hostname()
         self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
+        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
         self.check_programs()
         self.section_count = self.get_section_count()
         self.multiple_slides = []

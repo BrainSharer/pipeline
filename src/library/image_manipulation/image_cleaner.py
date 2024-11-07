@@ -30,11 +30,11 @@ class ImageCleaner:
         """
 
         if self.downsample:
-            self.output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
         else:
-            self.output = self.fileLocationManager.get_full_cleaned(self.channel)
             self.input = self.fileLocationManager.get_full(self.channel)
+
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath="cleaned")
 
         try:
             starting_files = os.listdir(self.input)
@@ -101,13 +101,9 @@ class ImageCleaner:
         """Do the image placing in parallel. Cleaning and cropping has already taken place.
         We first need to get all the correct image sizes and then update the DB.
         """
-        if self.downsample:
-            self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            self.output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        else:
-            self.input = self.fileLocationManager.get_full_cleaned(self.channel)
-            self.output = self.fileLocationManager.get_full_cropped(self.channel)
-
+        
+        self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath="cleaned")
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath="cropped")
         os.makedirs(self.output, exist_ok=True)
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
