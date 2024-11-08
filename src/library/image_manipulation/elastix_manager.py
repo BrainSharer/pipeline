@@ -126,12 +126,12 @@ class ElastixManager():
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and False:
             fixed = to_gpu(fixed)
             moving = to_gpu(moving)
-            print(f'Using CUDA on GPU - SECTION:{fixed_index}')
+            print(f'Using CUDA on GPU - SECTION:{moving_index}')
         else:
-            print(f'No GPU available, using CPU - SECTION:{fixed_index}')
+            print(f'No GPU available, using CPU - SECTION:{moving_index}')
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
