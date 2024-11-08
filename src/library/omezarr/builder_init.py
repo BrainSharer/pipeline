@@ -84,7 +84,7 @@ class builder(BuilderDownsample,
         for k, v in self.pyramidMap.items():
             print(k,v)
         
-        #import sys
-        #sys.exit()
+        import sys
+        sys.exit()
 
         self.build_zattrs()

@@ -123,9 +123,9 @@ class ElastixManager():
         if torch.cuda.is_available():
             fixed = to_gpu(fixed)
             moving = to_gpu(moving)
-            print(f'Using CUDA on GPU - SECTION:{fixed_index}')
+            print(f'Using CUDA on GPU - SECTION:{moving_index}')
         else:
-            print(f'No GPU available, using CPU - SECTION:{fixed_index}')
+            print(f'No GPU available, using CPU - SECTION:{moving_index}')
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
@@ -166,15 +166,12 @@ class ElastixManager():
 
         os.makedirs(logpath, exist_ok=True)
 
-        if self.debug:
-            print(f'SCRATCH DIR={SCRATCH}')
-
         elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
-        if self.debug:
+        if self.debug and moving_index == '001':
+            print(f'SCRATCH DIR={SCRATCH}')
             elastixImageFilter.PrintParameterMap()
-            sitk.ProcessObject.SetGlobalDefaultDebug(True)
         
         # Execute the registration on GPU
         elastixImageFilter.Execute()
@@ -388,9 +385,23 @@ class ElastixManager():
 
 
     def get_alignment_status(self):
+        """
+        Determines the alignment status of image files for a given channel and downsample level.
+
+        The method checks the existence of directories and counts the number of files in the 
+        'aligned' and 'realigned' directories. It compares these counts with the expected counts 
+        retrieved from the SQL controller to determine which input directory to use for neuroglancer.
+
+        Returns:
+            str: The alignment status, either 'ALIGNED' or 'REALIGNED'. If neither condition is met, 
+             returns None.
+        """
+        
         iteration = None
         aligned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
         realigned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
+        if not os.path.exists(realigned_directory):
+            return ALIGNED
         aligned_files = os.listdir(aligned_directory)
         realigned_files = os.listdir(realigned_directory)
         aligned_count = self.sqlController.get_elastix_count(self.animal, iteration=ALIGNED) + 1
