@@ -46,7 +46,7 @@ class SlideCZIToTifController():
 
         return slide
 
-    def get_and_correct_multiples(self, scan_run_id, slide_physical_id):
+    def get_and_correct_multiples(self, scan_run_id, slide_physical_id, debug: bool = False):
         """
         Retrieves slides with the given scan_run_id and slide_physical_id,
         corrects their scene_index values, and sets inactive flag for empty slides.
@@ -59,9 +59,15 @@ class SlideCZIToTifController():
             None
         """
         slide_physical_ids = []
-        slide_rows = self.session.query(Slide)\
+        slide_query = self.session.query(Slide)\
             .filter(Slide.scan_run_id == scan_run_id)\
             .filter(Slide.slide_physical_id == slide_physical_id)
+        
+        if debug: # Print the raw SQL query
+            print(f'RAW SQL: {str(slide_query.statement.compile(compile_kwargs={"literal_binds": True}))}')
+            print('*'*50, '\n')
+        
+        slide_rows = slide_query.all()
         for slide_row in slide_rows:
             slide_physical_ids.append(slide_row.id)
         print(f'Slide_physical_ids={slide_physical_ids}')
@@ -69,12 +75,16 @@ class SlideCZIToTifController():
         print(f'Master slide={master_slide_id}')
         slide_physical_ids.remove(master_slide_id)
         print(f'Other slides = {slide_physical_ids}')
+        
         for other_slide in slide_physical_ids:
             print(f'Updating slideczitiff set FK_slide_id={master_slide_id} where FK_slideid={other_slide}')
             
             try:
-                self.session.query(SlideCziTif)\
+                update_query = self.session.query(SlideCziTif)\
                     .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide_id})
+                if debug:
+                    print("RAW SQL for SlideCziTif update:")
+                    print(update_query.compile(compile_kwargs={"literal_binds": True}))
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')
@@ -82,10 +92,12 @@ class SlideCZIToTifController():
 
             # set empty slide to inactive
             try:
-                self.session.query(Slide)\
+                inactive_update = self.session.query(Slide)\
                     .filter(Slide.id == other_slide).update({'active': False})
+                if debug:
+                    print("RAW SQL for Slide inactive update:")
+                    print(inactive_update.compile(compile_kwargs={"literal_binds": True}))
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')
                 self.session.rollback()
-

@@ -402,6 +402,6 @@ class MetaUtilities:
         for slide_physical_id in self.multiple_slides:
             if self.debug:
                 print(f"DEBUG: MODIFYING {slide_physical_id=}, {self.sqlController.scan_run.id=}, {slide_physical_id=}")
-            self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id)
+            self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id, self.debug)
             self.fileLogger.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
 
