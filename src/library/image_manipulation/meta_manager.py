@@ -397,9 +397,6 @@ class MetaUtilities:
 
         if self.debug:
             print(f"DEBUG: START MetaUtilities::correct_multiples on {len(self.multiple_slides)} slides")
-        
-        if self.debug:
-            print(f"DEBUG: START MetaUtilities::correct_multiples")
             print(f"DEBUG: CORRECTING {len(self.multiple_slides)} MULTIPLE SLIDES")
             
         for slide_physical_id in self.multiple_slides:
