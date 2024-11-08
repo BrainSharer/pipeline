@@ -126,7 +126,7 @@ class ElastixManager():
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
 
-        if torch.cuda.is_available() and False:
+        if torch.cuda.is_available():
             fixed = to_gpu(fixed)
             moving = to_gpu(moving)
             print(f'Using CUDA on GPU - SECTION:{moving_index}')
