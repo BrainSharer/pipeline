@@ -324,12 +324,22 @@ class ElastixManager():
         center = image_manager.center
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} {self.input}')
-        print(f'Using center of {center} and midpoint of {midpoint}')
         len_files = len(image_manager.files)
-        for i in range(1, len_files):
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
-            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
-            transformation_to_previous_sec[i] = T
+        if self.downsample:
+            for i in range(1, len_files):
+                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+                T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
+                transformation_to_previous_sec[i] = T
+        else:
+            for i in range(1, len_files):
+                rotation0, xshift0, yshift0 = self.load_elastix_transformation(self.animal, i, ALIGNED)
+                rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, REALIGNED)
+                rotation = rotation0 + rotation1
+                xshift = xshift0 + xshift1
+                yshift = yshift0 + yshift1
+                T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
+                transformation_to_previous_sec[i] = T
+
 
         transformations = {}
 

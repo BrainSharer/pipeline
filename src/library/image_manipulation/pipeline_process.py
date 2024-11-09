@@ -223,8 +223,8 @@ class Pipeline(
         self.create_fiducial_points()
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
         print(f'Second elastix manager alignment input: {self.input}')
 
         if self.channel == 1 and self.downsample:
