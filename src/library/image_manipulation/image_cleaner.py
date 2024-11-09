@@ -140,7 +140,7 @@ class ImageCleaner:
                 cropped_folder_name = os.path.basename(dir_path)
                 cropped_staging_output = os.path.join(cleaned_path, cropped_folder_name)
 
-            if os.path.exists(outfile):
+            if os.path.exists(outfile) or os.path.exists(cropped_final_output):
                 continue
             maskfile = os.path.join(self.maskpath, file)
 
