@@ -179,7 +179,8 @@ class TiffExtractor():
                 outfile = Path(outfile).with_suffix('.sha256')
                 if os.path.exists(outfile):
                     continue
-                print(f"Creating checksum at {outfile}")
+                if self.debug:
+                    print(f"Creating checksum at {outfile}")
                 readable_hash = calculate_hash(infile)
                 with open(outfile, 'w') as f:
                     f.write(readable_hash)

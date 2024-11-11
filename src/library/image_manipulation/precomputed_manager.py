@@ -134,6 +134,7 @@ class NgPrecomputedMaker:
         tq.insert(tasks)
         tq.execute()
         print('Finished transfer tasks')
+
         for mip in range(0, self.mips):
             cv = CloudVolume(outpath, mip)
             print(f'Creating downsample tasks at mip={mip}')
