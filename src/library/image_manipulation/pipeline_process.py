@@ -224,8 +224,8 @@ class Pipeline(
             self.create_fiducial_points()
             self.pixelType = sitk.sitkFloat32
             self.iteration = REALIGNED
-            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
-            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
             print(f'Second elastix manager alignment input: {self.input}')
 
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)

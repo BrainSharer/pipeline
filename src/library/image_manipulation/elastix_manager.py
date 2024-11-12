@@ -314,7 +314,7 @@ class ElastixManager():
 
     def get_transformations(self):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
-        
+        If it is full resolution, it will fetch both iterations and combine them.
         :param animal: the animal
         :return: a dictionary of key=filename, value = coordinates
         """
@@ -325,20 +325,18 @@ class ElastixManager():
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} {self.input}')
         len_files = len(image_manager.files)
-        if self.downsample:
-            for i in range(1, len_files):
+        for i in range(1, len_files):                
+            if self.downsample:
                 rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
-                T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
-                transformation_to_previous_sec[i] = T
-        else:
-            for i in range(1, len_files):
+            else:
                 rotation0, xshift0, yshift0 = self.load_elastix_transformation(self.animal, i, ALIGNED)
                 rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, REALIGNED)
                 rotation = rotation0 + rotation1
-                xshift = xshift0 + xshift1
-                yshift = yshift0 + yshift1
-                T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
-                transformation_to_previous_sec[i] = T
+            xshift = xshift0 + xshift1
+            yshift = yshift0 + yshift1
+
+            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
+            transformation_to_previous_sec[i] = T
 
 
         transformations = {}
