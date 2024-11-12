@@ -128,10 +128,16 @@ if __name__ == "__main__":
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"{task} took {total_elapsed_time} seconds")
-        sep = "*" * 40 + "\n"
-        pipeline.fileLogger.logevent(f"{task} took {total_elapsed_time} seconds\n{sep}")
+        if total_elapsed_time >= 3600:
+            hours = total_elapsed_time // 3600
+            minutes = (total_elapsed_time % 3600) // 60
+            time_out_msg = f'took {int(hours)} hour(s) and {int(minutes)} minute(s).'
+        else:
+            time_out_msg = f'took {total_elapsed_time} seconds.'
 
+        print(f"{task} {time_out_msg}")
+        sep = "*" * 40 + "\n"
+        pipeline.fileLogger.logevent(f"{task} {time_out_msg}\n{sep}")
     else:
         print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():
