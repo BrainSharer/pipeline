@@ -183,11 +183,7 @@ class FileLocationManager(object):
             channel_outdir += "T"
 
         channel_outdir += f"_rechunkme_{outpath}"
-
-        if os.path.isdir("/scratch"):
-            rechunkme = os.path.join("/scratch", self.prep_id, f"{channel_outdir}")
-        else:
-            rechunkme = os.path.join(self.neuroglancer_data, f"{channel_outdir}")
+        rechunkme = os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
         return rechunkme
 
