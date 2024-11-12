@@ -8,6 +8,7 @@ them again for the remaining channels and then for the full resolution version:
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
 
 Explanation for the tasks:
@@ -25,7 +26,8 @@ Explanation for the tasks:
     the images are cleaned from the masks.
 - histogram - Histograms showing the distribution of the image intensity levels are created \
     for all cleaned channel 1 sections.
-- align - Section to section alignment with Elastix is then run on the cleaned images using a rigid transformation. 
+- align - Section to section alignment with Elastix is then run on the cleaned and cropped images using a rigid transformation. 
+- realign - If the alignment needs improvement, the user can run the realign task to realign the images.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 
 **Timing results**
@@ -45,7 +47,7 @@ are in the correct order and the images look good.
 - After the first create mask method - the user needs to check the colored masks \
 and possible dilate or crop them.
 - After the alignment process - the user needs to verify the alignment looks good. \
-increasing the step size will make the pipeline move forward in the process.
+Creating fiducials and then running the realing task will improve the alignment.
 
 **Switching projection in Neuroglancer** 
 

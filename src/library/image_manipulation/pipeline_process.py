@@ -194,7 +194,6 @@ class Pipeline(
 
     def align(self):
         """Perform the section to section alignment (registration)
-        We need to set the maskpath to get information from ImageManager
         """
 
         print(self.TASK_ALIGN)
@@ -205,7 +204,7 @@ class Pipeline(
         print(f'Initial elastix manager alignment input: {self.input}')        
 
         if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
+            self.create_within_stack_transformations()
 
         self.start_image_alignment()
         
@@ -216,23 +215,26 @@ class Pipeline(
 
     def realign(self):
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
-        aligned image stack from thumnbail_aligned
+        aligned image stack from thumnbail_aligned. This only needs to be run on downsampled channel 1 images. With the full
+        resolution images, the transformations come from both iterations of the downsampled images and then scaled.
         
         """        
-        print(self.TASK_REALIGN)
-        self.create_fiducial_points()
-        self.pixelType = sitk.sitkFloat32
-        self.iteration = REALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-        print(f'Second elastix manager alignment input: {self.input}')
-
         if self.channel == 1 and self.downsample:
+            print(self.TASK_REALIGN)
+            self.create_fiducial_points()
+            self.pixelType = sitk.sitkFloat32
+            self.iteration = REALIGNED
+            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+            print(f'Second elastix manager alignment input: {self.input}')
+
             self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
-        
-        self.start_image_alignment()
-        
-        print(f'Finished {self.TASK_REALIGN}.')
+            
+            self.start_image_alignment()
+            
+            print(f'Finished {self.TASK_REALIGN}.')
+        else:
+            print(f'No realignment for full resolution images')
 
     def neuroglancer(self):
         """This is the main method to run the entire neuroglancer process.
