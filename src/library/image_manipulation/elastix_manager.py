@@ -455,7 +455,12 @@ class ElastixManager():
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f'took {total_elapsed_time} seconds.')
+        if total_elapsed_time >= 3600:
+            hours = total_elapsed_time // 3600
+            minutes = (total_elapsed_time % 3600) // 60
+            print(f'took {int(hours)} hour(s) and {int(minutes)} minute(s).')
+        else:
+            print(f'took {total_elapsed_time} seconds.')
 
 
     def create_web_friendly_sections(self):
