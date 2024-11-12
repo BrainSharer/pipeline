@@ -58,12 +58,13 @@ class ImageCleaner:
                 scratch_tmp = get_scratch_dir()
                 available_space_in_bytes = get_available_space(scratch_tmp)
                 if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
-                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masking')
+                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks')
                     cleaned_folder_name = os.path.basename(final_output)
                     staging_output = os.path.join(SCRATCH, cleaned_folder_name)
                 else:
                     self.use_scratch = False
             self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+            self.cropped_output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
         else:
             self.input = self.fileLocationManager.get_full(self.channel)
             input_aggregate_size_in_bytes  = get_directory_size(self.input)
@@ -73,7 +74,7 @@ class ImageCleaner:
                 scratch_tmp = get_scratch_dir()
                 available_space_in_bytes = get_available_space(scratch_tmp)
                 if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
-                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masking')
+                    SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks')
                     cleaned_folder_name = os.path.basename(final_output)
                     staging_output = os.path.join(SCRATCH, cleaned_folder_name)
                 else:
@@ -83,7 +84,7 @@ class ImageCleaner:
 
         #######################################################
         # PARAMETER SUMMARY
-        print('*'*50, '\n', 'PARAMETER SUMMARY')
+        print('*'*50, '\nPARAMETER SUMMARY')
         print(f'SRC IMG LOCATION: {self.input}')
         print(f'IMG MASK [INPUT] LOCATION: {self.maskpath}')
         print(f'FINAL OUTPUT DIR={final_output}')
