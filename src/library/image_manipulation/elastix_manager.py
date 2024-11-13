@@ -332,8 +332,8 @@ class ElastixManager():
                 rotation0, xshift0, yshift0 = self.load_elastix_transformation(self.animal, i, ALIGNED)
                 rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, REALIGNED)
                 rotation = rotation0 + rotation1
-            xshift = xshift0 + xshift1
-            yshift = yshift0 + yshift1
+                xshift = xshift0 + xshift1
+                yshift = yshift0 + yshift1
 
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
