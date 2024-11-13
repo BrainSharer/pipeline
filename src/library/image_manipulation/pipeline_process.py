@@ -12,6 +12,7 @@ import SimpleITK as sitk
 import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+import shutil
 import subprocess
 
 from library.image_manipulation.elastix_manager import ElastixManager
@@ -30,7 +31,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir
+from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir, get_directory_size
 from library.database_model.scan_run import IMAGE_MASK
 from library.utilities.utilities_registration import rescale_transformations
 
@@ -203,7 +204,25 @@ class Pipeline(
         self.iteration = ALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-        print(f'Initial elastix manager alignment input: {self.input}')        
+
+        if self.use_scratch:
+            scratch_tmp = get_scratch_dir()
+            _, _, available_space_in_bytes = shutil.disk_usage(scratch_tmp)
+            last_folder = os.path.basename(os.path.normpath(self.input))
+            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks', last_folder)
+            input_aggregate_size_in_bytes  = get_directory_size(SCRATCH)
+            if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR ALIGNED IMAGES
+                self.input = SCRATCH
+            self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+            
+        #######################################################
+        # PARAMETER SUMMARY
+        print('*'*50, '\nPARAMETER SUMMARY')
+        print(f'Initial elastix manager alignment input dir={self.input_path}')
+        print(f'FINAL OUTPUT DIR={self.output}')
+        print(f'USING SCRATCH: {self.use_scratch}')
+        print('*'*50, '\n')
+        #######################################################
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
@@ -212,6 +231,11 @@ class Pipeline(
         
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_sections()
+
+        #CLEAN UP cropped_staging_output (prev. input)
+        if self.use_scratch and os.path.exists(SCRATCH):
+            print(f'Removing /scratch files {SCRATCH}')
+            delete_in_background(SCRATCH)
 
         print(f'Finished {self.TASK_ALIGN}.')
 

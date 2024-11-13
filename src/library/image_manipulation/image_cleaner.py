@@ -177,11 +177,11 @@ class ImageCleaner:
                         print(f"Copying {filename} to destination...")
                         shutil.copy2(source_file, destination_file)
 
-            if not os.path.exists(cropped_final_output):#MOVE  'cropped' DIR TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
+            if not os.path.exists(cropped_final_output):#COPY 'cropped' DIR TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
                 print(f'Moving {cropped_staging_output} to {cropped_final_output}')
                 os.makedirs(cropped_final_output, exist_ok=True)
                 # Use rclone to move the directory
-                subprocess.run(["rclone", "move", cropped_staging_output, cropped_final_output], check=True)
+                subprocess.run(["rclone", "copy", cropped_staging_output, cropped_final_output], check=True)
             else:# FOLDER EXISTS, BUT CHECK INDIVIDUAL FILES (STRAGLERS)
                 for filename in os.listdir(cropped_staging_output):
                     source_file = os.path.join(cropped_staging_output, filename)
@@ -189,15 +189,6 @@ class ImageCleaner:
                     if not os.path.exists(destination_file):
                         print(f"Copying {filename} to destination...")
                         shutil.copy2(source_file, destination_file)
-            
-
-            #CLEAN UP staging_output, cropped_staging_output
-            # if os.path.exists(staging_output):
-            #     print(f'Removing {staging_output}')
-            #     delete_in_background(staging_output)
-            # if os.path.exists(cropped_staging_output):
-            #     print(f'Removing {cropped_staging_output}')
-            #     delete_in_background(cropped_staging_output)
             
     
     def setup_parallel_place_images(self, staging_output):
