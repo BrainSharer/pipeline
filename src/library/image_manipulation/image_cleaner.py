@@ -8,7 +8,7 @@ Image.MAX_IMAGE_PIXELS = None
 
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, clean_rotate_and_place_image, get_image_box, place_image
-from library.utilities.utilities_process import delete_in_background, SCALING_FACTOR, read_image, test_dir, get_scratch_dir
+from library.utilities.utilities_process import delete_in_background, SCALING_FACTOR, read_image, test_dir, get_scratch_dir, get_directory_size
 
 #FOR BACKGROUND WRITING IMAGE & SCRATCH
 import shutil
@@ -33,21 +33,7 @@ class ImageCleaner:
         4. Get biggest box size from all contours from all files and update DB with that info
         5. Place images in new cropped image size with correct background color
         """
-        def get_directory_size(directory): #MOVE TO UTILITIES
-            total_size = 0
-            for dirpath, dirnames, filenames in os.walk(directory):
-                for filename in filenames:
-                    file_path = os.path.join(dirpath, filename)
-                    if not os.path.islink(file_path):
-                        total_size += os.path.getsize(file_path)
-            return total_size
-
-        def get_available_space(path): #MOVE TO UTILITIES
-            total, used, free = shutil.disk_usage(path)
-            return free
-
-        #######################################################
-
+        
         #CLEANUP NESTED IF STATEMENTS
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
@@ -56,7 +42,7 @@ class ImageCleaner:
             staging_output = final_output
             if self.use_scratch:
                 scratch_tmp = get_scratch_dir()
-                available_space_in_bytes = get_available_space(scratch_tmp)
+                _, _, available_space_in_bytes = shutil.disk_usage(scratch_tmp)
                 if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
                     SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks')
                     cleaned_folder_name = os.path.basename(final_output)
@@ -72,7 +58,7 @@ class ImageCleaner:
             staging_output = final_output
             if self.use_scratch:
                 scratch_tmp = get_scratch_dir()
-                available_space_in_bytes = get_available_space(scratch_tmp)
+                _, _, available_space_in_bytes = shutil.disk_usage(scratch_tmp)
                 if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR CLEAN,PLACE IMAGES
                     SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks')
                     cleaned_folder_name = os.path.basename(final_output)
