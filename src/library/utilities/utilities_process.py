@@ -35,6 +35,16 @@ def delete_in_background(path: str) -> Future:
     return future 
 
 
+def get_directory_size(directory):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not os.path.islink(file_path):
+                total_size += os.path.getsize(file_path)
+    return total_size
+
+
 def get_hostname() -> str:
     """Returns hostname of server where code is processed
 
