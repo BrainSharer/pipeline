@@ -89,7 +89,7 @@ class ImageCleaner:
         print(f'IMG MASK [INPUT] LOCATION: {self.maskpath}')
         print(f'FINAL CLEANED OUTPUT DIR={final_output}')
         print(f'FINAL CROPPED OUTPUT DIR={self.cropped_output}')
-        print(f'STAGING DIR={staging_output}')
+        print(f'CLEANED STAGING DIR={staging_output}')
         print(f'USING SCRATCH: {self.use_scratch}')
         #######################################################
         
@@ -123,10 +123,7 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        # max_width =self.sqlController.scan_run.width
-        # max_height = self.sqlController.scan_run.height
         files, _, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        # files = sorted(os.listdir(self.input))
         
         file_keys = []
         for file in files:
