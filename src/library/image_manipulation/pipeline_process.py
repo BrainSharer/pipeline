@@ -269,7 +269,7 @@ class Pipeline(
 
         #######################################################
         # PARAMETER SUMMARY
-        print('*'*50, '\n', 'PARAMETER SUMMARY')
+        print('*'*50, '\nPARAMETER SUMMARY')
         print(f'Input dir={input_path}')
         print(f'FINAL OUTPUT DIR={final_output}')
         print(f'RECHUNKME DIR={rechunkme_path}')
