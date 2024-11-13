@@ -39,10 +39,10 @@ class HistogramMaker:
             if not os.path.exists(self.masks):
                 print(f"Mask path does not exist {self.masks}")
                 return
-            files = self.sqlController.get_sections(self.animal, self.channel, self.debug)
+            #files = self.sqlController.get_sections(self.animal, self.channel, self.debug)
             files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
             if nfiles == 0:
-                print(" No sections in the database")
+                print("No sections in the database or folder")
             self.output = self.fileLocationManager.get_histogram(self.channel)
             os.makedirs(self.output, exist_ok=True)
             file_keys = []
@@ -51,7 +51,7 @@ class HistogramMaker:
                 input_path = os.path.join(self.input, filename)
                 mask_path = os.path.join(self.masks, filename)
                 output_path = os.path.join(
-                    self.output, os.path.splitext(file.file_name)[0] + ".png"
+                    self.output, os.path.splitext(filename)[0] + ".png"
                 )
                 if not os.path.exists(input_path):
                     print("Input tif does not exist", input_path)
