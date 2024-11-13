@@ -83,7 +83,7 @@ def get_image_size(filepath: str) -> tuple[int, int]:
         return 0, 0  # Return default values in case of error
     
 
-def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int]:
+def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False):
     """Verify image stack directory for section count and max width, height
 
     :param animal: string of animal name.
@@ -164,7 +164,7 @@ def test_dir(animal: str, directory, section_count: int, downsample: bool = True
         print(error)
         sys.exit()
         
-    return (files, len(files))
+    return (files, len(files), max_width, max_height)
 
 def get_cpus():
     """Helper method to return the number of CPUs to use

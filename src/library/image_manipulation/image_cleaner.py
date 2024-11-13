@@ -87,10 +87,10 @@ class ImageCleaner:
         print('*'*50, '\nPARAMETER SUMMARY')
         print(f'SRC IMG LOCATION: {self.input}')
         print(f'IMG MASK [INPUT] LOCATION: {self.maskpath}')
-        print(f'FINAL OUTPUT DIR={final_output}')
+        print(f'FINAL CLEANED OUTPUT DIR={final_output}')
+        print(f'FINAL CROPPED OUTPUT DIR={self.cropped_output}')
         print(f'STAGING DIR={staging_output}')
         print(f'USING SCRATCH: {self.use_scratch}')
-        print('*'*50, '\n')
         #######################################################
         
         try:
@@ -123,10 +123,10 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        max_width =self.sqlController.scan_run.width
-        max_height = self.sqlController.scan_run.height
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(self.input))
+        # max_width =self.sqlController.scan_run.width
+        # max_height = self.sqlController.scan_run.height
+        files, _, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        # files = sorted(os.listdir(self.input))
         
         file_keys = []
         for file in files:
@@ -140,6 +140,12 @@ class ImageCleaner:
                 dir_path = os.path.dirname(cropped_staging_output)
                 cropped_folder_name = os.path.basename(dir_path)
                 cropped_staging_output = os.path.join(cleaned_path, cropped_folder_name)
+
+            #######################################################
+            if self.debug:
+                print(f'CROPPED STAGING DIR={cropped_staging_output}')
+                print('*'*50, '\n')
+            #######################################################
 
             if os.path.exists(outfile): #SKIP IF FILE EXISTS IN STAGING DIR
                 continue
@@ -235,8 +241,8 @@ class ImageCleaner:
             print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(self.input))
+        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        #files = sorted(os.listdir(self.input))
 
         file_keys = []
         for file in files:

@@ -36,33 +36,22 @@ def rotate_image(img, file: str, rotation: int):
 
 
 def place_image(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = None):
-    '''
-    EXPECTED OUTPUT: full_cropped OR thumbnail_cropped FOLDER WITH PADDED IMAGES
-    '''
-    
+
     infile, cleaned_outfile, maskfile, rotation, flip, mask_image, _, channel, debug, max_width, max_height, cropped_output = file_key
-    
+
     if max_width == 0 or max_height == 0:
         print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
         sys.exit()
 
-    os.makedirs(cropped_output, exist_ok=True)
-    filename = os.path.basename(infile)
-    cropped_output_file = os.path.join(cropped_output, filename)
-
-    if debug:
-        print(f'DEBUG: STARTING place_image')
-        print(f'SRC IMG LOCATION: {cleaned_outfile}')
-        print(f'STAGING [OUTPUT] DIR: {cropped_output}')
-
     if cleaned_and_rotated_file is None:
         if debug:
             print('READING CLEANED FILE FROM DISK')
-        img = cv2.imread(cleaned_outfile, cv2.IMREAD_UNCHANGED)  # Use cv2 for faster reading
+        img = read_image(infile)
     else:
         img = cleaned_and_rotated_file
         if debug:
             print('USED NDARRAY IMAGE IN RAM; NO NEED TO READ IMAGE FROM CLEANED DIRECTORY')
+    img = cleaned_and_rotated_file
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -88,10 +77,69 @@ def place_image(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = No
             placed_img = cv2.merge((b, g, r))
         except Exception as e:
             raise Exception(f"Error placing color image {infile}: {e}")
+
+    os.makedirs(cropped_output, exist_ok=True)
+    filename = os.path.basename(infile)
+    cropped_output_file = os.path.join(cropped_output, filename)
+    write_image(cropped_output_file, placed_img.astype(dtype))
+
+# def place_image_new(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = None):
+#     '''
+#     EXPECTED OUTPUT: full_cropped OR thumbnail_cropped FOLDER WITH PADDED IMAGES
+#     '''
+    
+#     infile, cleaned_outfile, maskfile, rotation, flip, mask_image, _, channel, debug, max_width, max_height, cropped_output = file_key
+    
+#     if max_width == 0 or max_height == 0:
+#         print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
+#         sys.exit()
+
+#     os.makedirs(cropped_output, exist_ok=True)
+#     filename = os.path.basename(infile)
+#     cropped_output_file = os.path.join(cropped_output, filename)
+
+#     if debug:
+#         print(f'DEBUG: STARTING place_image')
+#         print(f'SRC IMG LOCATION: {cleaned_outfile}')
+#         print(f'STAGING [OUTPUT] DIR: {cropped_output}')
+
+#     if cleaned_and_rotated_file is None:
+#         if debug:
+#             print('READING CLEANED FILE FROM DISK')
+#         img = cv2.imread(cleaned_outfile, cv2.IMREAD_UNCHANGED)  # Use cv2 for faster reading
+#     else:
+#         img = cleaned_and_rotated_file
+#         if debug:
+#             print('USED NDARRAY IMAGE IN RAM; NO NEED TO READ IMAGE FROM CLEANED DIRECTORY')
+
+#     zmidr = max_height // 2
+#     zmidc = max_width // 2
+#     startr = max(0, zmidr - (img.shape[0] // 2))
+#     endr = min(max_height, startr + img.shape[0])
+#     startc = max(0, zmidc - (img.shape[1] // 2))
+#     endc = min(max_width, startc + img.shape[1])
+#     dtype = img.dtype
+
+#     if img.ndim == 2:  # Grayscale
+#         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
+#         try:
+#             placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
+#         except Exception as e:
+#             raise Exception(f"Error placing {infile}: {e}")
+
+#     elif img.ndim == 3:  # Color (RGB)
+#         r, g, b = (np.full((max_height, max_width), bg, dtype=dtype) for bg in bgcolor)
+#         try:
+#             r[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 0]
+#             g[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 1]
+#             b[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 2]
+#             placed_img = cv2.merge((b, g, r))
+#         except Exception as e:
+#             raise Exception(f"Error placing color image {infile}: {e}")
         
-    if debug:
-        print(f'Writing {cropped_output_file}')
-    cv2.imwrite(cropped_output_file, placed_img.astype(dtype))
+#     if debug:
+#         print(f'Writing {cropped_output_file}')
+#     cv2.imwrite(cropped_output_file, placed_img.astype(dtype))
 
 
 # def place_image_org(file_key: tuple, bgcolor: int = 0): #DEPRECATED
@@ -279,6 +327,8 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     last_dir = os.path.basename(os.path.normpath(cropped_outfile))
     if 'full' in last_dir:
         downsample = False
+    else:
+        downsample = True
     
     # Ensure mask is binary and uint8
     _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
