@@ -51,7 +51,7 @@ class ElastixManager():
         if self.debug:
             print(f"DEBUG: START ElastixManager::create_within_stack_transformations with iteration={self.iteration}")
 
-        files, nfiles = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         
         self.fileLogger.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
         
@@ -453,14 +453,15 @@ class ElastixManager():
         if self.debug:
             print(f'def align_images has {len(file_keys)} file keys')
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        if total_elapsed_time >= 3600:
-            hours = total_elapsed_time // 3600
-            minutes = (total_elapsed_time % 3600) // 60
-            print(f'took {int(hours)} hour(s) and {int(minutes)} minute(s).')
-        else:
-            print(f'took {total_elapsed_time} seconds.')
+        #REDUNDANT WITH create_pipeline.py
+        # end_time = timer()
+        # total_elapsed_time = round((end_time - start_time), 2)
+        # if total_elapsed_time >= 3600:
+        #     hours = total_elapsed_time // 3600
+        #     minutes = (total_elapsed_time % 3600) // 60
+        #     print(f'took {int(hours)} hour(s) and {int(minutes)} minute(s).')
+        # else:
+        #     print(f'took {total_elapsed_time} seconds.')
 
 
     def create_web_friendly_sections(self):
