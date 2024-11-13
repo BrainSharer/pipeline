@@ -220,7 +220,7 @@ class Pipeline(
         #######################################################
         # PARAMETER SUMMARY
         print('*'*50, '\nPARAMETER SUMMARY')
-        print(f'Initial elastix manager alignment input dir={self.input_path}')
+        print(f'Initial elastix manager alignment input dir={self.input}')
         print(f'FINAL OUTPUT DIR={self.output}')
         print(f'USING SCRATCH: {self.use_scratch}')
         print('*'*50, '\n')
