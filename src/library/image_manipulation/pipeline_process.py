@@ -197,6 +197,8 @@ class Pipeline(
     def align(self):
         """Perform the section to section alignment (registration)
         We need to set the maskpath to get information from ImageManager
+
+        If /scratch is used (and files exist on path), we read cropped images locally
         """
 
         print(self.TASK_ALIGN)
@@ -207,13 +209,13 @@ class Pipeline(
 
         if self.use_scratch:
             scratch_tmp = get_scratch_dir()
-            _, _, available_space_in_bytes = shutil.disk_usage(scratch_tmp)
             last_folder = os.path.basename(os.path.normpath(self.input))
             SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks', last_folder)
-            input_aggregate_size_in_bytes  = get_directory_size(SCRATCH)
-            if input_aggregate_size_in_bytes*3 < available_space_in_bytes: #THERE IS ENOUGH ROOM ON SCRATCH FOR ALIGNED IMAGES
-                self.input = SCRATCH
-            self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
+            if os.path.exists(SCRATCH):
+                files = os.listdir(SCRATCH)
+                if len(files) > 0:
+                    print(f'Using {SCRATCH} for aligned images')
+                    self.input = SCRATCH
             
         #######################################################
         # PARAMETER SUMMARY
