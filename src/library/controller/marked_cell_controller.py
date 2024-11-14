@@ -1,37 +1,10 @@
-
 from collections import defaultdict
+
+from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession, AnnotationType, MarkedCell
 
-FIDUCIAL = 33 # cell type ID in table cell type
 
-class MarkedCellController():
-
-    def get_fiducials(self, prep_id):
-        """Fiducials will be marked on downsampled images. You will need the resolution
-        to convert from micrometers back to pixels of the downsampled images.
-        """
-
-        fiducials = defaultdict(list)
-        annotation_session = self.get_session(prep_id)
-        if not annotation_session:
-            print('No fiducial data for this animal was found.')
-            return fiducials
-        
-
-        xy_resolution = self.scan_run.resolution
-        z_resolution = self.scan_run.zresolution
-        
-        rows = self.session.query(MarkedCell).filter(MarkedCell.FK_session_id==annotation_session.id)\
-            .order_by(MarkedCell.z, MarkedCell.x, MarkedCell.y)\
-            .all()
-
-        for row in rows:
-            x = row.x / xy_resolution
-            y = row.y / xy_resolution
-            section = row.z / z_resolution
-            fiducials[section].append((x,y))
-
-        return fiducials
+class MarkedCellController(SqlController):
 
     
     def get_session(self, prep_id):
@@ -42,3 +15,14 @@ class MarkedCellController():
             .join(MarkedCell)\
             .filter(MarkedCell.FK_cell_type_id==FIDUCIAL).first()
         return session
+
+    def get_data_per_session(self, session_id):
+        """returns the data for a session
+
+        Args:
+            session_id (int): session id
+
+        Returns:
+            list: list of StructureCOM objects
+        """
+        return self.session.query(MarkedCell).filter(MarkedCell.FK_session_id == session_id).all()

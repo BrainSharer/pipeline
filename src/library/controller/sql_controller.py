@@ -15,10 +15,10 @@ from sqlalchemy.orm import scoped_session
 from sqlalchemy.pool import NullPool
 import urllib
 
+from library.controller.annotation_session_controller import AnnotationSessionController
 from library.controller.animal_controller import AnimalController
 from library.controller.elastix_controller import ElastixController
 from library.controller.histology_controller import HistologyController
-from library.controller.marked_cell_controller import MarkedCellController
 from library.controller.scan_run_controller import ScanRunController
 from library.controller.sections_controller import SectionsController
 from library.controller.slide_tif_controller import SlideCZIToTifController
@@ -33,14 +33,14 @@ except ImportError as fe:
     raise
 
 
-class SqlController(AnimalController, ElastixController, HistologyController, MarkedCellController,
+class SqlController(AnnotationSessionController, AnimalController, ElastixController, HistologyController,
                      ScanRunController, SectionsController, SlideCZIToTifController):
     """ This is the base controller class for all things SQL.  
     Each parent class of SqlController would correspond to one table in the database, and include all the 
     methods to interact with that table
     """
 
-    def __init__(self, animal, rescan_number=0):
+    def __init__(self, animal):
         """ setup the attributes for the SlidesProcessor class
             Args:
                 animal: object of animal to process
@@ -65,14 +65,14 @@ class SqlController(AnimalController, ElastixController, HistologyController, Ma
 
         try:
             self.scan_run = self.session.query(ScanRun)\
-                .filter(ScanRun.FK_prep_id == animal)\
-                .filter(ScanRun.rescan_number == rescan_number).one()
-        except NoResultFound:
+                .filter(ScanRun.FK_prep_id == animal).one()
+        except NoResultFound as nrf:
             print(f'No scan run for {animal}')
+            sys.exit()
+            
         
         self.slides = None
         self.tifs = None
-        self.rescan_number = rescan_number
         self.valid_sections = OrderedDict()
         self.session.close()
 

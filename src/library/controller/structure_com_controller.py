@@ -180,4 +180,15 @@ class StructureCOMController(SqlController):
         """        
         return self.session.query(BrainRegion).filter(BrainRegion.active.is_(True))\
             .filter(not_(BrainRegion.id.in_([52, 53, 54]))).all()
+    
+    def get_data_per_session(self, session_id):
+        """returns the data for a session
+
+        Args:
+            session_id (int): session id
+
+        Returns:
+            list: list of StructureCOM objects
+        """
+        return self.session.query(StructureCOM).filter(StructureCOM.FK_session_id == session_id).one()
 

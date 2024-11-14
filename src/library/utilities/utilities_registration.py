@@ -22,7 +22,8 @@ import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from tifffile import imwrite, imread
-import SimpleITK as sitk
+from scipy.ndimage import affine_transform
+from skimage.transform import AffineTransform, warp
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
 NUM_ITERATIONS = "1500"
@@ -73,12 +74,14 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     )
     shift = center + (xshift, yshift) - np.dot(R, center)
     T = np.vstack([np.column_stack([R, shift]), [0, 0, 1]])
+
     return T
 
 
 def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False):
     """
     Create and return a dictionary of rigid registration parameters for elastixImageFilter.
+    The iterations have been reduced as we are doing two alignment processes.
 
     Parameters:
     - elastixImageFilter: The elastix image filter object.
@@ -114,8 +117,8 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
         rigid_params["MaximumNumberOfIterations"] = ["150"]
         rigid_params["NumberOfSpatialSamples"] = ["2048"]
     else:
-        rigid_params["MaximumNumberOfIterations"] = ["2500"]
-        rigid_params["NumberOfSpatialSamples"] = ["12288"]
+        rigid_params["MaximumNumberOfIterations"] = ["1000"]
+        rigid_params["NumberOfSpatialSamples"] = ["8192"]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
@@ -124,7 +127,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     return rigid_params
 
 
-def create_downsampled_transforms(transforms: dict, downsample: bool, scaling_factor: float) -> dict:
+def rescale_transformations(transforms: dict) -> dict:
     """Changes the dictionary of transforms to the correct resolution
 
 
@@ -134,32 +137,18 @@ def create_downsampled_transforms(transforms: dict, downsample: bool, scaling_fa
     :return: corrected dictionary of filename: array  of transforms
     """
 
-    if downsample:
-        transforms_scale_factor = 1
-    else:
-        transforms_scale_factor = scaling_factor
-
-    tf_mat_mult_factor = np.array([[1, 1, transforms_scale_factor], [1, 1, transforms_scale_factor]])
+    tf_mat_mult_factor = np.array([[1, 1, SCALING_FACTOR], [1, 1, SCALING_FACTOR]])
 
     transforms_to_anchor = {}
     for img_name, tf in transforms.items():
         transforms_to_anchor[img_name] = \
             convert_2d_transform_forms(np.reshape(tf, (3, 3))[:2] * tf_mat_mult_factor)
+        
+    
     return transforms_to_anchor
 
-
-def create_scaled_transform(T):
-    """Creates a transform (T) to the correct resolution
-    """
-    transforms_scale_factor = SCALING_FACTOR
-
-    tf_mat_mult_factor = np.array([[1, 1, transforms_scale_factor], [1, 1, transforms_scale_factor]])
-    Ts = convert_2d_transform_forms(np.reshape(T, (3, 3))[:2] * tf_mat_mult_factor)
-    return Ts
-
-
 def convert_2d_transform_forms(arr):
-    """Helper method used by create_downsampled_transforms
+    """Helper method used by rescale_transformations
 
     :param arr: an array of data to vertically stack
     :return: a numpy array
@@ -177,55 +166,56 @@ def align_image_to_affine(file_key):
     :param file_key: tuple of file input and output
     :return: nothing
     """
-    infile, outfile, T = file_key
-    try:
-        im1 = Image.open(infile)
-    except:
-        
-        try:
-            im = imread(infile)
-        except Exception as e:
-            print(f'Could not use tifffile to open={infile}')
-            print(f'Error={e}')
-            sys.exit()
-        
-        try:
-            im1 = Image.fromarray(im)
-        except Exception as e:
-            print(f'Could not convert file type={type(im)} to PIL ')
-            print(f'Error={e}')
-            sys.exit()
-        del im
+    infile, outfile, T, fillcolor = file_key
+    basepath = os.path.basename(os.path.normpath(infile))
 
     try:
-        im2 = im1.transform((im1.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
+        im0 = imread(infile)
     except Exception as e:
-        print(f'align image to affine, could not transform {infile} to:')
-        print(outfile)
+        print(f'Could not use tifffile to open={basepath}')
         print(f'Error={e}')
         sys.exit()
-    
-    del im1
 
+
+    # If the image is sRGB 16bit, convert to 8bit
+    if im0.ndim == 3 and im0.dtype == np.uint16:
+        # PIL can't handle sRGB 16bit images
+        im0 = (im0/256).astype(np.uint8)
+
+    # image is now in numpy array format, we need to get in PIL format to perform the transformation
     try:
-        im2.save(outfile)
-    except:
+        im0 = Image.fromarray(im0)
+    except Exception as e:
+        print(f'Could not convert file {basepath} to PIL ')
+        print(f'Error={e}')
+        sys.exit()
+    try:
+        im1 = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+    except Exception as e:
+        print(f'align image to affine: could not transform {infile}')
+        print(f'Error={e}')
+        sys.exit()
 
-        try:
-            im2 = np.asarray(im2)
-        except Exception as e:
-            print(f'could not convert file type={type(im2)} to numpy')
-            print(f'Error={e}')
-            sys.exit()
+    del im0
+    # Put PIL image to numpy
+    try:
+        im1 = np.asarray(im1)
+    except Exception as e:
+        print(f'could not convert file type={type(im1)}: {basepath} to numpy')
+        print(f'Error={e}')
+        sys.exit()
 
-        try:
-            imwrite(outfile, im2)
-        except Exception as e:
-            print('could not save {outfile} with tifffile')
-            print(f'Error={e}')
-            sys.exit()
 
-    del im2
+    # The final image: im1 is now a numpy array so we can use
+    # tifffile to save the image
+    try:
+        imwrite(outfile, im1, bigtiff=True, compression='LZW')
+    except Exception as e:
+        print('could not save {outfile} with tifffile')
+        print(f'Error={e}')
+        sys.exit()
+
+    del im1
     return
 
 

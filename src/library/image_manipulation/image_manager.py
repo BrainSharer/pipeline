@@ -1,38 +1,91 @@
 import os
+import sys
 import numpy as np
 import tifffile
+from skimage import io
+import cv2
+import glob
+
+from library.utilities.utilities_mask import rescaler
+from library.utilities.utilities_process import read_image
 
 class ImageManager:
-    def __init__(self, directory):
-        self.files = sorted(os.listdir(directory))
-        len_files = len(self.files)
-        self.midpoint = len_files // 2
-        midfile = self.files[self.midpoint]
-        midfilepath = os.path.join(directory, midfile)
-        self.img = tifffile.imread(midfilepath)
+    """
+    A class for managing image files and performing image manipulation operations.
+
+    Args:
+        directory (str): The directory path where the image files are located.
+        filetype (str, optional): The file extension of the image files. Defaults to 'tif'.
+
+    Attributes:
+        files (list): A sorted list of image file paths in the specified directory.
+        len_files (int): The number of image files in the directory.
+        midpoint (int): The index of the middle image file in the list.
+        midfile (str): The path of the middle image file.
+        img (ndarray): The image data of the middle image file.
+        dtype (str): The data type of the image.
+        ndim (int): The number of dimensions of the image.
+        shape (tuple): The shape of the image.
+        width (int): The width of the image.
+        height (int): The height of the image.
+        center (ndarray): The center coordinates of the image.
+        volume_size (tuple): The size of the image volume (width, height, number of files).
+        num_channels (int): The number of color channels in the image.
+
+    Methods:
+        get_bgcolor(maskpath): Returns the background color of the image based on the provided mask.
+
+    """
+
+    def __init__(self, directory, filetype='tif'):
+        self.files = sorted(glob.glob( os.path.join(directory, f'*.{filetype}') ))
+        self.len_files = len(self.files)
+        if self.len_files == 0:
+            print(f'No image files found in: {directory}')
+            sys.exit(1)
+        self.midpoint = self.len_files // 2
+        self.midfile = self.files[self.midpoint]
+        midfilepath = os.path.join(directory, self.midfile)
+        self.img = io.imread(midfilepath)
         self.dtype = self.img.dtype
         self.ndim = self.img.ndim
         self.shape = self.img.shape
         self.width = self.shape[1]
         self.height = self.shape[0]
         self.center = np.array([self.width, self.height]) / 2
+        self.volume_size = (self.width, self.height, self.len_files)
+        self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
 
+    def get_bgcolor(self, maskpath=None):
+        """align needs either an integer or a tuple of integers for the fill color
+        Get the background color of the image based on the the 10th row and 10th column of the image.
+        """
+        if self.img.ndim == 2:
+            return 0
 
+        bgcolor = self.img[10, 10]
+        if isinstance(bgcolor, (list, np.ndarray)):
+            bgcolor = tuple(bgcolor)
+        else:
+            bgcolor = int(bgcolor)
+        return bgcolor
 
-    def get_bgcolor(self, maskpath):
+    def get_reference_image(self, maskpath):
+        """Get the reference image for alignment
+
+        Args:
+            reference_file (str): The file path of the reference image.
+
+        Returns:
+            ndarray: The reference image data.
+        """
         self.masks = sorted(os.listdir(maskpath))
         midmaskfile = self.masks[self.midpoint]
         midmaskpath = os.path.join(maskpath, midmaskfile)
 
         self.mask = tifffile.imread(midmaskpath)
-
-        if self.mask is None:
-            print('Warning: no mask is availabe for this image')
-            return 0
-        
-        white = np.where(self.mask==255)
-        whiterows = white[0]
-        firstrow = whiterows[0]
-        bgcolor = (np.max(self.img[firstrow]))
-        return bgcolor
-
+        reference_file = self.files[self.midpoint]
+        reference_image = read_image(reference_file)
+        cleaned = cv2.bitwise_and(reference_image, reference_image, mask=self.mask)                                   
+        rescaled = rescaler(cleaned)
+        return rescaled

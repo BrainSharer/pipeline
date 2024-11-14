@@ -25,8 +25,7 @@ class BuilderOmeZarrUtils:
         multiscales["version"] = "0.5-dev"
         multiscales["name"] = self.omero_dict['name'] if self.omero_dict['name'] is not None else ""
         multiscales["axes"] = [
-            {"name": "t", "type": "time", "unit": "millisecond"},
-            {"name": "c", "type": "channel"},
+            {"name": "c", "type": "channel"}, #channel dimension removed
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
             {"name": "x", "type": "space", "unit": "micrometer"}
@@ -42,7 +41,7 @@ class BuilderOmeZarrUtils:
             scale["coordinateTransformations"] = [{
                 "type": "scale",
                 "scale": [
-                    1, 1,
+                    1,
                     round(z,3),
                     round(y,3),
                     round(x,3)
@@ -83,12 +82,12 @@ class BuilderOmeZarrUtils:
                 'FF00FF'  #blue
                 ]
             colors = {}
-            for idx in range(self.Channels):
+            for idx in range(self.channels):
                 colors[idx] = colors_palette[idx%len(colors_palette)]
 
         labels = self.omero_dict['channels']['label']
         channels = []
-        for chn in range(self.Channels):
+        for chn in range(self.channels):
             new = {}
             new["active"] = True
             new["coefficient"] = 1
@@ -125,7 +124,19 @@ class BuilderOmeZarrUtils:
         r.attrs['omero'] = omero
         
         return
-    
+
+    def build_zarr_json(self):
+        """TODO: Implement this function to build the zarr json file
+        """
+        
+        store = self.get_store_from_path(self.output)
+        r = zarr.open(store)
+        
+        multiscales = {}
+        return
+
+
+
     def edit_omero_channels(self,channel_num,attr_name,new_value):
         # store = self.zarr_store_type(self.output,verbose=1)
         store = self.get_store_from_path(self.output)
@@ -158,7 +169,7 @@ class BuilderOmeZarrUtils:
     def set_omero_window(self):
         
         channels = self.get_omero_attr('channels')
-        for ch in range(self.Channels):
+        for ch in range(self.channels):
             #set in write_resolution()
             #print(ch)
             channel_dict = channels[ch]

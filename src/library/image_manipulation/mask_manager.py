@@ -15,10 +15,15 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+# TESTING
+from torchvision.models.detection import MaskRCNN_ResNet50_FPN_Weights
+
+
 from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
+SMALL_CONTOUR_AREA = 200
 
 class MaskManager:
     """Class containing all methods related to image masks
@@ -35,30 +40,32 @@ class MaskManager:
         """
         
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
-        MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
+        self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        test_dir(self.animal, self.input, self.section_count, True, same_size=False)
-        os.makedirs(MASKS, exist_ok=True)
-        files = sorted(os.listdir(self.input))
-        self.logevent(f"Input FOLDER: {self.input}")
-        self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"MASKS FOLDER: {MASKS}")
+        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
+        os.makedirs(self.output, exist_ok=True)
+        #files = sorted(os.listdir(self.input))
+        self.fileLogger.logevent(f"Input FOLDER: {self.input}")
+        self.fileLogger.logevent(f"FILE COUNT: {len(files)}")
+        self.fileLogger.logevent(f"MASKS FOLDER: {self.output}")
+        
         for file in files:
             filepath = os.path.join(self.input, file)
-            maskpath = os.path.join(MASKS, file)
+            maskpath = os.path.join(self.output, file)
             if os.path.exists(maskpath):
                 continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             if self.mask_image > 0:
                 mask = mask[:, :, 2]
                 mask[mask > 0] = 255
+                mask = self.remove_small_contours(mask.astype(np.uint8))
 
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
         if self.mask_image == BOTTOM_MASK:
             for file in files:
-                maskpath = os.path.join(MASKS, file)
-                maskfillpath = os.path.join(MASKS, file)   
+                maskpath = os.path.join(self.output, file)
+                maskfillpath = os.path.join(self.output, file)   
                 mask = read_image(maskfillpath)
                 white = np.where(mask==255)
                 whiterows = white[0]
@@ -70,6 +77,42 @@ class MaskManager:
                 write_image(maskfillpath, mask.astype(np.uint8))
 
 
+    def get_model_instance_segmentationTESTING(self, num_classes):
+        """This loads the mask model CNN
+
+        :param num_classes: int showing how many classes, usually 2, brain tissue, not brain tissue
+        """
+
+        # load an instance segmentation model pre-trained pre-trained on COCO
+        #model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+
+        # TESTING
+        weights = MaskRCNN_ResNet50_FPN_Weights.DEFAULT
+        modelpath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth'
+        model_name='mask.model'
+        #model_path = '~/.cache/torch/hub/checkpoints/deeplabv3_resnet101_coco-586e9e4e.pth'
+        #model = deeplabv3_resnet101(pretrained=True)
+        #model.eval()        
+        #model = torch.hub.load(modelpath, 'custom', source='local', path = model_name, force_reload = True)        
+        #model = torch.hub.load(modelpath, 'junk', weights=weights)        
+        #model = maskrcnn_resnet50_fpn(weights=weights, progress=False)
+        # original
+        model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+        model.load_state_dict(torch.load(modelpath, map_location = 'cpu', weights_only=False))
+
+        # get number of input features for the classifier
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        # replace the pre-trained head with a new one
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        # now get the number of input features for the mask classifier
+        in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+        hidden_layer = 256
+        # and replace the mask predictor with a new one
+        model.roi_heads.mask_predictor = MaskRCNNPredictor(
+            in_features_mask, hidden_layer, num_classes
+        )
+        return model
+    
     def get_model_instance_segmentation(self, num_classes):
         """This loads the mask model CNN
 
@@ -91,6 +134,8 @@ class MaskManager:
         )
         return model
 
+
+
     def create_mask(self):
         """Helper method to call either full resolition of downsampled.
         Create the images masks for extracting the tissue from the surrounding 
@@ -99,11 +144,10 @@ class MaskManager:
         need to be done differently
         """
         
-        if self.channel == 1:
-            if self.downsample:
-                self.create_downsampled_mask()
-            else:
-                self.create_full_resolution_mask()
+        if self.downsample:
+            self.create_downsampled_mask()
+        else:
+            self.create_full_resolution_mask()
 
     def load_machine_learning_model(self):
         """Load the CNN model used to generate image masks
@@ -119,7 +163,7 @@ class MaskManager:
         print(f' using CPU with {workers} workers at a batch size of {batch_size}')
 
         if os.path.exists(modelpath):
-            self.loaded_model.load_state_dict(torch.load(modelpath, map_location = device))
+            self.loaded_model.load_state_dict(torch.load(modelpath, map_location = device, weights_only=False))
         else:
             print("no model to load")
             return
@@ -130,21 +174,25 @@ class MaskManager:
         
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
-        MASKED = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"Input FOLDER: {self.input}")
-        starting_files = os.listdir(self.input)
-        self.logevent(f"FILE COUNT: {len(starting_files)}")
-        self.logevent(f"Output FOLDER: {MASKED}")
-        test_dir(
+        self.output = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
+        self.fileLogger.logevent(f"Input FOLDER: {self.input}")
+        try:
+            starting_files = os.listdir(self.input)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
+        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
+        files, cnt_files, max_width, max_height = test_dir(
             self.animal, self.input, self.section_count, self.downsample, same_size=False
         )
-        os.makedirs(MASKED, exist_ok=True)
-        files = sorted(os.listdir(self.input))
+        os.makedirs(self.output, exist_ok=True)
+        #files = sorted(os.listdir(self.input))
         file_keys = []
         for file in tqdm(files):
             infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
-            outfile = os.path.join(MASKED, file)
+            outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
             try:
@@ -167,8 +215,8 @@ class MaskManager:
         self.output = self.fileLocationManager.get_thumbnail_masked(channel=1)
         os.makedirs(self.output, exist_ok=True)
         
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        files = os.listdir(self.input)
+        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        #files = os.listdir(self.input)
         for file in files:
             infile = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
@@ -197,17 +245,29 @@ class MaskManager:
         The output files are the colored merged files. 
         """
         
+        if self.debug:
+            print(f"DEBUG: MaskManager::create_downsampled_mask START")
+
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
         self.input = self.fileLocationManager.get_normalized(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
-        self.logevent(f"Input FOLDER: {self.input}")
+        self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         os.makedirs(self.output, exist_ok=True)
-        files = os.listdir(self.input)
-        self.logevent(f"FILE COUNT: {len(files)}")
-        self.logevent(f"self.output FOLDER: {self.output}")
+        #files = os.listdir(self.input)
+        self.fileLogger.logevent(f"FILE COUNT: {len(files)}")
+        self.fileLogger.logevent(f"self.output FOLDER: {self.output}")
+        ##### The threshold value is key to how much border is left around the brain
+        ##### and also if it misses the brain stem end
+        # 0.15 gives a big border
+        # 0.20 gives a big border but captures the brain stem end
+        # 0.40 still misses the brain stem end
+        # 0.65 gives a big border
+        # 0.85 gives a smaller border with jagged edges starting to appear
+        # 0.95, smaller border, but still some jagged edges and misses the brain stem end
+        threshold = 0.20
         for file in tqdm(files):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
@@ -223,7 +283,8 @@ class MaskManager:
                 self.loaded_model.eval()
                 with torch.no_grad():
                     pred = self.loaded_model(torch_input)
-                masks = [(pred[0]["masks"] > 0.25).squeeze().detach().cpu().numpy()]
+
+                masks = [(pred[0]["masks"] > threshold).squeeze().detach().cpu().numpy()]
                 mask = masks[0]
                 dims = mask.ndim
                 if dims > 2:
@@ -258,3 +319,33 @@ class MaskManager:
             im.save(outpath)
         except IOError:
             print("cannot resize", thumbfile)
+
+    @staticmethod
+    def remove_small_contours(raw_img, debug=False):
+        """
+        Removes small contours from the given image.
+        This function processes the input image to find and remove contours with an area smaller than 200 pixels.
+        Optionally, it can also annotate the image with contour areas and bounding rectangles for debugging purposes.
+        Args:
+            raw_img (numpy.ndarray): The input image in which contours are to be detected and removed.
+            debug (bool, optional): If True, the function will annotate the image with contour areas and bounding rectangles. Defaults to False.
+        Returns:
+            numpy.ndarray: The processed image with small contours removed.
+        """
+        font = cv2.FONT_HERSHEY_PLAIN
+        ret, thresh = cv2.threshold(raw_img, 200, 255, 0)
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            x,y,w,h = cv2.boundingRect(contour)
+            area = cv2.contourArea(contour)
+            if area < SMALL_CONTOUR_AREA:
+                cv2.fillPoly(raw_img, [contour], 0);
+                color = 100
+            else:
+                color = 255
+
+            if debug:
+                cv2.putText(raw_img, str(area), (x,y), font, 1, color, 1, cv2.LINE_AA)                
+                cv2.rectangle(raw_img, (x, y), (x+w, y+h), color, 1)
+
+        return raw_img

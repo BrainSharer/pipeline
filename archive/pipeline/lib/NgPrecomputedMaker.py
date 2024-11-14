@@ -71,14 +71,14 @@ class NgPrecomputedMaker:
         os.makedirs(PROGRESS_DIR, exist_ok=True)
 
         starting_files = test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=True)
-        self.logevent(f"INPUT FOLDER: {INPUT}")
-        self.logevent(f"CURRENT FILE COUNT: {starting_files}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
+        self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT_DIR}")
 
         midfile, file_keys, volume_size, num_channels = self.get_file_information(INPUT, PROGRESS_DIR)
         chunks = calculate_chunks(self.downsample, -1)
         scales = self.get_scales()
-        self.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
+        self.fileLogger.logevent(f"CHUNK SIZE: {chunks}; SCALES: {scales}")
         ng = NumpyToNeuroglancer(
             self.animal,
             None,

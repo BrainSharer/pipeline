@@ -32,8 +32,8 @@ class NgDownsampler:
             print(f"DIR {INPUT_DIR} does not exist, exiting.")
             sys.exit()
         cloudpath = f"file://{INPUT_DIR}"
-        self.logevent(f"INPUT_DIR: {INPUT_DIR}")
-        self.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
+        self.fileLogger.logevent(f"INPUT_DIR: {INPUT_DIR}")
+        self.fileLogger.logevent(f"OUTPUT_DIR: {OUTPUT_DIR}")
         workers =self.get_nworkers()
         tq = LocalTaskQueue(parallel=workers)
         tasks = tc.create_transfer_tasks(

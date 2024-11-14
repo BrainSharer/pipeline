@@ -296,22 +296,27 @@ class NumpyToNeuroglancer():
         tq.execute()
 
 
-    def process_image(self, file_key):
-        """This reads the image and starts the precomputed data
+    def process_image(self, file_key: tuple[int, str, any, str]) -> None:
+        """
+        This reads the image and starts the precomputed data
 
         :param file_key: file_key: tuple
         """
 
-        index, infile, orientation, progress_dir = file_key
-        basefile = os.path.basename(infile)
-        progress_file = os.path.join(progress_dir, basefile)
+        index, infile, _, progress_dir = file_key
+        progress_file = os.path.join(progress_dir, os.path.basename(infile))
+        
         if os.path.exists(progress_file):
              print(f"Section {index} has already been processed, skipping.")
              return
 
-        img = read_image(infile)
+        # try:
+        with Image.open(infile) as img:
+            img_array = np.array(img, dtype=self.precomputed_vol.dtype)
 
-        
+        # img = read_image(infile)
+        img=img_array
+
         if img.ndim > 2:
             img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
             img = np.rot90(img, 1)
@@ -336,7 +341,6 @@ class NumpyToNeuroglancer():
             sys.exit()
 
         touch(progress_file)
-        del img
         return
 
 

@@ -40,9 +40,9 @@ class PrepCreater:
             OUTPUT = self.fileLocationManager.get_full(self.channel)
             
         starting_files = os.listdir(INPUT)
-        self.logevent(f"INPUT FOLDER: {INPUT}")
-        self.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
-        self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+        self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
         os.makedirs(OUTPUT, exist_ok=True)
         sections = self.sqlController.get_sections(self.animal, self.channel)
         for section_number, section in enumerate(sections):

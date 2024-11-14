@@ -20,7 +20,7 @@ from library.mask_utilities.engine import train_one_epoch, evaluate
 
 class MaskTrainer():
 
-    def __init__(self, animal, structures, epochs, num_classes, debug):
+    def __init__(self, animal, structures, epochs, num_classes, debug=False):
         self.root = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
         self.workers = 2
         self.batch_size = 4
@@ -36,6 +36,7 @@ class MaskTrainer():
             warnings.filterwarnings("ignore")
             self.device = torch.device('cpu')
             print('No Nvidia card found, using CPU.')
+        self.created = datetime.now().strftime("%Y-%m-%d-%H:%M")
 
 
     def train_and_test(self):
@@ -98,7 +99,7 @@ class MaskTrainer():
             # evaluate on the test dataset
             evaluate(model, data_loader_test, device=self.device)
 
-        print("That's it!")    
+        print("Finished training and validating masks.")    
 
     def train(self):
 
@@ -132,15 +133,24 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelpath = os.path.join(self.root, 'mask.model.pth')
+        modelpath = os.path.join(self.root, f'mask.model.{self.created}.pth')
         # create logging file
-        logpath = os.path.join(self.root, "mask.logger.txt")
+        logpath = os.path.join(self.root, f'mask.{self.created}.logger.txt')
         logfile = open(logpath, "w")
         logheader = f"Masking {datetime.now()} with {epochs} epochs from {dataset.img_root} with {n_files} files.\n"
         logfile.write(logheader)
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
+        modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
+        if os.path.exists(modeldictpath):
+            print(f"Loading model dictionary from {modeldictpath}")
+            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
+        else:
+            print(f"Model dictionary not found at {modeldictpath}")
+            print("Exiting, make sure there is a symbolic link from the last good model to 'mask.model.train.pth'")
+            sys.exit()
+
         # move model to the right device
         model.to(self.device)
         # construct an optimizer
@@ -175,7 +185,7 @@ class MaskTrainer():
         print('Creating loss chart')
 
         fig = plt.figure()
-        output_path = os.path.join(self.root, 'loss_plot.png')
+        output_path = os.path.join(self.root, f'loss_plot.{self.created}.png')
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]

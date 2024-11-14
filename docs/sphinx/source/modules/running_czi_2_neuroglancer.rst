@@ -69,8 +69,8 @@ Database portal QC after extract task
         under the Sections link under Brain. You will need to enter the animal
         name in the search field.
 
-Running mask task
-~~~~~~~~~~~~~~~~~
+Running the mask task
+~~~~~~~~~~~~~~~~~~~~~
 
 *   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task mask``
 
@@ -86,23 +86,25 @@ Running mask task
        Django database portal and update the rotations. It is usually 3.
 
 
-Running clean task
-~~~~~~~~~~~~~~~~~~
+Running the clean task
+~~~~~~~~~~~~~~~~~~~~~~
 
 *   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean``
 
     #. This will finalize the masks
     #. Creates the cleaned files from the masks
 
-Running histogram task
-~~~~~~~~~~~~~~~~~~~~~~
+Running the histogram task
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram``
 
-    * This will create all the histograms
+    * This will create all the histograms. You can view the histograms
+      in the Django database portal under the Sections link. You can also view 
+      the the histograms under the animal list page.
 
-Running alignment task
-~~~~~~~~~~~~~~~~~~~~~~
+Running the alignment task
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align``
 
@@ -118,8 +120,38 @@ Running alignment task
        midpoint. You’ll need to update the database with new parameters.
        The SQL is produced in the last cell of the notebook.
 
-Running neuroglancer task
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Running the realignment task
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign``
+
+    #. This is necessary when the regular alignment doesn't work well enough. This is often
+       due to bad or missing tissue.
+    #. This task will first create two sets of neuroglancer data, one from the cropped data which is unaligned, 
+       and one from the aligned data.
+    #. First get a list of sections that are not aligned well. This can be done by viewing the aligned images 
+       in Neuroglancer. After getting the sections, open up the Unaligned data as a separate layer in Neuroglancer.
+       The unaligned data is available in the Neuroglancer precomputed area with https://imageserv.dk.ucsd.edu/data/DKXX/neuroglancer_data/C1T_unaligned
+    #. Create a new annotations layer.
+    #. Find common points within the adjacent sections. They must be the in the same place in the brain. Pick at least
+       two points that are not too close. 
+    #. If you have more than 2 adjacent sections, the points must all point to the same place in the brain.
+    #. Label the annotations as Fiducial in the label search input field. (tab on the right side panel)
+    #. Each adjacent section must have the **same number of points** and **be in the same location**.
+    #. After you have marked all the fiducials, save the annotations with the 'Save' icon on the top-right side of the window.
+    #. Go back to the pipeline and run the realign task. It should print information regarding finding points and realigning.
+    #. You must now delete all the images under:
+            
+        * DKXX/preps/C1/thumbnail_aligned 
+        * DKXX/www/neurglancer_data/C1T
+        * DKXX/www/neuroglancer_data/C1T_rechunkme
+        * DKXX/www/neuroglancer_data/progress/C1T
+
+    #. Rerun the align task and then the neuroglancer task.
+    
+
+Running the neuroglancer task
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer``
 
@@ -143,3 +175,9 @@ Running on other channels and the full resolution images
     the results, run the process again but with
     ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false``.
     Some of the steps will be skipped automatically.
+
+Final steps
+~~~~~~~~~~~
+
+*   After you have completed the steps above, make sure to create a symbolic
+    link on imageserv.dk.ucsd.edu in the /srv directory pointing to /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/www DKXX

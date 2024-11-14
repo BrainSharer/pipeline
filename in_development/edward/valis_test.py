@@ -26,7 +26,7 @@ import os
 import time
 import numpy as np
 from valis import registration
-from valis.micro_rigid_registrar import MicroRigidRegistrar # For high resolution rigid registration
+from valis import registration, feature_detectors, non_rigid_registrars, affine_optimizer, serial_rigid
 
 
 """
@@ -37,7 +37,7 @@ or set the environment variable OPENBLAS_NUM_THREADS to 128 or lower
 class ValisManager:
     def __init__(self, animal, debug):
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_cropped"
+        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail"
         self.results_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/valis"
         os.makedirs(self.results_dst_dir, exist_ok=True)
         self.registered_slide_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_registered"
@@ -53,29 +53,44 @@ class ValisManager:
 
         self.reference_slide = os.path.join(self.slide_src_dir, midfile)
 
+    def simple_reg(self):
+
+        registrar = registration.Valis(self.slide_src_dir, dst_dir = self.results_dst_dir, non_rigid_registrar_cls=None,
+            imgs_ordered=False,
+            image_type="fluorescence",
+            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            max_processed_image_dim_px=174,
+            max_image_dim_px=174,
+            align_to_reference=False,
+)
+        rigid_registrar, non_rigid_registrar, error_df = registrar.register()
+        #registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+
+
+
     def register_to_mid(self):
+        feature_detector_cls = feature_detectors.CensureVggFD
+        non_rigid_registrar_cls = non_rigid_registrars.SimpleElastixWarper
+        affine_optimizer_cls = affine_optimizer.AffineOptimizerMattesMI
         # Create a Valis object and use it to register the slides in slide_src_dir, aligning *towards* the reference slide.
         registrar = registration.Valis(
             self.slide_src_dir,
             self.results_dst_dir,
-            reference_img_f=self.reference_slide,
+            feature_detector_cls=feature_detector_cls,
             img_list=self.ordered_img_list,
             imgs_ordered=True,
             image_type="fluorescence",
-            non_rigid_registrar_cls=None,
-            resolution_xyu=(10.4*4, 10.4*4, u'\u00B5m'),
-            max_processed_image_dim_px=1765/4,
-            max_image_dim_px=1765/4,
-            align_to_reference=True
-        )
-        rigid_registrar, non_rigid_registrar, error_df = registrar.register()
-
-        # Perform micro-registration on higher resolution images, aligning *directly to* the reference image
-        registrar.register_micro(max_non_rigid_registration_dim_px=1765/4)
-        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
-        registrar.save_displacement_fields(self.results_dst_dir)
-        registrar.warp_and_save_slides(self.registered_slide_dst_dir, crop="overlap")
+            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            max_processed_image_dim_px=119,
+            max_image_dim_px=119,
+            align_to_reference=False,
+            non_rigid_registrar_cls=None)
         
+        rigid_registrar, non_rigid_registrar, error_df = registrar.register()
+        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+
+
+
 
     def micro_reg(self):
         micro_reg_fraction = 1/32
@@ -93,13 +108,14 @@ class ValisManager:
             imgs_ordered=True,
             image_type="fluorescence",
             non_rigid_registrar_cls=None,
-            resolution_xyu=(10.4, 10.4, u'\u00B5m'),
-            max_processed_image_dim_px=1765,
-            max_image_dim_px=1765,
+            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            max_processed_image_dim_px=783,
+            max_image_dim_px=783,
         )
         rigid_registrar, non_rigid_registrar, error_df = registrar.register()
         rigid_registrar.save_displacement_fields(self.results_dst_dir)
         registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+
         """
         # Calculate what `max_non_rigid_registration_dim_px` needs to be to do non-rigid registration on an image that is 25% full resolution.
         img_dims = np.array([slide_obj.slide_dimensions_wh[0] for slide_obj in registrar.slide_dict.values()])
@@ -127,5 +143,5 @@ if __name__ == '__main__':
     animal = args.animal
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     valisManager = ValisManager(animal, debug)
-    valisManager.register_to_mid()
-    valisManager.teardown()
+    valisManager.simple_reg()
+    #valisManager.teardown()

@@ -10,11 +10,6 @@ Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
 
 
-import pkg_resources
-tc_version = pkg_resources.get_distribution("igneous-pipeline").version
-if tc_version == "4.22.1":
-    import warnings
-    warnings.filterwarnings('ignore')
 import igneous.task_creation as tc
 
 from cloudvolume import CloudVolume
@@ -214,9 +209,9 @@ class MeshPipeline():
         # scale=15 448 does not work
         # scale=15 512 works
 
-        s = int(256)
+        s = int(448)
         shape = [s, s, s]
-        sharded = True
+        sharded = False
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
@@ -251,7 +246,7 @@ class MeshPipeline():
 
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
-        LOD = 0
+        LOD = 10
         print(f'Creating sharded multires task with LOD={LOD}')
         tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    

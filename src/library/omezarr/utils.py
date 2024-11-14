@@ -184,20 +184,20 @@ def optimize_chunk_shape_3d_2(image_shape, original_chunks, output_chunks, dtype
 
     return tuple of new chunk shape
     '''
-    y = original_chunks[1] if original_chunks[1] > output_chunks[1] else output_chunks[1]
-    x = original_chunks[2] if original_chunks[2] > output_chunks[2] else output_chunks[2]
-
+    print(f'optimize original chunks={original_chunks}', end="\t")
+    print(f'optimize output chunks={output_chunks}')
+    
+    #### test
+    y = original_chunks[-2] if original_chunks[-2] > output_chunks[-2] else output_chunks[-2]
+    x = original_chunks[-1] if original_chunks[-1] > output_chunks[-1] else output_chunks[-1]
     original_chunks = (original_chunks[0], y, x)
-
+    print(f'optimize 1 y={y} x={x}')
     current_chunks = original_chunks
+    print(f'current chunks={current_chunks}')
     current_size = get_size_GB(current_chunks, dtype)
 
     if current_size > chunk_limit_GB:
-        print(f'Returning current chunks={current_chunks}, current_size={current_size} chunk_limit_GB={chunk_limit_GB}')
         return current_chunks
-    else:
-        print(f'NOT Returning current chunks={current_chunks}, current_size={current_size} chunk_limit_GB={chunk_limit_GB}')
-
 
     idx = 0
     chunk_bigger_than_z = True if current_chunks[0] >= image_shape[0] else False

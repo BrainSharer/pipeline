@@ -35,7 +35,7 @@ if __name__ == "__main__":
     function_mapping = {
         "train": mask_predictor.mask_trainer,
         "predict": mask_predictor.predict_masks,
-        "create_polygons": mask_predictor.get_insert_mask_points
+        "update_session": mask_predictor.update_session
     }
 
     if task in function_mapping:
