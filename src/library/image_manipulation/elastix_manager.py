@@ -73,7 +73,7 @@ class ElastixManager():
         fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)
         if nchanges == 0:
-            print('No fiducial points were found and so no changes have been made.')
+            print('No fiducial points were found. Performing an extra alignment with no fiducials.')
             return nchanges
 
         for section, points in fiducials.items():
@@ -123,9 +123,6 @@ class ElastixManager():
         if torch.cuda.is_available():
             fixed = to_gpu(fixed)
             moving = to_gpu(moving)
-            print(f'Using CUDA on GPU - SECTION:{moving_index}')
-        else:
-            print(f'No GPU available, using CPU - SECTION:{moving_index}')
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
@@ -155,20 +152,14 @@ class ElastixManager():
             elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
 
         elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.LogToConsoleOff()
         
-        #unclear if alignment benefits from scratch
-        if self.use_scatch:
-            scratch_tmp = get_scratch_dir()
-            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
-            logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
-        else:
-            logpath = os.path.join(self.registration_output, 'registration', 'iteration_logs')
-
+        scratch_tmp = get_scratch_dir()
+        SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
+        logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
         os.makedirs(logpath, exist_ok=True)
-
         elastixImageFilter.SetOutputDirectory(logpath)        
 
-        elastixImageFilter.LogToConsoleOff()
         if self.debug and moving_index == '001':
             print(f'SCRATCH DIR={SCRATCH}')
             elastixImageFilter.PrintParameterMap()
@@ -309,8 +300,8 @@ class ElastixManager():
 
     def get_transformations(self):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
-        
-        :param iteration: (int) which iteration of the alignment are we working on
+        If it is full resolution, it will fetch both iterations and combine them.
+        :param animal: the animal
         :return: a dictionary of key=filename, value = coordinates
         """
         if self.debug:
@@ -321,12 +312,20 @@ class ElastixManager():
         center = image_manager.center
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} {self.input}')
-        print(f'Using center of {center} and midpoint of {midpoint}')
         len_files = len(image_manager.files)
-        for i in range(1, len_files):
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+        for i in range(1, len_files):                
+            if self.downsample:
+                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+            else:
+                rotation0, xshift0, yshift0 = self.load_elastix_transformation(self.animal, i, ALIGNED)
+                rotation1, xshift1, yshift1 = self.load_elastix_transformation(self.animal, i, REALIGNED)
+                rotation = rotation0 + rotation1
+                xshift = xshift0 + xshift1
+                yshift = yshift0 + yshift1
+
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
+
 
         transformations = {}
 
@@ -449,20 +448,9 @@ class ElastixManager():
             file_keys.append([infile, outfile, T, self.bgcolor])
 
         workers = self.get_nworkers() // 2
-        start_time = timer()
         if self.debug:
             print(f'def align_images has {len(file_keys)} file keys')
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-        #REDUNDANT WITH create_pipeline.py
-        # end_time = timer()
-        # total_elapsed_time = round((end_time - start_time), 2)
-        # if total_elapsed_time >= 3600:
-        #     hours = total_elapsed_time // 3600
-        #     minutes = (total_elapsed_time % 3600) // 60
-        #     print(f'took {int(hours)} hour(s) and {int(minutes)} minute(s).')
-        # else:
-        #     print(f'took {total_elapsed_time} seconds.')
-
 
     def create_web_friendly_sections(self):
         """A function to create section PNG files for the database portal.

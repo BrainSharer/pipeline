@@ -42,9 +42,8 @@ class MaskManager:
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
+        files, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         os.makedirs(self.output, exist_ok=True)
-        #files = sorted(os.listdir(self.input))
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         self.fileLogger.logevent(f"FILE COUNT: {len(files)}")
         self.fileLogger.logevent(f"MASKS FOLDER: {self.output}")
@@ -176,18 +175,10 @@ class MaskManager:
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         self.output = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
-        try:
-            starting_files = os.listdir(self.input)
-        except OSError:
-            print(f"Error: Could not find the input directory: {self.input}")
-            return
-        self.fileLogger.logevent(f"FILE COUNT: {len(starting_files)}")
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
-        files, cnt_files, max_width, max_height = test_dir(
-            self.animal, self.input, self.section_count, self.downsample, same_size=False
-        )
         os.makedirs(self.output, exist_ok=True)
-        #files = sorted(os.listdir(self.input))
         file_keys = []
         for file in tqdm(files):
             infile = os.path.join(self.input, file)
@@ -215,8 +206,7 @@ class MaskManager:
         self.output = self.fileLocationManager.get_thumbnail_masked(channel=1)
         os.makedirs(self.output, exist_ok=True)
         
-        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        #files = os.listdir(self.input)
+        files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         for file in files:
             infile = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
@@ -254,10 +244,9 @@ class MaskManager:
         self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         
-        files, cnt_files, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         os.makedirs(self.output, exist_ok=True)
-        #files = os.listdir(self.input)
-        self.fileLogger.logevent(f"FILE COUNT: {len(files)}")
+        self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"self.output FOLDER: {self.output}")
         ##### The threshold value is key to how much border is left around the brain
         ##### and also if it misses the brain stem end

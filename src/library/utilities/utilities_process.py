@@ -56,28 +56,6 @@ def get_hostname() -> str:
     return hostname
 
 
-# def get_image_size(filepath: str):
-#     """Returns width, height of single image
-
-#     :param filepath: path of input file
-#     :return: tuple of int width and height of the file
-#     """
-
-#     try:
-#         result_parts = str(check_output(["identify", filepath]))
-#     except:
-#         print(f'Could not identify file={filepath}')
-#     results = result_parts.split()
-#     try:
-#         width, height = results[2].split("x")
-#     except ValueError as ve:
-#         print(f'Could not get width/height of {filepath}')
-#         print(ve)
-#         sys.exit()
-        
-#     return int(width), int(height)
-
-
 def get_image_size(filepath: str) -> tuple[int, int]:
     """
     Returns the width and height of a single image using Pillow.
@@ -93,7 +71,7 @@ def get_image_size(filepath: str) -> tuple[int, int]:
         return 0, 0  # Return default values in case of error
     
 
-def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False):
+def test_dir(animal: str, directory: str, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int]:
     """Verify image stack directory for section count and max width, height
 
     :param animal: string of animal name.
