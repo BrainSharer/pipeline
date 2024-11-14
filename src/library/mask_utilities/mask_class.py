@@ -6,6 +6,7 @@ import torch
 from PIL import Image
 import cv2
 import torchvision
+from library.image_manipulation.mask_manager import SMALL_CONTOUR_AREA
 from library.mask_utilities.utils import reduce_dict, collate_fn
 import library.mask_utilities.transforms as T
 
@@ -36,14 +37,14 @@ class MaskDataset(torch.utils.data.Dataset):
         for i, contour in enumerate(contours):
             x,y,w,h = cv2.boundingRect(contour)
             area = cv2.contourArea(contour)
-            if area > 100:
+            if area > SMALL_CONTOUR_AREA:
                 xmin = int(round(x))
                 ymin = int(round(y))
                 xmax = int(round(x+w))
                 ymax = int(round(y+h))
                 color = (i+10) * 10
                 cv2.fillPoly(mask, [contour], color);
-                print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
+                #print(f'Area: {area}, Box: {xmin, ymin, xmax, ymax}')
                 boxes.append([xmin, ymin, xmax, ymax])
         
         obj_ids = np.unique(mask)

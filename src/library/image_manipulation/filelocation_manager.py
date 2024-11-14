@@ -4,6 +4,9 @@ import os
 import sys
 
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
+ALIGNED = 0
+REALIGNED = 1
+
 
 
 class FileLocationManager(object):
@@ -32,6 +35,7 @@ class FileLocationManager(object):
         self.prep = os.path.join(self.root, stack, "preps")
         self.masks = os.path.join(self.prep, "masks")
         self.www = os.path.join(self.stack, "www")
+        self.slides_preview = os.path.join(self.www, "slides_preview")
         
         # The rest
         self.brain_info = os.path.join(self.root, stack, "brains_info")
@@ -47,13 +51,10 @@ class FileLocationManager(object):
         self.thumbnail = os.path.join(self.prep, "1", "thumbnail")
         self.thumbnail_original = os.path.join(self.prep, "thumbnail_original")
         self.thumbnail_web = os.path.join(self.www, "scene")
+        self.slide_thumbnail_web = os.path.join(self.www, "slide")
 
-    def get_czi(self, czi=0):
-        czi_path = self.czi
-        if czi > 0:
-            czi_path = os.path.join(self.stack, f'czi_{czi}')
-        
-        return czi_path
+    def get_czi(self):
+        return self.czi        
     
     def get_full(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full")
@@ -68,35 +69,63 @@ class FileLocationManager(object):
         return os.path.join(self.prep, f"C{channel}", "full_cropped")
 
     def get_full_aligned(self, channel=1):
-        if isinstance(channel, int):
-            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
-        else:
-            validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
+        validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         return validated_path
     
     def get_ome_zarr(self, channel=1):
-        if isinstance(channel, int):
-            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
-        else:
-            validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
+        validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
-    def get_alignment_directories(self, channel, resolution):
+    
+    def get_alignments(self, iteration=0):
+        aligments = {}
+        aligments[ALIGNED] = "aligned"
+        aligments[REALIGNED] = "realigned"
 
-        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_cropped')
-        output = os.path.join(self.prep, f'C{channel}', f'{resolution}_aligned')
+        try:
+            aligments[iteration]
+        except KeyError:
+            print(f'Invalid iteration {iteration}')
+            sys.exit(1)
 
-        os.makedirs(output, exist_ok=True)
+        return aligments[iteration]
+
+    def get_alignment_directories(self, channel, downsample, iteration=0):
+
+
+        if downsample:
+            resolution = "thumbnail"
+        else:
+            resolution = "full"
+
+        inpath = self.get_alignments(iteration=iteration)
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_{inpath}')
+
+        if iteration == REALIGNED:
+            outpath = "NA"
+        else:
+            outpath = self.get_alignments(iteration=iteration+1)
+
+        output = os.path.join(self.prep, f'C{channel}', f'{resolution}_{outpath}')
+
+        #os.makedirs(output, exist_ok=True)
         return input, output
 
-    def get_thumbnail_aligned(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "thumbnail_aligned")
+    
+    def get_directory(self, channel: int, downsample: bool, inpath: str) -> str:
+        if downsample:
+            resolution = "thumbnail"
+        else:
+            resolution = "full"
+
+        input = os.path.join(self.prep, f'C{channel}', f'{resolution}_{inpath}')
+        return input
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
     
     def get_thumbnail_cropped(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "thumbnail_cropped")
+        return os.path.join(self.prep, f"C{channel}", f"thumbnail_cropped")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")
@@ -124,28 +153,42 @@ class FileLocationManager(object):
         '''
         return os.path.join(self.cell_labels_data)
 
-    def get_neuroglancer(self, downsample=True, channel=1, rechunk=False):
+    def get_neuroglancer(self, downsample=True, channel=1, iteration=0):
         '''
         Returns path to store neuroglancer files ('precomputed' format)
 
         Note: This path is also web-accessbile [@ UCSD]
         '''
+        outpath = self.get_alignments(iteration=iteration)
+
         channel_outdir = f"C{channel}"
         if downsample:
-            channel_outdir += "T"
-
-        if not rechunk:
-            channel_outdir += "_rechunkme"
+            channel_outdir += f"T_{outpath}"
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_progress(self, downsample=True, channel=1, cropped=False):
+    def get_neuroglancer_rechunkme(self, downsample=True, channel=1, iteration=0):
+        '''
+        Returns path to store neuroglancer files ('precomputed' format)
+
+        Note: This path is also web-accessbile [@ UCSD]
+        '''
+        outpath = self.get_alignments(iteration=iteration)
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
 
-        if cropped:
-            channel_outdir += "_unaligned"
+        channel_outdir += f"_rechunkme_{outpath}"
+
+
+        return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
+
+    def get_neuroglancer_progress(self, downsample=True, channel=1, iteration=0):
+        outpath = self.get_alignments(iteration=iteration)
+        channel_outdir = f"C{channel}"
+        if downsample:
+            channel_outdir += f"T_{outpath}"
+
 
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 

@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='Allen')
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
+    parser.add_argument("--bspline", help="Enter true or false", required=False, default="false")
     parser.add_argument("--task", help="Enter the task you want to perform", required=False, default="status", type=str)
     
     args = parser.parse_args()
@@ -52,8 +53,9 @@ if __name__ == '__main__':
     fixed = args.fixed
     orientation = args.orientation
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    bspline = bool({"true": True, "false": False}[str(args.bspline).lower()])
     task = str(args.task).strip().lower()
-    volumeRegistration = VolumeRegistration(moving, channel, um, fixed, orientation, debug)
+    volumeRegistration = VolumeRegistration(moving, channel, um, fixed, orientation, bspline, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,
@@ -70,7 +72,8 @@ if __name__ == '__main__':
                         'create_average_volume': volumeRegistration.create_average_volume,
                         'crop': volumeRegistration.crop_volume,
                         'origins': volumeRegistration.volume_origin_creation,
-                        'transformix_origins': volumeRegistration.transformix_origins
+                        'transformix_origins': volumeRegistration.transformix_origins,
+                        'pad_volume': volumeRegistration.pad_volume,
     }
 
     if task in function_mapping:

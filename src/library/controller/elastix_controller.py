@@ -10,7 +10,7 @@ class ElastixController():
         Controller (Class): Parent class of sqalchemy session
     """
 
-    def check_elastix_row(self, animal, section):
+    def check_elastix_row(self, animal, section, iteration=0):
         """checks that a given elastix row exists in the database
 
         :param animal: (str): Animal ID
@@ -20,11 +20,11 @@ class ElastixController():
 
         row_exists = bool(self.session.query(ElastixTransformation).filter(
             ElastixTransformation.FK_prep_id == animal,
-            ElastixTransformation.iteration == 0,
+            ElastixTransformation.iteration == iteration,
             ElastixTransformation.section == section).first())
         return row_exists
 
-    def get_elastix_row(self, animal, section):
+    def get_elastix_row(self, animal, section, iteration=0):
         """gets a given elastix row exists in the database
 
         :param animal: (str): Animal ID
@@ -36,14 +36,14 @@ class ElastixController():
         try:
             row = self.session.query(ElastixTransformation).filter(
                 ElastixTransformation.FK_prep_id == animal,
-                ElastixTransformation.iteration == 0,
+                ElastixTransformation.iteration == iteration,
                 ElastixTransformation.section == section).first()
         except NoResultFound as nrf:
             print(f'No row value for {animal} {section} error: {nrf}')
 
         return row
 
-    def check_elastix_metric_row(self, animal, section):
+    def check_elastix_metric_row(self, animal, section, iteration=0):
         """checks that a given elastix row exists in the database
 
         :param animal (str): Animal ID
@@ -55,11 +55,11 @@ class ElastixController():
         row_exists = bool(self.session.query(ElastixTransformation).filter(
             ElastixTransformation.FK_prep_id == animal,
             ElastixTransformation.section == section,
-            ElastixTransformation.iteration == 0,
+            ElastixTransformation.iteration == iteration,
             ElastixTransformation.metric != 0).first())
         return row_exists
     
-    def add_elastix_row(self, animal, section, rotation, xshift, yshift, metric=0):
+    def add_elastix_row(self, animal, section, rotation, xshift, yshift, metric, iteration):
         """adding a row in the elastix table
 
         :param animal: (str) Animal ID
@@ -70,12 +70,12 @@ class ElastixController():
         """
 
         data = ElastixTransformation(
-            FK_prep_id=animal, section=section, rotation=rotation, xshift=xshift, yshift=yshift, iteration=0,
+            FK_prep_id=animal, section=section, rotation=rotation, xshift=xshift, yshift=yshift, iteration=iteration,
             metric=metric, created=datetime.now(), active=True)
         self.add_row(data)
 
 
-    def update_elastix_row(self, animal, section, updates):
+    def update_elastix_row(self, animal, section, updates, iteration):
         """Update a row
         
         :param animal: (str) Animal ID
@@ -84,6 +84,13 @@ class ElastixController():
         """
         self.session.query(ElastixTransformation)\
             .filter(ElastixTransformation.FK_prep_id == animal)\
-            .filter(ElastixTransformation.iteration == 0)\
+            .filter(ElastixTransformation.iteration == iteration)\
             .filter(ElastixTransformation.section == section).update(updates)
         self.session.commit()
+
+    def get_elastix_count(self, animal, iteration):
+        count = self.session.query(ElastixTransformation)\
+            .filter(ElastixTransformation.FK_prep_id == animal)\
+            .filter(ElastixTransformation.iteration == iteration)\
+            .count() 
+        return count

@@ -4,44 +4,40 @@ https://elastix.lumc.nl/
 The libraries are contained within the SimpleITK-SimpleElastix library
 """
 
+import math
 import os
 import numpy as np
-from collections import OrderedDict, defaultdict
-
+from collections import OrderedDict
 from PIL import Image
 from timeit import default_timer as timer
 
 Image.MAX_IMAGE_PIXELS = None
-from timeit import default_timer as timer
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
+from tqdm import tqdm
 
+import torch
+if torch.cuda.is_available():
+    import cupy as cp
 
-from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.file_logger import FileLogger
-from library.utilities.utilities_process import get_image_size, read_image, test_dir
-from library.utilities.utilities_mask import equalized, normalize_image
+from library.image_manipulation.filelocation_manager import ALIGNED, REALIGNED, FileLocationManager
+from library.utilities.utilities_process import get_scratch_dir, read_image, test_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
-    create_downsampled_transforms,
     create_rigid_parameters,
-    create_scaled_transform,
     parameters_to_rigid_transform,
+    rescale_transformations,
     tif_to_png,
 )
+from library.image_manipulation.image_manager import ImageManager
 
 
-class ElastixManager(FileLogger):
+class ElastixManager():
     """Class for generating, storing and applying transformations within 
     stack alignment [with the Elastix package]
     All methods relate to aligning images in stack
     """
 
-    def __init__(self, LOGFILE_PATH):
-        self.pixelType = sitk.sitkFloat32
-        super().__init__(LOGFILE_PATH)
-        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
 
     def create_within_stack_transformations(self):
         """Calculate and store the rigid transformation using elastix.  
@@ -49,70 +45,58 @@ class ElastixManager(FileLogger):
         This is done in a simple loop with no workers. Usually takes
         up to an hour to run for a stack. It only needs to be run once for
         each brain. 
+        If cuda and GPU is available, we will use it, otherwise don't. 
+        Home computers may not have a GPU
         """
-        test_dir(self.animal, self.input, self.section_count, True, same_size=True)
-        if self.channel == 1 and self.downsample:
-            files = sorted(os.listdir(self.input))
-            nfiles = len(files)
-            self.logevent(f"Input FOLDER: {self.input}")
-            self.logevent(f"FILE COUNT: {nfiles}")
-            for i in range(1, nfiles):
-                fixed_index = os.path.splitext(files[i - 1])[0]
-                moving_index = os.path.splitext(files[i])[0]
-                if not self.sqlController.check_elastix_row(self.animal, moving_index):
-                    rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=False)
-                    self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric)
+        if self.debug:
+            print(f"DEBUG: START ElastixManager::create_within_stack_transformations with iteration={self.iteration}")
+
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
+        
+        self.fileLogger.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
+        
+        for i in range(1, nfiles):
+            fixed_index = os.path.splitext(files[i - 1])[0]
+            moving_index = os.path.splitext(files[i])[0]
+            if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
+                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
 
-    def update_within_stack_transformations(self):
-        """Takes the existing transformations and aligned images and improves the transformations
-        Elastix needs the points to be in files so we need to write the data from the DB to the filesystem.
-        Each section will have it's own point file. We usually create 3 points per section, so there
-        will be a point file containing 3 ponts for each section.
+    def create_fiducial_points(self):
+        """ Yanks the fiducial points from the database and writes them to a file
         """
+
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         os.makedirs(self.registration_output, exist_ok=True)
-        fiducials = self.sqlController.get_fiducials(self.animal)
+
+        fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)
         if nchanges == 0:
-            return
-        
+            print('No fiducial points were found and so no changes have been made.')
+            return nchanges
+
         for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
             point_file = os.path.join(self.registration_output, f'{section}_points.txt')
             with open(point_file, 'w') as f:
-                f.write('point\n')
                 f.write(f'{len(points)}\n')
                 for point in points:
                     x = point[0]
                     y = point[1]
                     f.write(f'{x} {y}')
                     f.write('\n')
-    
-        files = sorted(os.listdir(self.input))
-        nfiles = len(files)
-        print(f'Making {nchanges} changes from {nfiles} images from {os.path.basename(os.path.normpath(self.input))}\n')
-        for i in range(1, nfiles):
-            fixed_index = os.path.splitext(files[i - 1])[0]
-            moving_index = os.path.splitext(files[i])[0]
-            rotation, xshift, yshift, metric = self.align_elastix(fixed_index, moving_index, use_points=True)
-            if rotation != 0 and xshift != 0 and yshift != 0:
-                print(f'\tUpdating {moving_index} with rotation={rotation}, xshift={xshift}, yshift={yshift}, metric={metric}')
-                updates = dict(rotation=rotation, xshift=xshift, yshift=yshift, metric=metric)
-                self.sqlController.update_elastix_row(self.animal, moving_index, updates)
-
-        if nchanges > 0:
-            print('\nChanges have been made. You need to remove the aligned images and run the alignment again.')
-            print('You will also need to rerun the neuroglancer task(s) again.\n')
 
 
-    def align_elastix(self, fixed_index, moving_index, use_points=False):
+    def align_images_elastix(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         """
-        Aligns two images using the Elastix registration algorithm.
+        Aligns two images using the Elastix registration algorithm with GPU acceleration.
+        expected to replace 'align_elastix' (TESTING)
 
         Args:
-            fixed_index (int): The index of the fixed image.
-            moving_index (int): The index of the moving image.
-            use_points (bool, optional): Whether to use corresponding points for registration. Defaults to False.
+            fixed_index (str due to filename extraction): The index of the fixed image.
+            moving_index (str due to filename extraction): The index of the moving image.
+            iteration (int): if > 0, we are re-aligning
 
         Returns:
             tuple: A tuple containing the rotation angle (R), translation in the x-axis (x), translation in the y-axis (y),
@@ -120,9 +104,37 @@ class ElastixManager(FileLogger):
 
         Raises:
             AssertionError: If the number of fixed points does not match the number of moving points.
-
         """
-        if use_points:
+        
+        # Transfer images to GPU memory
+        def to_gpu(image):
+            self.fileLogger.logevent(f"ALIGNMENT USING GPU")
+            array = sitk.GetArrayFromImage(image)
+            gpu_array = cp.asarray(array)
+            return sitk.GetImageFromArray(cp.asnumpy(gpu_array))
+
+        elastixImageFilter = sitk.ElastixImageFilter()
+        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+        fixed = sitk.ReadImage(fixed_file, self.pixelType)
+
+        moving_file = os.path.join(self.input, f"{moving_index}.tif")
+        moving = sitk.ReadImage(moving_file, self.pixelType)
+
+        if torch.cuda.is_available():
+            fixed = to_gpu(fixed)
+            moving = to_gpu(moving)
+            print(f'Using CUDA on GPU - SECTION:{moving_index}')
+        else:
+            print(f'No GPU available, using CPU - SECTION:{moving_index}')
+
+        # Set the images in the filter
+        elastixImageFilter.SetFixedImage(fixed)
+        elastixImageFilter.SetMovingImage(moving)
+
+        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
+        elastixImageFilter.SetParameterMap(rigid_params)
+
+        if self.iteration == REALIGNED:
             fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
             moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
             if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
@@ -134,22 +146,7 @@ class ElastixManager(FileLogger):
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, \
                         f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-            else:
-                return 0, 0, 0, 0
-        
-        elastixImageFilter = sitk.ElastixImageFilter()
-        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
-        fixed = sitk.ReadImage(fixed_file, self.pixelType)
-
-        moving_file = os.path.join(self.input, f"{moving_index}.tif")
-        moving = sitk.ReadImage(moving_file, self.pixelType)
-        elastixImageFilter.SetFixedImage(fixed)
-        elastixImageFilter.SetMovingImage(moving)
-
-        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
-        elastixImageFilter.SetParameterMap(rigid_params)
-
-        if use_points:
+        if self.iteration == REALIGNED and os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):        
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
             elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
@@ -158,21 +155,31 @@ class ElastixManager(FileLogger):
             elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
 
         elastixImageFilter.SetLogToFile(True)
-        logpath =  os.path.join(self.registration_output, 'iteration_logs')
+        
+        #unclear if alignment benefits from scratch
+        if self.use_scatch:
+            scratch_tmp = get_scratch_dir()
+            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
+            logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
+        else:
+            logpath = os.path.join(self.registration_output, 'registration', 'iteration_logs')
+
         os.makedirs(logpath, exist_ok=True)
+
         elastixImageFilter.SetOutputDirectory(logpath)        
 
         elastixImageFilter.LogToConsoleOff()
-        if self.debug:
+        if self.debug and moving_index == '001':
+            print(f'SCRATCH DIR={SCRATCH}')
             elastixImageFilter.PrintParameterMap()
+        
+        # Execute the registration on GPU
         elastixImageFilter.Execute()
 
         R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
         metric = self.get_metric(logpath)
 
         return float(R), float(x), float(y), float(metric)
-
-
 
     def align_elastix_with_affine(self, fixed_index, moving_index):
         elastixImageFilter = sitk.ElastixImageFilter()
@@ -197,16 +204,16 @@ class ElastixManager(FileLogger):
 
 
     def create_affine_transformations(self):
-        files = sorted(os.listdir(self.input))
-        nfiles = len(files)
-        midpoint = nfiles // 2
+        image_manager = ImageManager(self.input)
+        # files = sorted(os.listdir(self.input))
+        # nfiles = len(files)
+        # midpoint = nfiles // 2
         transformation_to_previous_sec = {}
-        center = self.get_rotation_center()
-              
-        
-        for i in range(1, nfiles):
-            fixed_index = os.path.splitext(files[i - 1])[0]
-            moving_index = os.path.splitext(files[i])[0]
+        # center = image_manager.center
+
+        for i in tqdm(range(1, image_manager.len_files)):
+            fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
+            moving_index = os.path.splitext(image_manager.files[i])[0]
             elastixImageFilter = sitk.ElastixImageFilter()
             fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
             fixed = sitk.ReadImage(fixed_file, self.pixelType)            
@@ -217,9 +224,9 @@ class ElastixManager(FileLogger):
 
             affineParameterMap = elastixImageFilter.GetDefaultParameterMap("affine")
             affineParameterMap["UseDirectionCosines"] = ["true"]
-            affineParameterMap["MaximumNumberOfIterations"] = ["500"] # 250 works ok
+            affineParameterMap["MaximumNumberOfIterations"] = ["250"] # 250 works ok
             affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
-            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+            affineParameterMap["NumberOfResolutions"]= ["4"] # Takes lots of RAM
             affineParameterMap["WriteResultImage"] = ["false"]
             elastixImageFilter.SetParameterMap(affineParameterMap)
             elastixImageFilter.LogToConsoleOff()
@@ -228,120 +235,35 @@ class ElastixManager(FileLogger):
 
             a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
             R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
-            shift = center + (float(tx), float(ty)) - np.dot(R, center)
+            shift = image_manager.center + (float(tx), float(ty)) - np.dot(R, image_manager.center)
             A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
             transformation_to_previous_sec[i] = A
 
-        for moving_index in range(nfiles):
+        for moving_index in tqdm(range(image_manager.len_files)):
             filename = str(moving_index).zfill(3) + ".tif"
-            if moving_index == midpoint:
+            if moving_index == image_manager.midpoint:
                 transformation = np.eye(3)
-            elif moving_index < midpoint:
+            elif moving_index < image_manager.midpoint:
                 T_composed = np.eye(3)
-                for i in range(midpoint, moving_index, -1):
+                for i in range(image_manager.midpoint, moving_index, -1):
                     T_composed = np.dot(
                         np.linalg.inv(transformation_to_previous_sec[i]), T_composed
                     )
                 transformation = T_composed
             else:
                 T_composed = np.eye(3)
-                for i in range(midpoint + 1, moving_index + 1):
+                for i in range(image_manager.midpoint + 1, moving_index + 1):
                     T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
                 transformation = T_composed
-            
-            #print(filename, transformation)
+
+            # print(filename, transformation)
             infile = os.path.join(self.input, filename)
             outfile = os.path.join(self.output, filename)
             file_key = [infile, outfile, transformation]
             align_image_to_affine(file_key)
+            #####self.transform_save_image(infile, outfile, transformation)
 
-
-
-    def create_dir2dir_transformations(self):
-        """Calculate and store the rigid transformation using elastix.  
-        Align CH3 from CH1
-        TODO this needs to be fixed to account for the channel variable name
-        """
-        MOVING_DIR = os.path.join(self.fileLocationManager.prep, 'CH3', 'thumbnail_cropped')
-        FIXED_DIR = self.fileLocationManager.get_thumbnail_aligned(channel=2)
-        self.output = self.fileLocationManager.get_thumbnail_aligned(channel=3)
-        os.makedirs(self.output, exist_ok=True)
-        moving_files = sorted(os.listdir(MOVING_DIR))
-        files = sorted(os.listdir(MOVING_DIR))
-        midpoint = len(files) // 2
-        midfilepath = os.path.join(MOVING_DIR, files[midpoint])
-        width, height = get_image_size(midfilepath)
-        center = np.array([width, height]) / 2
-
-        file_keys = []
-
-        for file in moving_files:
-            moving_index = str(file).replace(".tif","")
-            moving_file = os.path.join(MOVING_DIR, file)
-            fixed_file = os.path.join(FIXED_DIR, file)
-
-            if self.sqlController.check_elastix_row(self.animal, moving_index):
-                rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index)
-            else:
-                fixed_arr = read_image(fixed_file)
-                fixed_arr = normalize_image(fixed_arr)
-                fixed_arr = equalized(fixed_arr)
-                fixed = sitk.GetImageFromArray(fixed_arr)
-
-                moving_arr = read_image(moving_file)
-                moving_arr = normalize_image(moving_arr)
-                moving_arr = equalized(moving_arr)
-                moving = sitk.GetImageFromArray(moving_arr)
-                start_time = timer()
-                rotation, xshift, yshift, metric = self.align_elastix(fixed, moving, use_points=False)
-                end_time = timer()
-                total_elapsed_time = round((end_time - start_time),2)
-                print(f"Moving index={moving_index} took {total_elapsed_time} seconds")
-
-                print(f" took {total_elapsed_time} seconds")
-                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift)
-
-            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
-
-            infile = moving_file
-            outfile = os.path.join(self.output, file)
-            if os.path.exists(outfile):
-                continue
-            file_keys.append([infile, outfile, T])
-
-        workers = self.get_nworkers()
-        self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-
-    def apply_full_transformations(self, channel=1):
-        """Calculate and store the rigid transformation using elastix.  
-        Align CH3 from CH1
-        """
-        self.input = os.path.join(self.fileLocationManager.prep, 'CH3', 'full_cropped')
-        self.output = self.fileLocationManager.get_full_aligned(channel=channel)
-        os.makedirs(self.output, exist_ok=True)
-        files = sorted(os.listdir(self.input))
-        center = self.get_rotation_center(channel=channel)
-        file_keys = []
-
-        for file in files:
-            moving_index = str(file).replace(".tif","")
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, moving_index)
-
-            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
-            Ts = create_scaled_transform(T)
-            infile = os.path.join(self.input, file)
-            outfile = os.path.join(self.output, file)
-            if os.path.exists(outfile):
-                continue
-
-            file_key = [infile, outfile, Ts]
-            file_keys.append(file_key)
-
-        workers = self.get_nworkers()
-        self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-
-
-    def load_elastix_transformation(self, animal, moving_index):
+    def load_elastix_transformation(self, animal, moving_index, iteration):
         """loading the elastix transformation from the database
 
         :param animal: (str) Animal ID
@@ -349,7 +271,7 @@ class ElastixManager(FileLogger):
 
         :return array: 2*2 roatation matrix, float: x translation, float: y translation
         """
-        elastixTransformation = self.sqlController.get_elastix_row(animal, moving_index)
+        elastixTransformation = self.sqlController.get_elastix_row(animal, moving_index, iteration)
         if elastixTransformation is None:
             print(f'No value for {animal} at moving index={moving_index}')
             return 0, 0, 0
@@ -361,17 +283,14 @@ class ElastixManager(FileLogger):
 
     def get_rotation_center(self):
         """return a rotation center for finding the parameters of a transformation from the transformation matrix
+        use channel 1 thumbnail cropped images to find the center
 
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(self.input))
-        midpoint = len(files) // 2
-        midfilepath = os.path.join(self.input, files[midpoint])
-        width, height = get_image_size(midfilepath)
-        center = np.array([width, height]) / 2
-        return center
+        self.input = self.fileLocationManager.get_thumbnail_cropped()
+        image_manager = ImageManager(self.input)
+        return image_manager.center
 
     def transform_image(self, img, T):
         matrix = T[:2,:2]
@@ -380,31 +299,38 @@ class ElastixManager(FileLogger):
         img = affine_transform(img, matrix.T, offset)
         return img
 
+    def transform_save_image(self, infile, outfile, T):
+        matrix = T[:2,:2]
+        offset = T[:2,2]
+        offset = np.flip(offset)
+        img = read_image(infile)
+        img = affine_transform(img, matrix.T, offset)
+        write_image(outfile, img)
+
     def get_transformations(self):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
         
-        :param animal: the animal
+        :param iteration: (int) which iteration of the alignment are we working on
         :return: a dictionary of key=filename, value = coordinates
         """
+        if self.debug:
+            print("DEBUG: START ElastixManager::get_transformations")
 
-        self.input = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        files = sorted(os.listdir(self.input))
-        midpoint = len(files) // 2
         transformation_to_previous_sec = {}
-        center = self.get_rotation_center()
-
-        for i in range(1, len(files)):
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i)
+        image_manager = ImageManager(self.fileLocationManager.get_thumbnail_cropped())
+        center = image_manager.center
+        midpoint = image_manager.midpoint 
+        print(f'Using get_transformations iteration={self.iteration} {self.input}')
+        print(f'Using center of {center} and midpoint of {midpoint}')
+        len_files = len(image_manager.files)
+        for i in range(1, len_files):
+            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
         transformations = {}
 
-        if self.debug:
-            print(f'elastix_manager::get_transformations #files={len(files)} in {self.input}')
-            print(f'#transformation_to_previous_sec={len(transformation_to_previous_sec)}')
-
-        for moving_index in range(len(files)):
+        for moving_index in range(len_files):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == midpoint:
                 transformations[filename] = np.eye(3)
@@ -420,35 +346,71 @@ class ElastixManager(FileLogger):
                 for i in range(midpoint + 1, moving_index + 1):
                     T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
                 transformations[filename] = T_composed
+
         return transformations
 
-    def align_full_size_image(self, transforms):
+
+    def start_image_alignment(self):
         """align the full resolution tif images with the transformations provided.
            All the sections are aligned to the middle sections, the transformation
            of a given section to the middle section is the composite of the transformation
            from the given section through all the intermediate sections to the middle sections.
 
-        :param transforms: (dict): dictionary of transformations that are index by the id of moving sections
+        :param transforms: (dict): dictionary of transformations that are index by the id of moving sections #THIS ARGUMENT NOT ACTUALLY PASSED TO METHOD
         """
+        if self.debug:
+            print("DEBUG: START ElastixManager::start_image_alignment")
+
+        transformations = self.get_transformations()
+
         if not self.downsample:
-            transforms = create_downsampled_transforms(transforms, downsample=False, scaling_factor=self.scaling_factor)
-            self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='full')
-            self.logevent(f"Input FOLDER: {self.input}")
+            transformations = rescale_transformations(transformations)
+
+        try:
             starting_files = os.listdir(self.input)
-            self.logevent(f"FILE COUNT: {len(starting_files)} with {len(transforms)} transforms")
-            self.logevent(f"Output FOLDER: {self.output}")
-            self.align_images(self.input, self.output, transforms)
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
+        
+        print(f"Aligning images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
 
-    def align_downsampled_images(self, transforms):
-        """align the downsample tiff images
+        if len(starting_files) != len(transformations):
+            print("Error: The number of files in the input directory does not match the number of transformations")
+            print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
+            print(f"Alignment input folder: {self.input}")
+            print(f"Alignment output output: {self.output}")
+            return
+        
+        self.align_images(transformations)
 
-        :param transforms: (dict) dictionary of transformations indexed by id of moving sections
+
+    def get_alignment_status(self):
         """
+        Determines the alignment status of image files for a given channel and downsample level.
 
-        if self.downsample:
-            self.input, self.output = self.fileLocationManager.get_alignment_directories(channel=self.channel, resolution='thumbnail')
-            print(f'Aligning {len(os.listdir(self.input))} images from {os.path.basename(os.path.normpath(self.input))} to {os.path.basename(os.path.normpath(self.output))}', end=" ")
-            self.align_images(self.input, self.output, transforms)
+        The method checks the existence of directories and counts the number of files in the 
+        'aligned' and 'realigned' directories. It compares these counts with the expected counts 
+        retrieved from the SQL controller to determine which input directory to use for neuroglancer.
+
+        Returns:
+            str: The alignment status, either 'ALIGNED' or 'REALIGNED'. If neither condition is met, 
+             returns None.
+        """
+        
+        iteration = None
+        aligned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+        realigned_directory = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
+        if not os.path.exists(realigned_directory):
+            return ALIGNED
+        aligned_files = os.listdir(aligned_directory)
+        realigned_files = os.listdir(realigned_directory)
+        aligned_count = self.sqlController.get_elastix_count(self.animal, iteration=ALIGNED) + 1
+        realigned_count = self.sqlController.get_elastix_count(self.animal, iteration=REALIGNED) + 1
+        if len(aligned_files) == aligned_count and len(aligned_files) > 0:
+            iteration = ALIGNED
+        if len(realigned_files) == realigned_count and len(realigned_files) > 0:
+            iteration = REALIGNED
+        return iteration 
 
     def align_section_masks(self, animal, transforms):
         """function that can be used to align the masks used for cleaning the image.  
@@ -461,7 +423,7 @@ class ElastixManager(FileLogger):
         fileLocationManager = FileLocationManager(animal)
         self.input = fileLocationManager.rotated_and_padded_thumbnail_mask
         self.output = fileLocationManager.rotated_and_padded_and_aligned_thumbnail_mask
-        self.align_images(self.input, self.output, transforms)
+        self.align_images(transforms)
 
     def align_images(self, transforms):
         """function to align a set of images with a with the transformations between them given
@@ -470,6 +432,9 @@ class ElastixManager(FileLogger):
 
         :param transforms (dict): dictionary of transformations indexed by id of moving sections
         """
+        image_manager = ImageManager(self.input)        
+        self.bgcolor = image_manager.get_bgcolor()
+        print(f'align_images Using bgcolor={self.bgcolor}')
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
@@ -481,38 +446,45 @@ class ElastixManager(FileLogger):
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
-            file_keys.append([infile, outfile, T])
+            file_keys.append([infile, outfile, T, self.bgcolor])
 
         workers = self.get_nworkers() // 2
         start_time = timer()
         if self.debug:
             print(f'def align_images has {len(file_keys)} file keys')
         self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
-        end_time = timer()
-        total_elapsed_time = round((end_time - start_time), 2)
-        print(f'took {total_elapsed_time} seconds.')
+        #REDUNDANT WITH create_pipeline.py
+        # end_time = timer()
+        # total_elapsed_time = round((end_time - start_time), 2)
+        # if total_elapsed_time >= 3600:
+        #     hours = total_elapsed_time // 3600
+        #     minutes = (total_elapsed_time % 3600) // 60
+        #     print(f'took {int(hours)} hour(s) and {int(minutes)} minute(s).')
+        # else:
+        #     print(f'took {total_elapsed_time} seconds.')
+
 
     def create_web_friendly_sections(self):
         """A function to create section PNG files for the database portal.
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        self.input = fileLocationManager.get_thumbnail_aligned(channel=self.channel)
+        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
         self.output = fileLocationManager.section_web
 
         os.makedirs(self.output, exist_ok=True)
         files = sorted(os.listdir(self.input))
         file_keys = []
         for file in files:
-            png = str(file).replace(".tif", ".png")
-            infile = os.path.join(self.input, file)
-            outfile = os.path.join(self.output, png)
-            if os.path.exists(outfile):
-                continue
-            file_keys.append([infile, outfile])
-
+            base, _ = os.path.splitext(file)
+            png_file = base + ".png"
+            outfile = os.path.join(self.output, png_file)
+            if not os.path.exists(outfile):
+                infile = os.path.join(self.input, file)    
+                file_keys.append((infile, outfile))
         workers = self.get_nworkers()
         self.run_commands_concurrently(tif_to_png, file_keys, workers)
+
 
     @staticmethod
     def get_metric(logpath):

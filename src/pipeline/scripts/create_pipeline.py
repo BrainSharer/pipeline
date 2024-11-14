@@ -63,19 +63,11 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.pipeline_process import Pipeline
-from library.utilities.utilities_process import SCALING_FACTOR
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument(
-        "--rescan_number",
-        help="Enter rescan number, default is 0",
-        required=False,
-        default=0,
-        type=int,
-    )
     parser.add_argument(
         "--channel", help="Enter channel", required=False, default=1, type=int
     )
@@ -85,13 +77,6 @@ if __name__ == "__main__":
         required=False,
         default="true",
         type=str,
-    )
-    parser.add_argument(
-        "--scaling_factor",
-        help="Used for downsampling, defaults to 32",
-        required=False,
-        default=SCALING_FACTOR,
-        type=float
     )
     parser.add_argument(
         "--debug", help="Enter true or false", required=False, default="false", type=str
@@ -108,20 +93,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     animal = args.animal
-    rescan_number = int(args.rescan_number)
     channel = args.channel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
-    scaling_factor = args.scaling_factor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     process_hostname = socket.gethostname()
 
     pipeline = Pipeline(
         animal,
-        rescan_number=rescan_number,
         channel=channel,
         downsample=downsample,
-        scaling_factor=scaling_factor,
         task=task,
         debug=debug,
     )
@@ -143,16 +124,20 @@ if __name__ == "__main__":
 
     if task in function_mapping:
         start_time = timer()
-        pipeline.logevent(
-            f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}"
-        )
+        print(f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}")
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"{task} took {total_elapsed_time} seconds")
-        sep = "*" * 40 + "\n"
-        pipeline.logevent(f"{task} took {total_elapsed_time} seconds\n{sep}")
+        if total_elapsed_time >= 3600:
+            hours = total_elapsed_time // 3600
+            minutes = (total_elapsed_time % 3600) // 60
+            time_out_msg = f'took {int(hours)} hour(s) and {int(minutes)} minute(s).'
+        else:
+            time_out_msg = f'took {total_elapsed_time} seconds.'
 
+        print(f"{task} {time_out_msg}")
+        sep = "*" * 40 + "\n"
+        pipeline.fileLogger.logevent(f"{task} {time_out_msg}\n{sep}")
     else:
         print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():

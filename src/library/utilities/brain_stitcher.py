@@ -265,11 +265,13 @@ class BrainStitcher(ParallelManager):
                 write_elapsed_time = round((write_end_time - write_start_time), 2)
                 print(f'writing {position} took {write_elapsed_time} seconds', end=" ")
                 print(f'#{i} @ {round(( (i/num_tiles) * 100),2)}% done.')
-        i += 1
-        touch(progress_path)
-        end_time = timer()     
-        elapsed_time = round((end_time - start_time), 2)
-        print(f'Writing {i} h5 files took {elapsed_time} seconds')
+                
+            i += 1
+            touch(progress_path)
+            end_time = timer()     
+            elapsed_time = round((end_time - start_time), 2)
+            if self.debug:
+                print(f'Writing {i} h5 files took {elapsed_time} seconds')
 
     def write_sections_from_volume(self):
         zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr')

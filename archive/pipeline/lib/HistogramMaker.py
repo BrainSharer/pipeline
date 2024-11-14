@@ -63,8 +63,8 @@ class HistogramMaker:
                     [input_path, mask_path, self.channel, file, output_path]
                 )
             count_physical_files = len(np.unique([i.file_name for i in files]))
-            self.logevent(f"UNIQUE PHYSICAL FILE COUNT: {count_physical_files}")
-            self.logevent(f"SECTION COUNT IN DATABASE: {len(files)}")
+            self.fileLogger.logevent(f"UNIQUE PHYSICAL FILE COUNT: {count_physical_files}")
+            self.fileLogger.logevent(f"SECTION COUNT IN DATABASE: {len(files)}")
 
             workers = self.get_nworkers()
             self.run_commands_concurrently(make_single_histogram, file_keys, workers)
@@ -81,12 +81,12 @@ class HistogramMaker:
             INPUT = self.fileLocationManager.get_thumbnail(self.channel)
             MASK_INPUT = self.fileLocationManager.thumbnail_masked
             OUTPUT = self.fileLocationManager.get_histogram(self.channel)
-            self.logevent(f"INPUT FOLDER: {INPUT}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}")
             files = os.listdir(INPUT)
             files = [os.path.basename(i) for i in files]
             lfiles = len(files)
-            self.logevent(f"CURRENT FILE COUNT: {lfiles}")
-            self.logevent(f"OUTPUT FOLDER: {OUTPUT}")
+            self.fileLogger.logevent(f"CURRENT FILE COUNT: {lfiles}")
+            self.fileLogger.logevent(f"OUTPUT FOLDER: {OUTPUT}")
             os.makedirs(OUTPUT, exist_ok=True)
             # files = os.listdir(INPUT) #deprecated 28-jun-2022
             hist_dict = Counter({})
@@ -105,14 +105,14 @@ class HistogramMaker:
                 try:
                     img = io.imread(input_path)
                 except:
-                    self.logevent(f"Could not read {input_path}")
+                    self.fileLogger.logevent(f"Could not read {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     mask = io.imread(mask_path)
                     img = cv2.bitwise_and(img, img, mask=mask)
                 except:
-                    self.logevent(
+                    self.fileLogger.logevent(
                         f"ERROR WITH FILE OR DIMENSIONS: {mask_path}{mask.shape}{img.shape}"
                     )
                     break
@@ -120,13 +120,13 @@ class HistogramMaker:
                     flat = img.flatten()
                     del img
                 except:
-                    self.logevent(f"Could not flatten file {input_path}")
+                    self.fileLogger.logevent(f"Could not flatten file {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     img_counts = np.bincount(flat)
                 except:
-                    self.logevent(f"Could not create counts {input_path}")
+                    self.fileLogger.logevent(f"Could not create counts {input_path}")
                     lfiles -= 1
                     continue
                 try:
@@ -134,13 +134,13 @@ class HistogramMaker:
                         dict(zip(np.unique(flat), img_counts[img_counts.nonzero()]))
                     )
                 except:
-                    self.logevent(f"Could not create counter {input_path}")
+                    self.fileLogger.logevent(f"Could not create counter {input_path}")
                     lfiles -= 1
                     continue
                 try:
                     hist_dict = hist_dict + img_dict
                 except:
-                    self.logevent(f"Could not add files {input_path}")
+                    self.fileLogger.logevent(f"Could not add files {input_path}")
                     lfiles -= 1
                     continue
             if lfiles > 10:

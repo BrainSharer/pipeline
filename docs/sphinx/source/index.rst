@@ -1,5 +1,7 @@
-Brainsharer Preprocessing Pipeline
-===================================
+.. include:: modules/header.rst
+
+Preprocessing pipeline documentation
+====================================
 These pages contain documentation for the Kleinfeld lab's brain preprocessing pipeline.
 Specifically, the documentation includes:
 
@@ -10,7 +12,7 @@ Specifically, the documentation includes:
 * A HOWTO set of instructions to run the actual steps of the pipeline.
 
 
-Use the side navigation panel to view different documentation topics.
+Use the side navigation panel to view different documentation topics within this topic.
 
 ****
 

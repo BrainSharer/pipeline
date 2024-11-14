@@ -26,11 +26,10 @@ class SectionRegistration(Pipeline):
         channel = "1"
         downsample = True
         self.debug = debug
-        rescan_number = 0
         task = 'align'        
-        super().__init__(animal, rescan_number, channel, downsample, 
+        super().__init__(animal, channel, downsample, 
                          task, self.debug)
-        self.sections = self.sqlController.get_sections(self.animal, self.channel, rescan_number)
+        self.sections = self.sqlController.get_sections(self.animal, self.channel)
         self.midpoint = len(self.sections) // 2
         self.moving_index = section
         self.fixed_index = section - 1

@@ -5,13 +5,9 @@ from collections import defaultdict
 import cv2
 import json
 from scipy.ndimage import center_of_mass
-from skimage.filters import gaussian
 
 
-from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
-from library.controller.structure_com_controller import StructureCOMController
-from library.database_model.annotation_points import AnnotationType
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
@@ -72,7 +68,7 @@ class BrainStructureManager():
             np array: COM of the brain
         """
         #self.load_com()
-        controller = StructureCOMController(self.animal)
+        controller = AnnotationSessionController(self.animal)
         coms = controller.get_COM(self.animal, annotator_id=annotator_id)
         return coms
 
@@ -132,8 +128,7 @@ class BrainStructureManager():
 
     def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, polygon_annotator_id):
         self.animal = brainManager.animal
-        polygon = PolygonSequenceController(animal=self.animal)
-        controller = StructureCOMController(self.animal)
+        controller = AnnotationSessionController(self.animal)
         structures = controller.get_structures()
         # get transformation at um 
         R, t = self.get_transform_to_align_brain(brainManager)
@@ -155,7 +150,7 @@ class BrainStructureManager():
                 #if structure.abbreviation not in self.allen_structures_keys:
                 #    continue
                 
-                df = polygon.get_volume(self.animal, polygon_annotator_id, structure.id)
+                df = controller.get_volume(self.animal, polygon_annotator_id, structure.id)
                 if df.empty:
                     continue;
 
@@ -209,17 +204,17 @@ class BrainStructureManager():
 
 
     def inactivate_coms(self, animal):
-        structureController = StructureCOMController(animal)
-        sessions = structureController.get_active_animal_sessions(animal)
+        controller = AnnotationSessionController(animal)
+        sessions = controller.get_active_animal_sessions(animal)
         for sc_session in sessions:
             sc_session.active=False
-            structureController.update_row(sc_session)
+            controller.update_row(sc_session)
 
 
     def update_com(self, com, structure_id):
         source = "MANUAL"
         controller = AnnotationSessionController(self.animal)
-        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2, AnnotationType.STRUCTURE_COM)
+        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2)
         x = com[0] * 25
         y = com[1] * 25
         z = com[2] * 25

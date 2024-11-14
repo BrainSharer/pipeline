@@ -1,30 +1,44 @@
 
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, String, Integer, ForeignKey,Enum,DateTime
+from sqlalchemy import JSON, Column, String, Integer, ForeignKey,Enum,DateTime
 from sqlalchemy.sql.sqltypes import Float
 import enum
 
 from library.database_model.atlas_model import Base
-from library.database_model.brain_region import BrainRegion
 from library.database_model.user import User
 
-class AnnotationType(enum.Enum):
-    POLYGON_SEQUENCE = 'POLYGON_SEQUENCE'
-    MARKED_CELL = 'MARKED_CELL'
-    STRUCTURE_COM = 'STRUCTURE_COM'
+
 
 class AnnotationSession(Base):
     __tablename__ = 'annotation_session'
     id =  Column(Integer, primary_key=True, nullable=False)
     FK_prep_id = Column(String, nullable=False)
     FK_user_id = Column(Integer, ForeignKey('auth_user.id'), nullable=True)
-    FK_brain_region_id = Column(Integer, ForeignKey('brain_region.id'),nullable=True)
-    annotation_type = Column(Enum(AnnotationType))    
-    brain_region = relationship('BrainRegion', lazy=True, primaryjoin="AnnotationSession.FK_brain_region_id == BrainRegion.id")
+    labels = relationship('AnnotationLabel', secondary='annotation_session_labels', back_populates='annotation_session')
     annotator = relationship('User', lazy=True)
+    annotation = Column(JSON)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
     updated = Column(DateTime)
+
+
+
+class AnnotationLabel(Base):
+    __tablename__ = 'annotation_label'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    label = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    active =  Column(Integer,default=1)
+    created =  Column(DateTime)
+    annotation_session = relationship('AnnotationSession', secondary='annotation_session_labels', back_populates='labels')
+
+
+class AnnotationSessionLabel(Base):
+    __tablename__ = 'annotation_session_labels'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    annotationsession_id = Column('annotationsession_id', Integer, ForeignKey('annotation_session.id'))
+    annotationlabel_id = Column('annotationlabel_id', Integer, ForeignKey('annotation_label.id'))
+
 
 class CellSources(enum.Enum):
     MACHINE_SURE = 'MACHINE-SURE'
@@ -41,12 +55,14 @@ class MarkedCell(Base):
     z = Column(Float, nullable=False)
     source = Column(Enum(CellSources))    
     FK_session_id = Column(Integer, ForeignKey('annotation_session.id'), nullable=True)
-    FK_cell_type_id = Column(Integer)
+    FK_cell_type_id = Column(Integer, ForeignKey('cell_type.id'), nullable=True)
     session = relationship('AnnotationSession', lazy=True)
+    cell_type = relationship('CellType', lazy=True, primaryjoin="MarkedCell.FK_cell_type_id == CellType.id")
 
-#class CellType(Base):
-#    id =  Column(Integer, primary_key=True, nullable=False)
-#    cell_type = Column(String, nullable=False)
+class CellType(Base):
+    __tablename__ = 'cell_type'
+    id =  Column(Integer, primary_key=True, nullable=False)
+    cell_type = Column(String, nullable=False)
 
 
 class COMSources(enum.Enum):
