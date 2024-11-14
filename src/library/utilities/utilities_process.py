@@ -12,6 +12,7 @@ import gc
 from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
+from concurrent.futures import Future
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
@@ -19,8 +20,7 @@ DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
 
 
-def delete_in_background(path):
-    #NOTE: MOVE TO UTILITIES AFTER TESTING - DR (duplicate in run_neuroglancer)
+def delete_in_background(path: str) -> Future:
     current_date = datetime.now().strftime('%Y-%m-%d')
     old_path = f"{path}.old_{current_date}"
 
@@ -33,6 +33,16 @@ def delete_in_background(path):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(shutil.rmtree, old_path)
     return future 
+
+
+def get_directory_size(directory):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not os.path.islink(file_path):
+                total_size += os.path.getsize(file_path)
+    return total_size
 
 
 def get_hostname() -> str:
@@ -164,7 +174,8 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
         print(error)
         sys.exit()
         
-    return (files, len(files))
+    return (files, len(files), max_width, max_height)
+
 
 def get_cpus():
     """Helper method to return the number of CPUs to use
