@@ -8,7 +8,6 @@ ALIGNED = 0
 REALIGNED = 1
 
 
-
 class FileLocationManager(object):
     """Master class to house all file paths for preprocessing-pipeline
 
@@ -29,6 +28,7 @@ class FileLocationManager(object):
         """
 
         # These need to be set first
+        self.prep_id = stack
         self.root = os.path.join(data_path, "pipeline_data")
         self.registration_info = os.path.join(data_path, "brains_info/registration")
         self.stack = os.path.join(self.root, stack)
@@ -36,7 +36,7 @@ class FileLocationManager(object):
         self.masks = os.path.join(self.prep, "masks")
         self.www = os.path.join(self.stack, "www")
         self.slides_preview = os.path.join(self.www, "slides_preview")
-        
+
         # The rest
         self.brain_info = os.path.join(self.root, stack, "brains_info")
         self.czi = os.path.join(self.root, stack, "czi")
@@ -55,7 +55,7 @@ class FileLocationManager(object):
 
     def get_czi(self):
         return self.czi        
-    
+
     def get_full(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full")
 
@@ -64,19 +64,18 @@ class FileLocationManager(object):
 
     def get_full_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full_cleaned")
-    
+
     def get_full_cropped(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "full_cropped")
 
     def get_full_aligned(self, channel=1):
         validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         return validated_path
-    
+
     def get_ome_zarr(self, channel=1):
         validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
-    
     def get_alignments(self, iteration=0):
         aligments = {}
         aligments[ALIGNED] = "aligned"
@@ -91,7 +90,6 @@ class FileLocationManager(object):
         return aligments[iteration]
 
     def get_alignment_directories(self, channel, downsample, iteration=0):
-
 
         if downsample:
             resolution = "thumbnail"
@@ -108,10 +106,9 @@ class FileLocationManager(object):
 
         output = os.path.join(self.prep, f'C{channel}', f'{resolution}_{outpath}')
 
-        #os.makedirs(output, exist_ok=True)
+        # os.makedirs(output, exist_ok=True)
         return input, output
 
-    
     def get_directory(self, channel: int, downsample: bool, inpath: str) -> str:
         if downsample:
             resolution = "thumbnail"
@@ -123,7 +120,7 @@ class FileLocationManager(object):
 
     def get_thumbnail_cleaned(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
-    
+
     def get_thumbnail_cropped(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", f"thumbnail_cropped")
 
@@ -132,19 +129,19 @@ class FileLocationManager(object):
 
     def get_thumbnail_colored(self, channel=1):
         return os.path.join(self.masks, f"C{channel}", "thumbnail_colored")
-    
+
     def get_thumbnail_masked(self, channel=1):
         return os.path.join(self.masks, f"C{channel}", "thumbnail_masked")
 
     def get_full_colored(self, channel=1):
         return os.path.join(self.masks, f"C{channel}", "full_colored")
-    
+
     def get_full_masked(self, channel=1):
         return os.path.join(self.masks, f"C{channel}", "full_masked")
 
     def get_histogram(self, channel=1):
         return os.path.join(self.histogram, f"C{channel}")
-    
+
     def get_cell_labels(self):
         '''
         Returns path to store cell labels
@@ -167,28 +164,34 @@ class FileLocationManager(object):
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_rechunkme(self, downsample=True, channel=1, iteration=0):
-        '''
-        Returns path to store neuroglancer files ('precomputed' format)
+    def get_neuroglancer_rechunkme(self, downsample: bool = True, channel: int = 1, iteration: int = 0) -> str:
+        """
+        Generates the file path for the Neuroglancer rechunkme file based on the given parameters.
 
-        Note: This path is also web-accessbile [@ UCSD]
-        '''
+        Args:
+            downsample (bool): If True, includes a 'T' in the output directory name to indicate downsampling. Default is True.
+            channel (int): The channel number to include in the output directory name. Default is 1.
+            iteration (int): The iteration number to include in the alignment path. Default is 0.
+
+        Returns:
+            str: The generated file path for the Neuroglancer rechunkme file.
+        """
+
         outpath = self.get_alignments(iteration=iteration)
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += "T"
 
         channel_outdir += f"_rechunkme_{outpath}"
+        rechunkme = os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-
-        return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
+        return rechunkme
 
     def get_neuroglancer_progress(self, downsample=True, channel=1, iteration=0):
         outpath = self.get_alignments(iteration=iteration)
         channel_outdir = f"C{channel}"
         if downsample:
             channel_outdir += f"T_{outpath}"
-
 
         return os.path.join(self.neuroglancer_progress, f"{channel_outdir}")
 

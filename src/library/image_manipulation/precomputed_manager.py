@@ -1,5 +1,4 @@
 import os
-from skimage import io
 import sys
 from cloudvolume import CloudVolume
 from taskqueue import LocalTaskQueue
@@ -59,9 +58,10 @@ class NgPrecomputedMaker:
         os.makedirs(self.rechunkme_path, exist_ok=True)
         os.makedirs(self.progress_dir, exist_ok=True)
 
-        starting_files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
+
         self.fileLogger.logevent(f"self.input FOLDER: {self.input}")
-        self.fileLogger.logevent(f"CURRENT FILE COUNT: {starting_files}")
+        self.fileLogger.logevent(f"CURRENT FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         
         image_manager = ImageManager(self.input)
@@ -134,6 +134,7 @@ class NgPrecomputedMaker:
         tq.insert(tasks)
         tq.execute()
         print('Finished transfer tasks')
+
         for mip in range(0, self.mips):
             cv = CloudVolume(outpath, mip)
             print(f'Creating downsample tasks at mip={mip}')
@@ -240,27 +241,6 @@ class NgPrecomputedMaker:
             else:
                 tasks = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
             tq.insert(tasks)
-            tq.execute()
-            
-            
-    def create_neuroglancer_normalization(self):
-        """Downsamples the neuroglancer cloudvolume this step is needed to make the files viewable in neuroglancer
-        """
-        
-        print(f'Running normalization tasks with MIPs={self.mips}')
-        workers =self.get_nworkers()
-        outpath = f"file://{self.output}"
-
-        tq = LocalTaskQueue(parallel=workers)
-        for mip in range(0, self.mips):
-            # first pass: create per z-slice histogram
-            cv = CloudVolume(outpath, mip)
-            tasks = tc.create_luminance_levels_tasks(cv.layer_cloudpath, coverage_factor=0.01, mip=mip) 
-            tq.insert(tasks)    
-            tq.execute()
-            # second pass: apply histogram equalization
-            tasks = tc.create_contrast_normalization_tasks(cv.layer_cloudpath, cv.layer_cloudpath, mip=mip)
-            tq.insert(tasks)    
             tq.execute()
 
 
