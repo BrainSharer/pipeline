@@ -6,6 +6,7 @@ import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
+from library.image_manipulation.filelocation_manager import CLEANED_DIR, CROPPED_DIR
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, clean_rotate_and_place_image, get_image_box, place_image
 from library.utilities.utilities_process import delete_in_background, SCALING_FACTOR, read_image, test_dir, get_scratch_dir, get_directory_size
@@ -38,7 +39,7 @@ class ImageCleaner:
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
             input_aggregate_size_in_bytes  = get_directory_size(self.input)
-            final_output = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            final_output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
             staging_output = final_output
             if self.use_scratch:
                 scratch_tmp = get_scratch_dir()
@@ -50,11 +51,10 @@ class ImageCleaner:
                 else:
                     self.use_scratch = False
             self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
-            self.cropped_output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
         else:
             self.input = self.fileLocationManager.get_full(self.channel)
             input_aggregate_size_in_bytes  = get_directory_size(self.input)
-            final_output = self.fileLocationManager.get_full_cleaned(self.channel)
+            final_output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
             staging_output = final_output
             if self.use_scratch:
                 scratch_tmp = get_scratch_dir()
@@ -66,7 +66,8 @@ class ImageCleaner:
                 else:
                     self.use_scratch = False
             self.maskpath = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
-            self.cropped_output = self.fileLocationManager.get_full_cropped(self.channel)
+
+        self.cropped_output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
 
         #######################################################
         # PARAMETER SUMMARY
@@ -109,7 +110,7 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files, _, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         file_keys = []
         for file in files:
@@ -195,14 +196,9 @@ class ImageCleaner:
         """Do the image placing in parallel. Cleaning and cropping has already taken place.
         We first need to get all the correct image sizes and then update the DB.
         """
-        if self.downsample:
-            #self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
-            self.input = staging_output
-            self.output = self.fileLocationManager.get_thumbnail_cropped(self.channel)
-        else:
-            #self.input = self.fileLocationManager.get_full_cleaned(self.channel)
-            self.input = staging_output
-            self.output = self.fileLocationManager.get_full_cropped(self.channel)
+
+        self.input = staging_output
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
 
         os.makedirs(self.output, exist_ok=True)
         max_width = self.sqlController.scan_run.width
@@ -262,8 +258,8 @@ class ImageCleaner:
                 None
             """
             self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-            self.input = self.fileLocationManager.get_thumbnail_cleaned(self.channel)
+            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
 
-            image_manager = ImageManager(self.input, self.maskpath)
+            image_manager = ImageManager(self.input)
             update_dict = {'bgcolor': image_manager.get_bgcolor() }
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)

@@ -18,7 +18,7 @@ import subprocess
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import ALIGNED, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CROPPED_DIR, REALIGNED, REALIGNED_DIR, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.mask_manager import MaskManager
@@ -201,8 +201,8 @@ class Pipeline(
         print(self.TASK_ALIGN)
         self.pixelType = sitk.sitkFloat32
         self.iteration = ALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()
@@ -219,24 +219,22 @@ class Pipeline(
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
         aligned image stack from thumnbail_aligned. This only needs to be run on downsampled channel 1 images. With the full
         resolution images, the transformations come from both iterations of the downsampled images and then scaled.
-        
+        While the transformations are only created on channel 1, the realignment needs to occur on all channels
         """        
-        if self.channel == 1 and self.downsample:
-            print(self.TASK_REALIGN)
-            self.create_fiducial_points()
-            self.pixelType = sitk.sitkFloat32
-            self.iteration = REALIGNED
-            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
-            print(f'Second elastix manager alignment input: {self.input}')
+        print(self.TASK_REALIGN)
+        self.pixelType = sitk.sitkFloat32
+        self.iteration = REALIGNED
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        print(f'Second elastix manager alignment input: {self.input}')
 
-            self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
-            
-            self.start_image_alignment()
-            
-            print(f'Finished {self.TASK_REALIGN}.')
-        else:
-            print(f'No realignment for full resolution images')
+        if self.channel == 1 and self.downsample:
+            self.create_fiducial_points()
+            self.create_within_stack_transformations()
+                        
+
+        self.start_image_alignment()
+        print(f'Finished {self.TASK_REALIGN}.')
 
 
     def neuroglancer(self):
