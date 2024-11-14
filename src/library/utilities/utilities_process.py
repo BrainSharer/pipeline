@@ -71,15 +71,23 @@ def get_image_size(filepath: str) -> tuple[int, int]:
         return 0, 0  # Return default values in case of error
     
 
-def test_dir(animal: str, directory: str, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int]:
-    """Verify image stack directory for section count and max width, height
-
-    :param animal: string of animal name.
-    :param directory: directory we are testing.
-    :param section_count: integer how many sections are in the stack
-    :param downsample: boolean on whether to downsample or not
-    :param same_size: boolean on whether all files are same size
-    :return: string of error messages
+def test_dir(animal: str, directory: str, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int, int, int]:
+    """
+    Tests the directory for image files, checks their sizes, and validates the number of files.
+    Args:
+        animal (str): The name of the animal.
+        directory (str): The path to the directory containing the image files.
+        section_count (int): The expected number of sections (files) in the directory.
+        downsample (bool, optional): Whether to downsample the images. Defaults to True.
+        same_size (bool, optional): Whether all images should be of the same size. Defaults to False.
+    Returns:
+        tuple[list[str], int, int, int]: A tuple containing:
+            - A list of filenames in the directory.
+            - The number of files in the directory.
+            - The maximum width of the images.
+            - The maximum height of the images.
+    Raises:
+        SystemExit: If there are errors in processing the files or if the number of files is incorrect.
     """
 
     error = ""

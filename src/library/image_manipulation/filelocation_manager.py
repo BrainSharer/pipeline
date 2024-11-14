@@ -6,7 +6,11 @@ import sys
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
 ALIGNED = 0
 REALIGNED = 1
-
+CLEANED_DIR = 'cleaned'
+CROPPED_DIR = 'cropped'
+ALIGNED_DIR = 'aligned'
+REALIGNED_DIR = 'realigned'
+ 
 
 class FileLocationManager(object):
     """Master class to house all file paths for preprocessing-pipeline
@@ -62,13 +66,8 @@ class FileLocationManager(object):
     def get_thumbnail(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "thumbnail")
 
-    def get_full_cleaned(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "full_cleaned")
-
-    def get_full_cropped(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "full_cropped")
-
     def get_full_aligned(self, channel=1):
+        """This is used in cell labeling"""
         validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
         return validated_path
 
@@ -118,11 +117,6 @@ class FileLocationManager(object):
         input = os.path.join(self.prep, f'C{channel}', f'{resolution}_{inpath}')
         return input
 
-    def get_thumbnail_cleaned(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", "thumbnail_cleaned")
-
-    def get_thumbnail_cropped(self, channel=1):
-        return os.path.join(self.prep, f"C{channel}", f"thumbnail_cropped")
 
     def get_normalized(self, channel=1):
         return os.path.join(self.prep, f"C{channel}", "normalized")
