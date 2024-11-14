@@ -65,7 +65,7 @@ class ImageCleaner:
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(self.input))
+        files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         file_keys = []
         for file in files:
@@ -115,8 +115,7 @@ class ImageCleaner:
             print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(self.input))
+        files, _, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         file_keys = []
         for file in files:
