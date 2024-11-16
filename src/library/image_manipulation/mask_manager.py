@@ -42,10 +42,10 @@ class MaskManager:
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         
-        files, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         os.makedirs(self.output, exist_ok=True)
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
-        self.fileLogger.logevent(f"FILE COUNT: {len(files)}")
+        self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"MASKS FOLDER: {self.output}")
         
         for file in files:
