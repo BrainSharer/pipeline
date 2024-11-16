@@ -132,17 +132,10 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
         except Exception as e:
             error += f"Error processing file {filepath}: {e}\n"
 
-    # picked 100 as an arbitrary number. the min file count is usually around 380 or so
-    if len(files) > 100:
-        min_width = min(widths)
-        max_width = max(widths)
-        min_height = min(heights)
-        max_height = max(heights)
-    else:
-        min_width = 0
-        max_width = 0
-        min_height = 0
-        max_height = 0
+    min_width = min(widths)
+    max_width = max(widths)
+    min_height = min(heights)
+    max_height = max(heights)
     if section_count != len(files):
         print(
             "[EXPECTED] SECTION COUNT:",

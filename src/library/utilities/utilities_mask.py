@@ -13,10 +13,6 @@ from skimage import exposure
 
 from library.utilities.utilities_process import read_image, write_image
 
-#FOR BACKGROUND WRITING IMAGE
-import asyncio
-import concurrent.futures
-
 
 def rotate_image(img, file: str, rotation: int):
     """Rotate the image by the number of rotation(s)
@@ -35,23 +31,9 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-def place_image(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = None):
-
-    infile, cleaned_outfile, maskfile, rotation, flip, mask_image, _, channel, debug, max_width, max_height, cropped_output = file_key
-
-    if max_width == 0 or max_height == 0:
-        print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
-        sys.exit()
-
-    if cleaned_and_rotated_file is None:
-        if debug:
-            print('READING CLEANED FILE FROM DISK')
-        img = read_image(infile)
-    else:
-        img = cleaned_and_rotated_file
-        if debug:
-            print('USED NDARRAY IMAGE IN RAM; NO NEED TO READ IMAGE FROM CLEANED DIRECTORY')
-    img = cleaned_and_rotated_file
+def place_image(file_key: tuple, bgcolor: int = 0):
+    infile, outfile, max_width, max_height, bgcolor = file_key
+    img = read_image(infile)
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -60,7 +42,7 @@ def place_image(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = No
     startc = max(0, zmidc - (img.shape[1] // 2))
     endc = min(max_width, startc + img.shape[1])
     dtype = img.dtype
-
+    
     if img.ndim == 2:  # Grayscale
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
@@ -78,42 +60,9 @@ def place_image(file_key: tuple, bgcolor: int = 0, cleaned_and_rotated_file = No
         except Exception as e:
             raise Exception(f"Error placing color image {infile}: {e}")
 
-    os.makedirs(cropped_output, exist_ok=True)
-    filename = os.path.basename(infile)
-    cropped_output_file = os.path.join(cropped_output, filename)
-    write_image(cropped_output_file, placed_img.astype(dtype))
+    write_image(outfile, placed_img.astype(dtype))
 
 
-# def place_image_org(file_key: tuple, bgcolor: int = 0): #DEPRECATED
-#     infile, outfile, max_width, max_height, bgcolor = file_key
-#     img = read_image(infile)
-
-#     zmidr = max_height // 2
-#     zmidc = max_width // 2
-#     startr = max(0, zmidr - (img.shape[0] // 2))
-#     endr = min(max_height, startr + img.shape[0])
-#     startc = max(0, zmidc - (img.shape[1] // 2))
-#     endc = min(max_width, startc + img.shape[1])
-#     dtype = img.dtype
-
-#     if img.ndim == 2:  # Grayscale
-#         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
-#         try:
-#             placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
-#         except Exception as e:
-#             raise Exception(f"Error placing {infile}: {e}")
-
-#     elif img.ndim == 3:  # Color (RGB)
-#         r, g, b = (np.full((max_height, max_width), bg, dtype=dtype) for bg in bgcolor)
-#         try:
-#             r[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 0]
-#             g[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 1]
-#             b[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 2]
-#             placed_img = cv2.merge((b, g, r))
-#         except Exception as e:
-#             raise Exception(f"Error placing color image {infile}: {e}")
-
-#     write_image(outfile, placed_img.astype(dtype))
 
 
 def normalize_image(img):
@@ -229,7 +178,7 @@ def normalize16(img):
         return np.round(img).astype(np.uint16) 
 
 
-def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, int, bool, int, int, str]) -> None:
+def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, int, bool]) -> None:
     """The main function that uses the user edited mask to crop out the tissue from 
     surrounding debris. It also rotates the image to
     a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
@@ -254,233 +203,10 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug, max_width, max_height, cropped_outfile = file_key
+    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
-
-    if debug:
-        # Debugging: Check initial properties
-        print(f'*'*50)
-        print(f'{infile=}, {maskfile=}, {mask_image=}, {outfile=}')
-        print(f"Initial img shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Initial mask shape: {mask.shape}, dtype: {mask.dtype}")
-
-    last_dir = os.path.basename(os.path.normpath(cropped_outfile))
-    if 'full' in last_dir:
-        downsample = False
-    else:
-        downsample = True
-    
-    # Ensure mask is binary and uint8
-    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-    mask = mask.astype(np.uint8)
-
-    if debug:
-        # Debugging: Check properties after thresholding
-        print(f"Mask after thresholding shape: {mask.shape}, dtype: {mask.dtype}")
-
-    # Handle different image types
-    if img.ndim == 2:  # Grayscale
-        img = img.astype(np.uint16)  # Retain original dtype
-    elif img.ndim == 3:  # Color
-        img = img.astype(np.uint16)  # Retain original dtype
-        if mask.ndim == 2:
-            mask = cv2.merge([mask] * 3)
-
-    if debug:
-        # Debugging: Check properties before masking
-        print(f"Img before masking shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Mask before masking shape: {mask.shape}, dtype: {mask.dtype}")
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-
-    if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
-        #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
-        r = cleaned[:,:,0]
-        g = cleaned[:,:,1]
-        b = cleaned[:,:,2]
-        r[r == 0] = bgcolor[0]
-        g[g == 0] = bgcolor[1]
-        b[b == 0] = bgcolor[2]
-        cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
-
-    if channel == 1:    
-        cleaned = rescaler(cleaned)
-
-    if mask_image == FULL_MASK:
-        cleaned = crop_image(cleaned, mask)
-
-    del img
-    del mask
-
-    if rotation > 0:
-        cleaned = rotate_image(cleaned, infile, rotation)
-    # flip = switch top to bottom
-    # flop = switch left to right
-    if flip == "flip":
-        cleaned = np.flip(cleaned, axis=0)
-    if flip == "flop":
-        cleaned = np.flip(cleaned, axis=1)
-
-    #BACKGROUND SAVE IMG - MOVE TO UTILITIES
-    message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'            
-    def write_image_safe(outfile, image, message=""):
-        '''THREAD-SAFE WRITE IMAGE'''
-        try:
-            cv2.imwrite(outfile, image)
-        except Exception as e:
-            print(f"{message}\n{str(e)}")
-    
-    # CONTINUE PROCESSING WITH place_image (CHAIN) IF PAST 1ST RUN
-    if mask_image > 0 and channel == 1 and downsample:
-        write_image(outfile, cleaned, message=message)#WAIT FOR FILE!
-    else:
-        if debug:
-            print('BACKGROUND SAVE CLEANED IMAGE; CONTINUE WITH place_image USING ARRAY IN RAM')
-        # Start the background save operation (ONLY IF CONTINUING)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(write_image, outfile, cleaned, message)
-        place_image(file_key, bgcolor, cleaned)
-
-
-def clean_and_rotate_image_org(file_key: tuple[str, str, str, int, str, bool, int, int, bool, int, int, str]) -> None:
-    """The main function that uses the user edited mask to crop out the tissue from 
-    surrounding debris. It also rotates the image to
-    a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
-    The hippocampus is facing up and the brainstem is facing down)
-    Normalization needs adjusting, for section 064 of DK101, the cells get an uwanted
-    outline that is far too bright. This happens with the scaled method.
-    An affected area on 064.tif full resolution is top left corner of 32180x19665, and
-    bottom right corner at: 33500x20400 on the full cleaned version
-    For the regular tif, look at 15812x43685, 16816x44463
-
-    :param file_key: is a tuple of the following:
-
-    - infile file path of image to read
-    - outpath file path of image to write
-    - mask binary mask image of the image
-    - rotation number of 90 degree rotations
-    - flip either flip or flop
-    - max_width width of image
-    - max_height height of image
-    - scale used in scaling. Gotten from the histogram
-
-    :return: nothing. we write the image to disk
-    """
-
-    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug, *_ = file_key
-
-    img = read_image(infile)
-    mask = read_image(maskfile)
-
-    if debug:
-        # Debugging: Check initial properties
-        print(f'*'*50)
-        print(f'{infile=}, {maskfile=}, {mask_image=}, {outfile=}')
-        print(f"Initial img shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Initial mask shape: {mask.shape}, dtype: {mask.dtype}")
-
-    # Ensure mask is binary and uint8
-    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-    mask = mask.astype(np.uint8)
-
-    if debug:
-        # Debugging: Check properties after thresholding
-        print(f"Mask after thresholding shape: {mask.shape}, dtype: {mask.dtype}")
-
-    # Handle different image types
-    if img.ndim == 2:  # Grayscale
-        img = img.astype(np.uint16)  # Retain original dtype
-    elif img.ndim == 3:  # Color
-        img = img.astype(np.uint16)  # Retain original dtype
-        if mask.ndim == 2:
-            mask = cv2.merge([mask] * 3)
-
-    if debug:
-        # Debugging: Check properties before masking
-        print(f"Img before masking shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Mask before masking shape: {mask.shape}, dtype: {mask.dtype}")
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-
-    if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
-        #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
-        r = cleaned[:,:,0]
-        g = cleaned[:,:,1]
-        b = cleaned[:,:,2]
-        r[r == 0] = bgcolor[0]
-        g[g == 0] = bgcolor[1]
-        b[b == 0] = bgcolor[2]
-        cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
-
-    if channel == 1:    
-        cleaned = rescaler(cleaned)
-
-    if mask_image == FULL_MASK:
-        cleaned = crop_image(cleaned, mask)
-
-    del img
-    del mask
-
-    if rotation > 0:
-        cleaned = rotate_image(cleaned, infile, rotation)
-    # flip = switch top to bottom
-    # flop = switch left to right
-    if flip == "flip":
-        cleaned = np.flip(cleaned, axis=0)
-    if flip == "flop":
-        cleaned = np.flip(cleaned, axis=1)
-
-    message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
-
-    write_image(outfile, cleaned, message=message)
-
-
-def clean_rotate_and_place_image(file_key: tuple[str, str, str, int, str, bool, int, int, bool, int, int, str]) -> None:
-    """The main function that uses the user edited mask to crop out the tissue from 
-    surrounding debris. It also rotates the image to
-    a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
-    The hippocampus is facing up and the brainstem is facing down)
-    Normalization needs adjusting, for section 064 of DK101, the cells get an uwanted
-    outline that is far too bright. This happens with the scaled method.
-    An affected area on 064.tif full resolution is top left corner of 32180x19665, and
-    bottom right corner at: 33500x20400 on the full cleaned version
-    For the regular tif, look at 15812x43685, 16816x44463
-
-    :param file_key: is a tuple of the following:
-
-    - infile file path of image to read
-    - outpath file path of image to write
-    - mask binary mask image of the image
-    - rotation number of 90 degree rotations
-    - flip either flip or flop
-    - max_width width of image
-    - max_height height of image
-    - scale used in scaling. Gotten from the histogram
-
-    :return: nothing. we write the image to disk
-    """
-    
-    #SRC IN FROM setup_parallel_create_cleaned::clean_and_rotate_image (ORG)
-    #outfile = "full_cleaned"
-    infile, cleaned_outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug, max_width, max_height, cropped_output = file_key
-
-    if maskfile: 
-        img = read_image(infile)
-        mask = read_image(maskfile)
 
     if debug:
         # Debugging: Check initial properties
@@ -546,32 +272,8 @@ def clean_rotate_and_place_image(file_key: tuple[str, str, str, int, str, bool, 
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
 
-    if debug:
-        # Debugging: Check properties before masking
-        print(f'DEBUG: STARTING place_image')
-    #CONTINUE PROCESSING WITH PLACE_IMAGE
-    #SRC IN FROM setup_parallel_place_images::place_image (ORG)
-    #infile = full_cleaned (file); but now read from RAM
-    #outfile = full_cropped
-    #max_width, max_height were inserted into DB during downsample processing
-    #bgcolor was already attribute of class instance
-    infile = cleaned_outfile
-    dir_path_without_filename = os.path.dirname(cropped_output)
-    os.makedirs(dir_path_without_filename, exist_ok=True)
-    if max_width == 0 or max_height == 0:
-        print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
-        sys.exit()
-
-    #ALREADY TESTED DIR IN PREV. STEP: setup_parallel_create_cleaned
-    #NO NEED TO RE-INDEX
-    #NO RE-QUERY FOR WORKERS; USE EXISTING THREAD
-    #cleaned VAR IS NUMPY ARRAY, NOT STRING VAR TYPE
-    file_key = (cleaned, cropped_output, max_width, max_height, bgcolor)
-    place_image(file_key, bgcolor) #WILL WRITE CROPPED FILE TO DISK
-
-    #SAVE CLEANED @ END
-    message = f'Error in saving {cleaned_outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
-    write_image(cleaned_outfile, cleaned, message=message)
+    message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
+    write_image(outfile, cleaned, message=message)
 
 
 def crop_image(img, mask):
