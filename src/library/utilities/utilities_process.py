@@ -105,6 +105,7 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
     except:
         error = f"{directory} does not exist\n"
         files = []
+
     
     if section_count == 0:
         section_count = len(files)
@@ -131,6 +132,11 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
         
         except Exception as e:
             error += f"Error processing file {filepath}: {e}\n"
+
+    if len(widths) == 0 or len(heights) == 0:
+        error += f"No valid images in {directory}\n"
+        print(error)
+        sys.exit()
 
     min_width = min(widths)
     max_width = max(widths)

@@ -32,8 +32,10 @@ class ImageCleaner:
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            self.maskpath = self.fileLocationManager.get_thumbnail_masked(self.channel)
         else:
             self.input = self.fileLocationManager.get_full(self.channel)
+            self.maskpath = self.fileLocationManager.get_full_masked(self.channel)
 
         self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
 
@@ -65,7 +67,6 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         file_keys = []
