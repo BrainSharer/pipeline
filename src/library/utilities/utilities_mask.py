@@ -42,7 +42,7 @@ def place_image(file_key: tuple, bgcolor: int = 0):
     startc = max(0, zmidc - (img.shape[1] // 2))
     endc = min(max_width, startc + img.shape[1])
     dtype = img.dtype
-    
+
     if img.ndim == 2:  # Grayscale
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
@@ -239,10 +239,11 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     try:
         cleaned = cv2.bitwise_and(img, img, mask=mask)
     except:
+        # May as well exit as something is very wrong.
         print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
         print("Are the shapes exactly the same?")
         print("Unexpected error:", sys.exc_info()[0])
-        raise
+        sys.exit()
 
     if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
