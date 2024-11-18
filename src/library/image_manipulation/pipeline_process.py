@@ -222,18 +222,17 @@ class Pipeline(
         While the transformations are only created on channel 1, the realignment needs to occur on all channels
         """        
         print(self.TASK_REALIGN)
-        self.pixelType = sitk.sitkFloat32
-        self.iteration = REALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
-        print(f'Second elastix manager alignment input: {self.input}')
-
         if self.channel == 1 and self.downsample:
+            self.pixelType = sitk.sitkFloat32
+            self.iteration = REALIGNED
+            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+            print(f'Second elastix manager alignment input: {self.input}')
             self.create_fiducial_points()
             self.create_within_stack_transformations()
-                        
-
-        self.start_image_alignment()
+            self.start_image_alignment()
+        else:
+            print(f'No realignment for full resolution images, just run the align method.')
         print(f'Finished {self.TASK_REALIGN}.')
 
 
