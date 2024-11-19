@@ -31,7 +31,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir, get_directory_size
+from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir, get_directory_size, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 from library.utilities.utilities_registration import rescale_transformations
 
@@ -248,60 +248,22 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
+
         
-        input_path, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
-        rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=self.iteration)
-        final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
-        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
+        self.use_scratch = use_scratch_dir(self.input)
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+            self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        print(f'Input: {self.input}')
+        print(f'Output: {self.output}')
+        print(f'Progress: {self.progress_dir}')
+        print(f'Rechunkme: {self.rechunkme_path}')
 
-        if self.use_scratch:
-            #We can test for est. storage space needed for Ng creation (C1T_rechunk, C1T, C1T_aligned, C1T_aligned_rechunk)
-            scratch_tmp = get_scratch_dir()
-            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
-            rechunkme_folder_name = os.path.basename(rechunkme_path)
-            rechunkme_path = os.path.join(SCRATCH, rechunkme_folder_name)
-            output_folder_name = os.path.basename(final_output)
-            staging_output = os.path.join(SCRATCH, output_folder_name)
-        else:
-            staging_output = final_output
-
-        #######################################################
-        # PARAMETER SUMMARY
-        print('*'*50, '\nPARAMETER SUMMARY')
-        print(f'Input dir={input_path}')
-        print(f'FINAL OUTPUT DIR={final_output}')
-        print(f'RECHUNKME DIR={rechunkme_path}')
-        print(f'STAGING DIR={staging_output}')
-        print(f'USING SCRATCH: {self.use_scratch}')
-        print(f'PROGRESS DIR={progress_dir}')
-        print('*'*50, '\n')
-        #######################################################
-
-        self.create_neuroglancer_stack(input_path, rechunkme_path, staging_output, progress_dir)
-            # self.create_neuroglancer()
-            # self.create_downsamples()
-
-        #CLEANUP
-        if self.use_scratch:
-            print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
-            if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
-                print(f'Moving {staging_output} to {final_output}')
-                os.makedirs(final_output, exist_ok=True)
-                # Use rclone to move the directory
-                subprocess.run(["rclone", "move", staging_output, final_output], check=True)
-
-            #CLEAN UP staging_output
-            if os.path.exists(staging_output):
-                print(f'Removing {staging_output}')
-                delete_in_background(staging_output)
-            if os.path.exists(rechunkme_path):
-                print(f'Removing {rechunkme_path}')
-                delete_in_background(rechunkme_path)
-            progress_dir = os.path.dirname(progress_dir) #get 'progress' dir (1 level up)
-            if os.path.exists(progress_dir):
-                print(f'Removing {progress_dir}')
-                delete_in_background(progress_dir)
-
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 

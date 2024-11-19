@@ -55,8 +55,6 @@ class NgPrecomputedMaker:
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
 
-        os.makedirs(self.rechunkme_path, exist_ok=True)
-        os.makedirs(self.progress_dir, exist_ok=True)
 
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
 

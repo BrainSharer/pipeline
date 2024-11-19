@@ -35,6 +35,25 @@ def delete_in_background(path: str) -> Future:
     return future 
 
 
+def use_scratch_dir(directory: str) -> bool:
+    """
+    Determines if there is enough free space in the /scratch directory to accommodate
+    the specified directory with a buffer factor applied.
+    Args:
+        directory (str): The path to the directory whose size needs to be checked.
+    Returns:
+        bool: True if there is enough free space in the /scratch directory, False otherwise.
+    """
+    
+    BUFFER_FACTOR = 1.25
+    dir_size = get_directory_size(directory)
+    dir_size = dir_size * BUFFER_FACTOR
+    total, used, free = shutil.disk_usage("/scratch")
+
+    if free > dir_size:
+        return True
+    return False 
+
 def get_directory_size(directory):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(directory):

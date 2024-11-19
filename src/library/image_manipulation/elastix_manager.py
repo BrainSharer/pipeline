@@ -308,7 +308,7 @@ class ElastixManager():
             print("DEBUG: START ElastixManager::get_transformations")
 
         transformation_to_previous_sec = {}
-        image_manager = ImageManager(self.fileLocationManager.get_directory(channel=self.channel, downsample=True, inpath=CROPPED_DIR))
+        image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} {self.input}')
