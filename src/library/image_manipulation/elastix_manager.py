@@ -428,8 +428,8 @@ class ElastixManager():
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
-        first_file_name = list(transforms.keys())[0]
-        infile = os.path.join(self.input, first_file_name)
+        #first_file_name = list(transforms.keys())[0]
+        #infile = os.path.join(self.input, first_file_name)
         file_keys = []
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
