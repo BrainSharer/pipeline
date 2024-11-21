@@ -143,13 +143,13 @@ class ElastixManager():
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, \
                         f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-        if self.iteration == REALIGNED and os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):        
-            elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-            elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
-            elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
-            elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
+                
+                elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+                elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
+                elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
+                elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
