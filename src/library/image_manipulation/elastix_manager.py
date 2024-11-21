@@ -92,6 +92,11 @@ class ElastixManager():
         """
         Aligns two images using the Elastix registration algorithm with GPU acceleration.
         expected to replace 'align_elastix' (TESTING)
+        with gpu realign took 171.49 seconds.
+        +----------------------+--------------------+--------------------+
+        | sum(rotation)        | sum(xshift)        | sum(yshift)        |
+        +----------------------+--------------------+--------------------+
+        | -0.03209278154486128 | 60.147962152957916 | -9.172589659690857 |
 
         Args:
             fixed_index (str due to filename extraction): The index of the fixed image.
@@ -120,9 +125,9 @@ class ElastixManager():
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
 
-        if torch.cuda.is_available():
-            fixed = to_gpu(fixed)
-            moving = to_gpu(moving)
+        #if torch.cuda.is_available():
+        #    fixed = to_gpu(fixed)
+        #    moving = to_gpu(moving)
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
