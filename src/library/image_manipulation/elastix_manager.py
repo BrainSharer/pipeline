@@ -4,21 +4,15 @@ https://elastix.lumc.nl/
 The libraries are contained within the SimpleITK-SimpleElastix library
 """
 
-import math
 import os
 import numpy as np
 from collections import OrderedDict
 from PIL import Image
-from timeit import default_timer as timer
 
 Image.MAX_IMAGE_PIXELS = None
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 from tqdm import tqdm
-
-import torch
-if torch.cuda.is_available():
-    import cupy as cp
 
 from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR, REALIGNED, FileLocationManager
 from library.utilities.utilities_process import get_scratch_dir, read_image, test_dir, write_image
@@ -94,6 +88,7 @@ class ElastixManager():
         expected to replace 'align_elastix' (TESTING)
         with gpu realign took 171.49 seconds.
         without gpu realign took 1 hour(s) and 46 minute(s).
+        with gpu realign took 1 hour(s) and 46 minute(s).
 
         Args:
             fixed_index (str due to filename extraction): The index of the fixed image.
@@ -108,23 +103,12 @@ class ElastixManager():
             AssertionError: If the number of fixed points does not match the number of moving points.
         """
         
-        # Transfer images to GPU memory
-        def to_gpu(image):
-            self.fileLogger.logevent(f"ALIGNMENT USING GPU")
-            array = sitk.GetArrayFromImage(image)
-            gpu_array = cp.asarray(array)
-            return sitk.GetImageFromArray(cp.asnumpy(gpu_array))
-
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, self.pixelType)
 
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, self.pixelType)
-
-        if torch.cuda.is_available():
-            fixed = to_gpu(fixed)
-            moving = to_gpu(moving)
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
