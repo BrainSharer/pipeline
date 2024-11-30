@@ -117,7 +117,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
         rigid_params["MaximumNumberOfIterations"] = ["150"]
         rigid_params["NumberOfSpatialSamples"] = ["2048"]
     else:
-        rigid_params["MaximumNumberOfIterations"] = ["1000"]
+        rigid_params["MaximumNumberOfIterations"] = ["2500"]
         rigid_params["NumberOfSpatialSamples"] = ["8192"]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
