@@ -140,21 +140,16 @@ class ElastixManager():
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
         
-        scratch_tmp = get_scratch_dir()
-        SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'align')
-        logpath = os.path.join(SCRATCH, 'registration', 'iteration_logs')
-        os.makedirs(logpath, exist_ok=True)
-        elastixImageFilter.SetOutputDirectory(logpath)        
+        elastixImageFilter.SetOutputDirectory(self.logpath)        
 
         if self.debug and moving_index == '001':
-            print(f'SCRATCH DIR={SCRATCH}')
             elastixImageFilter.PrintParameterMap()
         
         # Execute the registration on GPU
         elastixImageFilter.Execute()
 
         R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-        metric = self.get_metric(logpath)
+        metric = self.get_metric(self.logpath)
 
         return float(R), float(x), float(y), float(metric)
 

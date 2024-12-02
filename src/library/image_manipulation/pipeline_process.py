@@ -203,6 +203,8 @@ class Pipeline(
         self.iteration = ALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        os.makedirs(self.logpath, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()
@@ -226,6 +228,8 @@ class Pipeline(
         self.iteration = REALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        
         print(f'Second elastix manager alignment input: {self.input}')
         if self.channel == 1 and self.downsample:
             self.create_fiducial_points()
