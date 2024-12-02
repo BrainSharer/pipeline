@@ -113,12 +113,12 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     # the AdvancedMattesMutualInformation metric really helps with the alignment
     rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
+    rigid_params["UseRandomSampleRegion"] = ["true"]
+    rigid_params["SampleRegionSize"] = ["50"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["150"]
-        rigid_params["NumberOfSpatialSamples"] = ["2048"]
+        rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
-        rigid_params["MaximumNumberOfIterations"] = ["2500"]
-        rigid_params["NumberOfSpatialSamples"] = ["8192"]
+        rigid_params["MaximumNumberOfIterations"] = ["1000"]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
