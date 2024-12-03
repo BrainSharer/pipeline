@@ -38,8 +38,11 @@ class SectionsController():
                 .order_by(Section.slide_physical_id.desc())\
                 .order_by(Section.scene_number.asc())
         else:
-            print('ERROR: Invalid slide_orderby or scene_order_by')
-            return []
+            print('ERROR: Invalid slide_orderby or scene_order_by, using default query.')
+            query = self.session.query(Section).filter(Section.prep_id == animal)\
+                .filter(Section.channel == channel)\
+                .order_by(Section.slide_physical_id.desc())\
+                .order_by(Section.scene_number.desc())
 
         if debug: # Print the raw SQL query
             print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
