@@ -192,7 +192,6 @@ class FileLocationManager(object):
             channel_outdir += f"T_{outpath}"
 
         progress_dir = os.path.join(self.neuroglancer_progress, f"{channel_outdir}") 
-        os.makedirs(progress_dir, exist_ok=True)
         return progress_dir
 
     def get_logdir(self):
