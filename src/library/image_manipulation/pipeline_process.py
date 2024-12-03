@@ -229,7 +229,7 @@ class Pipeline(
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
-        
+
         print(f'Second elastix manager alignment input: {self.input}')
         if self.channel == 1 and self.downsample:
             self.create_fiducial_points()
@@ -260,6 +260,7 @@ class Pipeline(
             self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        os.makedirs(self.progress_dir, exist_ok=True)
         print(f'Input: {self.input}')
         print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
