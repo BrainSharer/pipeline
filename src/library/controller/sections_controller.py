@@ -17,26 +17,29 @@ class SectionsController():
         slide_orderby = self.histology.side_sectioned_first
         scene_order_by = self.histology.scene_order
 
-        if slide_orderby == 'DESC' and scene_order_by == 'DESC':
+        if slide_orderby == 'Right' and scene_order_by == 'DESC':
             query = self.session.query(Section).filter(Section.prep_id == animal)\
                 .filter(Section.channel == channel)\
                 .order_by(Section.slide_physical_id.desc())\
                 .order_by(Section.scene_number.desc())
-        elif slide_orderby == 'ASC' and scene_order_by == 'ASC':
+        elif slide_orderby == 'Left' and scene_order_by == 'ASC':
             query = self.session.query(Section).filter(Section.prep_id == animal)\
                 .filter(Section.channel == channel)\
                 .order_by(Section.slide_physical_id.asc())\
                 .order_by(Section.scene_number.asc())
-        elif slide_orderby == 'ASC' and scene_order_by == 'DESC':
+        elif slide_orderby == 'Left' and scene_order_by == 'DESC':
             query = self.session.query(Section).filter(Section.prep_id == animal)\
                 .filter(Section.channel == channel)\
                 .order_by(Section.slide_physical_id.asc())\
                 .order_by(Section.scene_number.desc())
-        elif slide_orderby == 'DESC' and scene_order_by == 'ASC':
+        elif slide_orderby == 'Right' and scene_order_by == 'ASC':
             query = self.session.query(Section).filter(Section.prep_id == animal)\
                 .filter(Section.channel == channel)\
                 .order_by(Section.slide_physical_id.desc())\
                 .order_by(Section.scene_number.asc())
+        else:
+            print('ERROR: Invalid slide_orderby or scene_order_by')
+            return []
 
         if debug: # Print the raw SQL query
             print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
