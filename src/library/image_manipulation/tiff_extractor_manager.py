@@ -31,16 +31,13 @@ class TiffExtractor():
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
-            #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'thumbnail_original')
             scale_factor = DOWNSCALING_FACTOR
         else:
             self.output = self.fileLocationManager.tif
-            #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'full')
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi()
         os.makedirs(self.output, exist_ok=True)
-        #####MOVED os.makedirs(self.checksum, exist_ok=True)
         starting_files = glob.glob(
             os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
         )
@@ -54,6 +51,11 @@ class TiffExtractor():
         if self.debug:
             print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
 
+        if len(sections) is not len(total_files):
+            print(f"ERROR: FILE COUNT MISMATCH: DB={len(sections)} != FILES={len(total_files)}")
+            print("Please check the database and the file system.")
+            sys.exit()
+
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
             print("Were the CZI file names correct on birdstore?")
@@ -65,10 +67,6 @@ class TiffExtractor():
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             output_path = os.path.join(self.output, tif_file)
-
-            # CREATE .sha256 CHECKSUM FILENAME
-            #####MOVED sha256_filename = Path(section.file_name).with_suffix('.sha256').name
-            #####MOVED checksum_filepath = os.path.join(self.checksum, sha256_filename)
 
             if not os.path.exists(czi_file):
                 print(f'Error: {czi_file} does not exist.')
@@ -101,8 +99,6 @@ class TiffExtractor():
             sys.exit()
                 
             print()
-
-
 
 
     def create_web_friendly_image(self):
