@@ -37,7 +37,8 @@ class MetaUtilities:
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
-        print(f'DEBUG: {processed_czifiles}')
+        if self.debug:
+            print(f'DEBUG: processed czi files:  {sorted(processed_czifiles)}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
             print("ERROR IN CZI FILES OR DB COUNTS")
@@ -149,8 +150,7 @@ class MetaUtilities:
                 self.sqlController.session.commit()
             except Exception as e:
                 msg = f"ERROR DELETING ENTRIES IN 'slide' TABLE: {e}"
-                if self.debug:
-                    print(msg)
+                print(msg)
                 self.fileLogger.logevent(msg)
                 db_validation_problem = True
         elif active_db_slides_cnt > 0 and active_db_slides_cnt < len(czi_files):
