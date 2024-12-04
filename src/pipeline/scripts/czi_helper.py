@@ -27,7 +27,6 @@ def run_main(animal, czi_file):
 
 
 
-    return
 
     #dimensions = czi.get_dims_shape() 
     #print(f'dimensions {dimensions}')
@@ -36,7 +35,7 @@ def run_main(animal, czi_file):
     #sizes = czi.size  # (1, 40, 4, 60, 1300, 1900)
     #print(f'sizes={sizes}')
     total_scenes = czi_aics.scenes
-    scales = [1, 1/16, 1/32]
+    scales = [1, 1/32]
     channels = czi_aics.dims.C
     print(f"{czi_file} has {len(total_scenes)} scenes and {channels} channels")
     for scale in scales:
