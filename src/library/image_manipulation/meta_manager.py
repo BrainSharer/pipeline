@@ -38,7 +38,7 @@ class MetaUtilities:
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
         if self.debug:
-            print(f'DEBUG: processed czi files:  {sorted(processed_czifiles)}')
+            print(f'DEBUG: unprocessed czi files:  {sorted(unprocessed_czifiles)}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
             print("ERROR IN CZI FILES OR DB COUNTS")
