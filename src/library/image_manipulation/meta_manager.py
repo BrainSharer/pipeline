@@ -140,7 +140,6 @@ class MetaUtilities:
         msg += f"\nInactive DB SLIDES COUNT: {inactive_db_slides_cnt}"
         if self.debug:
             print(msg)            
-            print('czi files 2', czi_files)
         self.fileLogger.logevent(msg)
 
         if active_db_slides_cnt > len(czi_files):
