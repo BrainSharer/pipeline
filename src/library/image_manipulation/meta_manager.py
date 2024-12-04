@@ -33,12 +33,11 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'slides_preview')
-        #####MOVED os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
+        print(f'DEBUG: {processed_czifiles}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
             print("ERROR IN CZI FILES OR DB COUNTS")
@@ -51,7 +50,6 @@ class MetaUtilities:
             infile = infile.replace(" ","_").strip()
             file_keys.append([infile, self.scan_id])
         
-        #####MOVED self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
         #PROCESS OUTSTANDING EXTRACTIONS (SCENES FROM SLIDE FILES)
         if len(unprocessed_czifiles) > 0:
             file_keys = []
@@ -60,7 +58,6 @@ class MetaUtilities:
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
             
-            #####MOVED self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
             self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
             
         else:
@@ -126,6 +123,7 @@ class MetaUtilities:
         active_query_results = self.sqlController.session.execute(active_query)
         active_results = [x for x in active_query_results]
         active_db_slides_cnt = len(active_results)
+        
         # need to check for inactive so we don't repeat the process
         # remove the inactive czi files from the czi_files list
         inactive_query = self.sqlController.session.query(Slide)\
@@ -403,4 +401,3 @@ class MetaUtilities:
                 print(f"DEBUG: MODIFYING {slide_physical_id=}, {self.sqlController.scan_run.id=}, {slide_physical_id=}")
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id, self.debug)
             self.fileLogger.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
-
