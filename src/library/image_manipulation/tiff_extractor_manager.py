@@ -51,10 +51,6 @@ class TiffExtractor():
         if self.debug:
             print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
 
-        #if len(sections) is not len(total_files):
-        #    print(f"ERROR: FILE COUNT MISMATCH: DB={len(sections)} != FILES={len(total_files)}")
-        #    print("Please check the database and the file system.")
-        #    sys.exit()
 
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
