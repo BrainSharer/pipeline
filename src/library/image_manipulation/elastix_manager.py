@@ -114,7 +114,7 @@ class ElastixManager():
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
-        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug)
+        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug, iteration=self.iteration)
         elastixImageFilter.SetParameterMap(rigid_params)
 
         if self.iteration == REALIGNED:
@@ -136,6 +136,8 @@ class ElastixManager():
                 elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
+            else:
+                return 0.0, 0.0, 0.0, 0.0
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()

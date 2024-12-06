@@ -78,7 +78,7 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     return T
 
 
-def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False):
+def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False, iteration=0):
     """
     Create and return a dictionary of rigid registration parameters for elastixImageFilter.
     The iterations have been reduced as we are doing two alignment processes.
