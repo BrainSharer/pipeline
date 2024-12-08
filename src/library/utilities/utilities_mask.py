@@ -241,7 +241,7 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     except:
         # May as well exit as something is very wrong.
         print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        fix = True
+        fix = False
         if fix:
             print("Resizing mask to fix")
             try:
