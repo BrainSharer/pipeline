@@ -168,6 +168,7 @@ class Pipeline(
         if self.channel == 1:
             self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
+        
 
     def clean(self):
         print(self.TASK_CLEAN)

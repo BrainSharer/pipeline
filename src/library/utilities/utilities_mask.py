@@ -504,3 +504,31 @@ def create_mask(image):
     largest_contour = sorteddata[0][1]
     output = cv2.fillPoly(image, pts =[largest_contour], color=255)
     return output
+
+
+def compare_directories(dir1: str, dir2: str) -> None:
+    """
+    Compares the contents of two directories to ensure they have the same files and that the images
+    within those files have the same dimensions.
+    Args:
+        dir1 (str): The path to the first directory.
+        dir2 (str): The path to the second directory.
+    Raises:
+        AssertionError: If the number of files in the directories are not equal or if any directory is empty.
+        SystemExit: If there are any mismatches in file names or image dimensions, the function prints the errors and exits the program.
+    """
+    error = ""
+    files1 = sorted(os.listdir(dir1))
+    files2 = sorted(os.listdir(dir2))
+    assert len(files1) == len(files2), f"Length of {dir1} {len(files1)} != {dir2} {len(files2)}"
+    assert len(files1) > 0, f"Empty directory {dir1}"
+    for file1, file2 in zip(files1, files2):
+        img1 = read_image(os.path.join(dir1, file1))
+        img2 = read_image(os.path.join(dir2, file2))
+        if file1 != file2: error += f"{file1} != {file2}\n"
+        if img1.shape[0] != img2.shape[0]: error += f"{file1} rows {img1.shape[0]} != {file2} {img2.shape[0]}\n"
+        if img1.shape[1] != img2.shape[1]: error += f"{file1} cols {img1.shape[1]} != {file2} {img2.shape[1]}\n"
+    
+    if len(error) > 0:
+        print(error)
+        sys.exit()
