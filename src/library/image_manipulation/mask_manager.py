@@ -20,7 +20,7 @@ from torchvision.models.detection import MaskRCNN_ResNet50_FPN_Weights
 
 
 from library.database_model.scan_run import BOTTOM_MASK
-from library.utilities.utilities_mask import combine_dims, merge_mask
+from library.utilities.utilities_mask import combine_dims, compare_directories, merge_mask
 from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
 SMALL_CONTOUR_AREA = 200
@@ -74,6 +74,8 @@ class MaskManager:
                 lastcol = max(white[1])
                 mask[firstrow:lastrow, 0:lastcol] = 255
                 write_image(maskfillpath, mask.astype(np.uint8))
+
+        compare_directories(self.input, self.output)
 
 
     def get_model_instance_segmentationTESTING(self, num_classes):
@@ -245,6 +247,7 @@ class MaskManager:
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        compare_directories(self.input, self.fileLocationManager.get_thumbnail(self.channel))
         os.makedirs(self.output, exist_ok=True)
         self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"self.output FOLDER: {self.output}")
@@ -289,6 +292,9 @@ class MaskManager:
                 merged_img = merged_img.astype(np.uint8)
                 merged_img[merged_img == 0] = 255
             cv2.imwrite(maskpath, merged_img.astype(np.uint8))
+
+        compare_directories(self.output, self.fileLocationManager.get_thumbnail(self.channel))
+
 
     @staticmethod
     def resize_tif(file_key):

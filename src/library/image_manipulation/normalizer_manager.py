@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from library.utilities.utilities_mask import equalized, scaled
+from library.utilities.utilities_mask import compare_directories, equalized, scaled
 from library.utilities.utilities_process import read_image, write_image
 
 class Normalizer:
@@ -47,3 +47,5 @@ class Normalizer:
             scale = 250
             img = scaled(img, scale=scale)
             write_image(outfile, img.astype(np.uint8))
+
+        compare_directories(self.input, self.output)
