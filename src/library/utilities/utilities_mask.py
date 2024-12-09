@@ -10,6 +10,7 @@ from library.database_model.scan_run import FULL_MASK
 from skimage import color
 from scipy.ndimage import binary_fill_holes
 from skimage import exposure
+from tqdm import tqdm
 
 from library.utilities.utilities_process import read_image, write_image
 
@@ -522,7 +523,8 @@ def compare_directories(dir1: str, dir2: str) -> None:
     files2 = sorted(os.listdir(dir2))
     assert len(files1) == len(files2), f"Length of {dir1} {len(files1)} != {dir2} {len(files2)}"
     assert len(files1) > 0, f"Empty directory {dir1}"
-    for file1, file2 in zip(files1, files2):
+    desc = f"Comparing {os.path.basename(dir1)} and {os.path.basename(dir2)}"
+    for file1, file2 in tqdm(zip(files1, files2), total=len(files1), desc=desc):
         img1 = read_image(os.path.join(dir1, file1))
         img2 = read_image(os.path.join(dir2, file2))
         if file1 != file2: error += f"{file1} != {file2}\n"

@@ -4,6 +4,7 @@ https://www.cis.upenn.edu/~jshi/ped_html/
 """
 
 import os
+import shutil
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -37,13 +38,18 @@ class MaskManager:
         """Apply the edits made on the image masks to extract the tissue from the 
         surround debris to create the final masks used to clean the images.
         Input dir is the colored merged masks
+        Remove the binary mask files as they might be stale.
         """
         
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
+        if os.path.exists(self.output):
+            shutil.rmtree(self.output)
+
+
+        os.makedirs(self.output, exist_ok=True)
         
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
-        os.makedirs(self.output, exist_ok=True)
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"MASKS FOLDER: {self.output}")
@@ -51,8 +57,6 @@ class MaskManager:
         for file in files:
             filepath = os.path.join(self.input, file)
             maskpath = os.path.join(self.output, file)
-            if os.path.exists(maskpath):
-                continue
             mask = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             if self.mask_image > 0:
                 mask = mask[:, :, 2]
@@ -146,7 +150,7 @@ class MaskManager:
         """
         
         if self.downsample:
-            self.create_downsampled_mask()
+            self.create_colored_mask_qc()
         else:
             self.create_full_resolution_mask()
 
@@ -231,7 +235,7 @@ class MaskManager:
             mask = cv2.bitwise_not(thresh)            
             cv2.imwrite(maskpath, mask.astype(np.uint8))
 
-    def create_downsampled_mask(self):
+    def create_colored_mask_qc(self):
         """Create masks for the downsampled images using a machine learning algorithm.
         The input files are the files that have been normalized.
         The output files are the colored merged files. 
@@ -294,7 +298,6 @@ class MaskManager:
             cv2.imwrite(maskpath, merged_img.astype(np.uint8))
 
         compare_directories(self.output, self.fileLocationManager.get_thumbnail(self.channel))
-
 
     @staticmethod
     def resize_tif(file_key):

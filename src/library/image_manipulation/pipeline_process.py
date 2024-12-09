@@ -162,8 +162,8 @@ class Pipeline(
             
         if self.channel == 1 and self.downsample:
             self.create_normalized_image()
-        if self.debug:
-            print('DEBUG: create_normalized_image() COMPLETE')
+            if self.debug:
+                print('DEBUG: create_normalized_image() COMPLETE')
             
         if self.channel == 1:
             self.create_mask()
