@@ -342,6 +342,7 @@ class Pipeline(
                 f"C{self.channel}/full_cleaned",
                 f"C{self.channel}/full_cropped",
                 f"C{self.channel}/full_aligned",
+                f"C{self.channel}/full_realigned",
             ]
             ndirectory = f"C{self.channel}"
 
