@@ -186,7 +186,7 @@ class MaskManager:
         self.fileLogger.logevent(f"Output FOLDER: {self.output}")
         os.makedirs(self.output, exist_ok=True)
         file_keys = []
-        for file in tqdm(files):
+        for file in tqdm(files, desc="Creating full resolution masks"):
             infile = os.path.join(self.input, file)
             thumbfile = os.path.join(THUMBNAIL, file)
             outfile = os.path.join(self.output, file)
@@ -264,7 +264,7 @@ class MaskManager:
         # 0.85 gives a smaller border with jagged edges starting to appear
         # 0.95, smaller border, but still some jagged edges and misses the brain stem end
         threshold = 0.20
-        for file in tqdm(files):
+        for file in tqdm(files, desc="Creating colored masks"):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (os.path.splitext(file)[0] + ".tif")
             maskpath = os.path.join(self.output, mask_dest_file)
