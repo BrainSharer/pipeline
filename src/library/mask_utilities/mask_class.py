@@ -20,6 +20,14 @@ class MaskDataset(torch.utils.data.Dataset):
             self.imgs = [img for img in self.imgs if animal in img]
             self.masks = [mask for mask in self.masks if animal in mask]
 
+        if len(self.imgs) != len(self.masks):
+            print('Number of images and masks is not equal')
+            sys.exit()
+
+        if len(self.imgs) == 0:
+            print('No images found')
+            sys.exit()
+
         self.img_root = os.path.join(self.root, 'normalized')
         self.mask_root = os.path.join(self.root, 'thumbnail_masked') 
 
