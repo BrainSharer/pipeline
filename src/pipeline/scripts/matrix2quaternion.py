@@ -1,9 +1,9 @@
 import numpy as np
 import math
 
-theta = np.pi/4
+theta = np.pi/2
 
-rotateby = "z"
+rotateby = "x"
 
 if rotateby == "x":
     vec1 = np.array([1, 0, 0], dtype=float)
@@ -40,4 +40,4 @@ i = (M1[2,1]-M1[1,2])/(4*r)
 j = (M1[0,2]-M1[2,0])/(4*r)
 k = (M1[1,0]-M1[0,1])/(4*r)
 
-print("Quat: ",i,j,k,r)
+print(f"\"crossSectionOrientation\": [{i},{j},{k},{r}],")

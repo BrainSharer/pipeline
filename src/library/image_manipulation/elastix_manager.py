@@ -185,7 +185,7 @@ class ElastixManager():
         transformation_to_previous_sec = {}
         # center = image_manager.center
 
-        for i in tqdm(range(1, image_manager.len_files)):
+        for i in tqdm(range(1, image_manager.len_files), desc="Creating rigid transformations"):
             fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
             moving_index = os.path.splitext(image_manager.files[i])[0]
             elastixImageFilter = sitk.ElastixImageFilter()
@@ -213,7 +213,7 @@ class ElastixManager():
             A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
             transformation_to_previous_sec[i] = A
 
-        for moving_index in tqdm(range(image_manager.len_files)):
+        for moving_index in tqdm(range(image_manager.len_files), desc="Applying rigid transformations"):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == image_manager.midpoint:
                 transformation = np.eye(3)
