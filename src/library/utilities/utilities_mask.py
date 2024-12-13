@@ -533,4 +533,5 @@ def compare_directories(dir1: str, dir2: str) -> None:
     
     if len(error) > 0:
         print(error)
+        print(f"Error {desc}")
         sys.exit()
