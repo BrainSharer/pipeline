@@ -2,6 +2,7 @@
 the brain area by using masks.
 """
 import os
+import shutil
 import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -64,11 +65,18 @@ class ImageCleaner:
 
     def setup_parallel_create_cleaned(self):
         """Do the image cleaning in parallel
+        If we are working on the downsampled files, we delete the output directory to make 
+        sure there are no stale files
         """
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
         files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+
+        if self.downsample and os.path.exists(self.output):
+            shutil.rmtree(self.output)
+
+        os.makedirs(self.output, exist_ok=True)
 
         file_keys = []
         for file in files:
@@ -107,6 +115,9 @@ class ImageCleaner:
         
         self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
         self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CROPPED_DIR)
+        if self.downsample and os.path.exists(self.output):
+            shutil.rmtree(self.output)
+
         os.makedirs(self.output, exist_ok=True)
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
