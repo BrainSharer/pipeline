@@ -4,7 +4,9 @@ https://elastix.lumc.nl/
 The libraries are contained within the SimpleITK-SimpleElastix library
 """
 
+import glob
 import os
+import shutil
 import numpy as np
 from collections import OrderedDict
 from PIL import Image
@@ -13,9 +15,10 @@ Image.MAX_IMAGE_PIXELS = None
 import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 from tqdm import tqdm
+from pathlib import Path
 
 from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR, REALIGNED, FileLocationManager
-from library.utilities.utilities_process import get_scratch_dir, read_image, test_dir, write_image
+from library.utilities.utilities_process import read_image, test_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
     create_rigid_parameters,
@@ -62,7 +65,11 @@ class ElastixManager():
         """
 
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
-        os.makedirs(self.registration_output, exist_ok=True)
+        for f in Path(self.registration_output).glob('*_points.txt'):
+            try:
+                f.unlink()
+            except OSError as e:
+                print("Error: %s : %s" % (f, e.strerror))
 
         fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)
@@ -408,11 +415,11 @@ class ElastixManager():
         image_manager = ImageManager(self.input)        
         self.bgcolor = image_manager.get_bgcolor()
         print(f'align_images Using bgcolor={self.bgcolor}')
+        if self.downsample and os.path.exists(self.output):
+            shutil.rmtree(self.output)
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
-        #first_file_name = list(transforms.keys())[0]
-        #infile = os.path.join(self.input, first_file_name)
         file_keys = []
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
