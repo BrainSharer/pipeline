@@ -6,6 +6,7 @@ import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
+from library.database_model.scan_run import FULL_MASK_NO_CROP
 from library.image_manipulation.filelocation_manager import CLEANED_DIR, CROPPED_DIR
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, place_image
@@ -54,7 +55,7 @@ class ImageCleaner:
             self.bgcolor = 0
         self.setup_parallel_create_cleaned()
         # Update the scan run with the cropped width and height. The images are also rotated and/or flipped at this point. 
-        if self.mask_image > 0 and self.channel == 1 and self.downsample:
+        if self.mask_image > 0 and self.channel == 1 and self.downsample and self.mask_image != FULL_MASK_NO_CROP:
             self.set_crop_size()
             if self.debug:
                 print(f'Updating scan run. and set bgcolor to {self.bgcolor}')

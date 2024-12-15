@@ -12,8 +12,6 @@ import SimpleITK as sitk
 import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-import shutil
-import subprocess
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
@@ -31,9 +29,8 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir, get_directory_size, use_scratch_dir
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
-from library.utilities.utilities_registration import rescale_transformations
 
 try:
     from settings import data_path, host, schema
