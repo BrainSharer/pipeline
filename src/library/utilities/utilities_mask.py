@@ -207,39 +207,22 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug = file_key
 
     img = read_image(infile)
-    mask = read_image(maskfile)
-
-    if debug:
-        # Debugging: Check initial properties
-        print(f'*'*50)
-        print(f'{infile=}, {maskfile=}, {mask_image=}')
-        print(f"Initial img shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Initial mask shape: {mask.shape}, dtype: {mask.dtype}")
-
-    # Ensure mask is binary and uint8
-    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-    mask = mask.astype(np.uint8)
-
-    if debug:
-        # Debugging: Check properties after thresholding
-        print(f"Mask after thresholding shape: {mask.shape}, dtype: {mask.dtype}")
-
-    # Handle different image types
-    if img.ndim == 2:  # Grayscale
-        img = img.astype(np.uint16)  # Retain original dtype
-    elif img.ndim == 3:  # Color
-        img = img.astype(np.uint16)  # Retain original dtype
-        if mask.ndim == 2:
-            mask = cv2.merge([mask] * 3)
-
-    if debug:
-        # Debugging: Check properties before masking
-        print(f"Img before masking shape: {img.shape}, dtype: {img.dtype}")
-        print(f"Mask before masking shape: {mask.shape}, dtype: {mask.dtype}")
 
     if mask_image == FULL_MASK_NO_CROP:
         cleaned = img
     else:
+        mask = read_image(maskfile)
+        # Ensure mask is binary and uint8
+        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+        mask = mask.astype(np.uint8)
+
+        # Handle different image types
+        if img.ndim == 2:  # Grayscale
+            img = img.astype(np.uint16)  # Retain original dtype
+        elif img.ndim == 3:  # Color
+            img = img.astype(np.uint16)  # Retain original dtype
+            if mask.ndim == 2:
+                mask = cv2.merge([mask] * 3)
         try:
             cleaned = cv2.bitwise_and(img, img, mask=mask)
         except:
@@ -279,9 +262,8 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
 
     if mask_image == FULL_MASK:
         cleaned = crop_image(cleaned, mask)
-
-    del img
-    del mask
+        del img
+        del mask
 
     if rotation > 0:
         cleaned = rotate_image(cleaned, infile, rotation)
