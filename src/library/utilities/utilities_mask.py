@@ -6,7 +6,7 @@ import sys
 import cv2
 import numpy as np
 from skimage.exposure import rescale_intensity
-from library.database_model.scan_run import FULL_MASK
+from library.database_model.scan_run import FULL_MASK, FULL_MASK_NO_CROP
 from skimage import color
 from scipy.ndimage import binary_fill_holes
 from skimage import exposure
@@ -237,29 +237,32 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
         print(f"Img before masking shape: {img.shape}, dtype: {img.dtype}")
         print(f"Mask before masking shape: {mask.shape}, dtype: {mask.dtype}")
 
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        # May as well exit as something is very wrong.
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        fix = False
-        if fix:
-            print("Resizing mask to fix")
-            try:
-                mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
-            except:
-                print("Could not resize mask to fit image")
-                print(f"Mask shape {mask.shape} Image shape {img.shape}")
+    if mask_image == FULL_MASK_NO_CROP:
+        cleaned = img
+    else:
+        try:
+            cleaned = cv2.bitwise_and(img, img, mask=mask)
+        except:
+            # May as well exit as something is very wrong.
+            print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+            fix = False
+            if fix:
+                print("Resizing mask to fix")
+                try:
+                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+                except:
+                    print("Could not resize mask to fit image")
+                    print(f"Mask shape {mask.shape} Image shape {img.shape}")
+                    sys.exit()
+                try:
+                    cleaned = cv2.bitwise_and(img, img, mask=mask)
+                except:
+                    print("Could not clean image with this mask")
+                    print(f"Mask shape {mask.shape} Image shape {img.shape}")
+                    sys.exit()
+            else:
+                print("Image size does not match mask size, please fix")
                 sys.exit()
-            try:
-                cleaned = cv2.bitwise_and(img, img, mask=mask)
-            except:
-                print("Could not clean image with this mask")
-                print(f"Mask shape {mask.shape} Image shape {img.shape}")
-                sys.exit()
-        else:
-            print("Image size does not match mask size, please fix")
-            sys.exit()
 
     if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
