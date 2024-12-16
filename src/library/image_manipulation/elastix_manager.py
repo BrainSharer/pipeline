@@ -65,6 +65,7 @@ class ElastixManager():
         for f in Path(self.registration_output).glob('*_points.txt'):
             try:
                 f.unlink()
+                print(f'Removing {f}')
             except OSError as e:
                 print("Error: %s : %s" % (f, e.strerror))
         self.sqlController.delete_elastix_iteration(self.animal, iteration=REALIGNED)
