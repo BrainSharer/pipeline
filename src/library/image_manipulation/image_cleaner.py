@@ -117,6 +117,7 @@ class ImageCleaner:
         self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
         self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CROPPED_DIR)
         if self.downsample and os.path.exists(self.output):
+            print(f'Removing {self.output}')
             shutil.rmtree(self.output)
 
         os.makedirs(self.output, exist_ok=True)
