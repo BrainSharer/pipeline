@@ -74,6 +74,7 @@ class ImageCleaner:
         files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         if self.downsample and os.path.exists(self.output):
+            print(f'Removing {self.output}')
             shutil.rmtree(self.output)
 
         os.makedirs(self.output, exist_ok=True)
