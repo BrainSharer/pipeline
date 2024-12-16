@@ -88,6 +88,23 @@ class ElastixController():
             .filter(ElastixTransformation.section == section).update(updates)
         self.session.commit()
 
+    def delete_elastix_iteration(self, animal, iteration=1):
+        """
+        Deletes a specific iteration of Elastix transformation for a given animal.
+
+        Args:
+            animal (str): The identifier for the animal.
+            iteration (int, optional): The iteration number of the Elastix transformation to delete. Defaults to 1.
+
+        Returns:
+            None
+        """
+
+        self.session.query(ElastixTransformation)\
+            .filter(ElastixTransformation.FK_prep_id == animal)\
+            .filter(ElastixTransformation.iteration == iteration).delete()
+        self.session.commit()
+
     def get_elastix_count(self, animal, iteration):
         count = self.session.query(ElastixTransformation)\
             .filter(ElastixTransformation.FK_prep_id == animal)\

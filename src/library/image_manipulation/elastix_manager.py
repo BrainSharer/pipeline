@@ -7,6 +7,7 @@ The libraries are contained within the SimpleITK-SimpleElastix library
 import glob
 import os
 import shutil
+import sys
 import numpy as np
 from collections import OrderedDict
 from PIL import Image
@@ -18,7 +19,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR, REALIGNED, FileLocationManager
-from library.utilities.utilities_process import read_image, test_dir, write_image
+from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
     create_rigid_parameters,
@@ -59,17 +60,47 @@ class ElastixManager():
                 rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
-
-    def create_fiducial_points(self):
-        """ Yanks the fiducial points from the database and writes them to a file
-        """
-
+    def cleanup_fiducials(self):
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
         for f in Path(self.registration_output).glob('*_points.txt'):
             try:
                 f.unlink()
             except OSError as e:
                 print("Error: %s : %s" % (f, e.strerror))
+        self.sqlController.delete_elastix_iteration(self.animal, iteration=REALIGNED)
+        row_count = self.sqlController.get_elastix_count(self.animal, iteration=REALIGNED)
+        if row_count != 0:
+            print(f'Error: {row_count} rows still exist in the database for {self.animal} after cleanup')
+            sys.exit()
+        if os.path.exists(self.output):
+            print(f'Removing {self.output}')
+            shutil.rmtree(self.output)
+
+        use_scratch = use_scratch_dir(self.output)
+        rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+            self.downsample, self.channel, iteration=REALIGNED, use_scratch_dir=use_scratch)
+        output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=REALIGNED)
+        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=REALIGNED)
+
+        if os.path.exists(rechunkme_path):
+            print(f'Removing {rechunkme_path}')
+            shutil.rmtree(rechunkme_path)
+
+        if os.path.exists(output):
+            print(f'Removing {output}')
+            shutil.rmtree(output)
+
+        if os.path.exists(progress_dir):
+            print(f'Removing {progress_dir}')
+            shutil.rmtree(progress_dir)
+
+
+
+
+    def create_fiducial_points(self):
+        """ Yanks the fiducial points from the database and writes them to a file
+        """
+
 
         fiducials = self.sqlController.get_fiducials(self.animal, self.debug)
         nchanges = len(fiducials)

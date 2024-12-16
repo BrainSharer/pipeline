@@ -227,9 +227,11 @@ class Pipeline(
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        os.makedirs(self.logpath, exist_ok=True)
 
         print(f'Second elastix manager alignment input: {self.input}')
         if self.channel == 1 and self.downsample:
+            self.cleanup_fiducials()
             self.create_fiducial_points()
             self.create_within_stack_transformations()
             
