@@ -110,7 +110,7 @@ class AnnotationSessionController:
         self.add_row(data)
         self.session.commit()
         return data.id
-
+    
 
     def get_fiducials(self, prep_id, debug: bool = False):
         """Fiducials will be marked on downsampled images. You will need the resolution
