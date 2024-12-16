@@ -447,6 +447,7 @@ class ElastixManager():
         self.bgcolor = image_manager.get_bgcolor()
         print(f'align_images Using bgcolor={self.bgcolor}')
         if self.downsample and os.path.exists(self.output):
+            print(f'Removing {self.output}')
             shutil.rmtree(self.output)
 
         os.makedirs(self.output, exist_ok=True)
