@@ -124,10 +124,12 @@ class Pipeline(
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
-        print("\thost:".ljust(20), f"{host}".ljust(20))
+        print("\tDB host:".ljust(20), f"{host}".ljust(20))
+        print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
         print()
 
     def get_section_count(self):
@@ -189,7 +191,10 @@ class Pipeline(
         """Perform the section to section alignment (registration)
         This method needs work. It is not currently used.
         """
-
+        self.pixelType = sitk.sitkFloat32
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
+        os.makedirs(self.output, exist_ok=True)
         self.create_affine_transformations()
 
     def align(self):

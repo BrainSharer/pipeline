@@ -57,7 +57,7 @@ Creating fiducials and then running the realing task will improve the alignment.
 """
 import argparse
 from pathlib import Path
-import sys, socket
+import sys
 from timeit import default_timer as timer
 
 
@@ -99,7 +99,6 @@ if __name__ == "__main__":
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
-    process_hostname = socket.gethostname()
 
     pipeline = Pipeline(
         animal,
@@ -126,7 +125,6 @@ if __name__ == "__main__":
 
     if task in function_mapping:
         start_time = timer()
-        print(f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}")
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)

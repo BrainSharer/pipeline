@@ -126,6 +126,54 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
 
     return rigid_params
 
+def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False):
+    """
+    Create and return a dictionary of rigid registration parameters for elastixImageFilter.
+    The iterations have been reduced as we are doing two alignment processes.
+
+    Parameters:
+    - elastixImageFilter: The elastix image filter object.
+    - defaultPixelValue: The default pixel value for the registration.
+
+    Returns:
+    - rigid_params: A dictionary of rigid registration parameters.
+    """
+
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
+    rigid_params["AutomaticTransformInitialization"] = ["true"]
+    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+    rigid_params["FixedInternalImagePixelType"] = ["float"]
+    rigid_params["MovingInternalImagePixelType"] = ["float"]
+    rigid_params["FixedImageDimension"] = ["2"]
+    rigid_params["MovingImageDimension"] = ["2"]
+    rigid_params["UseDirectionCosines"] = ["false"]
+    rigid_params["HowToCombineTransforms"] = ["Compose"]
+    rigid_params["DefaultPixelValue"] = [defaultPixelValue]
+    rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["WriteIterationInfo"] = ["true"]
+    rigid_params["Resampler"] = ["DefaultResampler"]
+    rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    rigid_params["NumberOfResolutions"] = ["5"]
+    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    #rigid_params["Transform"] = ["EulerTransform"]
+    rigid_params["AutomaticScalesEstimation"] = ["true"]
+    # the AdvancedMattesMutualInformation metric really helps with the alignment
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
+    rigid_params["UseRandomSampleRegion"] = ["true"]
+    rigid_params["SampleRegionSize"] = ["50"]
+    if debug:
+        rigid_params["MaximumNumberOfIterations"] = ["250"]
+    else:
+        rigid_params["MaximumNumberOfIterations"] = ["2500"]
+
+    rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
+    rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
+    rigid_params["ImageSampler"] = ["Random"]
+
+    return rigid_params
+
 
 def rescale_transformations(transforms: dict) -> dict:
     """Changes the dictionary of transforms to the correct resolution
