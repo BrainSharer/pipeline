@@ -166,7 +166,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     if debug:
         rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
-        rigid_params["MaximumNumberOfIterations"] = ["2500"]
+        rigid_params["MaximumNumberOfIterations"] = ["1500"]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
