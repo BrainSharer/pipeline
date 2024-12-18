@@ -41,3 +41,5 @@ j = (M1[0,2]-M1[2,0])/(4*r)
 k = (M1[1,0]-M1[0,1])/(4*r)
 
 print(f"\"crossSectionOrientation\": [{i},{j},{k},{r}],")
+print("For zarr")
+print(f"\"crossSectionOrientation\": [0, 0, 0, -1],")

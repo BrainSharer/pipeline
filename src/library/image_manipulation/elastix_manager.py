@@ -22,6 +22,7 @@ from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
+    create_affine_parameters,
     create_rigid_parameters,
     parameters_to_rigid_transform,
     rescale_transformations,
@@ -218,13 +219,9 @@ class ElastixManager():
 
     def create_affine_transformations(self):
         image_manager = ImageManager(self.input)
-        # files = sorted(os.listdir(self.input))
-        # nfiles = len(files)
-        # midpoint = nfiles // 2
         transformation_to_previous_sec = {}
-        # center = image_manager.center
 
-        for i in tqdm(range(1, image_manager.len_files), desc="Creating rigid transformations"):
+        for i in tqdm(range(1, image_manager.len_files), desc="Creating affine transformations", disable=self.debug):
             fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
             moving_index = os.path.splitext(image_manager.files[i])[0]
             elastixImageFilter = sitk.ElastixImageFilter()
@@ -235,24 +232,20 @@ class ElastixManager():
             elastixImageFilter.SetFixedImage(fixed)
             elastixImageFilter.SetMovingImage(moving)
 
-            affineParameterMap = elastixImageFilter.GetDefaultParameterMap("affine")
-            affineParameterMap["UseDirectionCosines"] = ["true"]
-            affineParameterMap["MaximumNumberOfIterations"] = ["250"] # 250 works ok
-            affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
-            affineParameterMap["NumberOfResolutions"]= ["4"] # Takes lots of RAM
-            affineParameterMap["WriteResultImage"] = ["false"]
+            affineParameterMap = create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=self.debug)
             elastixImageFilter.SetParameterMap(affineParameterMap)
             elastixImageFilter.LogToConsoleOff()
-            # elastixImageFilter.PrintParameterMap()
+            #elastixImageFilter.PrintParameterMap()
             elastixImageFilter.Execute()
 
             a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
             R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
+
             shift = image_manager.center + (float(tx), float(ty)) - np.dot(R, image_manager.center)
             A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
             transformation_to_previous_sec[i] = A
 
-        for moving_index in tqdm(range(image_manager.len_files), desc="Applying rigid transformations"):
+        for moving_index in tqdm(range(image_manager.len_files), desc="Applying affine transformations"):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == image_manager.midpoint:
                 transformation = np.eye(3)
@@ -272,7 +265,8 @@ class ElastixManager():
             # print(filename, transformation)
             infile = os.path.join(self.input, filename)
             outfile = os.path.join(self.output, filename)
-            file_key = [infile, outfile, transformation]
+            fillcolor = 0
+            file_key = [infile, outfile, transformation, fillcolor]
             align_image_to_affine(file_key)
             #####self.transform_save_image(infile, outfile, transformation)
 
@@ -326,14 +320,12 @@ class ElastixManager():
         :param animal: the animal
         :return: a dictionary of key=filename, value = coordinates
         """
-        if self.debug:
-            print("DEBUG: START ElastixManager::get_transformations")
 
         transformation_to_previous_sec = {}
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations iteration={self.iteration} {self.input}')
+        print(f'Using get_transformations iteration={self.iteration} midfile={image_manager.midfile} {self.input}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
