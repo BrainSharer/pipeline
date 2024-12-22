@@ -70,9 +70,7 @@ from library.image_manipulation.pipeline_process import Pipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument(
-        "--channel", help="Enter channel", required=False, default=1, type=int
-    )
+    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument(
         "--downsample",
         help="Enter true or false",
@@ -80,9 +78,8 @@ if __name__ == "__main__":
         default="true",
         type=str,
     )
-    parser.add_argument(
-        "--debug", help="Enter true or false", required=False, default="false", type=str
-    )
+    parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32, type=int)
+    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
@@ -104,6 +101,7 @@ if __name__ == "__main__":
         animal,
         channel=channel,
         downsample=downsample,
+        scaling_factor=args.scaling_factor,
         task=task,
         debug=debug,
     )
