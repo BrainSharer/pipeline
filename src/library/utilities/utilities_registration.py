@@ -156,7 +156,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
     rigid_params["NumberOfResolutions"] = ["5"]
     rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-    #rigid_params["Transform"] = ["EulerTransform"]
+    rigid_params["Transform"] = ["AffineTransform"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
     # the AdvancedMattesMutualInformation metric really helps with the alignment
     rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
@@ -164,7 +164,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["250"]
+        rigid_params["MaximumNumberOfIterations"] = ["25"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["1500"]
 

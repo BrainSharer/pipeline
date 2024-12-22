@@ -221,7 +221,7 @@ class ElastixManager():
         image_manager = ImageManager(self.input)
         transformation_to_previous_sec = {}
 
-        for i in tqdm(range(1, image_manager.len_files), desc="Creating affine transformations", disable=self.debug):
+        for i in tqdm(range(1, image_manager.len_files), desc="Creating affine transformations"):
             fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
             moving_index = os.path.splitext(image_manager.files[i])[0]
             elastixImageFilter = sitk.ElastixImageFilter()
