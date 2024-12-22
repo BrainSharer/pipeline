@@ -53,6 +53,9 @@ Creating fiducials and then running the realing task will improve the alignment.
 
 - This switches the top left and bottom right quadrants. Place this JSON directly below the 'position' key:
 - crossSectionOrientation: [0, -0.7071067690849304, 0, 0.7071067690849304],
+ 
+ - Pipeline web pages: https://pmc.ncbi.nlm.nih.gov/articles/PMC11266044/
+ - https://github.com/Texera/texera/wiki/Getting-Started
 
 """
 import argparse
