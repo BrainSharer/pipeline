@@ -70,7 +70,7 @@ class Pipeline(
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
 
-    def __init__(self, animal, channel='C1', downsample=False, task='status', debug=False):
+    def __init__(self, animal, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -107,7 +107,7 @@ class Pipeline(
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
-        self.scaling_factor = SCALING_FACTOR
+        self.scaling_factor = scaling_factor
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
 
@@ -124,6 +124,7 @@ class Pipeline(
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
+        print("\tscaling factor:".ljust(20), f"{str(self.scaling_factor)}".ljust(20))
         print("\tDB host:".ljust(20), f"{host}".ljust(20))
         print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
