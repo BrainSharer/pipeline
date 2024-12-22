@@ -6,7 +6,7 @@ import igneous.task_creation as tc
 
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.utilities.utilities_process import SCALING_FACTOR, test_dir
+from library.utilities.utilities_process import test_dir
 from library.image_manipulation.image_manager import ImageManager
 XY_CHUNK = 128
 Z_CHUNK = 64
@@ -27,14 +27,9 @@ class NgPrecomputedMaker:
         """
         db_resolution = self.sqlController.scan_run.resolution
         zresolution = self.sqlController.scan_run.zresolution
-        #28-AUG-2024 mod [self.scaling_factor was not defined]
-        # if self.scaling_factor < SCALING_FACTOR: 
-        #     zresolution *= self.scaling_factor
         resolution = int(db_resolution * 1000) 
         if self.downsample:
-        #   resolution = int(db_resolution * 1000 * self.scaling_factor)
-          resolution = int(db_resolution * 1000 * SCALING_FACTOR) #28-AUG-2024 mod [self.scaling_factor was not defined]
-          
+          resolution = int(db_resolution * 1000 * self.scaling_factor)          
           self.mips = 4
         else:
             self.mips = 8
@@ -54,7 +49,6 @@ class NgPrecomputedMaker:
             chunks = [xy_chunk, xy_chunk, 1]
         else:
             chunks = [XY_CHUNK, XY_CHUNK, 1]
-
 
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
 
