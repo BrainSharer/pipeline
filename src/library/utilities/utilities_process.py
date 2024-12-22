@@ -116,7 +116,7 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
     # blank images and they are small
     # min size on NTB is 8.8K
     starting_size = 20
-    min_size = starting_size * SCALING_FACTOR * 1000
+    min_size = starting_size  * 1000
     if downsample:
         min_size = starting_size
     try:
