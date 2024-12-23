@@ -5,6 +5,7 @@ It also has the main class to convert numpy arrays (images) into the precomputed
 import os
 import sys
 from PIL import Image
+import tifffile
 Image.MAX_IMAGE_PIXELS = None
 import json
 import numpy as np
@@ -309,6 +310,10 @@ class NumpyToNeuroglancer():
         if os.path.exists(progress_file):
              print(f"Section {index} has already been processed, skipping.")
              return
+        
+        #test_img = read_image(infile)
+        #print(f'{os.path.basename(infile)} shape={test_img.shape} dtype={test_img.dtype} ndim={test_img.ndim}')
+        #return
 
         # try:
         with Image.open(infile) as img:
@@ -317,6 +322,8 @@ class NumpyToNeuroglancer():
         # img = read_image(infile)
         img=img_array
 
+        #img = read_image(infile)
+        #img = tifffile.imread(infile)
         if img.ndim > 2:
             img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
             img = np.rot90(img, 1)

@@ -111,9 +111,9 @@ class Pipeline(
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
 
-        self.mips = 7 
-        if self.downsample:
-            self.mips = 4
+        #self.mips = 7 
+        #if self.downsample:
+        #    self.mips = 4
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
