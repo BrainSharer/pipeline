@@ -175,7 +175,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     return rigid_params
 
 
-def rescale_transformations(transforms: dict) -> dict:
+def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
     """Changes the dictionary of transforms to the correct resolution
 
 
@@ -185,7 +185,7 @@ def rescale_transformations(transforms: dict) -> dict:
     :return: corrected dictionary of filename: array  of transforms
     """
 
-    tf_mat_mult_factor = np.array([[1, 1, self.scaling_factor], [1, 1, self.scaling_factor]])
+    tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]])
 
     transforms_to_anchor = {}
     for img_name, tf in transforms.items():
