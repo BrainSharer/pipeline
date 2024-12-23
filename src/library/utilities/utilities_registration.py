@@ -185,7 +185,7 @@ def rescale_transformations(transforms: dict) -> dict:
     :return: corrected dictionary of filename: array  of transforms
     """
 
-    tf_mat_mult_factor = np.array([[1, 1, SCALING_FACTOR], [1, 1, SCALING_FACTOR]])
+    tf_mat_mult_factor = np.array([[1, 1, self.scaling_factor], [1, 1, self.scaling_factor]])
 
     transforms_to_anchor = {}
     for img_name, tf in transforms.items():

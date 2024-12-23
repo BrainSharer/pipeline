@@ -37,7 +37,7 @@ or set the environment variable OPENBLAS_NUM_THREADS to 128 or lower
 class ValisManager:
     def __init__(self, animal, debug):
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail"
+        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_cropped"
         self.results_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/valis"
         os.makedirs(self.results_dst_dir, exist_ok=True)
         self.registered_slide_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_registered"
