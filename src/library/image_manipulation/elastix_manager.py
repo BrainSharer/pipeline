@@ -368,7 +368,7 @@ class ElastixManager():
         transformations = self.get_transformations()
 
         if not self.downsample:
-            transformations = rescale_transformations(transformations)
+            transformations = rescale_transformations(transformations, self.scaling_factor)
 
         try:
             starting_files = os.listdir(self.input)
