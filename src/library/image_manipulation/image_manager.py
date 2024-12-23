@@ -31,6 +31,10 @@ class ImageManager:
         center (ndarray): The center coordinates of the image.
         volume_size (tuple): The size of the image volume (width, height, number of files).
         num_channels (int): The number of color channels in the image.
+        size (tuple): The size of the image (width, height).
+        DK37 024 full res size = 1,842,750,000
+        DK37 024 downsampled size = 1,555,500
+        YH10 full res size = 35,490,384
 
     Methods:
         get_bgcolor(maskpath): Returns the background color of the image based on the provided mask.
@@ -55,6 +59,7 @@ class ImageManager:
         self.center = np.array([self.width, self.height]) / 2
         self.volume_size = (self.width, self.height, self.len_files)
         self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
+        self.size = self.img.size
 
     def get_bgcolor(self, maskpath=None):
         """align needs either an integer or a tuple of integers for the fill color
