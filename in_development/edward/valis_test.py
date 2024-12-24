@@ -84,10 +84,10 @@ class ValisManager:
             #max_processed_image_dim_px=119,
             #max_image_dim_px=119,
             align_to_reference=False,
-            non_rigid_registrar_cls=None)
+            non_rigid_registrar_cls=non_rigid_registrar_cls)
         
         rigid_registrar, non_rigid_registrar, error_df = registrar.register()
-        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = True, drop_duplicates = False )
 
 
 
