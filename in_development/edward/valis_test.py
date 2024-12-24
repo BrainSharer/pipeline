@@ -80,9 +80,9 @@ class ValisManager:
             img_list=self.ordered_img_list,
             imgs_ordered=True,
             image_type="fluorescence",
-            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
-            max_processed_image_dim_px=119,
-            max_image_dim_px=119,
+            #resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            #max_processed_image_dim_px=119,
+            #max_image_dim_px=119,
             align_to_reference=False,
             non_rigid_registrar_cls=None)
         
@@ -143,5 +143,5 @@ if __name__ == '__main__':
     animal = args.animal
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     valisManager = ValisManager(animal, debug)
-    valisManager.simple_reg()
+    valisManager.register_to_mid()
     #valisManager.teardown()
