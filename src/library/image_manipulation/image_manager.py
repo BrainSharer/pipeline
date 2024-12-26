@@ -47,8 +47,8 @@ class ImageManager:
         if self.len_files == 0:
             print(f'No image files found in: {directory}')
             sys.exit(1)
-        self.midpoint = self.len_files // 2
-        self.midfile = self.files[self.midpoint]
+        self.midpoint = (self.len_files // 2) # works with odd number of files
+        self.midfile = self.files[self.midpoint] 
         midfilepath = os.path.join(directory, self.midfile)
         self.img = io.imread(midfilepath)
         self.dtype = self.img.dtype
