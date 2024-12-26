@@ -149,7 +149,8 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     rigid_params["UseDirectionCosines"] = ["false"]
     rigid_params["HowToCombineTransforms"] = ["Compose"]
     rigid_params["DefaultPixelValue"] = [defaultPixelValue]
-    rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["WriteResultImage"] = ["true"]
+    rigid_params["(ResultImageFormat"] = ["tif"]    
     rigid_params["WriteIterationInfo"] = ["true"]
     rigid_params["Resampler"] = ["DefaultResampler"]
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
@@ -164,7 +165,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["25"]
+        rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["1500"]
 
