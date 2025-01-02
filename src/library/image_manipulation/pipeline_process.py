@@ -188,7 +188,6 @@ class Pipeline(
         """Perform the section to section alignment (registration)
         This method needs work. It is not currently used.
         """
-        self.pixelType = sitk.sitkFloat32
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CROPPED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
         os.makedirs(self.output, exist_ok=True)

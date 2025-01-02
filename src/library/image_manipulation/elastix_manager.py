@@ -221,72 +221,52 @@ class ElastixManager():
 
         def get_elastix_filter():
             elastixImageFilter = sitk.ElastixImageFilter()
-            affineParameterMap = create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=self.debug)
+            affineParameterMap = create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=self.debug)
             elastixImageFilter.SetParameterMap(affineParameterMap)
             elastixImageFilter.LogToConsoleOff()
             return elastixImageFilter
 
         image_manager = ImageManager(self.input)
-        transformation_to_previous_sec = {}
+        #transformation_to_previous_sec = {}
         midpoint = image_manager.midpoint
         print(f'midpoint={midpoint} midfile={image_manager.midfile}')
-        
+        self.pixelType = sitk.sitkUInt16
         files = image_manager.files
-        #moving_files = [None for _ in range(image_manager.len_files)]
-        moving_files = {}
-        # add midfile to moving_files and then create the 1st result image from that
         
-        fixed_file = image_manager.files[midpoint]
-        moving_file = image_manager.files[midpoint - 1]
-        fixed = sitk.ReadImage(fixed_file, self.pixelType)            
-        moving = sitk.ReadImage(moving_file, self.pixelType)
-        elastixImageFilter = get_elastix_filter()
-        elastixImageFilter.SetFixedImage(fixed)
-        elastixImageFilter.SetMovingImage(moving)
+        #elastixImageFilter = sitk.ElastixImageFilter()
+        #bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+        rigidParameterMap = sitk.GetDefaultParameterMap('rigid')
+        #affineParameterMap = sitk.GetDefaultParameterMap('affine')
+        #elastixImageFilter.SetParameterMap(rigidParameterMap)
+        #elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        result_image = elastixImageFilter.Execute()
-        moving_files[midpoint] = fixed
-        moving_files[midpoint-1] = result_image
-        del elastixImageFilter
-        
-        for i in range(midpoint-1, 0, -1):
-            print(f'i={i} file={files[i]}')
+        """
+        for i in range(midpoint, midpoint - 10, -1):
             elastixImageFilter = get_elastix_filter()
-
-            fixed = moving_files[i] 
+            print(f'i={i} file={files[i]}')
+            fixed_file = image_manager.files[i]
             moving_file = image_manager.files[i - 1]
+            fixed = sitk.ReadImage(fixed_file, self.pixelType)
             moving = sitk.ReadImage(moving_file, self.pixelType)
             elastixImageFilter.SetFixedImage(fixed)
             elastixImageFilter.SetMovingImage(moving)
-
-            result_image = elastixImageFilter.Execute()
-            moving_files[i-1]= result_image
-            #img = sitk.GetArrayFromImage(result_image)
-            outfile = os.path.join(self.output, f"{str(i).zfill(3)}.tif")
+            elastixImageFilter.Execute()
             infile = os.path.join(self.input, f"{str(i).zfill(3)}.tif")
-            #write_image(outfile, img.astype(image_manager.dtype))
-            a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
-            del elastixImageFilter
-            R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
-            shift = image_manager.center + (float(tx), float(ty)) - np.dot(R, image_manager.center)
-            A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
-            file_key = [infile, outfile, A, (0,0,0)]
+            outfile = os.path.join(self.output, f"{str(i).zfill(3)}.tif")            
+            try:
+                a11 , a12 , a21 , a22 , tx , ty = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+                R = np.array([[a11, a12], [a21, a22]], dtype=np.float64)
+                shift = image_manager.center + (float(tx), float(ty)) - np.dot(R, image_manager.center)
+                A = np.vstack([np.column_stack([R, shift]), [0, 0, 1]]).astype(np.float64)
+            except:
+                rotation , xshift , yshift = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
+                A = parameters_to_rigid_transform(rotation, xshift, yshift, image_manager.center)
+
+            file_key = [infile, outfile, A, 0]
             align_image_to_affine(file_key)
-
+        """
+        transformation_to_previous_sec = {}
         
-        return
-        for moving_index, img in moving_files.items():
-            img = sitk.GetArrayFromImage(img)
-            outfile = os.path.join(self.output, f"{str(moving_index).zfill(3)}.tif")
-            write_image(outfile, img.astype(image_manager.dtype))
-
-        return
-        # align staring at midfile then down to 0
-        for i in range(midpoint, image_manager.len_files, 1):
-            print(f'i={i} file={files[i]}')
-
-
-        return
         for i in tqdm(range(1, image_manager.len_files), desc="Creating affine transformations"):
             fixed_index = os.path.splitext(image_manager.files[i - 1])[0]
             moving_index = os.path.splitext(image_manager.files[i])[0]
