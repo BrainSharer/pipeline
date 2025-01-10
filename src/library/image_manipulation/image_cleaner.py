@@ -10,6 +10,8 @@ import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 Image.MAX_IMAGE_PIXELS = None
 import numpy as np
+from tqdm import tqdm
+from skimage.filters import gaussian
 
 from library.image_manipulation.neuroglancer_manager import MESHDTYPE, NumpyToNeuroglancer
 from library.database_model.scan_run import FULL_MASK_NO_CROP
@@ -191,6 +193,42 @@ class ImageCleaner:
 
 
     def create_shell(self):
+        """
+        Creates a shell for image manipulation and alignment.
+        This method performs the following steps:
+        1. Retrieves the masked thumbnail images.
+        2. Applies rotation and flipping transformations to the images.
+        3. Places the transformed images into a larger canvas.
+        4. Aligns the images.
+        5. Stacks the aligned images into a 3D volume.
+        6. Applies Gaussian smoothing to the volume.
+        7. Converts the volume to a binary format.
+        8. Logs volume information including shape, data type, and unique IDs.
+        9. Initializes a Neuroglancer volume for visualization.
+        10. Adds segment properties to the Neuroglancer volume.
+        11. Creates meshing tasks for the Neuroglancer volume.
+        Attributes:
+            CLEAN (bool): Flag to determine if the output directory should be cleaned.
+            maskpath (str): Path to the masked thumbnail images.
+            maskfiles (list): List of mask files.
+            rotation (int): Rotation angle for the images.
+            flip (str): Flip type for the images ('flip' for vertical, 'flop' for horizontal).
+            max_width (int): Maximum width of the canvas.
+            max_height (int): Maximum height of the canvas.
+            bgcolor (int): Background color for the canvas.
+            output (str): Path to the output directory.
+            input (str): Path to the input directory.
+            files (list): List of files in the input directory.
+            iteration (int): Iteration count for image alignment.
+            volume (numpy.ndarray): 3D volume of aligned images.
+            ids (numpy.ndarray): Unique IDs in the volume.
+            counts (numpy.ndarray): Counts of unique IDs in the volume.
+            data_type (numpy.dtype): Data type of the volume.
+            scales (tuple): Scales for the Neuroglancer volume.
+            chunks (list): Chunk sizes for the Neuroglancer volume.
+            mesh_dir (str): Directory for Neuroglancer mesh data.
+            layer_path (str): Path to the Neuroglancer layer.
+        """
         CLEAN = False
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
@@ -230,104 +268,65 @@ class ImageCleaner:
             startc = max(0, zmidc - (cleaned.shape[1] // 2))
             endc = min(max_width, startc + cleaned.shape[1])
 
-
-
             placed_img = np.full((max_height, max_width), bgcolor, dtype=cleaned.dtype)
             try:
                 placed_img[startr:endr, startc:endc] = cleaned[:endr-startr, :endc-startc]
             except Exception as e:
                 print(f"Error placing {maskfile}: {e}")
 
-
-
             message = f'Error in saving {outfile} with shape {placed_img.shape} img type {placed_img.dtype}'
             write_image(outfile, placed_img, message=message)
         ##### now align images
         self.input = self.output
         self.files = os.listdir(self.input)
-        len_files = len(self.files)
         self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='placed_aligned')
         os.makedirs(self.output, exist_ok=True)
         self.iteration = 0
         self.start_image_alignment()
-        ##### now start mesh creation
-        self.input = self.output
-        self.output = None
-        self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', 'shell')
-        self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'mesh_input_shell')
+        self.files = sorted(os.listdir(self.output))
+        file_list = []
+        for file in tqdm(self.files):
+            filepath = os.path.join(self.output, file)
+            farr = read_image(filepath)
+            file_list.append(farr)
+        volume = np.stack(file_list, axis = 0)
+        volume = np.swapaxes(volume, 0, 2) # put it in x,y,z format
+        volume = gaussian(volume, 1)  # this is a float array
+        volume[volume > 0] = 255
+        volume = volume.astype(np.uint8)
+        ids, counts = np.unique(volume, return_counts=True)
+        data_type = volume.dtype
+        xy = self.sqlController.scan_run.resolution * 1000 * 1000 / self.scaling_factor
+        z = self.sqlController.scan_run.zresolution * 1000
+        scales = (int(xy), int(xy), int(z))
+        chunks = [64, 64, 64]
+        
+        print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales with {scales}')
+        print(f'IDS={ids}')
+        print(f'counts={counts}')
+        
+        
+        ng = NumpyToNeuroglancer(self.animal, volume, scales, layer_type='segmentation', 
+            data_type=data_type, chunk_size=chunks)
         self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'shell')
         self.layer_path = f'file://{self.mesh_dir}'
 
-        xy = self.sqlController.scan_run.resolution * 1000 * 1000 / self.scaling_factor
-        z = self.sqlController.scan_run.zresolution * 1000
-        self.scales = (int(xy), int(xy), int(z))
-        print(f'scales {self.scales} self.scaling_factor={self.scaling_factor} and resolution={self.sqlController.scan_run.resolution}')
-        self.xs = self.scales[0]
-        self.ys = self.scales[1]
-        self.zs = self.scales[2]
-        scale_dir = "_".join([str(self.xs), str(self.ys), str(self.zs)])
-        self.transfered_path = os.path.join(self.mesh_dir, scale_dir)
+        ng.init_volume(self.mesh_dir)
+        
+        # This calls the igneous create_transfer_tasks
+        #ng.add_rechunking(MESH_DIR, chunks=chunks, mip=0, skip_downsamples=True)
 
-        self.chunks = [64,64,1]
-        ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
-            data_type=MESHDTYPE, chunk_size=self.chunks)
-        self.volume_size = (max_width, max_height, len_files)
-        ng.init_precomputed(self.mesh_input_dir, self.volume_size)
-
-        for index, file in enumerate(sorted(self.files)):
-            infile = os.path.join(self.input, file)
-            filekey = (index, infile, self.progress_dir)
-            ng.process_image_shell(filekey)
-
-        chunks = [64, 64, 64]
-        self.mesh_mip = 0
-
-        _, cpus = get_cpus()
-        tq = LocalTaskQueue(parallel=cpus)
-        os.makedirs(self.mesh_dir, exist_ok=True)
-        if not os.path.exists(self.transfered_path):
-            tasks = tc.create_image_shard_transfer_tasks(ng.precomputed_vol.layer_cloudpath, 
-                                                            self.layer_path, mip=0, 
-                                                            chunk_size=chunks)
-
-            print(f'Creating transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
-            tq.insert(tasks)
-            tq.execute()
-        else:
-            print(f'Already created transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
-
-
+        #tq = LocalTaskQueue(parallel=4)
+        cloudpath2 = f'file://{self.mesh_dir}'
+        #ng.add_downsampled_volumes(chunk_size = chunks, num_mips = 1)
 
         ##### add segment properties
-        cloudpath = CloudVolume(self.layer_path, self.mesh_mip)
-        downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
-        print(f'Creating mesh from {downsample_path}', end=" ")
-        self.ids = [0, 255]
-        segment_properties = {str(id): str(id) for id in self.ids}
+        print('Adding segment properties')
+        cv2 = CloudVolume(cloudpath2, 0)
+        segment_properties = {str(id): str(id) for id in ids}
+        ng.add_segment_properties(cv2, segment_properties)
 
-        print('and creating segment properties', end=" ")
-        ng.add_segment_properties(cloudpath, segment_properties)
-
-        sharded = False
-        print(f'and mesh at mip={self.mesh_mip} with shards={str(sharded)}')
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
-                                        compress=True, 
-                                        sharded=sharded) # The first phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
-
-        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
-        # must return HTTP/1.1 206 Partial Content
-        # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
-
-        print(f'Creating meshing manifest tasks with {cpus} CPUs')
-        tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
-
-
-
-
-
-
-
+        ##### first mesh task, create meshing tasks
+        print(f'Creating meshing tasks on volume from {cloudpath2}')
+        ##### first mesh task, create meshing tasks
+        ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
