@@ -69,6 +69,7 @@ class Pipeline(
     TASK_NEUROGLANCER = "Creating Neuroglancer data"
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
+    TASK_SHELL = "Creating 3D shell outline"
 
     def __init__(self, animal, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
@@ -277,6 +278,11 @@ class Pipeline(
         print(self.TASK_OMEZARR)
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
+
+    def shell(self):
+        print(self.TASK_SHELL)
+        self.create_shell()
+        print(f'Finished {self.TASK_SHELL}.')
 
     def cell_labels(self):
         """
