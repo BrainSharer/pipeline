@@ -1,7 +1,10 @@
 import numpy as np
 import math
 
-theta = np.pi/2
+degrees = 270
+theta = math.radians(degrees)
+
+#theta = np.pi * 3/4
 
 rotateby = "x"
 
@@ -33,6 +36,8 @@ M1 = np.zeros((3,3),dtype=float) #rotation matrix
 M1[:,0] = vec1
 M1[:,1] = vec3
 M1[:,2] = vec4
+
+print(M1)
 
 # get the real part of the quaternion first
 r = math.sqrt(float(1)+M1[0,0]+M1[1,1]+M1[2,2])*0.5

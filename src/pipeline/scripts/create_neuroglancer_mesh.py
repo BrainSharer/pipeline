@@ -8,10 +8,7 @@ import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
-
-
 import igneous.task_creation as tc
-
 from cloudvolume import CloudVolume
 import numpy as np
 from pathlib import Path

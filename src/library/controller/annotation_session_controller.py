@@ -1,8 +1,7 @@
 from collections import defaultdict
 import datetime
 import numpy as np
-from sqlalchemy.types import Unicode
-
+from collections import defaultdict
 
 from library.database_model.brain_region import BrainRegion
 from library.database_model.annotation_points import AnnotationLabel, StructureCOM
@@ -201,6 +200,7 @@ class AnnotationSessionController:
     def get_annotation(self, session_id):
 
         annotation_session = self.session.query(AnnotationSession).get(session_id)
+        polygons = defaultdict(list)
 
         if not annotation_session:
             print("No data for this animal was found.")
@@ -214,14 +214,18 @@ class AnnotationSessionController:
             data = annotation_session.annotation["childJsons"]
         except KeyError:
             print("No childJsons key in data")
+        x_offset = 2200 // 32
+        y_offset = 5070 // 32
+        x_offset = 0
+        y_offset = 65
 
-        for point in data:
-            for k, v in point.items():
-                print(f"{k}")
-            # print(f'type: {type(point)}')
-            continue
-            x, y, z = point["point"]
-            x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
-            y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
-            section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
-            print(x, y, section)
+        for points in data:
+            for child in points['childJsons']:
+                x,y,z = child['pointA']
+                x = int(np.round(x * M_UM_SCALE / xy_resolution / SCALING_FACTOR) - x_offset)
+                y = int(np.round(y * M_UM_SCALE / xy_resolution / SCALING_FACTOR) - y_offset)
+                section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
+                #print(x, y, section)
+                polygons[section].append((x,y))
+
+        return polygons

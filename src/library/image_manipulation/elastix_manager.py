@@ -371,7 +371,7 @@ class ElastixManager():
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations iteration={self.iteration} midfile={image_manager.midfile} {self.input}')
+        print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} {self.input}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
@@ -423,6 +423,7 @@ class ElastixManager():
             return
         
         print(f"Aligning images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
+        print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
 
         if len(starting_files) != len(transformations):
             print("Error: The number of files in the input directory does not match the number of transformations")
