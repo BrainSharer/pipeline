@@ -5,20 +5,19 @@ import os
 import shutil
 import sys
 from PIL import Image
-from taskqueue.taskqueue import LocalTaskQueue
-import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 Image.MAX_IMAGE_PIXELS = None
 import numpy as np
 from tqdm import tqdm
 from skimage.filters import gaussian
+import cv2
 
-from library.image_manipulation.neuroglancer_manager import MESHDTYPE, NumpyToNeuroglancer
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.database_model.scan_run import FULL_MASK_NO_CROP
-from library.image_manipulation.filelocation_manager import CLEANED_DIR, CROPPED_DIR
+from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR, CROPPED_DIR
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, place_image, rotate_image
-from library.utilities.utilities_process import SCALING_FACTOR, get_cpus, read_image, test_dir, write_image
+from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, mask_with_contours, place_image, rotate_image
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 
 
 class ImageCleaner:
@@ -192,44 +191,7 @@ class ImageCleaner:
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
 
 
-    def create_shell(self):
-        """
-        Creates a shell for image manipulation and alignment.
-        This method performs the following steps:
-        1. Retrieves the masked thumbnail images.
-        2. Applies rotation and flipping transformations to the images.
-        3. Places the transformed images into a larger canvas.
-        4. Aligns the images.
-        5. Stacks the aligned images into a 3D volume.
-        6. Applies Gaussian smoothing to the volume.
-        7. Converts the volume to a binary format.
-        8. Logs volume information including shape, data type, and unique IDs.
-        9. Initializes a Neuroglancer volume for visualization.
-        10. Adds segment properties to the Neuroglancer volume.
-        11. Creates meshing tasks for the Neuroglancer volume.
-        Attributes:
-            CLEAN (bool): Flag to determine if the output directory should be cleaned.
-            maskpath (str): Path to the masked thumbnail images.
-            maskfiles (list): List of mask files.
-            rotation (int): Rotation angle for the images.
-            flip (str): Flip type for the images ('flip' for vertical, 'flop' for horizontal).
-            max_width (int): Maximum width of the canvas.
-            max_height (int): Maximum height of the canvas.
-            bgcolor (int): Background color for the canvas.
-            output (str): Path to the output directory.
-            input (str): Path to the input directory.
-            files (list): List of files in the input directory.
-            iteration (int): Iteration count for image alignment.
-            volume (numpy.ndarray): 3D volume of aligned images.
-            ids (numpy.ndarray): Unique IDs in the volume.
-            counts (numpy.ndarray): Counts of unique IDs in the volume.
-            data_type (numpy.dtype): Data type of the volume.
-            scales (tuple): Scales for the Neuroglancer volume.
-            chunks (list): Chunk sizes for the Neuroglancer volume.
-            mesh_dir (str): Directory for Neuroglancer mesh data.
-            layer_path (str): Path to the Neuroglancer layer.
-        """
-        CLEAN = False
+    def create_shell_from_mask(self):
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
         rotation = self.sqlController.scan_run.rotation
@@ -254,6 +216,8 @@ class ImageCleaner:
             mask = read_image(maskpath)
             if rotation > 0:
                 cleaned = rotate_image(mask, maskpath, rotation)
+            else:
+                cleaned = mask
             # flip = switch top to bottom
             # flop = switch left to right
             if flip == "flip":
@@ -302,6 +266,132 @@ class ImageCleaner:
         chunks = [64, 64, 64]
         
         print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales with {scales}')
+        print(f'IDS={ids}')
+        print(f'counts={counts}')
+        
+        
+        ng = NumpyToNeuroglancer(self.animal, volume, scales, layer_type='segmentation', 
+            data_type=data_type, chunk_size=chunks)
+        self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'shell')
+        self.layer_path = f'file://{self.mesh_dir}'
+
+        ng.init_volume(self.mesh_dir)
+        
+        # This calls the igneous create_transfer_tasks
+        #ng.add_rechunking(MESH_DIR, chunks=chunks, mip=0, skip_downsamples=True)
+
+        #tq = LocalTaskQueue(parallel=4)
+        cloudpath2 = f'file://{self.mesh_dir}'
+        #ng.add_downsampled_volumes(chunk_size = chunks, num_mips = 1)
+
+        ##### add segment properties
+        print('Adding segment properties')
+        cv2 = CloudVolume(cloudpath2, 0)
+        segment_properties = {str(id): str(id) for id in ids}
+        ng.add_segment_properties(cv2, segment_properties)
+
+        ##### first mesh task, create meshing tasks
+        print(f'Creating meshing tasks on volume from {cloudpath2}')
+        ##### first mesh task, create meshing tasks
+        ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
+
+    def mask_aligned_image(self, img, file):
+        from scipy.ndimage import binary_fill_holes
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray[gray > 0] = 255
+        #return gray
+        # If the pixel value is smaller than or 
+        # equal to the threshold, it is set to 0, otherwise it is set to a maximum value        
+        
+        #thresh = cv2.threshold(gray, threshold, maxval, cv2.THRESH_BINARY)[1]
+        #ret, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY )
+        #return thresh
+        # blur threshold image
+        #new_img = new_img.astype(np.uint8)
+        #new_img[(new_img > 200)] = 0
+        #lowerbound = 0
+        #upperbound = 255
+        # all pixels value above lowerbound will  be set to upperbound
+        #_, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
+        #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (50, 50))
+        #thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
+        #smoothed = cv2.morphologyEx(thresh, cv2.MORPH_ERODE, kernel)
+        #inverted_thresh = cv2.bitwise_not(smoothed)
+        #filled_thresh = binary_fill_holes(thresh).astype(np.uint8)
+        #return thresh
+        #return cv2.bitwise_and(img, img, mask=filled_thresh)
+
+
+
+        #blur = cv2.GaussianBlur(thresh, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
+        #return blur.astype(np.uint8)
+        # stretch so that 255 -> 255 and 127.5 -> 0
+        # threshold again
+        #thresh2 = cv2.threshold(thresh, 0, 255, cv2.THRESH_BINARY)[1]
+        #ret, thresh = cv2.threshold(gray, 1, 255, 0)
+        # get external contour
+        #contours, xxx = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        #contours = np.array(xxx)
+        #im = np.copy(img)
+        #cv2.drawContours(thresh, contours, -1, 255, 8)
+        #cv2.fillPoly(thresh, pts = [contours.astype(np.int32)], color = 0)
+
+        #points = contours.astype(np.int32)
+        #print(f'points shape={points.shape} type={points.dtype}')
+        #cv2.fillPoly(thresh, pts = [points], color = 255)
+        res = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = res[-2] # for cv2 v3 and v4+ compatibility
+        gray = np.zeros_like(gray)
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            area = cv2.contourArea(contour)
+            if area > 3000:
+                cv2.putText(gray, str(int(area)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1)
+                #print(f'file={file} filling area={area} type {type(area)}')
+                cv2.polylines(gray, [contour], isClosed=True, color=255, thickness=10)            
+                cv2.fillPoly(gray, pts=[contour], color=255)   
+
+
+        return gray.astype(np.uint8)
+
+    def create_shell(self):
+        WHITE = 255
+        self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=ALIGNED_DIR)
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
+        os.makedirs(self.output, exist_ok=True)
+        image_manager = ImageManager(self.input)
+        self.bgcolor = image_manager.get_bgcolor()
+        print(f'bgcolor={self.bgcolor}')
+        files = sorted(os.listdir(self.input))
+        file_list = []
+        for file in tqdm(files, disable=False):
+            filepath = os.path.join(self.input, file)
+            #outpath = os.path.join(self.output, file)
+            #if os.path.exists(outpath):
+            #    continue
+            img = read_image(filepath)
+            if img.ndim == 3:
+                img = mask_with_contours(img)
+                img = self.mask_aligned_image(img, file)
+                #write_image(outpath, img)
+            else:
+                img[img > 0] = WHITE
+            file_list.append(img)
+        volume = np.stack(file_list, axis = 0)
+        volume = np.swapaxes(volume, 0, 2) # put it in x,y,z format
+        volume = gaussian(volume, 1)  # this is a float array
+        volume[volume > 0] = WHITE
+        volume = volume.astype(np.uint8)
+        ids, counts = np.unique(volume, return_counts=True)
+        data_type = volume.dtype
+        xy = self.sqlController.scan_run.resolution * 1000 * 1000 / self.scaling_factor
+        z = self.sqlController.scan_run.zresolution * 1000
+        scales = (int(xy), int(xy), int(z))
+        chunks = [64, 64, 64]
+        
+        print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales with {scales}nm')
         print(f'IDS={ids}')
         print(f'counts={counts}')
         
