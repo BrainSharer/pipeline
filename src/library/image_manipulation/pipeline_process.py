@@ -280,7 +280,7 @@ class Pipeline(
         print(f'Finished {self.TASK_OMEZARR}.')
 
     def shell(self):
-        print(self.TASK_SHELL)
+        print(self.TASK_SHELL, end=" ")
         self.create_shell()
         print(f'Finished {self.TASK_SHELL}.')
 

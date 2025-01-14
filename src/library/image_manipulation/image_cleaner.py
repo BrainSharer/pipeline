@@ -358,24 +358,31 @@ class ImageCleaner:
 
     def create_shell(self):
         WHITE = 255
-        self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=ALIGNED_DIR)
-        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
-        os.makedirs(self.output, exist_ok=True)
-        image_manager = ImageManager(self.input)
-        self.bgcolor = image_manager.get_bgcolor()
-        print(f'bgcolor={self.bgcolor}')
-        files = sorted(os.listdir(self.input))
+        WRITE_MASKS = False
+        iteration = self.get_alignment_status()
+        if iteration is None:
+            print('No alignment iterations found.  Please run the alignment steps first.')
+            return
+        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=True, iteration=iteration)            
+
+        if WRITE_MASKS:
+            output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
+            os.makedirs(output, exist_ok=True)
+        print('with input =', input)
+        files = sorted(os.listdir(input))
         file_list = []
         for file in tqdm(files, disable=False):
-            filepath = os.path.join(self.input, file)
-            #outpath = os.path.join(self.output, file)
-            #if os.path.exists(outpath):
-            #    continue
+            filepath = os.path.join(input, file)
+            if WRITE_MASKS:
+                outpath = os.path.join(self.output, file)
+                if os.path.exists(outpath):
+                    continue
             img = read_image(filepath)
             if img.ndim == 3:
                 img = mask_with_contours(img)
                 img = self.mask_aligned_image(img, file)
-                #write_image(outpath, img)
+                if WRITE_MASKS:
+                    write_image(outpath, img)
             else:
                 img[img > 0] = WHITE
             file_list.append(img)
@@ -384,7 +391,7 @@ class ImageCleaner:
         volume = gaussian(volume, 1)  # this is a float array
         volume[volume > 0] = WHITE
         volume = volume.astype(np.uint8)
-        ids, counts = np.unique(volume, return_counts=True)
+        ids = list(np.unique(volume, return_counts=False))
         data_type = volume.dtype
         xy = self.sqlController.scan_run.resolution * 1000 * 1000 / self.scaling_factor
         z = self.sqlController.scan_run.zresolution * 1000
@@ -392,8 +399,6 @@ class ImageCleaner:
         chunks = [64, 64, 64]
         
         print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales with {scales}nm')
-        print(f'IDS={ids}')
-        print(f'counts={counts}')
         
         
         ng = NumpyToNeuroglancer(self.animal, volume, scales, layer_type='segmentation', 
