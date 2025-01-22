@@ -51,7 +51,8 @@ class OmeZarrManager():
         if iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
             return
-        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)            
+        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
+        print(f'Creating OME-Zarr from {input}')
 
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
