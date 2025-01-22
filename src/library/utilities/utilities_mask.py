@@ -293,14 +293,22 @@ def crop_image(img, mask):
 
 
 def get_image_box(mask):
-    """Find new max width and height
+    """
+    Calculate the bounding box coordinates for the given mask.
 
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :return: numpy array of cropped image
+    Args:
+        mask (numpy.ndarray): A binary mask where the object is represented by non-zero values.
+
+    Returns:
+        tuple: A tuple containing four integers (x1, y1, x2, y2) representing the coordinates of the bounding box.
+            - x1: The minimum x-coordinate of the bounding box.
+            - y1: The minimum y-coordinate of the bounding box.
+            - x2: The maximum x-coordinate of the bounding box.
+            - y2: The maximum y-coordinate of the bounding box.
     """
 
-    BUFFER = 10
+
+    BUFFER = 0
     mask = np.array(mask)
     mask[mask > 0] = 255
     _, thresh = cv2.threshold(mask, 200, 255, 0)

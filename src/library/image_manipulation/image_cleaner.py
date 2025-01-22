@@ -137,7 +137,7 @@ class ImageCleaner:
             print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
             sys.exit()
 
-        files, _, max_width, max_height = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
+        files, _, _, _ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
 
         file_keys = []
         for file in files:
@@ -166,6 +166,7 @@ class ImageCleaner:
             heights.append(height)
         max_width = max(widths)
         max_height = max(heights)
+        # Round up to multiples of 64 so that the images can be placed in Neuroglancer quicker with better sized chunks
         if self.debug:
             print(f'Updating {self.animal} scan_run with width={max_width} height={max_height}')
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
@@ -192,6 +193,7 @@ class ImageCleaner:
 
 
     def create_shell_from_mask(self):
+        CLEAN = True
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
         rotation = self.sqlController.scan_run.rotation
