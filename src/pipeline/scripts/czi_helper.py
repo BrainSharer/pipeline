@@ -4,6 +4,8 @@ import os
 import sys
 import argparse
 from pathlib import Path
+
+from library.utilities.utilities_process import write_image
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -44,6 +46,10 @@ def run_main(animal, czi_file):
             print(f"{scale=} Scene {idx=} {scenei=}", end=" ")
             data = czi.get_scene(scale=scale, scene_index=idx, channel=1)
             print(f'shape={data.shape} data type={data.dtype}')
+            outpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/test'
+            os.makedirs(outpath, exist_ok=True)
+            outfile = os.path.join(outpath, f'{czi_file}_{scenei}_{scale}.tif')
+            write_image(outfile, data)
         print()
 
 
