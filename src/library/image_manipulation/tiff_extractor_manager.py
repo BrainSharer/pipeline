@@ -74,8 +74,8 @@ class TiffExtractor():
 
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
-            for file_key in file_keys:
-                print(f"extracting from {os.path.basename(czi_file)}, {scene}, to {outfile}")
+            for file_key in sorted(file_keys):
+                print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
                 extract_tiff_from_czi(file_key)
         else:
             workers = self.get_nworkers()
