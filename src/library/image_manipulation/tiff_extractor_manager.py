@@ -73,14 +73,12 @@ class TiffExtractor():
             if 'DK184_slide051_2024_11_10_axion1.czi' in czi_file:
                 print('Found DK184_slide051_2024_11_10_axion1.czi')
                 file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
-            else:
-                print('did not find DK184_slide051_2024_11_10_axion1.czi')
 
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
             for file_key in sorted(file_keys):
                 czi_file, outfile, scenei, channel, scale, debug = file_key
-                print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
+                print(f"extracting from {os.path.basename(czi_file)}, {scenei=}, to {outfile}")
                 #extract_tiff_from_czi(file_key)
         else:
             workers = self.get_nworkers()
