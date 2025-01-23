@@ -198,10 +198,6 @@ class MetaUtilities:
         I don't see the point in creating a full-size preview image. It also crashes my computer.
         """
 
-        full = False
-        if self.debug:
-            print(f"DEBUG: START MetaUtilities::extract_slide_scene_data from {input_czi_file}")
-
         czi_file = os.path.basename(os.path.normpath(input_czi_file))
         czi = CZIManager(input_czi_file)
 
@@ -211,12 +207,6 @@ class MetaUtilities:
             os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
         
         slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
-        #####MOVED checksum_file = os.path.join(self.checksum, f'{czi_filename_without_extension}.sha256')
-        
-        if full:
-            slide_preview_full_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}_full.png')
-            checksum_full_file = os.path.join(self.checksum, f'{czi_filename_without_extension}_full.sha256')
-
 
         if not os.path.isfile(slide_preview_path):
 
@@ -236,25 +226,7 @@ class MetaUtilities:
             width, height = img.size
             new_width = int(width * 0.3)
             new_height = int(height * 0.3)
-            img_full = img.resize((new_width, new_height), Image.LANCZOS)
             
-            # Save downsampled full-size image ?? what is downsampled full-size ?????
-            if full:
-                img_full_byte_arr = io.BytesIO()
-                img_full.save(img_full_byte_arr, format='PNG')
-                img_full_byte_arr = img_full_byte_arr.getvalue()
-
-                # Calculate checksum for downsampled full-size image
-                readable_hash_full = hashlib.sha256(img_full_byte_arr).hexdigest()
-
-                # Save downsampled "full-size" image
-                with open(slide_preview_full_path, 'wb') as f:
-                    f.write(img_full_byte_arr)
-
-                # Save checksum for downsampled "full-size" image
-                with open(checksum_full_file, 'w') as f:
-                    f.write(readable_hash_full)
-
             # Calculate the scaling factor to make width <= 1000px
             max_width = 1000
             width, height = img.size
@@ -280,12 +252,6 @@ class MetaUtilities:
                 print(f'Saving scaled image to {slide_preview_path}')
             with open(slide_preview_path, 'wb') as f:
                 f.write(img_scaled_byte_arr)
-
-            # Save checksum for scaled image
-            """MOVED
-            with open(checksum_file, 'w') as f:
-                f.write(readable_hash_scaled)
-            """
 
 
         if self.debug:
