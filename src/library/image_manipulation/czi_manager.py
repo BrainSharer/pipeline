@@ -145,7 +145,7 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
     
-    czi_file, outfile, scenei, channel, scale, debug = file_key    
+    czi_file, outfile, scenei, channel, scale = file_key    
     czi = CZIManager(czi_file)
     data = None
     try:
