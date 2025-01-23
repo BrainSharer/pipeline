@@ -79,6 +79,7 @@ class TiffExtractor():
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
             for file_key in sorted(file_keys):
+                czi_file, outfile, scenei, channel, scale, debug = file_key
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
                 #extract_tiff_from_czi(file_key)
         else:
