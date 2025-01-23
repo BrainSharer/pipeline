@@ -27,7 +27,6 @@ class CZIManager():
         
         self.czi_file = czi_file
         self.file = CziFile(czi_file)
-        self.file.
 
     def extract_metadata_from_czi_file(self, czi_file, czi_file_path, debug: bool = False):
         """This will parse the xml metadata and return the relevant data.
