@@ -5,11 +5,11 @@ import sys
 import argparse
 from pathlib import Path
 
-from library.utilities.utilities_process import write_image
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.czi_manager import CZIManager
+from library.utilities.utilities_process import write_image
 
 
 
