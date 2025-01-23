@@ -126,7 +126,7 @@ class CZIManager():
         scene = self.file.get_scene_bounding_box(scene_index)
         return scene.x, scene.y, scene.w, scene.h
     
-    def get_scene(self, scene_index, channel, scale=1):
+    def get_scene(self, scene_index, channel, scale=1.0):
         """Gets the correct scene from the slide
 
         :param scene_index: integer of the scene index
