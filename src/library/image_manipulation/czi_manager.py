@@ -149,8 +149,6 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     czi = CZIManager(czi_file)
     data = None
     try:
-        if debug:
-            print(f"DEBUG: [extract_tiff_from_czi]: {czi_file=}, {scenei=}, {outfile=}")
         data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
     except Exception as e:
         print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
@@ -158,16 +156,6 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
     write_image(outfile, data, message=message)
-    """#####MOVED 
-    #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
-    if not os.path.exists(checksum_filepath):
-        org_file = Path(outfile)
-        with open(org_file, 'rb') as f:
-            bytes = f.read()  # Read the entire file as bytes
-            readable_hash = hashlib.sha256(bytes).hexdigest()
-            with open(checksum_filepath, 'w') as f:
-                f.write(readable_hash)
-    """
 
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing

@@ -62,25 +62,24 @@ class TiffExtractor():
         for section in sections:
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
-            output_path = os.path.join(self.output, tif_file)
+            outfile = os.path.join(self.output, tif_file)
 
             if not os.path.exists(czi_file):
                 print(f'Error: {czi_file} does not exist.')
                 continue
-            if os.path.exists(output_path):
+            if os.path.exists(outfile):
                 continue
-            if self.debug:
-                print(f'creating image={output_path}')
             scene = section.scene_index
-            file_keys.append([czi_file, output_path, scene, self.channel, scale_factor, self.debug])
+            file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
 
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
-            workers = 1
+            for file_key in file_keys:
+                print(f"extracting from {os.path.basename(czi_file)}, {scene}, to {outfile}")
+                extract_tiff_from_czi(file_key)
         else:
             workers = self.get_nworkers()
-
-        self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
+            self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
