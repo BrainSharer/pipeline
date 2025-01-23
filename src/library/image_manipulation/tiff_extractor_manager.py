@@ -70,7 +70,7 @@ class TiffExtractor():
             if os.path.exists(outfile):
                 continue
             scene = section.scene_index
-            if czi_file == 'DK184_slide051_2024_11_10_axion1.czi':
+            if 'DK184_slide051_2024_11_10_axion1.czi' in czi_file:
                 file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
 
         if self.debug:
