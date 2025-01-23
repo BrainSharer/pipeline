@@ -7,6 +7,8 @@ import os
 from PIL import Image
 from aicspylibczi import CziFile
 from aicsimageio import AICSImage
+from pylibCZIrw import czi as pyczi
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
@@ -139,7 +141,7 @@ class CZIManager():
         return self.file.read_mosaic(region=region, scale_factor=scale, C=channel - 1)[0]
 
  
-def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
+def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None:
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
@@ -153,6 +155,24 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     except Exception as e:
         print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
         return
+    
+    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+    write_image(outfile, data, message=message)
+ 
+def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
+    """Gets the TIFF file out of the CZI and writes it to the filesystem
+
+    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
+    """
+    
+    czi_file, outfile, scenei, channel, scale = file_key    
+    with pyczi.open_czi(czi_file) as czidoc:
+        # get the bounding boxes for each individual scene
+        scenes_bounding_rectangle = czidoc.scenes_bounding_rectangle
+        print(f'scenes_bounding_rectangle={scenes_bounding_rectangle}')
+        bounding_box = scenes_bounding_rectangle[scenei]
+        data = czidoc.read(plane={"T": 0, "Z": 0, "C": 0}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
+        write_image(outfile, data)
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
     write_image(outfile, data, message=message)
