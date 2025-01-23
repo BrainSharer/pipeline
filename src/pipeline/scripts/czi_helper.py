@@ -13,7 +13,7 @@ from library.utilities.utilities_process import write_image
 
 
 
-def run_main(animal, czi_file):
+def run_main(animal, czi_file, scene=0):
 
     czi_file_path = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/czi'
     infile = os.path.join(czi_file_path, czi_file)
