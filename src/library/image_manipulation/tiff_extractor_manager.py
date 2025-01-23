@@ -71,7 +71,10 @@ class TiffExtractor():
                 continue
             scene = section.scene_index
             if 'DK184_slide051_2024_11_10_axion1.czi' in czi_file:
+                print('Found DK184_slide051_2024_11_10_axion1.czi')
                 file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
+            else:
+                print('did not find DK184_slide051_2024_11_10_axion1.czi')
 
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
