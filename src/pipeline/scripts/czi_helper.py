@@ -19,11 +19,11 @@ def run_main(animal, czi_file):
     #czi = CziFile(infile)
     czi = CZIManager(infile)
 
-    metadata = czi_aics.metadata  # returns the metadata object for this file format (XML, JSON, etc.)
-    print(metadata)
-    for element in metadata.findall('*'):
-        for e2 in element.findall('*'):
-            print(e2)
+    #metadata = czi_aics.metadata  # returns the metadata object for this file format (XML, JSON, etc.)
+    #print(metadata)
+    #for element in metadata.findall('*'):
+    #    for e2 in element.findall('*'):
+    #        print(e2)
 
 
 
@@ -35,17 +35,16 @@ def run_main(animal, czi_file):
     #sizes = czi.size  # (1, 40, 4, 60, 1300, 1900)
     #print(f'sizes={sizes}')
     total_scenes = czi_aics.scenes
-    scales = [1, 1/32]
+    scales = [1]
     channels = czi_aics.dims.C
     print(f"{czi_file} has {len(total_scenes)} scenes and {channels} channels")
     for scale in scales:
-        for idx, scene in enumerate(total_scenes):
-            #czi_aics.set_scene(scene)
-            #dimensions = (czi_aics.dims.X, czi_aics.dims.Y)
-            print("\tScene index:", idx, end="\t")
-            #print("\tDimension (x,y):", dimensions)
+        for idx, scenei in enumerate(total_scenes):
+            czi_aics.set_scene(scenei)
+            print(f"{scale=} Scene {idx=} {scenei=}", end=" ")
             data = czi.get_scene(scale=scale, scene_index=idx, channel=1)
-            print(f'scale={scale} shape={data.shape}')
+            print(f'shape={data.shape} data type={data.dtype}')
+        print()
 
 
 if __name__ == "__main__":

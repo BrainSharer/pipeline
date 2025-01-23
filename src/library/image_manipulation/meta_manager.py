@@ -193,16 +193,16 @@ class MetaUtilities:
 
         return files
 
-    def extract_slide_scene_data(self, input_czi_file: str):
+    def extract_slide_scene_data(self, czi_file: str):
         """Extracts the scene data from the CZI file and creates a preview image
         I don't see the point in creating a full-size preview image. It also crashes my computer.
         """
 
-        czi_file = os.path.basename(os.path.normpath(input_czi_file))
-        czi = CZIManager(input_czi_file)
+        czi_file = os.path.basename(os.path.normpath(czi_file))
+        czi = CZIManager(czi_file)
 
         scale_factor = DOWNSCALING_FACTOR
-        czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
+        czi_filename_without_extension = os.path.splitext(os.path.basename(czi_file))[0]
         if not os.path.exists(self.fileLocationManager.slides_preview):
             os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
         
