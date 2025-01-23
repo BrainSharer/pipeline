@@ -70,13 +70,14 @@ class TiffExtractor():
             if os.path.exists(outfile):
                 continue
             scene = section.scene_index
-            file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
+            if czi_file == 'DK184_slide051_2024_11_10_axion1.czi':
+                file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
 
         if self.debug:
             print(f'Extracting a total of {len(file_keys)} files.')
             for file_key in sorted(file_keys):
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-                extract_tiff_from_czi(file_key)
+                #extract_tiff_from_czi(file_key)
         else:
             workers = self.get_nworkers()
             self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
