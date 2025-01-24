@@ -40,15 +40,17 @@ class NgPrecomputedMaker:
         For a large isotropic data set, Allen uses chunks = [128,128,128]
         self.input and self.output are defined in the pipeline_process
         """
+        image_manager = ImageManager(self.input)
+        max_width = image_manager.width
+        max_height = image_manager.height
 
         if self.downsample:
             self.xy_chunk = int(XY_CHUNK//2)
             chunks = [self.xy_chunk, self.xy_chunk, 1]
         else:
-            chunks = [XY_CHUNK, XY_CHUNK, 1]
+            chunks = [image_manager.height//16, image_manager.width//16, 1] # 1796x984
 
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)        
-        image_manager = ImageManager(self.input)
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         scales = self.get_scales()
         num_channels = image_manager.num_channels
         print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels} and size={image_manager.size}')
