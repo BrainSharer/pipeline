@@ -60,12 +60,14 @@ def place_image(file_key: tuple, bgcolor: int = 0):
             placed_img = cv2.merge((b, g, r))
         except Exception as e:
             raise Exception(f"Error placing color image {infile}: {e}")
-    else: # Grayscale with img.shape[2] != 3
-        placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
+    elif (img.ndim == 3 and img.shape[2] == 1): # Grayscale with img.shape[2] == 1
+        img = img.squeeze(axis=2)
         try:
             placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
         except Exception as e:
             raise Exception(f"Error placing {infile}: {e}")
+    else:
+        raise ValueError(f"Unsupported image shape: {img.shape}")
 
 
     write_image(outfile, placed_img.astype(dtype))
