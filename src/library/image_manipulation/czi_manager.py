@@ -169,9 +169,8 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     with pyczi.open_czi(czi_file) as czidoc:
         # get the bounding boxes for each individual scene
         scenes_bounding_rectangle = czidoc.scenes_bounding_rectangle
-        print(f'scenes_bounding_rectangle={scenes_bounding_rectangle}')
         bounding_box = scenes_bounding_rectangle[scenei]
-        data = czidoc.read(plane={"T": 0, "Z": 0, "C": 0}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
+        data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
         write_image(outfile, data)
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"

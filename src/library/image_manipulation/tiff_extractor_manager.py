@@ -16,14 +16,19 @@ class TiffExtractor():
 
     def extract_tiffs_from_czi(self):
         """
-        This method will:
-            1. Fetch the meta information of each slide and czi files from the database
-            2. Extract the images from the czi file and store them as tiff format.
-            3. Then updates the database with meta information about the sections in each slide
-        
-        :param animal: the prep id of the animal
-        :param channel: the channel of the stack image to process
-        :param compression: Compression used to store the tiff files default is LZW compression
+        Extracts TIFF images from CZI files for a specified channel.
+        This method performs the following steps:
+        1. Determines the output directory and scale factor based on the downsample flag.
+        2. Creates the output directory if it does not exist.
+        3. Logs the initial state including the number of existing TIFF files in the output directory.
+        4. Retrieves sections from the database for the specified animal and channel.
+        5. For each section, extracts the TIFF image from the corresponding CZI file if it does not already exist.
+        6. Logs and prints errors if CZI files are missing or if no sections are found.
+        7. Checks for duplicate files in the output directory and logs and prints any duplicates found.
+        Raises:
+            SystemExit: If no sections are found in the database or if duplicate files are found.
+
+        Note, it cannot be run with threads.
         """
 
         if self.debug:
@@ -58,7 +63,6 @@ class TiffExtractor():
             print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
-        #file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1, debug
         for section in sections:
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
@@ -70,15 +74,10 @@ class TiffExtractor():
             if os.path.exists(outfile):
                 continue
             scene = section.scene_index
-            if 'DK184_slide051_2024_11_10_axion1.czi' in czi_file:
-                print('Found DK184_slide051_2024_11_10_axion1.czi')
-                #file_keys.append([czi_file, outfile, scene, self.channel, scale_factor, self.debug])
+            if self.debug:
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-                #czi_file, outfile, scenei, channel, scale = file_key
-                extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
+            extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
         
-        #workers = self.get_nworkers()
-        #self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
 
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
