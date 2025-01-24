@@ -64,7 +64,7 @@ class TiffExtractor():
             print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
-        for section in tqdm(sections):
+        for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             outfile = os.path.join(self.output, tif_file)
