@@ -3,6 +3,7 @@ import glob
 import sys
 from pathlib import Path
 import hashlib
+from tqdm import tqdm
 
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
 from library.utilities.utilities_process import DOWNSCALING_FACTOR
@@ -63,7 +64,7 @@ class TiffExtractor():
             print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
-        for section in sections:
+        for section in tqdm(sections):
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
             outfile = os.path.join(self.output, tif_file)
