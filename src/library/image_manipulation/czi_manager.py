@@ -160,9 +160,19 @@ def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None
     write_image(outfile, data, message=message)
  
 def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
-    """Gets the TIFF file out of the CZI and writes it to the filesystem
-
-    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
+    """
+    Extracts a TIFF image from a CZI file based on the provided parameters.
+    Args:
+        file_key (tuple[str, str, int, bool, str]): A tuple containing the following elements:
+            - czi_file (str): Path to the input CZI file.
+            - outfile (str): Path to the output TIFF file.
+            - scenei (int): Index of the scene to extract.
+            - channel (int): Channel number to extract.
+            - scale (bool): Scaling factor for the image.
+    Returns:
+        None
+    Raises:
+        IOError: If there is an error writing the output TIFF file.
     """
     
     czi_file, outfile, scenei, channel, scale = file_key    
@@ -171,6 +181,8 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
         scenes_bounding_rectangle = czidoc.scenes_bounding_rectangle
         bounding_box = scenes_bounding_rectangle[scenei]
         data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
+        if data.ndim == 3 and data.shape[2] == 1:
+            data = data.squeeze(axis=2)
         write_image(outfile, data)
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"

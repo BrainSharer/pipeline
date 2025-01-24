@@ -198,13 +198,11 @@ class MetaUtilities:
         I don't see the point in creating a full-size preview image. It also crashes my computer.
         """
 
-        czi_file = os.path.basename(os.path.normpath(czi_file))
         czi = CZIManager(czi_file)
 
         scale_factor = DOWNSCALING_FACTOR
         czi_filename_without_extension = os.path.splitext(os.path.basename(czi_file))[0]
-        if not os.path.exists(self.fileLocationManager.slides_preview):
-            os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
+        os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
         
         slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
 
@@ -260,17 +258,6 @@ class MetaUtilities:
             else:
                 print(f'Slide preview does not exist, creating: {slide_preview_path}')
 
-
-        #CREATE meta-data.json [IF !EXISTS]
-        meta_data_file = 'meta-data.json'
-        meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
-        if not os.path.isfile(meta_store):
-            if self.debug:
-                print(f'DEBUG: meta-data.json NOT FOUND; CREATING @ {meta_store}')
-                
-            czi_metadata = czi.extract_metadata_from_czi_file(czi_file, input_czi_file)
-            with open(meta_store, 'w') as fh:
-                json.dump(czi_metadata["json_meta"], fh, indent=4)
 
 
     def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):
