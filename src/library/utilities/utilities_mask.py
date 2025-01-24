@@ -62,6 +62,7 @@ def place_image(file_key: tuple, bgcolor: int = 0):
             raise Exception(f"Error placing color image {infile}: {e}")
     elif (img.ndim == 3 and img.shape[2] == 1): # Grayscale with img.shape[2] == 1
         img = img.squeeze(axis=2)
+        placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
             placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
         except Exception as e:
