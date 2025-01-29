@@ -406,7 +406,8 @@ class Pipeline(
             error += "\nThere is no ./src/settings.py file!"
 
         if not self.downsample and self.available_memory < 50:
-            error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB.'
+            error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
+            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
             error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
             
