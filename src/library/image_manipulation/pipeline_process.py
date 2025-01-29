@@ -119,21 +119,22 @@ class Pipeline(
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        self.check_programs()
         self.report_status()
+        self.check_programs()
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
-        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
-        print("\tscaling factor:".ljust(20), f"{str(self.scaling_factor)}".ljust(20))
+        print("\tdownsample:".ljust(20), f"{str(self.downsample)} @ {1/self.scaling_factor}".ljust(20))
+        #print("\tscaling factor:".ljust(20), f"{str(self.scaling_factor)}".ljust(20))
         print("\tDB host:".ljust(20), f"{host}".ljust(20))
         print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
+        print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
     def get_section_count(self):
