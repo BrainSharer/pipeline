@@ -10,6 +10,7 @@ All imports are listed by the order in which they are used in the
 import os
 import SimpleITK as sitk
 import sys
+import psutil
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -104,13 +105,13 @@ class Pipeline(
         self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        self.check_programs()
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
         self.scaling_factor = scaling_factor
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
+        self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
 
         #self.mips = 7 
         #if self.downsample:
@@ -118,6 +119,7 @@ class Pipeline(
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        self.check_programs()
         self.report_status()
 
     def report_status(self):
@@ -388,11 +390,11 @@ class Pipeline(
         url_status = self.check_url(self.animal)
         print(url_status)
 
-    @staticmethod
-    def check_programs():
+    def check_programs(self):
         """
         Make sure imagemagick is installed.
-        Make sure there is a ./src/settings.py file
+        Make sure there is a ./src/settings.py file and make sure there is enough RAM
+        I set an arbitrary limit of 50GB of RAM for the full resolution images
         """
 
         error = ""
@@ -401,6 +403,12 @@ class Pipeline(
 
         if not os.path.exists("./src/settings.py"):
             error += "\nThere is no ./src/settings.py file!"
+
+        if not self.downsample and self.available_memory < 50:
+            error += f'\nThere is noot enough memory to run at full resolution: {self.available_memory}GB.'
+            error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
+            error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
+            
 
         if len(error) > 0:
             print(error)

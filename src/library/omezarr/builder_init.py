@@ -7,7 +7,6 @@ Created on Mon Aug  1 21:11:13 2022
 
 import zarr
 import os
-import psutil
 from numcodecs import Blosc
 
 
@@ -48,7 +47,6 @@ class builder(BuilderDownsample,
         self.cpu_cores = os.cpu_count()
         self.sim_jobs = self.cpu_cores - 2 
         self.workers = 1
-        self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
         self.tmp_dir = tmp_dir
