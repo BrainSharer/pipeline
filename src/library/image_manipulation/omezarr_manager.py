@@ -102,10 +102,11 @@ class OmeZarrManager():
             tmp_dir=tmp_dir,
             debug=self.debug,
             omero_dict=omero_dict,
-            mips=mips
+            mips=mips,
+            available_memory=self.available_memory
         )
 
-        mem_per_worker = round(omezarr.mem / omezarr.workers)
+        mem_per_worker = round(omezarr.available_memory / omezarr.workers)
         print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
         cluster = LocalCluster(n_workers=omezarr.workers,

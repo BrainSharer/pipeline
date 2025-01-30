@@ -37,6 +37,7 @@ class builder(BuilderDownsample,
         debug,
         omero_dict,
         mips,
+        available_memory
     ):
 
         self.input = in_location
@@ -54,8 +55,9 @@ class builder(BuilderDownsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
+        self.available_memory = available_memory
+        self.res0_chunk_limit_GB = self.available_memory / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
+        self.res_chunk_limit_GB = self.available_memory / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
         # workers = cpu_count, sim=1 died right away
         # workers = 1 sim=1 worker uses about 20%ram
         # workers = 1 sim=2 complains about ram
