@@ -120,6 +120,6 @@ class OmeZarrManager():
             omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
+                omezarr.cleanup()
             
 
-        omezarr.cleanup()
