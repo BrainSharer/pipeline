@@ -125,6 +125,7 @@ class AnnotationSessionController:
             .filter(AnnotationSession.active == True)
             .filter(AnnotationSession.FK_prep_id == prep_id)
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([FIDUCIAL])))
+            .order_by(AnnotationSession.updated.desc())
         )
         
         annotation_session = query.first()
