@@ -5,7 +5,8 @@ from library.database_model.atlas_model import Base, AtlasModel
 NO_MASK = 0
 FULL_MASK = 1
 BOTTOM_MASK = 2
-IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK'}
+FULL_MASK_NO_CROP = 3
+IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK', 3: 'FULL_MASK_NO_CROP'}
 
 
 class ScanRun(Base, AtlasModel):  
@@ -18,7 +19,6 @@ class ScanRun(Base, AtlasModel):
 
     id =  Column(Integer, primary_key=True, nullable=False)
     FK_prep_id = Column("FK_prep_id", String, ForeignKey('animal.prep_id'), nullable=False)
-    rescan_number = Column(Integer, default=0)
     machine = Column(Enum("Axioscan I", "Axioscan II", "Nanozoomer"))
     objective = Column(Enum("60X", "40X", "20X", "10X"))
     resolution = Column(Float, default=0)
@@ -40,7 +40,6 @@ class ScanRun(Base, AtlasModel):
     rotation = Column(Integer, default=0, nullable=False)
     flip = Column(Enum("none", "flip", "flop"))
     mask = Column(Integer, default=FULL_MASK, nullable=False)
-
     comments = Column(String)
 
     slides = relationship('Slide', lazy=True)

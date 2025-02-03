@@ -96,7 +96,7 @@ class Pipeline(
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
-        self.sqlController = SqlController(animal, rescan_number)
+        self.sqlController = SqlController(animal)
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.mask_image = self.sqlController.scan_run.mask
@@ -127,7 +127,7 @@ class Pipeline(
         print()
 
     def get_section_count(self):
-        section_count = self.sqlController.get_section_count(self.animal, self.rescan_number)
+        section_count = self.sqlController.get_section_count(self.animal)
         if section_count == 0:
             INPUT = self.fileLocationManager.get_thumbnail(channel=1)
             if os.path.exists(INPUT):

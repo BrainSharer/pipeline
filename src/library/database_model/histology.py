@@ -22,7 +22,7 @@ class Histology(Base, AtlasModel):
     whole_brain = Column(Enum("Y", "N"))
     block = Column(String)
     date_sectioned = Column(Date)
-    side_sectioned_first = Column(Enum("ASC", "DESC"))
+    side_sectioned_first = Column(Enum("Left","Right", "Dorsal", "Ventral", "Anterior", "Posterior"))
     scene_order = Column(Enum("ASC", "DESC"))
     sectioning_method = Column(Enum("cryoJane", "cryostat", "vibratome", "optical", "sliding microtiome"))
     section_thickness = Column(Integer, default=20, nullable=False)

@@ -1,6 +1,8 @@
+from datetime import datetime
+import shutil
 import os, sys
-from subprocess import check_output
 import socket
+import concurrent
 from skimage import io
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -10,10 +12,56 @@ import gc
 from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
+from concurrent.futures import Future
 
 SCALING_FACTOR = 32.0
+M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
+
+
+def delete_in_background(path: str) -> Future:
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    old_path = f"{path}.old_{current_date}"
+
+    if os.path.exists(old_path): #JUST IN CASE >1 PROCESSED IN SINGLE DAY
+        shutil.rmtree(old_path)
+
+    os.rename(path, old_path)  # Rename the directory
+
+    # Delete the renamed directory in the background
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(shutil.rmtree, old_path)
+    return future 
+
+
+def use_scratch_dir(directory: str) -> bool:
+    """
+    Determines if there is enough free space in the /scratch directory to accommodate
+    the specified directory with a buffer factor applied.
+    Args:
+        directory (str): The path to the directory whose size needs to be checked.
+    Returns:
+        bool: True if there is enough free space in the /scratch directory, False otherwise.
+    """
+    
+    BUFFER_FACTOR = 1.25
+    dir_size = get_directory_size(directory)
+    dir_size = dir_size * BUFFER_FACTOR
+    total, used, free = shutil.disk_usage("/scratch")
+
+    if free > dir_size:
+        return True
+    return False 
+
+def get_directory_size(directory):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not os.path.islink(file_path):
+                total_size += os.path.getsize(file_path)
+    return total_size
 
 
 def get_hostname() -> str:
@@ -27,37 +75,38 @@ def get_hostname() -> str:
     return hostname
 
 
-def get_image_size(filepath: str):
-    """Returns width, height of single image
-
-    :param filepath: path of input file
-    :return: tuple of int width and height of the file
+def get_image_size(filepath: str) -> tuple[int, int]:
     """
+    Returns the width and height of a single image using Pillow.
 
+    :param filepath: Path of the input file.
+    :return: Tuple containing the width and height as integers.
+    """
     try:
-        result_parts = str(check_output(["identify", filepath]))
-    except:
-        print(f'Could not identify file={filepath}')
-    results = result_parts.split()
-    try:
-        width, height = results[2].split("x")
-    except ValueError as ve:
-        print(f'Could not get width/height of {filepath}')
-        print(ve)
-        sys.exit()
-        
-    return int(width), int(height)
+        with Image.open(filepath) as img:
+            return img.size  # (width, height)
+    except Exception as e:
+        print(f'Error processing file={filepath}: {e}')
+        return 0, 0  # Return default values in case of error
+    
 
-
-def test_dir(animal: str, directory, section_count, downsample: bool = True, same_size: bool = False) -> int:
-    """Verify image stack directory for section count and max width, height
-
-    :param animal: string of animal name.
-    :param directory: directory we are testing.
-    :param section_count: integer how many sections are in the stack
-    :param downsample: boolean on whether to downsample or not
-    :param same_size: boolean on whether all files are same size
-    :return: string of error messages
+def test_dir(animal: str, directory: str, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int, int, int]:
+    """
+    Tests the directory for image files, checks their sizes, and validates the number of files.
+    Args:
+        animal (str): The name of the animal.
+        directory (str): The path to the directory containing the image files.
+        section_count (int): The expected number of sections (files) in the directory.
+        downsample (bool, optional): Whether to downsample the images. Defaults to True.
+        same_size (bool, optional): Whether all images should be of the same size. Defaults to False.
+    Returns:
+        tuple[list[str], int, int, int]: A tuple containing:
+            - A list of filenames in the directory.
+            - The number of files in the directory.
+            - The maximum width of the images.
+            - The maximum height of the images.
+    Raises:
+        SystemExit: If there are errors in processing the files or if the number of files is incorrect.
     """
 
     error = ""
@@ -67,7 +116,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
     # blank images and they are small
     # min size on NTB is 8.8K
     starting_size = 20
-    min_size = starting_size * SCALING_FACTOR * 1000
+    min_size = starting_size  * 1000
     if downsample:
         min_size = starting_size
     try:
@@ -76,29 +125,42 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
         error = f"{directory} does not exist\n"
         files = []
 
+    
     if section_count == 0:
         section_count = len(files)
     widths = set()
     heights = set()
+
     for f in files:
         filepath = os.path.join(directory, f)
-        width, height = get_image_size(filepath)
-        widths.add(int(width))
-        heights.add(int(height))
-        size = os.path.getsize(filepath)
-        if size < min_size:
-            error += f"File is too small. {size} is less than min: {min_size} {filepath} \n"
-    # picked 100 as an arbitrary number. the min file count is usually around 380 or so
-    if len(files) > 100:
-        min_width = min(widths)
-        max_width = max(widths)
-        min_height = min(heights)
-        max_height = max(heights)
-    else:
-        min_width = 0
-        max_width = 0
-        min_height = 0
-        max_height = 0
+
+        try:
+            file_stats = os.stat(filepath)
+            size = file_stats.st_size
+            
+            if size < min_size:
+                error += f"File is too small. {size} is less than min: {min_size} {filepath}\n"
+                continue
+
+            # Get width and height of the image
+            width, height = get_image_size(filepath)
+            
+            # Add to sets
+            widths.add(int(width))
+            heights.add(int(height))
+        
+        except Exception as e:
+            error += f"Error processing file {filepath}: {e}\n"
+
+    if len(widths) == 0 or len(heights) == 0:
+        error += f"No valid images in {directory}\n"
+        print(error)
+        sys.exit()
+
+    min_width = min(widths)
+    max_width = max(widths)
+    min_height = min(heights)
+    max_height = max(heights)
     if section_count != len(files):
         print(
             "[EXPECTED] SECTION COUNT:",
@@ -116,7 +178,7 @@ def test_dir(animal: str, directory, section_count, downsample: bool = True, sam
         print(error)
         sys.exit()
         
-    return len(files)
+    return (files, len(files), max_width, max_height)
 
 def get_cpus():
     """Helper method to return the number of CPUs to use
@@ -141,14 +203,17 @@ def get_scratch_dir():
     Ratto can't use /scratch as it is not big enough
     """
 
-    usedir = {}
-    usedir['ratto'] = "/data"
+    # usedir = {}
+    # usedir['ratto'] = "/data"
 
-    hostname = get_hostname()
-    if hostname in usedir.keys():
-        tmp_dir = usedir[hostname]
-    else:
-        tmp_dir = "/scratch"
+    # hostname = get_hostname()
+    # if hostname in usedir.keys():
+    #     tmp_dir = usedir[hostname]
+    # else:
+    #     tmp_dir = "/scratch"
+    
+    #/scratch created on all servers (device or symbolic link to space with enough storage)
+    tmp_dir = "/scratch"
 
     return tmp_dir
 
@@ -212,16 +277,16 @@ def convert_size(size_bytes: int) -> str:
 
 
 def write_image(file_path:str, data, message: str = "Error") -> None:
-    """Writes an image to the filesystem
+    """Writes an TIFF image to the filesystem
     """
     
     try:
-        cv2.imwrite(file_path, data)
+        imwrite(file_path, data, compression='LZW', bigtiff=True)
     except Exception as e:
         print(message, e)
         print("Unexpected error:", sys.exc_info()[0])
         try:
-            imwrite(file_path, data)
+            cv2.imwrite(file_path, data)
         except Exception as e:
             print(message, e)
             print("Unexpected error:", sys.exc_info()[0])
@@ -248,3 +313,4 @@ def read_image(file_path: str):
         sys.exit()
 
     return img
+

@@ -29,6 +29,7 @@ class Slide(Base, AtlasModel):
     processed = Column(Boolean(), default=False)
     file_size = Column(Float, nullable=False)
     file_name = Column(String, nullable=False)
+    checksum = Column(String, nullable=True)
     comments = Column(String)
 
 class SlideCziTif(Base, AtlasModel):
@@ -40,6 +41,7 @@ class SlideCziTif(Base, AtlasModel):
     __tablename__ = 'slide_czi_to_tif'
     id =  Column(Integer, primary_key=True, nullable=False)
     FK_slide_id = Column(Integer, ForeignKey('slide.id'), nullable=False)
+    czifile = Column(String, nullable=False)
     file_name = Column(String, nullable=False)
     scene_number = Column(Integer, nullable=False)
     width = Column(Integer)
@@ -60,7 +62,6 @@ class Section(Base, AtlasModel):
     __tablename__ = 'sections'
     id =  Column(Integer, primary_key=True, nullable=False)
     prep_id = Column(String, ForeignKey('animal.prep_id'), nullable=False)
-    rescan_number = Column(Integer, nullable=False)
     czi_file = Column(String, nullable=False)
     slide_physical_id = Column(Integer, nullable=False)
     file_name = Column(String, nullable=False)
