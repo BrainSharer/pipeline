@@ -416,8 +416,8 @@ class ElastixManager():
         if not self.downsample:
             print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
-            for key, value in transformations.items():
-                print(f'{key} {value}')
+            #for key, value in transformations.items():
+            #    print(f'{key} {value}')
 
         try:
             starting_files = os.listdir(self.input)
@@ -499,6 +499,8 @@ class ElastixManager():
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
+            print(f'align_images infile={infile} outfile={outfile}')
+            print(f'align_images T={T.flatten()[:6]}')
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, T, self.bgcolor])
