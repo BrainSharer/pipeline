@@ -414,6 +414,7 @@ class ElastixManager():
         transformations = self.get_transformations()
 
         if not self.downsample:
+            print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
 
         try:
