@@ -254,7 +254,6 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
-
     # The final image: im1 is now a numpy array so we can use
     # tifffile to save the image
     try:
