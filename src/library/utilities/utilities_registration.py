@@ -24,6 +24,10 @@ Image.MAX_IMAGE_PIXELS = None
 from tifffile import imwrite, imread
 from scipy.ndimage import affine_transform
 from skimage.transform import AffineTransform, warp
+from skimage import io
+from skimage.transform import EuclideanTransform, warp
+import numpy as np
+import cv2
 
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
 NUM_ITERATIONS = "1500"
@@ -55,7 +59,7 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     and stored in the elastix_transformation table. Creates a matrix of the
     rigid transformation.
 
-    :param rotation: a float designating the rotation
+    :param rotation: a float designating the rotation in radians
     :param xshift: a float for showing how much the moving image shifts in the X direction.
     :param yshift: a float for showing how much the moving image shifts in the Y direction.
     :param center: tuple of floats showing the center of the image.
@@ -177,23 +181,26 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
 
 
 def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
-    """Changes the dictionary of transforms to the correct resolution
-
-
-    :param animal: prep_id of animal we are working on animal
-    :param transforms: dictionary of filename:array of transforms
-    :param downsample: boolean: either true for thumbnails, false for full resolution images
-    :return: corrected dictionary of filename: array  of transforms
+    """
+    Rescales the transformation matrices by a given scaling factor.
+    Args:
+        transforms (dict): A dictionary where keys are file names and values are 
+                           2D numpy arrays representing transformation matrices.
+        scaling_factor (float): The factor by which to scale the transformation matrices.
+    Returns:
+        dict: A dictionary with the same keys as the input, where each transformation 
+              matrix has been rescaled by the given scaling factor.
     """
 
-    tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]])
+    #tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
+    #print(tf_mat_mult_factor)
 
     transforms_to_anchor = {}
-    for img_name, tf in transforms.items():
-        transforms_to_anchor[img_name] = \
-            convert_2d_transform_forms(np.reshape(tf, (3, 3))[:2] * tf_mat_mult_factor)
+    for file, transform in transforms.items():
+        #transformed = np.reshape(transform, (3, 3))[:2] * tf_mat_mult_factor
+        transform[:, -1] *= scaling_factor
+        transforms_to_anchor[file] = np.vstack([transform, [0, 0, 1]])
         
-    
     return transforms_to_anchor
 
 def convert_2d_transform_forms(arr):
@@ -278,4 +285,43 @@ def tif_to_png(file_key):
     write_image(outfile, img)
 
 
+def apply_rigid_transform_opencv(image_path, angle, tx, ty, output_path):
+    # Load the image
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError("Image not found or unable to load.")
 
+    # Get image dimensions
+    (h, w) = image.shape[:2]
+
+    # Compute the center of the image
+    center = (w // 2, h // 2)
+
+    # Create the rotation matrix
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+    # Apply the translation
+    M[0, 2] += tx
+    M[1, 2] += ty
+
+    # Perform the affine transformation
+    transformed_image = cv2.warpAffine(image, M, (w, h))
+
+    # Save the transformed image
+    cv2.imwrite(output_path, transformed_image)
+
+
+def apply_rigid_transform_skimage(image_path, angle_rad, tx, ty, output_path):
+    # Load the image
+    image = io.imread(image_path)
+    if image is None:
+        raise ValueError("Image not found or unable to load.")
+
+    # Create the Euclidean transformation
+    transform = EuclideanTransform(rotation=angle_rad, translation=(tx, ty))
+
+    # Apply the transformation
+    transformed_image = warp(image, transform.inverse, output_shape=image.shape)
+
+    # Save the transformed image
+    io.imsave(output_path, transformed_image)
