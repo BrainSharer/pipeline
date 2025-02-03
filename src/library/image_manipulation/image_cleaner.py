@@ -167,6 +167,7 @@ class ImageCleaner:
         max_width = max(widths)
         max_height = max(heights)
         # Round up to multiples of 64 so that the images can be placed in Neuroglancer quicker with better sized chunks
+        # The rounding up to multiples of 64 occurs in the scan_run controller.
         if self.debug:
             print(f'Updating {self.animal} scan_run with width={max_width} height={max_height}')
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)

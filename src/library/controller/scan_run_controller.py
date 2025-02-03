@@ -36,15 +36,10 @@ class ScanRunController():
         width *= SCALING_FACTOR
         height *= SCALING_FACTOR
         SAFEMAX = 10000
-        #LITTLE_BIT_MORE = 2500
         # just to be safe, we don't want to update numbers that aren't realistic
         print(f'Updating scan_run table with ID={id}')
         print(f'Found max file size of data with width={width} height: {height}')
         if height > SAFEMAX and width > SAFEMAX:
-            #height = round(height, -3)
-            #width = round(width, -3)
-            #height += LITTLE_BIT_MORE + 1000
-            #width += LITTLE_BIT_MORE
             height = roundtochunk(height)
             width = roundtochunk(width)
             if (rotation % 2) == 0:
