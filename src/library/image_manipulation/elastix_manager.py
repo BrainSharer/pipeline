@@ -507,7 +507,7 @@ class ElastixManager():
             nice_input = get_last_dir_and_file(infile)
             nice_output = get_last_dir_and_file(outfile)
             print(f'align_images infile={nice_input}/{file} outfile={nice_output}/{file}', end="\t")
-            print(f'align_images T={T.flatten()[:6]}')
+            print(f'align_images T={np.round(T.flatten()[:6])}')
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, T, self.bgcolor])
