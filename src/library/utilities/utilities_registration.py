@@ -30,8 +30,8 @@ import math
 # from pystackreg import StackReg
 from tqdm import tqdm
 
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
-NUM_ITERATIONS = "1500"
+from library.utilities.utilities_process import read_image, write_image
+NUM_ITERATIONS = "2000"
 
 
 def rigid_transform_to_parmeters(transform,center):
@@ -172,7 +172,7 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     if debug:
         rigid_params["MaximumNumberOfIterations"] = ["500   "]
     else:
-        rigid_params["MaximumNumberOfIterations"] = ["1500"]
+        rigid_params["MaximumNumberOfIterations"] = [NUM_ITERATIONS]
 
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
@@ -195,7 +195,7 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
 
     #tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
     #print(tf_mat_mult_factor)
-    print(f'Changing tx and ty in the rigid transformation by {scaling_factor}')
+    print(f'Changing tx and ty in the rigid transformation by a factor of: {scaling_factor}')
 
     transforms_to_anchor = {}
     for file, transform in transforms.items():

@@ -416,7 +416,6 @@ class ElastixManager():
         #transformations = compute_rigid_transformations(self.input)
 
         if not self.downsample:
-            print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
         #for key, value in transformations.items():
