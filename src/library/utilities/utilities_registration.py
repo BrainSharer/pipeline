@@ -195,6 +195,7 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
 
     #tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
     #print(tf_mat_mult_factor)
+    print(f'Changing tx and ty in the rigid transformation by {scaling_factor}')
 
     transforms_to_anchor = {}
     for file, transform in transforms.items():

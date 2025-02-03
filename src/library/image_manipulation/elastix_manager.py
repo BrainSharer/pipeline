@@ -412,19 +412,15 @@ class ElastixManager():
         if self.debug:
             print("DEBUG: START ElastixManager::start_image_alignment")
 
-        # TODO FIXME
         transformations = self.get_transformations()
         #transformations = compute_rigid_transformations(self.input)
 
-        # TODO FIXME
         if not self.downsample:
             print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
         #for key, value in transformations.items():
         #    print(f'{key} {value.flatten()[:6]}')
-
-        
         
         try:
             starting_files = os.listdir(self.input)
