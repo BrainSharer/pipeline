@@ -382,20 +382,23 @@ class ElastixManager():
 
         for moving_index in range(len_files):
             filename = str(moving_index).zfill(3) + ".tif"
+            T_composed = np.eye(3)
             if moving_index == midpoint:
-                transformations[filename] = np.eye(3)
+                #transformations[filename] = np.eye(3)
+                T_composed = np.eye(3)
             elif moving_index < midpoint:
                 T_composed = np.eye(3)
                 for i in range(midpoint, moving_index, -1):
                     T_composed = np.dot(
                         np.linalg.inv(transformation_to_previous_sec[i]), T_composed
                     )
-                transformations[filename] = T_composed
+                #transformations[filename] = T_composed
             else:
                 T_composed = np.eye(3)
                 for i in range(midpoint + 1, moving_index + 1):
                     T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
-                transformations[filename] = T_composed
+                
+            transformations[filename] = T_composed
 
         return transformations
 
@@ -417,9 +420,11 @@ class ElastixManager():
         if not self.downsample:
             print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
-            #for key, value in transformations.items():
-            #    print(f'{key} {value}')
+        #for key, value in transformations.items():
+        #    print(f'{key} {value.flatten()[:6]}')
 
+        #return
+        
         try:
             starting_files = os.listdir(self.input)
         except OSError:
@@ -499,6 +504,7 @@ class ElastixManager():
         file_keys = []
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
+            print(f'align_images {file=} T.flat={T.flatten()}')
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
                 continue
