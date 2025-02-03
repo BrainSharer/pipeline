@@ -480,11 +480,6 @@ class ElastixManager():
         self.align_images(transforms)
 
     def align_images(self, transforms):
-        def get_last_dir_and_file(path):
-            """Gets the last directory and file from a full path."""
-
-            head, tail = os.path.split(path)
-            return os.path.basename(head)
         """function to align a set of images with a with the transformations between them given
         Note: image alignment is memory intensive (but all images are same size)
         6 factor of est. RAM per image for clean/transform needs firmed up but safe
@@ -504,18 +499,18 @@ class ElastixManager():
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
-            nice_input = get_last_dir_and_file(infile)
-            nice_output = get_last_dir_and_file(outfile)
-            print(f'infile={nice_input}/{file} outfile={nice_output}/{file}', end="\t")
-            print(f'T={T.flatten()[:6]}')
             if os.path.exists(outfile):
                 continue
             file_keys.append([infile, outfile, T, self.bgcolor])
 
         workers = self.get_nworkers() // 2
         if self.debug:
-            print(f'def align_images has {len(file_keys)} file keys')
-        self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
+            for file_key in file_keys:
+                T = file_key[2].flatten()[:6]
+                print(f'rigid transform of {file=} with {T=}')
+                align_image_to_affine(file_key)
+        else:
+            self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
 
     def create_web_friendly_sections(self):
         """A function to create section PNG files for the database portal.
