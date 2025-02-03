@@ -414,13 +414,12 @@ class ElastixManager():
         transformations = self.get_transformations()
 
         # TODO FIXME
-        if self.downsample:
+        if not self.downsample:
             print(f'rescaling transformations with scaling factor={self.scaling_factor}')
             transformations = rescale_transformations(transformations, self.scaling_factor)
             #for key, value in transformations.items():
             #    print(f'{key} {value}')
 
-        return
         try:
             starting_files = os.listdir(self.input)
         except OSError:
