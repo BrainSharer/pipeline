@@ -480,6 +480,11 @@ class ElastixManager():
         self.align_images(transforms)
 
     def align_images(self, transforms):
+        def get_last_dir_and_file(path):
+            """Gets the last directory and file from a full path."""
+
+            head, tail = os.path.split(path)
+            return os.path.basename(head)
         """function to align a set of images with a with the transformations between them given
         Note: image alignment is memory intensive (but all images are same size)
         6 factor of est. RAM per image for clean/transform needs firmed up but safe
@@ -499,7 +504,9 @@ class ElastixManager():
         for file, T in transforms.items():
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
-            print(f'align_images infile={infile} outfile={outfile}')
+            nice_input = get_last_dir_and_file(infile)
+            nice_output = get_last_dir_and_file(outfile)
+            print(f'align_images infile={nice_input}/{file} outfile={nice_output}/{file}', end="\t")
             print(f'align_images T={T.flatten()[:6]}')
             if os.path.exists(outfile):
                 continue
