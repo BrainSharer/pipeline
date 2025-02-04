@@ -177,8 +177,8 @@ class ElastixManager():
                 elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
-            else:
-                return 0.0, 0.0, 0.0, 0.0
+            #else:
+            #    return 0.0, 0.0, 0.0, 0.0
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
