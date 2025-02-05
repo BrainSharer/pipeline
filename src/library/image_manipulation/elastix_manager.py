@@ -177,8 +177,8 @@ class ElastixManager():
                 elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
-            #else:
-            #    return 0.0, 0.0, 0.0, 0.0
+            else:
+                return 0.0, 0.0, 0.0, 0.0
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
@@ -388,9 +388,7 @@ class ElastixManager():
             elif moving_index < midpoint:
                 T_composed = np.eye(3)
                 for i in range(midpoint, moving_index, -1):
-                    T_composed = np.dot(
-                        np.linalg.inv(transformation_to_previous_sec[i]), T_composed
-                    )
+                    T_composed = np.dot(np.linalg.inv(transformation_to_previous_sec[i]), T_composed)
             else:
                 T_composed = np.eye(3)
                 for i in range(midpoint + 1, moving_index + 1):
@@ -415,8 +413,8 @@ class ElastixManager():
         transformations = self.get_transformations()
         #transformations = compute_rigid_transformations(self.input)
 
-        #if not self.downsample:
-        #    transformations = rescale_transformations(transformations, self.scaling_factor)
+        if not self.downsample:
+            transformations = rescale_transformations(transformations, self.scaling_factor)
         
         #for key, value in transformations.items():
         #    print(f'{key} {value.flatten()[:6]}')
