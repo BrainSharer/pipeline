@@ -491,7 +491,10 @@ class ElastixManager():
         print(f'align_images Using bgcolor={self.bgcolor}')
         if self.downsample and os.path.exists(self.output):
             print(f'Removing {self.output}')
-            shutil.rmtree(self.output)
+            try:
+                shutil.rmtree(self.output)
+            except OSError as e:
+                print(f"Error: {e.strerror}")
 
         os.makedirs(self.output, exist_ok=True)
         transforms = OrderedDict(sorted(transforms.items()))
