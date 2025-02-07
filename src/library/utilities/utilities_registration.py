@@ -373,7 +373,7 @@ def apply_rigid_transform_skimage(file_key):
     #transform = EuclideanTransform(rotation=angle_rad, translation=(tx, ty))
 
     # Apply the transformation
-    transformed_image = warp(image, T, output_shape=image.shape)
+    transformed_image = warp(image, np.linalg.inv(T), output_shape=image.shape)
 
     # Save the transformed image
     io.imsave(outfile, transformed_image)
