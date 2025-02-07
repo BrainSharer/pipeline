@@ -193,6 +193,17 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
               matrix has been rescaled by the given scaling factor.
     """
 
+    tf_mat_mult_factor = np.array([[1, 1, 32.0], [1, 1, 32.0]])
+
+    transforms_to_anchor = {}
+    for img_name, tf in transforms.items():
+        transforms_to_anchor[img_name] = \
+            convert_2d_transform_forms(np.reshape(tf, (3, 3))[:2] * tf_mat_mult_factor)
+    return transforms_to_anchor
+
+
+
+
     tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
     #print(tf_mat_mult_factor)
     print(f'Changing tx and ty in the rigid transformation by a factor of: {scaling_factor}')
