@@ -417,9 +417,10 @@ class ElastixManager():
         if not self.downsample:
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
-        #for key, value in transformations.items():
-        #    print(f'{key} {value.shape} {value.flatten()}')
-        #return
+        for key, value in transformations.items():
+            print(f'{key} {value.shape} {value.flatten()}')
+        
+        return
         try:
             starting_files = os.listdir(self.input)
         except OSError:
@@ -501,7 +502,6 @@ class ElastixManager():
         transforms = OrderedDict(sorted(transforms.items()))
         file_keys = []
         for file, T in transforms.items():
-            print(T.shape)
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
@@ -512,7 +512,7 @@ class ElastixManager():
         if self.debug:
             for file_key in file_keys:
                 file = os.path.basename(file_key[0])
-                T = file_key[2].flatten()[:6]
+                T = file_key[2].flatten()
                 self.fileLogger.logevent(f'rigid transform of {file=} with {T=}')
                 align_image_to_affine(file_key)
                 #image_path, transform, output_path
