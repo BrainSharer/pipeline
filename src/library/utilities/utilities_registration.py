@@ -240,11 +240,14 @@ def align_image_to_affine(file_key):
     basepath = os.path.basename(os.path.normpath(infile))
 
     try:
-        im0 = imread(infile)
+        #im0 = imread(infile)
+        im0 = Image.open(infile)
     except Exception as e:
         print(f'Could not use tifffile to open={basepath}')
         print(f'Error={e}')
         sys.exit()
+
+
 
 
     # If the image is sRGB 16bit, convert to 8bit
@@ -340,6 +343,7 @@ def create_rigid_transformation(center, angle, tx, ty):
 
 
 def apply_rigid_transform_opencv(file_key):
+    #This does not work on large images
     # Load the image
     infile, outfile, M, _ = file_key
     image = read_image(infile)
