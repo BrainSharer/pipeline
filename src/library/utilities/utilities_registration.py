@@ -265,13 +265,20 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
     try:
-        im1 = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.BICUBIC, fillcolor=fillcolor)
+        img = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.BICUBIC, fillcolor=fillcolor)
     except Exception as e:
         print(f'align image to affine: could not transform {infile}')
         print(f'Error={e}')
         sys.exit()
 
-    im1.save(outfile)
+    base_width = 1684
+    w_percent = (base_width / float(img.size[0]))
+    h_size = int((float(img.size[1]) * float(w_percent)))
+    # Resize the image with the calculated dimensions
+    img = img.resize((base_width, h_size), Image.LANCZOS)
+
+
+    img.save(outfile)
     return
 
 
