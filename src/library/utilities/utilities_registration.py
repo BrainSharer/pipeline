@@ -271,6 +271,8 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
+    print(f'Writing {outfile} from matrix {T.flatten()[:6]} with image info={img.info}')
+
     img.save(outfile)
     return
 
