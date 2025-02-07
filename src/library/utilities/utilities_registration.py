@@ -345,6 +345,8 @@ def apply_rigid_transform_opencv(file_key):
     image = read_image(infile)
     if image is None:
         raise ValueError("Image not found or unable to load.")
+    
+    M = M.flatten()[:6]
 
     # Get image dimensions
     (h, w) = image.shape[:2]
