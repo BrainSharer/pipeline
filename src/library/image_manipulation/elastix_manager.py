@@ -371,14 +371,15 @@ class ElastixManager():
 
         transformation_to_previous_sec = {}
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
-        center = image_manager.center
+        #center = image_manager.center
+        center = np.array([842. , 451.5])
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} {self.input}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
             if i >= 60 and i < 65:
-                print(f'{i} {rotation=} {xshift=} {yshift=} {center=}')
+                print(f'{i=} {rotation=} {xshift=} {yshift=} {center=}')
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
