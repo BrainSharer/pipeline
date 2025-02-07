@@ -273,6 +273,7 @@ def align_image_to_affine(file_key):
 
     width = 168
     height = 903
+    img = img.convert('1') # convert image to black and white
     img.thumbnail((width, height))
 
     img.save(outfile)
