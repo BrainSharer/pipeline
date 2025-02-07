@@ -418,7 +418,7 @@ class ElastixManager():
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
         for key, value in transformations.items():
-            print(f'{key} {value.flatten()}')
+            print(f'{key} {value.shape} {value.flatten()}')
         return
         try:
             starting_files = os.listdir(self.input)
