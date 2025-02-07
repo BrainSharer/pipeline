@@ -341,7 +341,7 @@ def create_rigid_transformation(center, angle, tx, ty):
 
 def apply_rigid_transform_opencv(file_key):
     # Load the image
-    infile, outfile, T, _ = file_key
+    infile, outfile, M, _ = file_key
     image = read_image(infile)
     if image is None:
         raise ValueError("Image not found or unable to load.")
