@@ -339,9 +339,10 @@ def create_rigid_transformation(center, angle, tx, ty):
     return rotation_matrix
 
 
-def apply_rigid_transform_opencv(image_path, M, output_path):
+def apply_rigid_transform_opencv(file_key):
     # Load the image
-    image = cv2.imread(image_path)
+    infile, outfile, T, _ = file_key
+    image = cv2.imread(infile)
     if image is None:
         raise ValueError("Image not found or unable to load.")
 
@@ -364,7 +365,7 @@ def apply_rigid_transform_opencv(image_path, M, output_path):
     transformed_image = cv2.warpAffine(image, M, (w, h))
 
     # Save the transformed image
-    cv2.imwrite(output_path, transformed_image)
+    cv2.imwrite(outfile, transformed_image)
 
 
 def apply_rigid_transform_skimage(file_key):
