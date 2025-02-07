@@ -1,4 +1,4 @@
-from sqlalchemy import func
+import sys
 
 from library.database_model.scan_run import ScanRun
 from library.database_model.slide import SlideCziTif
@@ -31,33 +31,27 @@ class ScanRunController():
             return ROUNDUPTO * round(x/ROUNDUPTO)        
 
 
-        scan_run = self.session.query(ScanRun).filter(ScanRun.id == id).first()
-        rotation = scan_run.rotation
         width *= SCALING_FACTOR
         height *= SCALING_FACTOR
         SAFEMAX = 10000
         # just to be safe, we don't want to update numbers that aren't realistic
-        print(f'Updating scan_run table with ID={id}')
-        print(f'Found max file size of data with width={width} height: {height}')
         if height > SAFEMAX and width > SAFEMAX:
             height = roundtochunk(height)
             width = roundtochunk(width)
-            if (rotation % 2) == 0:
-                update_dict = {'width': width, 'height': height}
-            else:
-                update_dict = {'width': height, 'height': width}
+            update_dict = {'width': width, 'height': height}
+            print(f'Updating scan_run table with ID={id} with width={width} height: {height}')
              
-            print(f'Padded file size of data to {update_dict}')
             try:
                 self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
                 self.session.commit()
-
             except Exception as e:
                 print(f'No merge for  {e}')
                 self.session.rollback()
             self.scan_run = self.session.query(ScanRun)\
                 .filter(ScanRun.id == id).one()
-
+        else:
+            print(f'Width and height are too small to update: {width}, {height}')
+            sys.exit()
 
     def update_scan_run(self, id, update_dict):
         """

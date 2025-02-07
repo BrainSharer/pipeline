@@ -184,6 +184,8 @@ class Pipeline(
             self.make_histogram()
             self.make_combined_histogram()
             print(f'Finished {self.TASK_HISTOGRAM}.')
+            if self.channel == 1:
+                self.create_web_friendly_sections()
         else:
             print(f'No histogram for full resolution images')
 
@@ -214,9 +216,6 @@ class Pipeline(
 
         self.start_image_alignment()
         
-        if self.channel == 1 and self.downsample:
-            self.create_web_friendly_sections()
-
         print(f'Finished {self.TASK_ALIGN}.')
 
 

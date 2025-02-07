@@ -152,7 +152,7 @@ class ImageCleaner:
         self.run_commands_concurrently(place_image, tuple(file_keys), workers)
 
     def set_crop_size(self):
-        self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        self.maskpath = self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR)
         maskfiles = sorted(os.listdir(self.maskpath))
         widths = []
         heights = []
