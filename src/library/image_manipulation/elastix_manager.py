@@ -377,7 +377,8 @@ class ElastixManager():
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
-            print(f'{i} {rotation=} {xshift=} {yshift=}')
+            if i >= 60 and i < 65:
+                print(f'{i} {rotation=} {xshift=} {yshift=}')
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
