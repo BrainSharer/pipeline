@@ -201,6 +201,7 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
     for file, transform in transforms.items():
         #transformed = np.reshape(transform, (3, 3))[:2] * tf_mat_mult_factor
         transform[:, -1] *= scaling_factor
+        print(file, transform.shape)
         transforms_to_anchor[file] = np.vstack([transform, [0, 0, 1]])
         
     return transforms_to_anchor
