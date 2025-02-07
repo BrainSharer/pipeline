@@ -376,7 +376,8 @@ def apply_rigid_transform_skimage(file_key):
     transformed_image = warp(image, np.linalg.inv(T), output_shape=image.shape)
 
     # Save the transformed image
-    io.imsave(outfile, transformed_image)
+    #io.imsave(outfile, transformed_image)
+    write_image(outfile, transformed_image)
 
 def compute_rigid_transformations(input_path):
     """
