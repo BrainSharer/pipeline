@@ -344,20 +344,22 @@ def apply_rigid_transform_opencv(image_path, M, output_path):
     cv2.imwrite(output_path, transformed_image)
 
 
-def apply_rigid_transform_skimage(image_path, angle_rad, tx, ty, output_path):
+def apply_rigid_transform_skimage(file_key):
     # Load the image
-    image = io.imread(image_path)
+    infile, outfile, T, _ = file_key
+    #image_path, transform, output_path = file_key
+    image = io.imread(infile)
     if image is None:
         raise ValueError("Image not found or unable to load.")
 
     # Create the Euclidean transformation
-    transform = EuclideanTransform(rotation=angle_rad, translation=(tx, ty))
+    #transform = EuclideanTransform(rotation=angle_rad, translation=(tx, ty))
 
     # Apply the transformation
-    transformed_image = warp(image, transform.inverse, output_shape=image.shape)
+    transformed_image = warp(image, T.inverse, output_shape=image.shape)
 
     # Save the transformed image
-    io.imsave(output_path, transformed_image)
+    io.imsave(outfile, transformed_image)
 
 def compute_rigid_transformations(input_path):
     """

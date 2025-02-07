@@ -22,6 +22,7 @@ from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
+    apply_rigid_transform_skimage,
     create_affine_parameters,
     create_rigid_parameters,
     create_rigid_transformation,
@@ -512,7 +513,9 @@ class ElastixManager():
                 file = os.path.basename(file_key[0])
                 T = np.round(file_key[2].flatten()[:6],2)
                 self.fileLogger.logevent(f'rigid transform of {file=} with {T=}')
-                align_image_to_affine(file_key)
+                #align_image_to_affine(file_key)
+                #image_path, transform, output_path
+                apply_rigid_transform_skimage(file_key)
         else:
             self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
 
