@@ -501,6 +501,7 @@ class ElastixManager():
         transforms = OrderedDict(sorted(transforms.items()))
         file_keys = []
         for file, T in transforms.items():
+            print(T.shape)
             infile = os.path.join(self.input, file)
             outfile = os.path.join(self.output, file)
             if os.path.exists(outfile):
@@ -511,7 +512,7 @@ class ElastixManager():
         if self.debug:
             for file_key in file_keys:
                 file = os.path.basename(file_key[0])
-                T = np.round(file_key[2].flatten()[:6],2)
+                T = file_key[2].flatten()[:6]
                 self.fileLogger.logevent(f'rigid transform of {file=} with {T=}')
                 #align_image_to_affine(file_key)
                 #image_path, transform, output_path
