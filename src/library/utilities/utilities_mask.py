@@ -302,24 +302,21 @@ def crop_image(img, mask):
     return cropped
 
 
-def get_image_box(mask):
+def get_image_box(img):
     """
-    Calculate the bounding box coordinates for the given mask.
+    Computes the bounding box coordinates of the non-zero regions in a binary image.
 
     Args:
-        mask (numpy.ndarray): A binary mask where the object is represented by non-zero values.
+        img (numpy.ndarray): Input binary image where non-zero pixels represent the object.
 
     Returns:
-        tuple: A tuple containing four integers (x1, y1, x2, y2) representing the coordinates of the bounding box.
-            - x1: The minimum x-coordinate of the bounding box.
-            - y1: The minimum y-coordinate of the bounding box.
-            - x2: The maximum x-coordinate of the bounding box.
-            - y2: The maximum y-coordinate of the bounding box.
+        tuple: A tuple (x1, y1, x2, y2) representing the coordinates of the bounding box 
+               where (x1, y1) is the top-left corner and (x2, y2) is the bottom-right corner.
     """
 
-
-    BUFFER = 0
-    mask = np.array(mask)
+    mask = img.copy()
+    if mask.dtype == np.uint16:
+        mask = (mask / 256).astype(np.uint8)
     mask[mask > 0] = 255
     _, thresh = cv2.threshold(mask, 200, 255, 0)
     contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -333,10 +330,10 @@ def get_image_box(mask):
             xmax = int(round(x + w))
             ymax = int(round(y + h))
             boxes.append([xmin, ymin, xmax, ymax])
-    x1 = min(x[0] for x in boxes) - BUFFER
-    y1 = min(x[1] for x in boxes) - BUFFER
-    x2 = max(x[2] for x in boxes) + BUFFER
-    y2 = max(x[3] for x in boxes) + BUFFER
+    x1 = min(x[0] for x in boxes)
+    y1 = min(x[1] for x in boxes)
+    x2 = max(x[2] for x in boxes)
+    y2 = max(x[3] for x in boxes)
     x1, y1, x2, y2 = [0 if i < 0 else i for i in [x1, y1, x2, y2]]
     return x1, y1, x2, y2
 

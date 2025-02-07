@@ -248,7 +248,7 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
     try:
-        im1 = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+        im1 = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.BICUBIC, fillcolor=fillcolor)
     except Exception as e:
         print(f'align image to affine: could not transform {infile}')
         print(f'Error={e}')
