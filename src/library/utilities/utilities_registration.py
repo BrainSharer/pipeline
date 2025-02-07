@@ -250,7 +250,12 @@ def align_image_to_affine(file_key):
     # If the image is sRGB 16bit, convert to 8bit
     if im0.ndim == 3 and im0.dtype == np.uint16:
         # PIL can't handle sRGB 16bit images
-        im0 = (im0/256).astype(np.uint8)
+        try:
+            im0 = (im0/256).astype(np.uint8)
+        except Exception as e:
+            print(f'Could not convert file {basepath} to 8bit')
+            print(f'Error={e}')
+            sys.exit()
 
     # image is now in numpy array format, we need to get in PIL format to perform the transformation
     try:
