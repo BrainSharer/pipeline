@@ -414,13 +414,14 @@ class ElastixManager():
         transformations = self.get_transformations()
         #transformations = compute_rigid_transformations(self.input)
 
-        if not self.downsample:
+        #TODO FIX THIS
+        if self.downsample:
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
-        for key, value in transformations.items():
-            print(f'{key} {value.shape} {value.flatten()}')
+        #for key, value in transformations.items():
+        #    print(f'{key} {value.shape} {value.flatten()}')
         
-        return
+        #return
         try:
             starting_files = os.listdir(self.input)
         except OSError:
