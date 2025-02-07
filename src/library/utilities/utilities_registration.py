@@ -271,12 +271,9 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
-    base_width = 1684
-    w_percent = (base_width / float(img.size[0]))
-    h_size = int((float(img.size[1]) * float(w_percent)))
-    # Resize the image with the calculated dimensions
-    img = img.resize((base_width, h_size), Image.LANCZOS)
-
+    width = 168
+    height = 903
+    img.thumbnail((width, height))
 
     img.save(outfile)
     return
