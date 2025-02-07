@@ -271,7 +271,7 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
-    width = 168
+    width = 1684
     height = 903
     new_size = (width, height)
 
