@@ -377,7 +377,7 @@ def apply_rigid_transform_skimage(file_key):
 
     # Save the transformed image
     #io.imsave(outfile, transformed_image)
-    write_image(outfile, transformed_image)
+    write_image(outfile, transformed_image.astype(np.uint16))
 
 def compute_rigid_transformations(input_path):
     """
