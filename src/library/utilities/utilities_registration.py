@@ -271,6 +271,10 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
+    im1.save(outfile)
+    return
+
+
     del im0
     # Put PIL image to numpy
     try:
