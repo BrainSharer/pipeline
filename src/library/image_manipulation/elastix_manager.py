@@ -514,9 +514,9 @@ class ElastixManager():
                 file = os.path.basename(file_key[0])
                 T = file_key[2].flatten()[:6]
                 self.fileLogger.logevent(f'rigid transform of {file=} with {T=}')
-                #align_image_to_affine(file_key)
+                align_image_to_affine(file_key)
                 #image_path, transform, output_path
-                apply_rigid_transform_skimage(file_key)
+                #apply_rigid_transform_skimage(file_key)
         else:
             self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
 
