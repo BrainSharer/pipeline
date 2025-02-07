@@ -249,7 +249,7 @@ def align_image_to_affine(file_key):
 
 
 
-
+    """
     # If the image is sRGB 16bit, convert to 8bit
     if im0.ndim == 3 and im0.dtype == np.uint16:
         # PIL can't handle sRGB 16bit images
@@ -267,6 +267,8 @@ def align_image_to_affine(file_key):
         print(f'Could not convert file {basepath} to PIL ')
         print(f'Error={e}')
         sys.exit()
+    """
+
     try:
         img = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST)
     except Exception as e:
