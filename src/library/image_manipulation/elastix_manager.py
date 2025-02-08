@@ -373,14 +373,11 @@ class ElastixManager():
         transformation_to_previous_sec = {}
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
         center = image_manager.center
-        #center = np.array([842. , 451.5])
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} {self.input}')
+        print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
-            if i >= 60 and i < 65:
-                print(f'{i=} {rotation=} {xshift=} {yshift=} {center=}')
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
@@ -415,15 +412,10 @@ class ElastixManager():
             print("DEBUG: START ElastixManager::start_image_alignment")
 
         transformations = self.get_transformations()
-        #transformations = compute_rigid_transformations(self.input)
 
         if not self.downsample:
             transformations = rescale_transformations(transformations, self.scaling_factor)
         
-        #for key, value in transformations.items():
-        #    print(f'{key} {value.shape} {value.flatten()}')
-        
-        #return
         try:
             starting_files = os.listdir(self.input)
         except OSError:
@@ -515,7 +507,6 @@ class ElastixManager():
         if self.debug:
             for file_key in file_keys:
                 align_image_to_affine(file_key)
-                #image_path, transform, output_path
         else:
             self.run_commands_concurrently(align_image_to_affine, file_keys, workers)
 
