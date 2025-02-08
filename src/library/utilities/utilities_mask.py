@@ -43,6 +43,7 @@ def place_image(file_key: tuple, bgcolor: int = 0):
     startc = max(0, zmidc - (img.shape[1] // 2))
     endc = min(max_width, startc + img.shape[1])
     dtype = img.dtype
+    print(f'Placing {infile} into {outfile} with shape {img.shape} with max width {max_width} and max height {max_height} and ndim {img.ndim} and dtype {dtype}')
 
     if img.ndim == 2:  # Grayscale
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
