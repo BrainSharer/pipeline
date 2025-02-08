@@ -57,7 +57,6 @@ class ImageManager:
         self.width = self.shape[1]
         self.height = self.shape[0]
         self.center = np.array([self.width, self.height]) / 2
-        print(f'Image shape: {self.shape} and midpoint: {self.midpoint} and center: {self.center}')
         self.volume_size = (self.width, self.height, self.len_files)
         self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
         self.size = self.img.size

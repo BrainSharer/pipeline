@@ -385,7 +385,6 @@ class ElastixManager():
             transformation_to_previous_sec[i] = T
 
         transformations = {}
-
         for moving_index in range(len_files):
             filename = str(moving_index).zfill(3) + ".tif"
             if moving_index == midpoint:
