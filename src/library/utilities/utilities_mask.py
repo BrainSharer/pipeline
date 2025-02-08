@@ -218,44 +218,41 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
 
     img = read_image(infile)
 
-    if mask_image == FULL_MASK_NO_CROP:
-        cleaned = img
-    else:
-        mask = read_image(maskfile)
-        # Ensure mask is binary and uint8
-        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-        mask = mask.astype(np.uint8)
+    mask = read_image(maskfile)
+    # Ensure mask is binary and uint8
+    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+    mask = mask.astype(np.uint8)
 
-        # Handle different image types
-        if img.ndim == 2:  # Grayscale
-            img = img.astype(np.uint16)  # Retain original dtype
-        elif img.ndim == 3:  # Color
-            img = img.astype(np.uint16)  # Retain original dtype
-            if mask.ndim == 2:
-                mask = cv2.merge([mask] * 3)
-        try:
-            cleaned = cv2.bitwise_and(img, img, mask=mask)
-        except:
-            # May as well exit as something is very wrong.
-            print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-            fix = False
-            if fix:
-                print("Resizing mask to fix")
-                try:
-                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
-                except:
-                    print("Could not resize mask to fit image")
-                    print(f"Mask shape {mask.shape} Image shape {img.shape}")
-                    sys.exit()
-                try:
-                    cleaned = cv2.bitwise_and(img, img, mask=mask)
-                except:
-                    print("Could not clean image with this mask")
-                    print(f"Mask shape {mask.shape} Image shape {img.shape}")
-                    sys.exit()
-            else:
-                print("Image size does not match mask size, please fix")
+    # Handle different image types
+    if img.ndim == 2:  # Grayscale
+        img = img.astype(np.uint16)  # Retain original dtype
+    elif img.ndim == 3:  # Color
+        img = img.astype(np.uint16)  # Retain original dtype
+        if mask.ndim == 2:
+            mask = cv2.merge([mask] * 3)
+    try:
+        cleaned = cv2.bitwise_and(img, img, mask=mask)
+    except:
+        # May as well exit as something is very wrong.
+        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+        fix = False
+        if fix:
+            print("Resizing mask to fix")
+            try:
+                mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+            except:
+                print("Could not resize mask to fit image")
+                print(f"Mask shape {mask.shape} Image shape {img.shape}")
                 sys.exit()
+            try:
+                cleaned = cv2.bitwise_and(img, img, mask=mask)
+            except:
+                print("Could not clean image with this mask")
+                print(f"Mask shape {mask.shape} Image shape {img.shape}")
+                sys.exit()
+        else:
+            print("Image size does not match mask size, please fix")
+            sys.exit()
 
     if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
