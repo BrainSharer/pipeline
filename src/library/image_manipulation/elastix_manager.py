@@ -372,8 +372,8 @@ class ElastixManager():
 
         transformation_to_previous_sec = {}
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
-        #center = image_manager.center
-        center = np.array([842. , 451.5])
+        center = image_manager.center
+        #center = np.array([842. , 451.5])
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} {self.input}')
         len_files = len(image_manager.files)
