@@ -130,8 +130,10 @@ class ImageCleaner:
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
         if self.downsample:
-            max_width = int(max_width / SCALING_FACTOR)
-            max_height = int(max_height / SCALING_FACTOR)
+            max_width = int(max_width / self.scaling_factor)
+            max_height = int(max_height / self.scaling_factor)
+
+        print(f'max_width={max_width} max_height={max_height}')
 
         if max_width == 0 or max_height == 0:
             print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')
