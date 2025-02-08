@@ -201,22 +201,6 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
             convert_2d_transform_forms(np.reshape(tf, (3, 3))[:2] * tf_mat_mult_factor)
     return transforms_to_anchor
 
-
-
-
-    tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
-    #print(tf_mat_mult_factor)
-    print(f'Changing tx and ty in the rigid transformation by a factor of: {scaling_factor}')
-
-    transforms_to_anchor = {}
-    for file, transform in transforms.items():
-        transformed = np.reshape(transform, (3, 3))[:2] * tf_mat_mult_factor
-        #transform[:, -1] *= scaling_factor
-        #print(file, transform)
-        transforms_to_anchor[file] = transformed
-        
-    return transforms_to_anchor
-
 def convert_2d_transform_forms(arr):
     """Helper method used by rescale_transformations
 
@@ -225,7 +209,6 @@ def convert_2d_transform_forms(arr):
     """
 
     return np.vstack([arr, [0, 0, 1]])
-
 
 def align_image_to_affine(file_key):
     """This is the method that takes the rigid transformation and uses
@@ -240,14 +223,11 @@ def align_image_to_affine(file_key):
     basepath = os.path.basename(os.path.normpath(infile))
 
     try:
-        #im0 = imread(infile)
         im0 = Image.open(infile)
     except Exception as e:
-        print(f'Could not use tifffile to open={basepath}')
+        print(f'Could read file with PIL to open={basepath}')
         print(f'Error={e}')
         sys.exit()
-
-
 
     """
     # If the image is sRGB 16bit, convert to 8bit
@@ -276,9 +256,15 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
-    print(f'Writing {os.path.basename(outfile)} from matrix {T.flatten()[:6]}')
+    del im0
 
-    img.save(outfile)
+    try:
+        img.save(outfile)
+    except Exception as e:
+        print(f'align image to affine: could not save {outfile}')
+        print(f'Error={e}')
+        sys.exit()
+
     return
 
 
