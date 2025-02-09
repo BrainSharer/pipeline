@@ -35,19 +35,23 @@ def rotate_image(img, file: str, rotation: int):
 def place_image(file_key: tuple, bgcolor: int = 0):
     infile, outfile, max_width, max_height, bgcolor = file_key
     img = read_image(infile)
+    nice_infile = os.path.basename(infile)
 
     zmidr = max_height // 2
     zmidc = max_width // 2
-    startr = max(0, zmidr - (img.shape[0] // 2))
-    endr = min(max_height, startr + img.shape[0])
-    startc = max(0, zmidc - (img.shape[1] // 2))
-    endc = min(max_width, startc + img.shape[1])
+
+    startr = zmidr - (img.shape[0] // 2)
+    endr = startr + img.shape[0]
+    startc = zmidc - (img.shape[1] // 2)
+    endc = startc + img.shape[1]
+
     dtype = img.dtype
 
     if img.ndim == 2:  # Grayscale
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
-            placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
+            #placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc] I think this is wrong
+            placed_img[startr:endr, startc:endc] = img
         except Exception as e:
             raise Exception(f"Error placing {infile}: {e}")
 
