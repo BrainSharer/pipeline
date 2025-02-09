@@ -134,7 +134,7 @@ class ImageCleaner:
             max_width = int(max_width / self.scaling_factor)
             max_height = int(max_height / self.scaling_factor)
 
-        print(f'max_width={max_width} max_height={max_height}')
+        print(f'Place images max_width={max_width} max_height={max_height}')
 
         if max_width == 0 or max_height == 0:
             print(f'Error in setup parallel place images: width or height is 0. width={max_width} height={max_height}')

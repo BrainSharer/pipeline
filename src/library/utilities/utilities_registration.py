@@ -31,7 +31,7 @@ import math
 from tqdm import tqdm
 
 from library.utilities.utilities_process import read_image, write_image
-NUM_ITERATIONS = "2000"
+NUM_ITERATIONS = "2500"
 
 
 def rigid_transform_to_parmeters(transform,center):
