@@ -27,7 +27,8 @@ class ScanRunController():
 
     def update_width_height(self, id, width, height):
         def roundtochunk(x):
-            ROUNDUPTO = 64
+            """I think this needs to be bumped up to 256"""
+            ROUNDUPTO = 256
             return ROUNDUPTO * round(x/ROUNDUPTO)        
 
 
