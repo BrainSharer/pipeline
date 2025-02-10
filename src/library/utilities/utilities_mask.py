@@ -40,19 +40,19 @@ def place_image(file_key: tuple, bgcolor: int = 0):
     zmidr = max_height // 2
     zmidc = max_width // 2
 
-    startr = zmidr - (img.shape[0] // 2)
-    endr = startr + img.shape[0]
-    startc = zmidc - (img.shape[1] // 2)
-    endc = startc + img.shape[1]
+    #startr = zmidr - (img.shape[0] // 2)
+    #endr = startr + img.shape[0]
+    #startc = zmidc - (img.shape[1] // 2)
+    #endc = startc + img.shape[1]
 
-    nstartr = max(0, zmidr - (img.shape[0] // 2))
-    nendr = min(max_height, nstartr + img.shape[0])
-    nstartc = max(0, zmidc - (img.shape[1] // 2))
-    nendc = min(max_width, nstartc + img.shape[1])
+    startr = max(0, zmidr - (img.shape[0] // 2))
+    endr = min(max_height, startr + img.shape[0])
+    startc = max(0, zmidc - (img.shape[1] // 2))
+    endc = min(max_width, startc + img.shape[1])
 
-    if startr != nstartr or endr != nendr or startc != nstartc or endc != nendc:
-        print(f'Image {os.path.basename(infile)} does not fit startr {startr} endr {endr} startc {startc} endc {endc}')
-        print(f'                                                     {nstartr} endr {nendr} startc {nstartc} endc {nendc}')
+    #if startr != nstartr or endr != nendr or startc != nstartc or endc != nendc:
+    #    print(f'Image {os.path.basename(infile)} does not fit startr {startr} endr {endr} startc {startc} endc {endc}')
+    #    print(f'                                                     {nstartr} endr {nendr} startc {nstartc} endc {nendc}')
 
 
     dtype = img.dtype
