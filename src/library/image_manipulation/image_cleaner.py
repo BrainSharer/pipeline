@@ -54,7 +54,8 @@ class ImageCleaner:
             print(f"Error: Could not find the input directory: {self.input}")
             return
 
-        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)} MASK FOLDER: {self.maskpath}")
+        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)}")
+        self.fileLogger.logevent(f"MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
         image_manager = ImageManager(self.input)
         if self.mask_image > 0: 
@@ -117,8 +118,20 @@ class ImageCleaner:
 
 
     def setup_parallel_place_images(self):
-        """Do the image placing in parallel. Cleaning and cropping has already taken place.
+        """Do the image placing in parallel. Cleaning has already taken place.
         We first need to get all the correct image sizes and then update the DB.
+        f1 = c(28417,46233)
+        t2 = c(28224,46233)
+        f2 = c(26106,53785)
+        t2 = c(26106,53568)
+        f3 = c(25951,53624)
+        t3 = c(25951,53568)
+        f4 = c(26779,53882)
+        t4 = c(26779,53568)
+        f5 = c(28865,49615)
+        t5 = c(28224,49615)    
+
+        from shape (28865,49615) into shape (28224,49615)    
         """
         
         self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
