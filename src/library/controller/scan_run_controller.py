@@ -27,32 +27,28 @@ class ScanRunController():
 
     def update_width_height(self, id, width, height):
         def roundtochunk(x):
-            """I think this needs to be bumped up to 256"""
-            ROUNDUPTO = 256
+            """I think this needs to be bumped up to 1024"""
+            ROUNDUPTO = 64
             return ROUNDUPTO * round(x/ROUNDUPTO)        
 
 
         width *= SCALING_FACTOR
         height *= SCALING_FACTOR
-        SAFEMAX = 10000
-        # just to be safe, we don't want to update numbers that aren't realistic
-        if height > SAFEMAX and width > SAFEMAX:
-            height = roundtochunk(height)
-            width = roundtochunk(width)
-            update_dict = {'width': width, 'height': height}
-            print(f'Updating scan_run table with ID={id} with width={width} height: {height}')
-             
-            try:
-                self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
-                self.session.commit()
-            except Exception as e:
-                print(f'No merge for  {e}')
-                self.session.rollback()
-            self.scan_run = self.session.query(ScanRun)\
-                .filter(ScanRun.id == id).one()
-        else:
-            print(f'Width and height are too small to update: {width}, {height}')
-            sys.exit()
+        width_buffer = int(width * 0.01)
+        height_buffer = int(height * 0.01)
+        width = roundtochunk(width + width_buffer)
+        height = roundtochunk(height + height_buffer)
+        update_dict = {'width': width, 'height': height}
+        print(f'Updating scan_run table with ID={id} with width={width} height: {height}')
+            
+        try:
+            self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
+            self.session.commit()
+        except Exception as e:
+            print(f'No merge for  {e}')
+            self.session.rollback()
+        self.scan_run = self.session.query(ScanRun)\
+            .filter(ScanRun.id == id).one()
 
     def update_scan_run(self, id, update_dict):
         """

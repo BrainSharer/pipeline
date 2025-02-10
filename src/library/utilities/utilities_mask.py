@@ -36,34 +36,33 @@ def rotate_image(img, file: str, rotation: int):
 def place_image(file_key: tuple, bgcolor: int = 0):
     infile, outfile, max_width, max_height, bgcolor = file_key
     img = read_image(infile)
+    dtype = img.dtype
 
     zmidr = max_height // 2
     zmidc = max_width // 2
 
-    #startr = zmidr - (img.shape[0] // 2)
-    #endr = startr + img.shape[0]
-    #startc = zmidc - (img.shape[1] // 2)
-    #endc = startc + img.shape[1]
+    startr = zmidr - (img.shape[0] // 2)
+    endr = startr + img.shape[0]
+    startc = zmidc - (img.shape[1] // 2)
+    endc = startc + img.shape[1]
 
-    startr = max(0, zmidr - (img.shape[0] // 2))
-    endr = min(max_height, startr + img.shape[0])
-    startc = max(0, zmidc - (img.shape[1] // 2))
-    endc = min(max_width, startc + img.shape[1])
+    if startr < 0:
+        print(f'Error placing {infile} start row {startr=} < 0')
+        sys.exit()
 
-    #if startr != nstartr or endr != nendr or startc != nstartc or endc != nendc:
-    #    print(f'Image {os.path.basename(infile)} does not fit startr {startr} endr {endr} startc {startc} endc {endc}')
-    #    print(f'                                                     {nstartr} endr {nendr} startc {nstartc} endc {nendc}')
+    if startc < 0:
+        print(f'Error placing {infile} start column {startc=} < 0')
+        sys.exit()
+    
 
-
-    dtype = img.dtype
 
     if img.ndim == 2:  # Grayscale
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
             #placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc] I think this is wrong
-            placed_img[startr:endr, startc:endc] = img
+            placed_img[startr:endr, startc:endc] = img            
         except Exception as e:
-            print(f"Error placing {infile}: {e}")
+            print(f"Error placing grayscale {infile}: {e}")
             print(f"img shape {img.shape} placed_img shape {placed_img.shape} img ndim {img.ndim}")
             print(f"startr {startr} endr {endr} startc {startc} endc {endc}")
             sys.exit()
@@ -91,7 +90,8 @@ def place_image(file_key: tuple, bgcolor: int = 0):
             print(f"startr {startr} endr {endr} startc {startc} endc {endc}")
             sys.exit()
     else:
-        raise ValueError(f"Unsupported image shape: {img.shape}")
+        print(f"Img {infile} unsupported image shape: {img.shape} ndim={img.ndim} dtype={img.dtype}")
+        sys.exit()
 
 
     write_image(outfile, placed_img.astype(dtype))
