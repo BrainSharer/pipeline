@@ -45,6 +45,15 @@ def place_image(file_key: tuple, bgcolor: int = 0):
     startc = zmidc - (img.shape[1] // 2)
     endc = startc + img.shape[1]
 
+    nstartr = max(0, zmidr - (img.shape[0] // 2))
+    nendr = min(max_height, nstartr + img.shape[0])
+    nstartc = max(0, zmidc - (img.shape[1] // 2))
+    nendc = min(max_width, nstartc + img.shape[1])
+
+    if startr != nstartr or endr != nendr or startc != nstartc or endc != nendc:
+        print(f'Image {os.path.basename(infile)} does not fit startr {startr} endr {endr} startc {startc} endc {endc}')
+
+
     dtype = img.dtype
 
     if img.ndim == 2:  # Grayscale
