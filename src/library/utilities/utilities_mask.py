@@ -32,10 +32,10 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
+
 def place_image(file_key: tuple, bgcolor: int = 0):
     infile, outfile, max_width, max_height, bgcolor = file_key
     img = read_image(infile)
-    nice_infile = os.path.basename(infile)
 
     zmidr = max_height // 2
     zmidc = max_width // 2
@@ -53,7 +53,10 @@ def place_image(file_key: tuple, bgcolor: int = 0):
             #placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc] I think this is wrong
             placed_img[startr:endr, startc:endc] = img
         except Exception as e:
-            raise Exception(f"Error placing {infile}: {e}")
+            print(f"Error placing {infile}: {e}")
+            print(f"img shape {img.shape} placed_img shape {placed_img.shape} img ndim {img.ndim}")
+            print(f"startr {startr} endr {endr} startc {startc} endc {endc}")
+            sys.exit()
 
     elif (img.ndim == 3 and img.shape[2] == 3):  # Color (RGB)
         r, g, b = (np.full((max_height, max_width), bg, dtype=dtype) for bg in bgcolor)
@@ -63,14 +66,20 @@ def place_image(file_key: tuple, bgcolor: int = 0):
             b[startr:endr, startc:endc] = img[:endr-startr, :endc-startc, 2]
             placed_img = cv2.merge((b, g, r))
         except Exception as e:
-            raise Exception(f"Error placing color image {infile}: {e}")
+            print(f"Error placing {infile}: {e}")
+            print(f"img shape {img.shape} placed_img shape {placed_img.shape} img ndim {img.ndim}")
+            print(f"startr {startr} endr {endr} startc {startc} endc {endc}")
+            sys.exit()
     elif (img.ndim == 3 and img.shape[2] == 1): # Grayscale with img.shape[2] == 1
         img = img.squeeze(axis=2)
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
             placed_img[startr:endr, startc:endc] = img[:endr-startr, :endc-startc]
         except Exception as e:
-            raise Exception(f"Error placing {infile}: {e}")
+            print(f"Error placing {infile}: {e}")
+            print(f"img shape {img.shape} placed_img shape {placed_img.shape} img ndim {img.ndim}")
+            print(f"startr {startr} endr {endr} startc {startc} endc {endc}")
+            sys.exit()
     else:
         raise ValueError(f"Unsupported image shape: {img.shape}")
 
