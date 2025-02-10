@@ -32,8 +32,51 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
+def place_image(img, file: str, max_width, max_height, bgcolor=None):
+    """Places the image in a padded one size container with the correct background
 
-def place_image(file_key: tuple, bgcolor: int = 0):
+    :param img: image we are working on.
+    :param file: file name and path location
+    :param max_width: width to pad
+    :param max_height: height to pad
+    :param bgcolor: background color of image, 0 for NTB, white for thionin
+    :return: placed image centered in the correct size.
+    """
+    print('Function place_image')
+    zmidr = max_height // 2
+    zmidc = max_width // 2
+    startr = zmidr - (img.shape[0] // 2)
+    endr = startr + img.shape[0]
+    startc = zmidc - (img.shape[1] // 2)
+    endc = startc + img.shape[1]
+    dt = img.dtype
+    if bgcolor == None:
+        start_bottom = img.shape[0] - 5
+        bottom_rows = img[start_bottom:img.shape[0], :]
+        avg = np.mean(bottom_rows)
+        bgcolor = int(round(avg))
+    new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
+    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
+    if img.ndim == 2:
+        try:
+            new_img[startr:endr, startc:endc] = img
+        except:
+            ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+            #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
+    if img.ndim == 3:
+        try:
+            new_img = np.zeros([max_height, max_width, 3]) + bgcolor
+            new_img[startr:endr, startc:endc,0] = img[:,:,0]
+            new_img[startr:endr, startc:endc,1] = img[:,:,1]
+            new_img[startr:endr, startc:endc,2] = img[:,:,2]
+        except:
+            print(f'Could not place 3DIM {file} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+    del img
+    return new_img.astype(dt)
+
+
+def place_imageV1(file_key: tuple, bgcolor: int = 0):
     infile, outfile, max_width, max_height, bgcolor = file_key
     img = read_image(infile)
     dtype = img.dtype
@@ -212,7 +255,7 @@ def normalize16(img):
         return np.round(img).astype(np.uint16) 
 
 
-def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, int, bool]) -> None:
+def clean_and_rotate_image(file_key):
     """The main function that uses the user edited mask to crop out the tissue from 
     surrounding debris. It also rotates the image to
     a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
@@ -224,23 +267,24 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     For the regular tif, look at 15812x43685, 16816x44463
 
     :param file_key: is a tuple of the following:
+                    infile,
+                    outfile,
+                    maskfile,
+                    rotation,
+                    flip,
+                    max_width,
+                    max_height,
+                    self.channel,
+                    self.mask_image,
+                    bgcolor
 
-    - infile file path of image to read
-    - outpath file path of image to write
-    - mask binary mask image of the image
-    - rotation number of 90 degree rotations
-    - flip either flip or flop
-    - max_width width of image
-    - max_height height of image
-    - scale used in scaling. Gotten from the histogram
 
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, mask_image, bgcolor, channel, debug = file_key
+    infile, outfile, maskfile, rotation, flip, max_width, max_height, channel, mask_image, bgcolor = file_key
 
     img = read_image(infile)
-
     mask = read_image(maskfile)
     # Ensure mask is binary and uint8
     _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
@@ -290,10 +334,6 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     if channel == 1:    
         cleaned = rescaler(cleaned)
 
-    if mask_image == FULL_MASK:
-        cleaned = crop_image(cleaned, mask)
-        del img
-        del mask
 
     if rotation > 0:
         cleaned = rotate_image(cleaned, infile, rotation)
@@ -304,22 +344,11 @@ def clean_and_rotate_image(file_key: tuple[str, str, str, int, str, bool, int, i
     if flip == "flop":
         cleaned = np.flip(cleaned, axis=1)
 
+    cleaned = place_image(cleaned, infile, max_width, max_height, bgcolor=bgcolor)
+
     message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
     write_image(outfile, cleaned, message=message)
 
-
-def crop_image(img, mask):
-    """Crop image to remove parts of image not in mask
-
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :return: numpy array of cropped image
-    """
-
-    x1, y1, x2, y2 = get_image_box(mask)
-    img = np.ascontiguousarray(img, dtype=img.dtype)
-    cropped = img[y1:y2, x1:x2]
-    return cropped
 
 
 def get_image_box(img):
@@ -555,3 +584,87 @@ def compare_directories(dir1: str, dir2: str) -> None:
         print(error)
         print(f"Error {desc}")
         sys.exit()
+
+##### Deprecated methods
+
+def apply_mask(img, mask, infile):
+    """Apply image mask to image.
+
+    :param img: numpy array of image
+    :param mask: numpy array of mask
+    :param infile: path to file
+    :return: numpy array of cleaned image
+    """
+
+    try:
+        cleaned = cv2.bitwise_and(img, img, mask=mask)
+    except:
+        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+        print("Are the shapes exactly the same?")
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+    return cleaned
+
+
+def crop_imageDEPRECATED(img, mask):
+    """Crop image to remove parts of image not in mask
+
+    :param img: numpy array of image
+    :param mask: numpy array of mask
+    :return: numpy array of cropped image
+    """
+
+    x1, y1, x2, y2 = get_image_box(mask)
+    img = np.ascontiguousarray(img, dtype=img.dtype)
+    cropped = img[y1:y2, x1:x2]
+    return cropped
+
+
+def clean_and_rotate_imageOLD(file_key):
+    """The main function that uses the user edited mask to crop out the tissue from 
+    surrounding debris. It also rotates the image to
+    a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
+    The hippocampus is facing up and the brainstem is facing down)
+
+    :param file_key: is a tuple of the following:
+
+    - infile file path of image to read
+    - outpath file path of image to write
+    - mask binary mask image of the image
+    - rotation number of 90 degree rotations
+    - flip either flip or flop
+    - max_width width of image
+    - max_height height of image
+    - scale used in scaling. Gotten from the histogram
+
+    :return: nothing. we write the image to disk
+    """
+
+    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
+
+    img = read_image(infile)
+    mask = read_image(maskfile)
+    cleaned = apply_mask(img, mask, infile)
+    cleaned = scaled(cleaned, mask)
+    if channel == 1:
+        #cleaned = normalize_image(cleaned)
+        cleaned = equalized(cleaned, cliplimit=2)
+        #cleaned = normalize16(cleaned)
+
+    # Cropping is not working 100% of the time
+    #if mask_image == FULL_MASK:
+    #    cleaned = crop_image(cleaned, mask)
+    del img
+    del mask
+    if rotation > 0:
+        cleaned = rotate_image(cleaned, infile, rotation)
+    if flip == "flip":
+        cleaned = np.flip(cleaned)
+    if flip == "flop":
+        cleaned = np.flip(cleaned, axis=1)
+    cleaned = place_imageOLD(cleaned, infile, max_width, max_height, bgcolor=0)
+
+    message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
+    write_image(outpath, cleaned, message=message)
+        
+    return

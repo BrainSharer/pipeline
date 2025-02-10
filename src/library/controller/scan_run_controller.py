@@ -25,21 +25,26 @@ class ScanRunController():
         return self.get_row(search_dictionary, ScanRun)
 
 
-    def update_width_height(self, id, width, height):
+    def update_width_height(self, id, width, height, scaling_factor=SCALING_FACTOR):
         def roundtochunk(x):
             """I think this needs to be bumped up to 1024"""
             ROUNDUPTO = 64
             return ROUNDUPTO * round(x/ROUNDUPTO)        
 
+        scan_run = self.session.query(ScanRun).filter(ScanRun.id == id).first()
+        rotation = scan_run.rotation
 
-        width *= SCALING_FACTOR
-        height *= SCALING_FACTOR
-        width_buffer = int(width * 0.01)
-        height_buffer = int(height * 0.01)
+        width *= scaling_factor
+        height *= scaling_factor
+        width_buffer = int(width * 0.005)
+        height_buffer = int(height * 0.005)
         width = roundtochunk(width + width_buffer)
         height = roundtochunk(height + height_buffer)
-        update_dict = {'width': width, 'height': height}
-        print(f'Updating scan_run table with ID={id} with width={width} height: {height}')
+        if (rotation % 2) == 0:
+            update_dict = {'width': width, 'height': height}
+        else:
+            update_dict = {'width': height, 'height': width}
+
             
         try:
             self.session.query(ScanRun).filter(ScanRun.id == id).update(update_dict)
@@ -47,6 +52,7 @@ class ScanRunController():
         except Exception as e:
             print(f'No merge for  {e}')
             self.session.rollback()
+
         self.scan_run = self.session.query(ScanRun)\
             .filter(ScanRun.id == id).one()
 
