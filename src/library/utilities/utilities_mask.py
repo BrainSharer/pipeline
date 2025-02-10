@@ -52,6 +52,7 @@ def place_image(file_key: tuple, bgcolor: int = 0):
 
     if startr != nstartr or endr != nendr or startc != nstartc or endc != nendc:
         print(f'Image {os.path.basename(infile)} does not fit startr {startr} endr {endr} startc {startc} endc {endc}')
+        print(f'                                                     {nstartr} endr {nendr} startc {nstartc} endc {nendc}')
 
 
     dtype = img.dtype
