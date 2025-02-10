@@ -81,7 +81,7 @@ if __name__ == "__main__":
         default="true",
         type=str,
     )
-    parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32, type=int)
+    parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32.0, type=float)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument(
         "--task",

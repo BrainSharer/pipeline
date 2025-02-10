@@ -193,7 +193,7 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
               matrix has been rescaled by the given scaling factor.
     """
 
-    tf_mat_mult_factor = np.array([[1, 1, 32.0], [1, 1, 32.0]])
+    tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)
 
     transforms_to_anchor = {}
     for img_name, tf in transforms.items():
