@@ -26,9 +26,211 @@ class ImageCleaner:
     applying user-verified masks (QC step) to
     downsampled or full-resolution images
     """
-
-
     def create_cleaned_images(self):
+        """This method applies the image masks that has been edited by the user to 
+        extract the tissue image from the surrounding
+        debris
+        Note, as of 31 Jan 2024, I am taking out the cropping. This should be done at the last step.
+        """
+
+
+        if self.downsample:
+            #if self.mask_image == FULL_MASK and self.channel == 1: 
+            #    self.get_crop_size()
+            self.create_cleaned_images_thumbnail(self.channel)            
+        else:
+            self.create_cleaned_images_full_resolution(self.channel)
+
+
+    def create_cleaned_images_thumbnail(self, channel):
+        """Clean the image using the masks for the downsampled version
+        """
+        
+        #CLEANED = self.fileLocationManager.get_thumbnail_cleaned(channel)
+        CLEANED = self.fileLocationManager.get_directory(channel, self.downsample, inpath=CLEANED_DIR)
+        INPUT = self.fileLocationManager.get_thumbnail(channel)
+        MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
+        os.makedirs(CLEANED, exist_ok=True)
+        self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
+
+    def create_cleaned_images_full_resolution(self, channel):
+        """Clean the image using the masks for the full resolution image
+        """
+        
+        #CLEANED = self.fileLocationManager.get_full_cleaned(channel)
+        CLEANED = self.fileLocationManager.get_directory(channel, self.downsample, inpath=CLEANED_DIR)
+        os.makedirs(CLEANED, exist_ok=True)
+        INPUT = self.fileLocationManager.get_full(channel)
+        MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
+        self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
+
+    def parallel_create_cleaned(self, INPUT, CLEANED, MASKS):
+        """Do the image cleaning in parallel
+
+        :param INPUT: str of file location input
+        :param CLEANED: str of file location output
+        :param MASKS: str of file location of masks
+        """
+
+        max_width = self.sqlController.scan_run.width
+        max_height = self.sqlController.scan_run.height
+        print(f'Cleaning images max_width={max_width} max_height={max_height}', end=" ")
+        if self.downsample:
+            max_width = int(np.round(max_width / SCALING_FACTOR))
+            max_height = int(np.round(max_height / SCALING_FACTOR))
+            print(f'downsampled max_width={max_width} max_height={max_height}', end=" ")
+
+        rotation = self.sqlController.scan_run.rotation
+        flip = self.sqlController.scan_run.flip
+        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(INPUT))
+
+        file_keys = []
+        for file in files:
+            infile = os.path.join(INPUT, file)
+            outfile = os.path.join(CLEANED, file)  # regular-birdstore
+            if os.path.exists(outfile):
+                continue
+            maskfile = os.path.join(MASKS, file)
+            file_keys.append(
+                [
+                    infile,
+                    outfile,
+                    maskfile,
+                    rotation,
+                    flip,
+                    max_width,
+                    max_height,
+                    self.channel,
+                    self.mask_image
+                ]
+            )
+
+        # Cleaning images takes up around 20-25GB per full resolution image
+        # so we cut the workers in half here
+        workers = self.get_nworkers() // 2
+        self.run_commands_concurrently(clean_and_rotate_imageOLD, file_keys, workers)
+
+def clean_and_rotate_imageOLD(file_key):
+    """The main function that uses the user edited mask to crop out the tissue from 
+    surrounding debris. It also rotates the image to
+    a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
+    The hippocampus is facing up and the brainstem is facing down)
+
+    :param file_key: is a tuple of the following:
+
+    - infile file path of image to read
+    - outpath file path of image to write
+    - mask binary mask image of the image
+    - rotation number of 90 degree rotations
+    - flip either flip or flop
+    - max_width width of image
+    - max_height height of image
+    - scale used in scaling. Gotten from the histogram
+
+    :return: nothing. we write the image to disk
+    """
+
+    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
+
+    img = read_image(infile)
+    mask = read_image(maskfile)
+    cleaned = apply_mask(img, mask, infile)
+    cleaned = scaled(cleaned, mask)
+    if channel == 1:
+        #cleaned = normalize_image(cleaned)
+        cleaned = equalized(cleaned, cliplimit=2)
+        #cleaned = normalize16(cleaned)
+
+    # Cropping is not working 100% of the time
+    #if mask_image == FULL_MASK:
+    #    cleaned = crop_image(cleaned, mask)
+    del img
+    del mask
+    if rotation > 0:
+        cleaned = rotate_image(cleaned, infile, rotation)
+    if flip == "flip":
+        cleaned = np.flip(cleaned)
+    if flip == "flop":
+        cleaned = np.flip(cleaned, axis=1)
+    cleaned = place_imageOLD(cleaned, infile, max_width, max_height, bgcolor=0)
+
+    message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
+    write_image(outpath, cleaned, message=message)
+        
+    return
+
+def apply_mask(img, mask, infile):
+    """Apply image mask to image.
+
+    :param img: numpy array of image
+    :param mask: numpy array of mask
+    :param infile: path to file
+    :return: numpy array of cleaned image
+    """
+
+    try:
+        cleaned = cv2.bitwise_and(img, img, mask=mask)
+    except:
+        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
+        print("Are the shapes exactly the same?")
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+    return cleaned
+
+
+def place_imageOLD(img, file: str, max_width, max_height, bgcolor=None):
+    """Places the image in a padded one size container with the correct background
+
+    :param img: image we are working on.
+    :param file: file name and path location
+    :param max_width: width to pad
+    :param max_height: height to pad
+    :param bgcolor: background color of image, 0 for NTB, white for thionin
+    :return: placed image centered in the correct size.
+    """
+
+    zmidr = max_height // 2
+    zmidc = max_width // 2
+    startr = zmidr - (img.shape[0] // 2)
+    endr = startr + img.shape[0]
+    startc = zmidc - (img.shape[1] // 2)
+    endc = startc + img.shape[1]
+    dt = img.dtype
+    if bgcolor == None:
+        start_bottom = img.shape[0] - 5
+        bottom_rows = img[start_bottom:img.shape[0], :]
+        avg = np.mean(bottom_rows)
+        bgcolor = int(round(avg))
+    new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
+    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
+    if img.ndim == 2:
+        try:
+            new_img[startr:endr, startc:endc] = img
+        except:
+            ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+            #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
+    if img.ndim == 3:
+        try:
+            new_img = np.zeros([max_height, max_width, 3]) + bgcolor
+            new_img[startr:endr, startc:endc,0] = img[:,:,0]
+            new_img[startr:endr, startc:endc,1] = img[:,:,1]
+            new_img[startr:endr, startc:endc,2] = img[:,:,2]
+        except:
+            print(f'Could not place 3DIM {file} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+    del img
+    return new_img.astype(dt)
+
+
+
+
+    ##### END import of old methods #####
+
+
+
+
+    def create_cleaned_imagesTODO(self):
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
         debris
@@ -71,12 +273,12 @@ class ImageCleaner:
         self.setup_parallel_place_images()
         
 
-    def setup_parallel_create_cleaned(self):
+    def setup_parallel_create_cleanedTODO(self):
         """Do the image cleaning in parallel
         If we are working on the downsampled files, we delete the output directory to make 
         sure there are no stale files
         """
-
+  
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
         files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
@@ -117,7 +319,7 @@ class ImageCleaner:
         self.run_commands_concurrently(clean_and_rotate_image, file_keys, workers)
 
 
-    def setup_parallel_place_images(self):
+    def setup_parallel_place_imagesTODO(self):
         """Do the image placing in parallel. Cleaning has already taken place.
         We first need to get all the correct image sizes and then update the DB.
         f1 = c(28417,46233)
@@ -167,7 +369,7 @@ class ImageCleaner:
         workers = self.get_nworkers() // 2
         self.run_commands_concurrently(place_image, tuple(file_keys), workers)
 
-    def set_crop_size(self):
+    def set_crop_sizeTODO(self):
         """This is not working
         """
         
@@ -191,14 +393,14 @@ class ImageCleaner:
             print(f'Updating {self.animal} scan_run with width={max_width} height={max_height}')
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 
-    def set_max_width_and_height(self):
+    def set_max_width_and_heightTODO(self):
         
         inputpath = self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR)
         _, _, max_width, max_height = test_dir(self.animal, inputpath, self.section_count, downsample=True, same_size=False)
 
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 
-    def update_bg_color(self):
+    def update_bg_colorTODO(self):
             """
             Updates the background color of the image.
 
@@ -219,7 +421,7 @@ class ImageCleaner:
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
 
 
-    def create_shell_from_mask(self):
+    def create_shell_from_maskTODO(self):
         CLEAN = True
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
@@ -324,7 +526,7 @@ class ImageCleaner:
         ##### first mesh task, create meshing tasks
         ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
 
-    def mask_aligned_image(self, img, file):
+    def mask_aligned_imageTODO(self, img, file):
         from scipy.ndimage import binary_fill_holes
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -385,7 +587,7 @@ class ImageCleaner:
 
         return gray.astype(np.uint8)
 
-    def create_shell(self):
+    def create_shellTODO(self):
         WHITE = 255
         WRITE_MASKS = False
         iteration = self.get_alignment_status()
