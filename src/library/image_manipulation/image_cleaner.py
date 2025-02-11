@@ -121,7 +121,7 @@ class ImageCleaner:
         :param CLEANED: str of file location output
         :param MASKS: str of file location of masks
         """
-        print('Function parallel_create_cleaned')
+        
         image_manager = ImageManager(INPUT)
         bgcolor = image_manager.get_bgcolor()
         max_width = self.sqlController.scan_run.width

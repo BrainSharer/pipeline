@@ -51,9 +51,12 @@ def place_image(img, file: str, max_width, max_height, bgcolor):
     endc = startc + img.shape[1]
     
     dtype = img.dtype
+
+    ## check for problems
+    if startr < 0 or startc < 0:
+        print(f'Error placing {file} start row {startr=} < 0 or start column {startc=} < 0')
+        sys.exit()
     
-    #####DEL placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
-    #print(f'Resizing {file} from {img.shape} to {placed_img.shape}')
     if img.ndim == 2:
         placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
