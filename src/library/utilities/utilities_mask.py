@@ -32,7 +32,7 @@ def rotate_image(img, file: str, rotation: int):
     return img
 
 
-def place_image(img, file: str, max_width, max_height, bgcolor=None):
+def place_image(img, file: str, max_width, max_height, bgcolor):
     """Places the image in a padded one size container with the correct background
 
     :param img: image we are working on.
@@ -44,35 +44,51 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
     """
     zmidr = max_height // 2
     zmidc = max_width // 2
+
     startr = zmidr - (img.shape[0] // 2)
     endr = startr + img.shape[0]
     startc = zmidc - (img.shape[1] // 2)
     endc = startc + img.shape[1]
-    dt = img.dtype
-    if bgcolor == None:
-        start_bottom = img.shape[0] - 5
-        bottom_rows = img[start_bottom:img.shape[0], :]
-        avg = np.mean(bottom_rows)
-        bgcolor = int(round(avg))
-    new_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
-    #print(f'Resizing {file} from {img.shape} to {new_img.shape}')
+    
+    dtype = img.dtype
+    
+    #####DEL placed_img = np.zeros([max_height, max_width]).astype(dt) + bgcolor
+    #print(f'Resizing {file} from {img.shape} to {placed_img.shape}')
     if img.ndim == 2:
+        placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
         try:
-            new_img[startr:endr, startc:endc] = img
-        except:
+            placed_img[startr:endr, startc:endc] = img
+        except Exception as e:
             ###mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
-            #img = cv2.resize(img, (new_img.shape[1], new_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
-            print(f'Could not place {file} with shape:{img.shape} in {max_height}x{max_width}')
-    if img.ndim == 3:
+            #img = cv2.resize(img, (placed_img.shape[1], placed_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            print(f'Could not place {file} with shape:{img.shape}, ndim={img.ndim} in {max_height}x{max_width}')
+            print(f'Error: {e}')
+            sys.exit()
+    elif (img.ndim == 3 and img.shape[2] == 3):  # Color (RGB)
+        r, g, b = (np.full((max_height, max_width), bg, dtype=dtype) for bg in bgcolor)
         try:
-            new_img = np.zeros([max_height, max_width, 3]) + bgcolor
-            new_img[startr:endr, startc:endc,0] = img[:,:,0]
-            new_img[startr:endr, startc:endc,1] = img[:,:,1]
-            new_img[startr:endr, startc:endc,2] = img[:,:,2]
-        except:
-            print(f'Could not place 3DIM {file} with width:{img.shape[1]}, height:{img.shape[0]} in {max_width}x{max_height}')
+            r[startr:endr, startc:endc] = img[... , 0]
+            g[startr:endr, startc:endc] = img[... , 1]
+            b[startr:endr, startc:endc] = img[... , 2]
+            placed_img = cv2.merge((b, g, r))
+        except Exception as e:
+            print(f'Could not place {file} with shape:{img.shape}, ndim={img.ndim} in {max_height}x{max_width}')
+            print(f'Error: {e}')
+            sys.exit()
+    elif (img.ndim == 3 and img.shape[2] == 1): # Grayscale with img.shape[2] == 1
+        img = img.squeeze(axis=2)
+        placed_img = np.full((max_height, max_width), bgcolor, dtype=dtype)
+        try:
+            placed_img[startr:endr, startc:endc] = img
+        except Exception as e:
+            print(f'Could not place {file} with shape:{img.shape}, ndim={img.ndim} in {max_height}x{max_width}')
+            print(f'Error: {e}')
+            sys.exit()
+    else:
+        raise ValueError(f"Unsupported image shape: {img.shape}")
+           
     del img
-    return new_img.astype(dt)
+    return placed_img.astype(dtype)
 
 
 def place_imageV1(file_key: tuple, bgcolor: int = 0):
@@ -274,14 +290,13 @@ def clean_and_rotate_image(file_key):
                     max_width,
                     max_height,
                     self.channel,
-                    self.mask_image,
                     bgcolor
 
 
     :return: nothing. we write the image to disk
     """
 
-    infile, outfile, maskfile, rotation, flip, max_width, max_height, channel, mask_image, bgcolor = file_key
+    infile, outfile, maskfile, rotation, flip, max_width, max_height, channel, bgcolor = file_key
 
     img = read_image(infile)
     mask = read_image(maskfile)
@@ -290,12 +305,9 @@ def clean_and_rotate_image(file_key):
     mask = mask.astype(np.uint8)
 
     # Handle different image types
-    if img.ndim == 2:  # Grayscale
-        img = img.astype(np.uint16)  # Retain original dtype
-    elif img.ndim == 3:  # Color
-        img = img.astype(np.uint16)  # Retain original dtype
-        if mask.ndim == 2:
-            mask = cv2.merge([mask] * 3)
+    if (img.ndim == 3 and img.shape[2] == 2 and mask.ndim == 2):  # Color
+        mask = cv2.merge([mask] * 3)
+
     try:
         cleaned = cv2.bitwise_and(img, img, mask=mask)
     except:
@@ -330,7 +342,7 @@ def clean_and_rotate_image(file_key):
         b[b == 0] = bgcolor[2]
         cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
 
-    if channel == 1:    
+    if (channel == 1 and not (cleaned.dtype == np.uint8 and cleaned.ndim == 3)):    
         cleaned = rescaler(cleaned)
 
 

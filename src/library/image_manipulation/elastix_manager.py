@@ -18,7 +18,7 @@ from scipy.ndimage import affine_transform
 from tqdm import tqdm
 from pathlib import Path
 
-from library.image_manipulation.filelocation_manager import ALIGNED, CROPPED_DIR, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, CLEANED_DIR, REALIGNED, FileLocationManager
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -344,7 +344,7 @@ class ElastixManager():
         :return list: list of x and y for rotation center that set as the midpoint of the section that is in the middle of the stack
         """
 
-        self.input = self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR)
+        self.input = self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR)
         image_manager = ImageManager(self.input)
         return image_manager.center
 
@@ -371,7 +371,7 @@ class ElastixManager():
         """
 
         transformation_to_previous_sec = {}
-        image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CROPPED_DIR))
+        image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
         print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
