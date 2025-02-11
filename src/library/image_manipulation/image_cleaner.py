@@ -14,7 +14,7 @@ from skimage.filters import gaussian
 import cv2
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.filelocation_manager import CLEANED_DIR, CROPPED_DIR
+from library.image_manipulation.filelocation_manager import CLEANED_DIR
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, mask_with_contours, place_image, rotate_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
@@ -40,7 +40,7 @@ class ImageCleaner:
         print(f'Width and height after update width={width} height={height}')
 
 
-    def create_cleaned_images(self):
+    def create_cleaned_imagesOLD(self):
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
         debris
@@ -54,7 +54,7 @@ class ImageCleaner:
             self.create_cleaned_images_full_resolution(self.channel)
 
 
-    def create_cleaned_images_thumbnail(self, channel):
+    def create_cleaned_images_thumbnailOLD(self, channel):
         """Clean the image using the masks for the downsampled version
         """
         print('Function create_cleaned_images_thumbnail')
@@ -65,7 +65,7 @@ class ImageCleaner:
         os.makedirs(CLEANED, exist_ok=True)
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
-    def create_cleaned_images_full_resolution(self, channel):
+    def create_cleaned_images_full_resolutionOLD(self, channel):
         """Clean the image using the masks for the full resolution image
         """
         
@@ -74,6 +74,45 @@ class ImageCleaner:
         INPUT = self.fileLocationManager.get_full(channel)
         MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
+
+    def create_cleaned_images(self):
+        """This method applies the image masks that has been edited by the user to 
+        extract the tissue image from the surrounding
+        debris
+        1. Set up the mask, input and output directories
+        2. clean images
+        3. Crop images if mask is set to FULL_MASK
+        4. Get biggest box size from all contours from all files and update DB with that info
+        5. Place images in new cropped image size with correct background color
+        """
+
+        if self.downsample:
+            INPUT = self.fileLocationManager.get_thumbnail(self.channel)
+            MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
+        else:
+            INPUT = self.fileLocationManager.get_full(self.channel)
+            MASKS = self.fileLocationManager.get_full_masked(self.channel)
+
+        CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
+
+        try:
+            starting_files = os.listdir(INPUT)
+        except OSError:
+            print(f"Error: Could not find the input directory: {INPUT}")
+            return
+
+        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        if self.downsample and os.path.exists(CLEANED):
+            print(f'Removing {CLEANED}')
+            shutil.rmtree(CLEANED)        
+        os.makedirs(CLEANED, exist_ok=True)
+        image_manager = ImageManager(INPUT)
+        if self.mask_image > 0: 
+            self.bgcolor = image_manager.get_bgcolor()
+        else:
+            self.bgcolor = 0
+        self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
+
 
     def parallel_create_cleaned(self, INPUT, CLEANED, MASKS):
         """Do the image cleaning in parallel
@@ -113,7 +152,6 @@ class ImageCleaner:
                     max_width,
                     max_height,
                     self.channel,
-                    self.mask_image,
                     bgcolor
                 ]
             )
@@ -236,7 +274,7 @@ class ImageCleaner:
         """
         
         self.input = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
-        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CROPPED_DIR)
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='cropped')
         if self.downsample and os.path.exists(self.output):
             print(f'Removing {self.output}')
             shutil.rmtree(self.output)
