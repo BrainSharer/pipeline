@@ -64,8 +64,12 @@ class CellMaker():
 
         #CHECK FOR FULL-RESOLUTION TIFF IMAGES (IF OME-ZARR NOT PRESENT)
         INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
-        if self.debug:
-            print(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
+        if os.path.exists(INPUT):
+            if self.debug:
+                print(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
+        else:
+            print(f'FULL-RESOLUTION TIFF STACK NOT FOUND: {INPUT}; EXITING')
+            sys.exit(1)
         self.fileLogger.logevent(f'FULL-RESOLUTION TIFF STACK FOUND: {INPUT}')
 
         self.OUTPUT = self.fileLocationManager.get_cell_labels()
@@ -203,6 +207,14 @@ class CellMaker():
            NOTE: '*_' (UNPACKING file_keys TUPLE WILL DISCARD VARS AFTER debug IF SET); MUST MODIFY IF file_keys IS CHANGED
         '''
         animal, section, str_section_number, segmentation_threshold, cell_radius, max_segment_size, SCRATCH, OUTPUT, avg_cell_img, model_filename, input_format, input_path_dye, input_path_virus, debug, *_ = file_keys
+
+        if not os.path.exists(input_path_virus):
+            print(f'ERROR: {input_path_virus} NOT FOUND')
+            sys.exit(1)
+        if not os.path.exists(input_path_dye):
+            print(f'ERROR: {input_path_dye} NOT FOUND')
+            sys.exit(1)
+
         if debug:
             print(f'STARTING identify_cell_candidates ON SECTION: {str_section_number}')
         def load_image(file: str):
@@ -557,7 +569,11 @@ class CellMaker():
         '''PART OF STEP 1. USE DASK TO 'TILE' IMAGES
         '''
         if input_format == 'tif': #READ FULL-RESOLUTION TIFF FILES (FOR NOW)
-            total_sections = len(sorted(os.listdir(INPUT)))
+            if os.path.exists(INPUT):
+                total_sections = len(sorted(os.listdir(INPUT)))
+            else:
+                print(f'ERROR: INPUT FILEs {INPUT} NOT FOUND')
+                sys.exit()
         else:
             '''ALT PROCESSING: READ OME-ZARR DIRECTLY - ONLY WORKS ON V. 0.4 AS OF 8-DEC-2023
             '''
