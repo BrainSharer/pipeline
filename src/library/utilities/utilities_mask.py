@@ -42,7 +42,6 @@ def place_image(img, file: str, max_width, max_height, bgcolor=None):
     :param bgcolor: background color of image, 0 for NTB, white for thionin
     :return: placed image centered in the correct size.
     """
-    print('Function place_image')
     zmidr = max_height // 2
     zmidc = max_width // 2
     startr = zmidr - (img.shape[0] // 2)

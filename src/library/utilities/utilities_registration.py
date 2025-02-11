@@ -121,7 +121,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["250"]
+        rigid_params["MaximumNumberOfIterations"] = ["750"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["2500"]
 
