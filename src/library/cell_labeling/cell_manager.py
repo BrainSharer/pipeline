@@ -86,33 +86,47 @@ class CellMaker():
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
 
-        if os.path.isfile(meta_store):
-            print(f'FOUND NEUROANATOMICAL TRACING INFO; READING FROM {meta_store}')
-
-            #verify you have 2 channels required
-            with open(meta_store) as fp:
-                info = json.load(fp)
-            self.meta_channel_mapping = info['Neuroanatomical_tracing']
-
-            #TODO: MOVE ASSERTIONS TO SEPARATE FUNCTION (UNIT TEST) - maybe on send to log w/ error - missing file X
-            # self.dyes = [item['description'] for item in info['Neuroanatomical_tracing']]
-            # assert 'GFP' in self.dyes and 'NeurotraceBlue' in self.dyes
-            # print('TWO CHANNELS READY')
-            # #self.fileLogger.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {self.dyes}")
-  
-        else:
-            #CREATE META-DATA STORE (PULL FROM DATABASE)
-            if self.debug:
-                print(f'NOT FOUND; CREATING META-DATA STORE @ {meta_store}')
-            
-            #steps to create
-            channels_count = 3
-            self.meta_channel_mapping = {1:{'mode':'dye', 'description':'NeurotraceBlue', 'channel_name': 'C1'}, 3:{'mode':'virus', 'description':'GFP', 'channel_name': 'C3'}}
+        try:
             meta_data_info = {}
-            meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
+            if os.path.isfile(meta_store):
+                print(f'FOUND NEUROANATOMICAL TRACING INFO; READING FROM {meta_store}')
 
-            with open(meta_store, 'w') as fp:
-                json.dump(meta_data_info, fp, indent=4)
+                #verify you have 2 channels required
+                with open(meta_store) as fp:
+                    info = json.load(fp)
+                self.meta_channel_mapping = info['Neuroanatomical_tracing']
+                meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
+
+                #TODO: MOVE ASSERTIONS TO SEPARATE FUNCTION (UNIT TEST) - maybe on send to log w/ error - missing file X
+                # self.dyes = [item['description'] for item in info['Neuroanatomical_tracing']]
+                # assert 'GFP' in self.dyes and 'NeurotraceBlue' in self.dyes
+                # print('TWO CHANNELS READY')
+                # #self.fileLogger.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {self.dyes}")
+        
+            else:
+                #CREATE META-DATA STORE (PULL FROM DATABASE)
+                if self.debug:
+                    print(f'NOT FOUND; CREATING META-DATA STORE @ {meta_store}')
+                
+                #steps to create
+                channels_count = 3
+                self.meta_channel_mapping = {1:{'mode':'dye', 'description':'NeurotraceBlue', 'channel_name': 'C1'}, 3:{'mode':'virus', 'description':'GFP', 'channel_name': 'C3'}}
+                meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
+
+                with open(meta_store, 'w') as fp:
+                    json.dump(meta_data_info, fp, indent=4)
+
+        finally:
+            #CHECK IF meta_data_info['Neuroanatomical_tracing'] CONTAINS A DYE AND VIRUS CHANNEL
+            modes = [channel.get('mode') for channel in meta_data_info['Neuroanatomical_tracing'].values()]
+            if 'dye' in modes and 'virus' in modes:
+                msg = "Neuroanatomical_tracing contains both dye and virus channels."
+            else:
+                msg = "Neuroanatomical_tracing is missing either dye or virus channel."
+                if self.debug:
+                    print(msg)
+                self.fileLogger.logevent(msg)
+                raise ValueError(msg)
 
         #CHECK FOR CELL TRAINING DEFINITIONS FILE (average-cell_image.pkl)
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
@@ -140,11 +154,11 @@ class CellMaker():
                 nissel_stain_image = Neurotraceblue a.k.a. dye channel (channel 1) aka cell_body
 
            2. IDENTIFY CELL CANDIDATES - image segmentation
-                -this step will create pickel files totaling size (aggregate) of image stack (approx)
-                @ end of step: in SCRATCH (1 compressed pickel file for each section - if cell candidates were detected)
+                -this step will create pickle files totaling size (aggregate) of image stack (approx)
+                @ end of step: in SCRATCH (1 compressed pickle file for each section - if cell candidates were detected)
 
            3. CREATE CELL FEATURES
-                @ start: check pickel files (count)
+                @ start: check pickle files (count)
                 @ end of step: in SCRATCH (1 csv file for each section - if cell candidates were detected)
 
            4. DETECT CELLS; SCORE CELL CANDIDATE AND CLASSIFY AS POSITIVE, NEGATIVE, UNKNOWN
@@ -376,7 +390,7 @@ class CellMaker():
             A) load information from cell candidates (pickle files) - now passed as parameter
             B1) calculate_correlation_and_energy FOR CHANNEL 1
             B2) calculate_correlation_and_energy FOR CHANNEL 3
-            C) features_using_center_connectd_components(example)
+            C) features_using_center_connected_components(example)
             D) SAVE FEATURES (CSV FILE)
         '''
         
@@ -395,7 +409,7 @@ class CellMaker():
             ch1_corr, ch1_energy = self.calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
             ch3_corr, ch3_energy = self.calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
 
-            #STEP 3-D) features_using_center_connectd_components
+            #STEP 3-D) features_using_center_connected_components
             ch1_contrast, ch3_constrast, moments_data = self.features_using_center_connected_components(cell)
 
             #BUILD FEATURES DICTIONARY
