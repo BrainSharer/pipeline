@@ -225,29 +225,22 @@ def align_image_to_affine(file_key):
     try:
         im0 = Image.open(infile)
     except Exception as e:
-        print(f'Could read file with PIL to open={basepath}')
+        print(f'Could not read file with PIL to open={basepath}')
         print(f'Error={e}')
         sys.exit()
 
-    """
+    
     # If the image is sRGB 16bit, convert to 8bit
-    if im0.ndim == 3 and im0.dtype == np.uint16:
+    if np.array(im0).ndim == 3 and np.array(im0).dtype == np.uint16:
         # PIL can't handle sRGB 16bit images
         try:
+            im0 = np.array(im0)
             im0 = (im0/256).astype(np.uint8)
+            im0 = Image.fromarray(im0)
         except Exception as e:
             print(f'Could not convert file {basepath} to 8bit')
             print(f'Error={e}')
             sys.exit()
-
-    # image is now in numpy array format, we need to get in PIL format to perform the transformation
-    try:
-        im0 = Image.fromarray(im0)
-    except Exception as e:
-        print(f'Could not convert file {basepath} to PIL ')
-        print(f'Error={e}')
-        sys.exit()
-    """
 
     try:
         img = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)

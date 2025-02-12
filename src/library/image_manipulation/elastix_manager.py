@@ -18,7 +18,7 @@ from scipy.ndimage import affine_transform
 from tqdm import tqdm
 from pathlib import Path
 
-from library.image_manipulation.filelocation_manager import ALIGNED, CLEANED_DIR, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, FileLocationManager
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
@@ -319,24 +319,6 @@ class ElastixManager():
             align_image_to_affine(file_key)
             #####self.transform_save_image(infile, outfile, transformation)
 
-    def load_elastix_transformation(self, animal, moving_index, iteration):
-        """loading the elastix transformation from the database
-
-        :param animal: (str) Animal ID
-        :param moving_index: (int) index of moving section
-
-        :return array: 2*2 roatation matrix, float: x translation, float: y translation
-        """
-        elastixTransformation = self.sqlController.get_elastix_row(animal, moving_index, iteration)
-        if elastixTransformation is None:
-            print(f'No value for {animal} at moving index={moving_index}')
-            return 0, 0, 0
-
-        R = elastixTransformation.rotation
-        xshift = elastixTransformation.xshift
-        yshift = elastixTransformation.yshift
-        return R, xshift, yshift
-
     def get_rotation_center(self):
         """return a rotation center for finding the parameters of a transformation from the transformation matrix
         use channel 1 thumbnail cropped images to find the center
@@ -377,7 +359,7 @@ class ElastixManager():
         print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i, self.iteration)
+            rotation, xshift, yshift = self.sqlController.get_elastix_row(self.animal, i, self.iteration, self.downsample)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
@@ -413,8 +395,13 @@ class ElastixManager():
 
         transformations = self.get_transformations()
 
+        # For full resolution, we need to scale the translations by the scaling factor
+        # We also need to change the input and output directories as we are summing the transformations
+        # and we will just use the cleaned directory for input and the aligned directory for output
         if not self.downsample:
             transformations = rescale_transformations(transformations, self.scaling_factor)
+            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         
         try:
             starting_files = os.listdir(self.input)
@@ -422,7 +409,7 @@ class ElastixManager():
             print(f"Error: Could not find the input directory: {self.input}")
             return
         
-        print(f"Aligning images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
+        print(f"Alignment iteration={self.iteration}: images from {os.path.basename(self.input)} to {os.path.basename(self.output)}")
         print(f"Alignment file count: {len(starting_files)} with {len(transformations)} transforms")
 
         if len(starting_files) != len(transformations):
