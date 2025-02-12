@@ -1,7 +1,6 @@
+import sys
 from datetime import datetime
-from sqlalchemy.orm.exc import NoResultFound
 from library.database_model.elastix_transformation import ElastixTransformation
-#from library.controller.sql_controller import SqlController
 
 class ElastixController():
     """Controller class for the elastix table
@@ -24,24 +23,40 @@ class ElastixController():
             ElastixTransformation.section == section).first())
         return row_exists
 
-    def get_elastix_row(self, animal, section, iteration=0):
-        """gets a given elastix row exists in the database
-
-        :param animal: (str): Animal ID
-        :section (int): Section Number
-        :iteration (int): Iteration, which pass are we working on.
-        :return boolean: if the row in question exists
+    def get_elastix_row(self, animal, section, iteration, downsample=True):
         """
+        Retrieve a specific row from the ElastixTransformation table based on the given animal, section, and iteration.
+        Args:
+            animal (str): The identifier for the animal.
+            section (int): The section number.
+            iteration (int, optional): The iteration number. Defaults to 0.
+        Returns:
+            ElastixTransformation: The first matching row from the ElastixTransformation table, or None if no match is found.
+        Raises:
+            NoResultFound: If no matching row is found in the database.
+        """
+
         row = None
-        try:
+        if downsample:
             row = self.session.query(ElastixTransformation).filter(
                 ElastixTransformation.FK_prep_id == animal,
                 ElastixTransformation.iteration == iteration,
                 ElastixTransformation.section == section).first()
-        except NoResultFound as nrf:
-            print(f'No row value for {animal} {section} error: {nrf}')
+        else:
+            model = ElastixTransformation
+            filters = {'FK_prep_id': animal, 'section': section}
+            sum_columns = ['rotation', 'xshift', 'yshift']
+            group_by_columns = ['FK_prep_id', 'section']
+            row = self.query_one_with_filters_and_sum(model, filters, sum_columns, group_by_columns)
 
-        return row
+        if row is None:
+            print(f"No row found for animal {animal}, section {section}, iteration {iteration}")
+            sys.exit()
+        else:
+            R = row.rotation
+            xshift = row.xshift
+            yshift = row.yshift
+            return R, xshift, yshift
 
     def check_elastix_metric_row(self, animal, section, iteration=0):
         """checks that a given elastix row exists in the database

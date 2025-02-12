@@ -234,7 +234,6 @@ class Pipeline(
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
 
-        print(f'Second elastix manager alignment input: {self.input}')
         if self.channel == 1 and self.downsample:
             self.cleanup_fiducials()
             self.create_fiducial_points()

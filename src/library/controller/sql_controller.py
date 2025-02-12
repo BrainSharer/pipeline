@@ -9,7 +9,7 @@ import sys
 import numpy as np
 from collections import OrderedDict
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.pool import NullPool
@@ -171,3 +171,34 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         row = self.get_row(search_dictionary,model)
         self.session.delete(row)
         self.session.commit()
+
+    def query_one_with_filters_and_sum(self, model, filters: dict, sum_columns: list, group_by_columns: list):
+        """
+        Query a single row with multiple filters, sum multiple columns, and group by multiple columns.
+        
+        :param model: SQLAlchemy model class
+        :param filters: Dictionary of filters {column: value}
+        :param sum_columns: List of columns to sum
+        :param group_by_columns: List of columns to group by
+        :return: Single row result or None
+        """
+        
+        # Prepare sum expressions
+        sum_expressions = [func.sum(getattr(model, col)).label(col) for col in sum_columns]
+        
+        # Prepare group by expressions
+        group_by_expressions = [getattr(model, col) for col in group_by_columns]
+        
+        # Prepare filter conditions
+        filter_conditions = [getattr(model, col) == value for col, value in filters.items()]
+        
+        # Build query
+        query = (
+            self.session.query(*group_by_expressions, *sum_expressions)
+            .filter(*filter_conditions)
+            .group_by(*group_by_expressions)
+        )
+        # Fetch one row
+        return query.first()
+        
+
