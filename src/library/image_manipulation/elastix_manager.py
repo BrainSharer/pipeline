@@ -345,7 +345,7 @@ class ElastixManager():
         img = affine_transform(img, matrix.T, offset)
         write_image(outfile, img)
 
-    def get_transformations(self):
+    def get_transformations(self, iteration):
         """After the elastix job is done, this fetches the rotation, xshift and yshift from the DB
         If it is full resolution, it will fetch both iterations and combine them.
         :param animal: the animal
@@ -356,10 +356,10 @@ class ElastixManager():
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations iteration={self.iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
+        print(f'Using get_transformations iteration={iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
-            rotation, xshift, yshift = self.sqlController.get_elastix_row(self.animal, i, self.iteration, self.downsample)
+            rotation, xshift, yshift = self.sqlController.get_elastix_row(self.animal, i, iteration)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformation_to_previous_sec[i] = T
 
@@ -393,15 +393,16 @@ class ElastixManager():
         if self.debug:
             print("DEBUG: START ElastixManager::start_image_alignment")
 
-        transformations = self.get_transformations()
-
-        # For full resolution, we need to scale the translations by the scaling factor
-        # We also need to change the input and output directories as we are summing the transformations
-        # and we will just use the cleaned directory for input and the aligned directory for output
-        if not self.downsample:
+        if self.downsample:
+            transformations = self.get_transformations(self.iteration)
+        else:
+            # For full resolution, we need to check if there is a second iteration
+            # If there is a 2nd iteration (self.iteration=1), then we need to combine the transformations
+            # For full resolution, we need to scale the translations by the scaling factor
+            transformations0 = self.get_transformations(iteration=ALIGNED)
+            transformations1 = self.get_transformations(iteration=REALIGNED)
+            transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
             transformations = rescale_transformations(transformations, self.scaling_factor)
-            self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         
         try:
             starting_files = os.listdir(self.input)

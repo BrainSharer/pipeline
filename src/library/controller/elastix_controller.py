@@ -23,7 +23,7 @@ class ElastixController():
             ElastixTransformation.section == section).first())
         return row_exists
 
-    def get_elastix_row(self, animal, section, iteration, downsample=True):
+    def get_elastix_row(self, animal, section, iteration):
         """
         Retrieve a specific row from the ElastixTransformation table based on the given animal, section, and iteration.
         Args:
@@ -36,27 +36,21 @@ class ElastixController():
             NoResultFound: If no matching row is found in the database.
         """
 
-        row = None
-        if downsample:
-            row = self.session.query(ElastixTransformation).filter(
-                ElastixTransformation.FK_prep_id == animal,
-                ElastixTransformation.iteration == iteration,
-                ElastixTransformation.section == section).first()
-        else:
-            model = ElastixTransformation
-            filters = {'FK_prep_id': animal, 'section': section}
-            sum_columns = ['rotation', 'xshift', 'yshift']
-            group_by_columns = ['FK_prep_id', 'section']
-            row = self.query_one_with_filters_and_sum(model, filters, sum_columns, group_by_columns)
+        row = self.session.query(ElastixTransformation).filter(
+            ElastixTransformation.FK_prep_id == animal,
+            ElastixTransformation.iteration == iteration,
+            ElastixTransformation.section == section).first()
 
         if row is None:
-            print(f"No row found for animal {animal}, section {section}, iteration {iteration}")
-            sys.exit()
+            R = 0
+            xshift = 0
+            yshift = 0
         else:
             R = row.rotation
             xshift = row.xshift
             yshift = row.yshift
-            return R, xshift, yshift
+
+        return R, xshift, yshift
 
     def check_elastix_metric_row(self, animal, section, iteration=0):
         """checks that a given elastix row exists in the database
