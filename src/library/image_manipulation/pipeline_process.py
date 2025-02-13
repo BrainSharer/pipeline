@@ -303,6 +303,12 @@ class Pipeline(
 
         # ADD CLEANUP OF SCRATCH FOLDER
 
+    def extract_cell_labels(self):
+        print(self.TASK_CELL_LABELS)
+        self.parse_cell_labels()
+        print(f'Finished {self.TASK_CELL_LABELS}.')
+
+
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
         This step will do everything for the self.channel, so you don't need to run self.channel X for step 2, or 4. You do need
