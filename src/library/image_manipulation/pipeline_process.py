@@ -153,7 +153,6 @@ class Pipeline(
         self.extract_tiffs_from_czi()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
-        if self.channel == 1 and self.downsample:
             self.create_previews()
             self.create_checksums()
         print(f'Finished {self.TASK_EXTRACT}.')
