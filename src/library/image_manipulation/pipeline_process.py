@@ -338,7 +338,6 @@ class Pipeline(
                 f"C{self.channel}/thumbnail",
                 "C1/normalized",
                 f"C{self.channel}/thumbnail_cleaned",
-                f"C{self.channel}/thumbnail_cropped",
                 f"C{self.channel}/thumbnail_aligned",
                 f"C{self.channel}/thumbnail_realigned",
             ]
@@ -348,7 +347,6 @@ class Pipeline(
                 f"masks/C1/full_masked",
                 f"C{self.channel}/full",
                 f"C{self.channel}/full_cleaned",
-                f"C{self.channel}/full_cropped",
                 f"C{self.channel}/full_aligned",
                 f"C{self.channel}/full_realigned",
             ]
