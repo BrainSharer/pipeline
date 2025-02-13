@@ -13,6 +13,8 @@ from skimage.transform import rescale
 import math
 from tifffile import imread, imwrite
 from concurrent.futures import Future
+import random
+import string
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
@@ -314,3 +316,5 @@ def read_image(file_path: str):
 
     return img
 
+def random_string():
+    return "".join(random.choices(string.ascii_lowercase + string.digits, k=10))

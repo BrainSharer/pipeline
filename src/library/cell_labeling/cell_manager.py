@@ -7,11 +7,14 @@ import dask.dataframe as dd
 import dask.array as da
 import imageio.v2 as imageio
 from pathlib import Path
+import csv
 import cv2
 import numpy as np
 from compress_pickle import dump, load
 import pandas as pd
 import xgboost as xgb
+
+from library.utilities.utilities_process import M_UM_SCALE, random_string
 
 sys.path.append(os.path.abspath('./../../'))
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -603,6 +606,13 @@ class CellMaker():
         return total_sections
     
     def parse_cell_labels(self):
+        default_props = ["#ffff00", 1, 1, 5, 3, 1]
+        points = []
+        childJsons = []
+        parent_id = f"{random_string()}"
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+
         csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         if os.path.exists(csvpath):
             print(f'Parsing cell labels from {csvpath}')
@@ -615,5 +625,82 @@ class CellMaker():
             print(f'ERROR: NO CSV FILES FOUND IN {csvpath}')
             sys.exit(1)
         else:
-            for f in self.files:
-                print(f'Parsing {f}')
+            for file_path in self.files:
+                if 'detections_057' in file_path:
+                    rows = self.parse_csv(file_path)
+                    row0 = rows[0]
+                    for k,v in row0.items():
+                        print(f'{k=} {v=}')
+                    found = 0
+                    if rows:
+                        print(f'Data type = {type(rows)}, PARSED {len(rows)} CELLS FROM {file_path}')
+                        for row in rows:
+                            prediction = float(row['predictions'])
+                            section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
+                            x = float(row['col'])
+                            y = float(row['row'])
+                            x = x / M_UM_SCALE * xy_resolution
+                            y = y / M_UM_SCALE * xy_resolution
+                            section = section * z_resolution / M_UM_SCALE
+
+                            if prediction > 0:
+                                found += 1
+                                print(f'{prediction=} {x=} {y=} {section=}')
+                                point = [x, y, section]
+                                childJson = {
+                                    "point": point,
+                                    "type": "point",
+                                    "parentAnnotationId": f"{parent_id}",
+                                    "props": default_props
+                                }
+                                childJsons.append(childJson)
+                                points.append(childJson["point"])
+
+
+                        print(f'Found {found} neurons')
+            if found > 0:
+                FK_user_id = 1
+                FK_prep_id = self.animal
+                labels = ['MACHINE_SURE']
+                id = None
+                description = labels[0]
+                cloud_points = {}
+
+                cloud_points["source"] = points[0]
+                cloud_points["centroid"] = np.mean(points, axis=0).tolist()
+                cloud_points["childrenVisible"] = True
+                cloud_points["type"] = "cloud"
+                cloud_points["description"] = f"{description}"
+                cloud_points["sessionID"] = f"{parent_id}"
+                cloud_points["props"] = default_props
+                cloud_points["childJsons"] = childJsons
+
+
+                if not self.debug:
+
+                    try:
+                        id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
+                    except Exception as e:
+                        print(f'Error inserting data: {e}')
+
+                    if id is not None:
+                        print(f'Inserted annotation with labels with id: {id}')
+                    else:
+                        print('Error inserting annotation with labels')
+
+
+
+    @staticmethod
+    def parse_csv(file_path):
+        """Opens and parses a CSV file, returning its contents as a list of dictionaries."""
+        try:
+            with open(file_path, mode='r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                data = [row for row in reader]
+            return data
+        except FileNotFoundError:
+            print(f"Error: The file '{file_path}' was not found.")
+            return None
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
