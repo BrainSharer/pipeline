@@ -105,7 +105,7 @@ class SectionRegistration(Pipeline):
         transformations = {}
         center = self.get_rotation_center()
         for i in range(1, len(self.sections)):
-            rotation, xshift, yshift = self.load_elastix_transformation(self.animal, i)
+            rotation, xshift, yshift = self.sqlController.get_elastix_row(self.animal, i)
             T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
             transformations[i] = T
         return transformations

@@ -42,8 +42,8 @@ class MaskTrainer():
     def train_and_test(self):
         # our dataset has two classes only - background and person
         # use our dataset and defined transformations
-        dataset = MaskDataset(self.root, animal=None, transforms = get_transform(train=True))
-        dataset_test = MaskDataset(self.root, animal=None, transforms = get_transform(train=False))
+        dataset = MaskDataset(self.root, animal=self.animal, transforms = get_transform(train=True))
+        dataset_test = MaskDataset(self.root, animal=self.animal, transforms = get_transform(train=False))
 
         # split the dataset in train and test set
         indices = torch.randperm(len(dataset)).tolist()

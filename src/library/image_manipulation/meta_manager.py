@@ -33,12 +33,12 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'slides_preview')
-        #####MOVED os.makedirs(self.checksum, exist_ok=True)
         czi_files = self.check_czi_file_exists()
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
+        if self.debug:
+            print(f'DEBUG: unprocessed czi files:  {sorted(unprocessed_czifiles)}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
             print("ERROR IN CZI FILES OR DB COUNTS")
@@ -51,7 +51,6 @@ class MetaUtilities:
             infile = infile.replace(" ","_").strip()
             file_keys.append([infile, self.scan_id])
         
-        #####MOVED self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
         #PROCESS OUTSTANDING EXTRACTIONS (SCENES FROM SLIDE FILES)
         if len(unprocessed_czifiles) > 0:
             file_keys = []
@@ -60,7 +59,6 @@ class MetaUtilities:
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
             
-            #####MOVED self.run_commands_with_threads(self.extract_slide_scene_data, file_keys, workers) #SLIDE PREVIEW
             self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
             
         else:
@@ -126,6 +124,7 @@ class MetaUtilities:
         active_query_results = self.sqlController.session.execute(active_query)
         active_results = [x for x in active_query_results]
         active_db_slides_cnt = len(active_results)
+        
         # need to check for inactive so we don't repeat the process
         # remove the inactive czi files from the czi_files list
         inactive_query = self.sqlController.session.query(Slide)\
@@ -142,7 +141,6 @@ class MetaUtilities:
         msg += f"\nInactive DB SLIDES COUNT: {inactive_db_slides_cnt}"
         if self.debug:
             print(msg)            
-            print('czi files 2', czi_files)
         self.fileLogger.logevent(msg)
 
         if active_db_slides_cnt > len(czi_files):
@@ -152,8 +150,7 @@ class MetaUtilities:
                 self.sqlController.session.commit()
             except Exception as e:
                 msg = f"ERROR DELETING ENTRIES IN 'slide' TABLE: {e}"
-                if self.debug:
-                    print(msg)
+                print(msg)
                 self.fileLogger.logevent(msg)
                 db_validation_problem = True
         elif active_db_slides_cnt > 0 and active_db_slides_cnt < len(czi_files):
@@ -196,30 +193,18 @@ class MetaUtilities:
 
         return files
 
-    def extract_slide_scene_data(self, input_czi_file: str):
+    def extract_slide_scene_data(self, czi_file: str):
         """Extracts the scene data from the CZI file and creates a preview image
         I don't see the point in creating a full-size preview image. It also crashes my computer.
         """
 
-        full = False
-        if self.debug:
-            print(f"DEBUG: START MetaUtilities::extract_slide_scene_data from {input_czi_file}")
-
-        czi_file = os.path.basename(os.path.normpath(input_czi_file))
-        czi = CZIManager(input_czi_file)
+        czi = CZIManager(czi_file)
 
         scale_factor = DOWNSCALING_FACTOR
-        czi_filename_without_extension = os.path.splitext(os.path.basename(input_czi_file))[0]
-        if not os.path.exists(self.fileLocationManager.slides_preview):
-            os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
+        czi_filename_without_extension = os.path.splitext(os.path.basename(czi_file))[0]
+        os.makedirs(self.fileLocationManager.slides_preview, exist_ok=True)
         
         slide_preview_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}.png')
-        #####MOVED checksum_file = os.path.join(self.checksum, f'{czi_filename_without_extension}.sha256')
-        
-        if full:
-            slide_preview_full_path = os.path.join(self.fileLocationManager.slides_preview, f'{czi_filename_without_extension}_full.png')
-            checksum_full_file = os.path.join(self.checksum, f'{czi_filename_without_extension}_full.sha256')
-
 
         if not os.path.isfile(slide_preview_path):
 
@@ -239,25 +224,7 @@ class MetaUtilities:
             width, height = img.size
             new_width = int(width * 0.3)
             new_height = int(height * 0.3)
-            img_full = img.resize((new_width, new_height), Image.LANCZOS)
             
-            # Save downsampled full-size image ?? what is downsampled full-size ?????
-            if full:
-                img_full_byte_arr = io.BytesIO()
-                img_full.save(img_full_byte_arr, format='PNG')
-                img_full_byte_arr = img_full_byte_arr.getvalue()
-
-                # Calculate checksum for downsampled full-size image
-                readable_hash_full = hashlib.sha256(img_full_byte_arr).hexdigest()
-
-                # Save downsampled "full-size" image
-                with open(slide_preview_full_path, 'wb') as f:
-                    f.write(img_full_byte_arr)
-
-                # Save checksum for downsampled "full-size" image
-                with open(checksum_full_file, 'w') as f:
-                    f.write(readable_hash_full)
-
             # Calculate the scaling factor to make width <= 1000px
             max_width = 1000
             width, height = img.size
@@ -284,12 +251,6 @@ class MetaUtilities:
             with open(slide_preview_path, 'wb') as f:
                 f.write(img_scaled_byte_arr)
 
-            # Save checksum for scaled image
-            """MOVED
-            with open(checksum_file, 'w') as f:
-                f.write(readable_hash_scaled)
-            """
-
 
         if self.debug:
             if os.path.isfile(slide_preview_path):
@@ -297,17 +258,6 @@ class MetaUtilities:
             else:
                 print(f'Slide preview does not exist, creating: {slide_preview_path}')
 
-
-        #CREATE meta-data.json [IF !EXISTS]
-        meta_data_file = 'meta-data.json'
-        meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
-        if not os.path.isfile(meta_store):
-            if self.debug:
-                print(f'DEBUG: meta-data.json NOT FOUND; CREATING @ {meta_store}')
-                
-            czi_metadata = czi.extract_metadata_from_czi_file(czi_file, input_czi_file)
-            with open(meta_store, 'w') as fh:
-                json.dump(czi_metadata["json_meta"], fh, indent=4)
 
 
     def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):
@@ -397,11 +347,9 @@ class MetaUtilities:
 
         if self.debug:
             print(f"DEBUG: START MetaUtilities::correct_multiples on {len(self.multiple_slides)} slides")
-            print(f"DEBUG: CORRECTING {len(self.multiple_slides)} MULTIPLE SLIDES")
-            
+                    
         for slide_physical_id in self.multiple_slides:
             if self.debug:
                 print(f"DEBUG: MODIFYING {slide_physical_id=}, {self.sqlController.scan_run.id=}, {slide_physical_id=}")
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id, self.debug)
             self.fileLogger.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
-

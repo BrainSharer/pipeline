@@ -35,6 +35,25 @@ def delete_in_background(path: str) -> Future:
     return future 
 
 
+def use_scratch_dir(directory: str) -> bool:
+    """
+    Determines if there is enough free space in the /scratch directory to accommodate
+    the specified directory with a buffer factor applied.
+    Args:
+        directory (str): The path to the directory whose size needs to be checked.
+    Returns:
+        bool: True if there is enough free space in the /scratch directory, False otherwise.
+    """
+    
+    BUFFER_FACTOR = 1.25
+    dir_size = get_directory_size(directory)
+    dir_size = dir_size * BUFFER_FACTOR
+    total, used, free = shutil.disk_usage("/scratch")
+
+    if free > dir_size:
+        return True
+    return False 
+
 def get_directory_size(directory):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(directory):
@@ -56,28 +75,6 @@ def get_hostname() -> str:
     return hostname
 
 
-# def get_image_size(filepath: str):
-#     """Returns width, height of single image
-
-#     :param filepath: path of input file
-#     :return: tuple of int width and height of the file
-#     """
-
-#     try:
-#         result_parts = str(check_output(["identify", filepath]))
-#     except:
-#         print(f'Could not identify file={filepath}')
-#     results = result_parts.split()
-#     try:
-#         width, height = results[2].split("x")
-#     except ValueError as ve:
-#         print(f'Could not get width/height of {filepath}')
-#         print(ve)
-#         sys.exit()
-        
-#     return int(width), int(height)
-
-
 def get_image_size(filepath: str) -> tuple[int, int]:
     """
     Returns the width and height of a single image using Pillow.
@@ -93,15 +90,23 @@ def get_image_size(filepath: str) -> tuple[int, int]:
         return 0, 0  # Return default values in case of error
     
 
-def test_dir(animal: str, directory, section_count: int, downsample: bool = True, same_size: bool = False):
-    """Verify image stack directory for section count and max width, height
-
-    :param animal: string of animal name.
-    :param directory: directory we are testing.
-    :param section_count: integer how many sections are in the stack
-    :param downsample: boolean on whether to downsample or not
-    :param same_size: boolean on whether all files are same size
-    :return: string of error messages
+def test_dir(animal: str, directory: str, section_count: int, downsample: bool = True, same_size: bool = False) -> tuple[list[str], int, int, int]:
+    """
+    Tests the directory for image files, checks their sizes, and validates the number of files.
+    Args:
+        animal (str): The name of the animal.
+        directory (str): The path to the directory containing the image files.
+        section_count (int): The expected number of sections (files) in the directory.
+        downsample (bool, optional): Whether to downsample the images. Defaults to True.
+        same_size (bool, optional): Whether all images should be of the same size. Defaults to False.
+    Returns:
+        tuple[list[str], int, int, int]: A tuple containing:
+            - A list of filenames in the directory.
+            - The number of files in the directory.
+            - The maximum width of the images.
+            - The maximum height of the images.
+    Raises:
+        SystemExit: If there are errors in processing the files or if the number of files is incorrect.
     """
 
     error = ""
@@ -111,7 +116,7 @@ def test_dir(animal: str, directory, section_count: int, downsample: bool = True
     # blank images and they are small
     # min size on NTB is 8.8K
     starting_size = 20
-    min_size = starting_size * SCALING_FACTOR * 1000
+    min_size = starting_size  * 1000
     if downsample:
         min_size = starting_size
     try:
@@ -119,6 +124,7 @@ def test_dir(animal: str, directory, section_count: int, downsample: bool = True
     except:
         error = f"{directory} does not exist\n"
         files = []
+
     
     if section_count == 0:
         section_count = len(files)
@@ -146,17 +152,15 @@ def test_dir(animal: str, directory, section_count: int, downsample: bool = True
         except Exception as e:
             error += f"Error processing file {filepath}: {e}\n"
 
-    # picked 100 as an arbitrary number. the min file count is usually around 380 or so
-    if len(files) > 100:
-        min_width = min(widths)
-        max_width = max(widths)
-        min_height = min(heights)
-        max_height = max(heights)
-    else:
-        min_width = 0
-        max_width = 0
-        min_height = 0
-        max_height = 0
+    if len(widths) == 0 or len(heights) == 0:
+        error += f"No valid images in {directory}\n"
+        print(error)
+        sys.exit()
+
+    min_width = min(widths)
+    max_width = max(widths)
+    min_height = min(heights)
+    max_height = max(heights)
     if section_count != len(files):
         print(
             "[EXPECTED] SECTION COUNT:",

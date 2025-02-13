@@ -10,15 +10,14 @@ All imports are listed by the order in which they are used in the
 import os
 import SimpleITK as sitk
 import sys
+import psutil
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-import shutil
-import subprocess
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.cell_labeling.cell_manager import CellMaker
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import ALIGNED, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, REALIGNED_DIR, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.mask_manager import MaskManager
@@ -31,9 +30,8 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import delete_in_background, get_hostname, SCALING_FACTOR, get_scratch_dir, get_directory_size
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
-from library.utilities.utilities_registration import rescale_transformations
 
 try:
     from settings import data_path, host, schema
@@ -72,8 +70,9 @@ class Pipeline(
     TASK_NEUROGLANCER = "Creating Neuroglancer data"
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
+    TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal, channel='C1', downsample=False, task='status', debug=False):
+    def __init__(self, animal, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -106,31 +105,36 @@ class Pipeline(
         self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        self.check_programs()
         self.section_count = self.get_section_count()
         self.multiple_slides = []
         self.channel = channel
-        self.scaling_factor = SCALING_FACTOR
+        self.scaling_factor = scaling_factor
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
+        self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
 
-        self.mips = 7 
-        if self.downsample:
-            self.mips = 4
+        #self.mips = 7 
+        #if self.downsample:
+        #    self.mips = 4
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         self.report_status()
+        self.check_programs()
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
-        print("\tdownsample:".ljust(20), f"{str(self.downsample)}".ljust(20))
-        print("\thost:".ljust(20), f"{host}".ljust(20))
+        print("\tdownsample:".ljust(20), f"{str(self.downsample)} @ {1/self.scaling_factor}".ljust(20))
+        #print("\tscaling factor:".ljust(20), f"{str(self.scaling_factor)}".ljust(20))
+        print("\tDB host:".ljust(20), f"{host}".ljust(20))
+        print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tmask:".ljust(20), f"{IMAGE_MASK[self.mask_image]}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
+        print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
     def get_section_count(self):
@@ -149,7 +153,7 @@ class Pipeline(
         self.extract_tiffs_from_czi()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
-        if self.channel == 1:
+        if self.channel == 1 and self.downsample:
             self.create_previews()
             self.create_checksums()
         print(f'Finished {self.TASK_EXTRACT}.')
@@ -157,23 +161,21 @@ class Pipeline(
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC() # symlinks from tif/thumbnail_original to CX/thumbnail or CX/full are created
-        if self.debug:
-            print('DEBUG: apply_QC() COMPLETE')
             
         if self.channel == 1 and self.downsample:
             self.create_normalized_image()
-        if self.debug:
-            print('DEBUG: create_normalized_image() COMPLETE')
             
         if self.channel == 1:
             self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
+        
 
     def clean(self):
         print(self.TASK_CLEAN)
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-        
+            self.set_max_width_and_height()
+
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
 
@@ -183,6 +185,8 @@ class Pipeline(
             self.make_histogram()
             self.make_combined_histogram()
             print(f'Finished {self.TASK_HISTOGRAM}.')
+            if self.channel == 1:
+                self.create_web_friendly_sections()
         else:
             print(f'No histogram for full resolution images')
 
@@ -191,75 +195,51 @@ class Pipeline(
         """Perform the section to section alignment (registration)
         This method needs work. It is not currently used.
         """
-
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
+        os.makedirs(self.output, exist_ok=True)
         self.create_affine_transformations()
 
     def align(self):
         """Perform the section to section alignment (registration)
-        We need to set the maskpath to get information from ImageManager
-
-        If /scratch is used (and files exist on path), we read cropped images locally
         """
 
         print(self.TASK_ALIGN)
         self.pixelType = sitk.sitkFloat32
         self.iteration = ALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='cropped')
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-
-        if self.use_scratch:
-            scratch_tmp = get_scratch_dir()
-            last_folder = os.path.basename(os.path.normpath(self.input))
-            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'masks', last_folder)
-            if os.path.exists(SCRATCH):
-                files = os.listdir(SCRATCH)
-                if len(files) > 0:
-                    print(f'Using {SCRATCH} for aligned images')
-                    self.input = SCRATCH
-            
-        #######################################################
-        # PARAMETER SUMMARY
-        print('*'*50, '\nPARAMETER SUMMARY')
-        print(f'Initial elastix manager alignment input dir={self.input}')
-        print(f'FINAL OUTPUT DIR={self.output}')
-        print(f'USING SCRATCH: {self.use_scratch}')
-        print('*'*50, '\n')
-        #######################################################
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        os.makedirs(self.logpath, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations()#only applies to downsampled and channel 1 (run once for each brain)
+            self.create_within_stack_transformations()
 
         self.start_image_alignment()
         
-        if self.channel == 1 and self.downsample:
-            self.create_web_friendly_sections()
-
-        #CLEAN UP cropped_staging_output (prev. input)
-        if self.use_scratch and os.path.exists(SCRATCH):
-            print(f'Removing /scratch files {SCRATCH}')
-            delete_in_background(SCRATCH)
-
         print(f'Finished {self.TASK_ALIGN}.')
 
 
     def realign(self): 
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
-        aligned image stack from thumnbail_aligned
-        
+        aligned image stack from thumnbail_aligned. This only needs to be run on downsampled channel 1 images. With the full
+        resolution images, the transformations come from both iterations of the downsampled images and then scaled.
+        While the transformations are only created on channel 1, the realignment needs to occur on all channels
         """        
         print(self.TASK_REALIGN)
-        self.create_fiducial_points()
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='realigned')
-        print(f'Second elastix manager alignment input: {self.input}')
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        os.makedirs(self.logpath, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations() #only applies to downsampled and channel 1 (run twice for each brain)
-        
+            self.cleanup_fiducials()
+            self.create_fiducial_points()
+            self.create_within_stack_transformations()
+            
         self.start_image_alignment()
-        
         print(f'Finished {self.TASK_REALIGN}.')
 
 
@@ -276,60 +256,23 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
+
         
-        input_path, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
-        rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(self.downsample, self.channel, iteration=self.iteration)
-        final_output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
-        progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
+        self.use_scratch = use_scratch_dir(self.input)
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+            self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        os.makedirs(self.progress_dir, exist_ok=True)
+        print(f'Input: {self.input}')
+        print(f'Output: {self.output}')
+        print(f'Progress: {self.progress_dir}')
+        print(f'Rechunkme: {self.rechunkme_path}')
 
-        if self.use_scratch:
-            #We can test for est. storage space needed for Ng creation (C1T_rechunk, C1T, C1T_aligned, C1T_aligned_rechunk)
-            scratch_tmp = get_scratch_dir()
-            SCRATCH = os.path.join(scratch_tmp, 'pipeline', self.animal, 'ng')
-            rechunkme_folder_name = os.path.basename(rechunkme_path)
-            rechunkme_path = os.path.join(SCRATCH, rechunkme_folder_name)
-            output_folder_name = os.path.basename(final_output)
-            staging_output = os.path.join(SCRATCH, output_folder_name)
-        else:
-            staging_output = final_output
-
-        #######################################################
-        # PARAMETER SUMMARY
-        print('*'*50, '\nPARAMETER SUMMARY')
-        print(f'Input dir={input_path}')
-        print(f'FINAL OUTPUT DIR={final_output}')
-        print(f'RECHUNKME DIR={rechunkme_path}')
-        print(f'STAGING DIR={staging_output}')
-        print(f'USING SCRATCH: {self.use_scratch}')
-        print(f'PROGRESS DIR={progress_dir}')
-        print('*'*50, '\n')
-        #######################################################
-
-        self.create_neuroglancer_stack(input_path, rechunkme_path, staging_output, progress_dir)
-            # self.create_neuroglancer()
-            # self.create_downsamples()
-
-        #CLEANUP
-        if self.use_scratch:
-            print('MOVING STAGING DATA TO FINAL OUTPUT FOLDER; CLEANING UP STAGING OUTPUT')
-            if os.path.exists(SCRATCH) and SCRATCH != staging_output and not os.path.exists(final_output):#MOVE TO FINAL OUTPUT (IF SCRATCH USED & NOT EXISTS)
-                print(f'Moving {staging_output} to {final_output}')
-                os.makedirs(final_output, exist_ok=True)
-                # Use rclone to move the directory
-                subprocess.run(["rclone", "move", staging_output, final_output], check=True)
-
-            #CLEAN UP staging_output
-            if os.path.exists(staging_output):
-                print(f'Removing {staging_output}')
-                delete_in_background(staging_output)
-            if os.path.exists(rechunkme_path):
-                print(f'Removing {rechunkme_path}')
-                delete_in_background(rechunkme_path)
-            progress_dir = os.path.dirname(progress_dir) #get 'progress' dir (1 level up)
-            if os.path.exists(progress_dir):
-                print(f'Removing {progress_dir}')
-                delete_in_background(progress_dir)
-
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 
@@ -337,6 +280,11 @@ class Pipeline(
         print(self.TASK_OMEZARR)
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
+
+    def shell(self):
+        print(self.TASK_SHELL, end=" ")
+        self.create_shell()
+        print(f'Finished {self.TASK_SHELL}.')
 
     def cell_labels(self):
         """
@@ -402,6 +350,7 @@ class Pipeline(
                 f"C{self.channel}/full_cleaned",
                 f"C{self.channel}/full_cropped",
                 f"C{self.channel}/full_aligned",
+                f"C{self.channel}/full_realigned",
             ]
             ndirectory = f"C{self.channel}"
 
@@ -441,11 +390,11 @@ class Pipeline(
         url_status = self.check_url(self.animal)
         print(url_status)
 
-    @staticmethod
-    def check_programs():
+    def check_programs(self):
         """
         Make sure imagemagick is installed.
-        Make sure there is a ./src/settings.py file
+        Make sure there is a ./src/settings.py file and make sure there is enough RAM
+        I set an arbitrary limit of 50GB of RAM for the full resolution images
         """
 
         error = ""
@@ -454,6 +403,13 @@ class Pipeline(
 
         if not os.path.exists("./src/settings.py"):
             error += "\nThere is no ./src/settings.py file!"
+
+        if not self.downsample and self.available_memory < 50:
+            error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
+            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
+            error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
+            error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
+            
 
         if len(error) > 0:
             print(error)

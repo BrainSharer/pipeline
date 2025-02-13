@@ -14,24 +14,6 @@ class PrepCreater:
     to image stack
     """
 
-    def update_scanrun(self, INPUT):
-        """This is where the scan run table gets updated so the width and 
-        height are correct.
-        """
-        if self.channel == 1 and self.downsample:
-            files = sorted(os.listdir(INPUT))
-            widths = []
-            heights = []
-            for file in files:
-                filepath = os.path.join(INPUT, file)
-                img = read_image(filepath)
-                widths.append(img.shape[1])
-                heights.append(img.shape[0])
-            max_width = max(widths)
-            max_height = max(heights)
-            self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
-
-
     def apply_QC(self):
         """Applies the inclusion and replacement results defined by the user on the Django admin portal for the Quality Control step
         to the full resolution images.  The result is stored in the animal_folder/preps/CHX/full directory

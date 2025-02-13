@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from library.utilities.utilities_mask import equalized, scaled
+from library.utilities.utilities_mask import compare_directories, equalized, scaled
 from library.utilities.utilities_process import read_image, write_image
 
 class Normalizer:
@@ -34,6 +34,7 @@ class Normalizer:
                 continue
             
             img = read_image(infile)
+            print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
             if img.ndim == 3:
                 img = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
                 img = img.astype(np.uint8)
@@ -47,3 +48,5 @@ class Normalizer:
             scale = 250
             img = scaled(img, scale=scale)
             write_image(outfile, img.astype(np.uint8))
+
+        compare_directories(self.input, self.output)
