@@ -95,9 +95,7 @@ class AnnotationSessionController:
             ).update(entry)
             self.session.commit()
 
-    def create_annotation_session(
-        self, annotation_type, FK_user_id, FK_prep_id, FK_brain_region_id
-    ):
+    def create_annotation_sessionDEPRECATED(self, annotation_type, FK_user_id, FK_prep_id, FK_brain_region_id):
         data = AnnotationSession(
             annotation_type=annotation_type,
             FK_user_id=FK_user_id,
@@ -110,6 +108,40 @@ class AnnotationSessionController:
         self.session.commit()
         return data.id
     
+    def create_annotation_session(self, FK_user_id, FK_prep_id, annotation):
+        data = AnnotationSession(
+            FK_user_id=FK_user_id,
+            FK_prep_id=FK_prep_id,
+            annotation=annotation,
+            created=datetime.datetime.now(),
+            active=True,
+        )
+        self.add_row(data)
+        self.session.commit()
+        return data.id
+
+    def insert_annotation_with_labels(self, FK_user_id, FK_prep_id, annotation, labels):
+
+        annotation_session = AnnotationSession(
+            FK_user_id=FK_user_id,
+            FK_prep_id=FK_prep_id,
+            annotation=annotation,
+            created=datetime.datetime.now(),
+            active=True,
+        )
+        
+        # Check if books exist, create them if they don't
+        for label in labels:
+            annotation_label = self.session.query(AnnotationLabel).filter_by(label=label).first()
+            if not annotation_label:
+                print("No label found, please fix")
+                return
+                
+            annotation_session.labels.append(annotation_label)
+        
+        self.session.add(annotation_session)
+        self.session.commit()
+        return annotation_session.id
 
     def get_fiducials(self, prep_id, debug: bool = False):
         """Fiducials will be marked on downsampled images. You will need the resolution

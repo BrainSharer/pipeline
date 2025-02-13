@@ -153,7 +153,6 @@ class Pipeline(
         self.extract_tiffs_from_czi()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
-        if self.channel == 1 and self.downsample:
             self.create_previews()
             self.create_checksums()
         print(f'Finished {self.TASK_EXTRACT}.')
@@ -304,6 +303,12 @@ class Pipeline(
 
         # ADD CLEANUP OF SCRATCH FOLDER
 
+    def extract_cell_labels(self):
+        print(self.TASK_CELL_LABELS)
+        self.parse_cell_labels()
+        print(f'Finished {self.TASK_CELL_LABELS}.')
+
+
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
         This step will do everything for the self.channel, so you don't need to run self.channel X for step 2, or 4. You do need
@@ -338,7 +343,6 @@ class Pipeline(
                 f"C{self.channel}/thumbnail",
                 "C1/normalized",
                 f"C{self.channel}/thumbnail_cleaned",
-                f"C{self.channel}/thumbnail_cropped",
                 f"C{self.channel}/thumbnail_aligned",
                 f"C{self.channel}/thumbnail_realigned",
             ]
@@ -348,7 +352,6 @@ class Pipeline(
                 f"masks/C1/full_masked",
                 f"C{self.channel}/full",
                 f"C{self.channel}/full_cleaned",
-                f"C{self.channel}/full_cropped",
                 f"C{self.channel}/full_aligned",
                 f"C{self.channel}/full_realigned",
             ]
