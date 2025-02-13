@@ -399,6 +399,7 @@ class ElastixManager():
             # For full resolution, we need to check if there is a second iteration
             # If there is a 2nd iteration (self.iteration=1), then we need to combine the transformations
             # For full resolution, we need to scale the translations by the scaling factor
+            print('Computing composite transformations for full resolution')
             transformations0 = self.get_transformations(iteration=ALIGNED)
             transformations1 = self.get_transformations(iteration=REALIGNED)
             transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
