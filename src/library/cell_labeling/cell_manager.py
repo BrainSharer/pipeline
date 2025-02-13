@@ -52,6 +52,7 @@ class CellMaker():
 
     def __init__(self):
         """Set up the class with the name of the file and the path to it's location."""
+        print('Init of cell maker')
         self.channel = 1
 
     def check_prerequisites(self, SCRATCH):
@@ -600,3 +601,19 @@ class CellMaker():
             total_sections = dask_data[0].shape[2]
             del dask_data
         return total_sections
+    
+    def parse_cell_labels(self):
+        csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
+        if os.path.exists(csvpath):
+            print(f'Parsing cell labels from {csvpath}')
+        else:
+            print(f'ERROR: {csvpath} NOT FOUND')
+            sys.exit(1)
+
+        self.files = sorted(glob.glob( os.path.join(csvpath, f'*.csv') ))
+        if len(self.files) == 0:
+            print(f'ERROR: NO CSV FILES FOUND IN {csvpath}')
+            sys.exit(1)
+        else:
+            for f in self.files:
+                print(f'Parsing {f}')
