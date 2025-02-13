@@ -35,17 +35,7 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         resolution_0_path = os.path.join(self.output, 'scale0')
         if os.path.exists(resolution_0_path):
-            """
-            shape0 = zarr.open(resolution_0_path).shape
-            out_shape = shape0[1:]
-            initial_chunk = self.originalChunkSize[1:]
-            ##### Change
-            self.pyramidMap = get_pyramid(out_shape, initial_chunk, self.resolution,  self.mips)
-            for k, v in self.pyramidMap.items():
-                print(k,v)
-            """
             print(f'Resolution 0 already exists at {resolution_0_path}')
-            ###print(f'Setting shape to this array for pyramid/mip=0: {out_shape}')
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
@@ -90,8 +80,7 @@ class BuilderMultiscaleGenerator:
         )
         print('Stacked z info')
         print(z.info)
-        import sys
-        #sys.exit()
+
         if client is None:
             to_store = da.store(stack, z, lock=True, compute=True)
         else:
@@ -129,13 +118,6 @@ class BuilderMultiscaleGenerator:
         scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
-        # store = get_store(write_storepath, mip)
-        # z = zarr.zeros(scaled_stack.shape, chunks=chunks, store=store, overwrite=True, dtype=scaled_stack.dtype)
-        # to_store = da.store(scaled_stack, z, lock=False, compute=False)
-        # print(f'Writing mip with data to: {write_storepath}')
-        # to_store = progress(client.compute(to_store))
-        # to_store = client.gather(to_store)
-        # print()
         store = self.get_store(mip)
         z = zarr.zeros(
             scaled_stack.shape,
@@ -494,5 +476,6 @@ class BuilderMultiscaleGenerator:
         
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
+
 
 

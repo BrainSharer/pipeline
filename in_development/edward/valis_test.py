@@ -37,7 +37,7 @@ or set the environment variable OPENBLAS_NUM_THREADS to 128 or lower
 class ValisManager:
     def __init__(self, animal, debug):
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail"
+        self.slide_src_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/full_cropped"
         self.results_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/valis"
         os.makedirs(self.results_dst_dir, exist_ok=True)
         self.registered_slide_dst_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_registered"
@@ -80,14 +80,14 @@ class ValisManager:
             img_list=self.ordered_img_list,
             imgs_ordered=True,
             image_type="fluorescence",
-            resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
-            max_processed_image_dim_px=119,
-            max_image_dim_px=119,
+            #resolution_xyu=(10.4*2, 10.4*2, u'\u00B5m'),
+            #max_processed_image_dim_px=119,
+            #max_image_dim_px=119,
             align_to_reference=False,
-            non_rigid_registrar_cls=None)
+            non_rigid_registrar_cls=non_rigid_registrar_cls)
         
         rigid_registrar, non_rigid_registrar, error_df = registrar.register()
-        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = False, drop_duplicates = False )
+        registrar.warp_and_merge_slides(self.registered_slide_dst_dir, crop = True, drop_duplicates = False )
 
 
 
@@ -143,5 +143,5 @@ if __name__ == '__main__':
     animal = args.animal
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
     valisManager = ValisManager(animal, debug)
-    valisManager.simple_reg()
+    valisManager.register_to_mid()
     #valisManager.teardown()

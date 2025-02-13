@@ -7,7 +7,6 @@ Created on Mon Aug  1 21:11:13 2022
 
 import zarr
 import os
-import psutil
 from numcodecs import Blosc
 
 
@@ -38,6 +37,7 @@ class builder(BuilderDownsample,
         debug,
         omero_dict,
         mips,
+        available_memory
     ):
 
         self.input = in_location
@@ -48,7 +48,6 @@ class builder(BuilderDownsample,
         self.cpu_cores = os.cpu_count()
         self.sim_jobs = self.cpu_cores - 2 
         self.workers = 1
-        self.mem = int((psutil.virtual_memory().free / 1024**3) * 0.8)
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
         self.tmp_dir = tmp_dir
@@ -56,8 +55,9 @@ class builder(BuilderDownsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.res0_chunk_limit_GB = self.mem / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.mem / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
+        self.available_memory = available_memory
+        self.res0_chunk_limit_GB = self.available_memory / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
+        self.res_chunk_limit_GB = self.available_memory / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
         # workers = cpu_count, sim=1 died right away
         # workers = 1 sim=1 worker uses about 20%ram
         # workers = 1 sim=2 complains about ram
@@ -84,7 +84,4 @@ class builder(BuilderDownsample,
         for k, v in self.pyramidMap.items():
             print(k,v)
         
-        import sys
-        sys.exit()
-
         self.build_zattrs()

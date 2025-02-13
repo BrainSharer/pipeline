@@ -70,7 +70,6 @@ def create_mesh(animal, volume_file, csvfile=None):
     print(f'Initial chunks at {chunks} and chunks for downsampling={chunks} and scales with {scales}')
     print(f'IDS={ids}')
     print(f'counts={counts}')
-    return
     
     
     ng = NumpyToNeuroglancer(animal, volume, scales, layer_type='segmentation', 

@@ -51,7 +51,8 @@ class OmeZarrManager():
         if iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
             return
-        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)            
+        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
+        print(f'Creating OME-Zarr from {input}')
 
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
@@ -101,10 +102,11 @@ class OmeZarrManager():
             tmp_dir=tmp_dir,
             debug=self.debug,
             omero_dict=omero_dict,
-            mips=mips
+            mips=mips,
+            available_memory=self.available_memory
         )
 
-        mem_per_worker = round(omezarr.mem / omezarr.workers)
+        mem_per_worker = round(omezarr.available_memory / omezarr.workers)
         print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
         cluster = LocalCluster(n_workers=omezarr.workers,
@@ -118,6 +120,6 @@ class OmeZarrManager():
             omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
+                omezarr.cleanup()
             
 
-        omezarr.cleanup()

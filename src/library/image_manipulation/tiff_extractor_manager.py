@@ -3,6 +3,7 @@ import glob
 import sys
 from pathlib import Path
 import hashlib
+from tqdm import tqdm
 
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
 from library.utilities.utilities_process import DOWNSCALING_FACTOR
@@ -16,14 +17,19 @@ class TiffExtractor():
 
     def extract_tiffs_from_czi(self):
         """
-        This method will:
-            1. Fetch the meta information of each slide and czi files from the database
-            2. Extract the images from the czi file and store them as tiff format.
-            3. Then updates the database with meta information about the sections in each slide
-        
-        :param animal: the prep id of the animal
-        :param channel: the channel of the stack image to process
-        :param compression: Compression used to store the tiff files default is LZW compression
+        Extracts TIFF images from CZI files for a specified channel.
+        This method performs the following steps:
+        1. Determines the output directory and scale factor based on the downsample flag.
+        2. Creates the output directory if it does not exist.
+        3. Logs the initial state including the number of existing TIFF files in the output directory.
+        4. Retrieves sections from the database for the specified animal and channel.
+        5. For each section, extracts the TIFF image from the corresponding CZI file if it does not already exist.
+        6. Logs and prints errors if CZI files are missing or if no sections are found.
+        7. Checks for duplicate files in the output directory and logs and prints any duplicates found.
+        Raises:
+            SystemExit: If no sections are found in the database or if duplicate files are found.
+
+        Note, it cannot be run with threads.
         """
 
         if self.debug:
@@ -31,16 +37,13 @@ class TiffExtractor():
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
-            #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'thumbnail_original')
             scale_factor = DOWNSCALING_FACTOR
         else:
             self.output = self.fileLocationManager.tif
-            #####MOVED self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'full')
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi()
         os.makedirs(self.output, exist_ok=True)
-        #####MOVED os.makedirs(self.checksum, exist_ok=True)
         starting_files = glob.glob(
             os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
         )
@@ -54,39 +57,28 @@ class TiffExtractor():
         if self.debug:
             print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
 
+
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
             print("Were the CZI file names correct on birdstore?")
             print("File names should be in the format: DK123_slideXXX_anything.czi")
             sys.exit()
 
-        file_keys = [] # czi_file, output_path, scenei, channel=1, scale=1, debug
-        for section in sections:
+        for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
             czi_file = os.path.join(self.input, section.czi_file)
             tif_file = os.path.basename(section.file_name)
-            output_path = os.path.join(self.output, tif_file)
-
-            # CREATE .sha256 CHECKSUM FILENAME
-            #####MOVED sha256_filename = Path(section.file_name).with_suffix('.sha256').name
-            #####MOVED checksum_filepath = os.path.join(self.checksum, sha256_filename)
+            outfile = os.path.join(self.output, tif_file)
 
             if not os.path.exists(czi_file):
                 print(f'Error: {czi_file} does not exist.')
                 continue
-            if os.path.exists(output_path):
+            if os.path.exists(outfile):
                 continue
-            if self.debug:
-                print(f'creating image={output_path}')
             scene = section.scene_index
-            file_keys.append([czi_file, output_path, scene, self.channel, scale_factor, self.debug])
-
-        if self.debug:
-            print(f'Extracting a total of {len(file_keys)} files.')
-            workers = 1
-        else:
-            workers = self.get_nworkers()
-
-        self.run_commands_with_threads(extract_tiff_from_czi, file_keys, workers)
+            if self.debug:
+                print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
+            extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
+        
 
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
@@ -101,8 +93,6 @@ class TiffExtractor():
             sys.exit()
                 
             print()
-
-
 
 
     def create_web_friendly_image(self):
@@ -179,7 +169,8 @@ class TiffExtractor():
                 outfile = Path(outfile).with_suffix('.sha256')
                 if os.path.exists(outfile):
                     continue
-                print(f"Creating checksum at {outfile}")
+                if self.debug:
+                    print(f"Creating checksum at {outfile}")
                 readable_hash = calculate_hash(infile)
                 with open(outfile, 'w') as f:
                     f.write(readable_hash)

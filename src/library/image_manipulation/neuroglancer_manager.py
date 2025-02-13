@@ -5,6 +5,7 @@ It also has the main class to convert numpy arrays (images) into the precomputed
 import os
 import sys
 from PIL import Image
+import tifffile
 Image.MAX_IMAGE_PIXELS = None
 import json
 import numpy as np
@@ -15,7 +16,7 @@ from cloudvolume.lib import touch
 from collections import defaultdict
 
 from library.utilities.utilities_process import get_cpus, read_image
-MESHDTYPE = np.int8
+MESHDTYPE = np.uint8
 
 
 
@@ -309,6 +310,10 @@ class NumpyToNeuroglancer():
         if os.path.exists(progress_file):
              print(f"Section {index} has already been processed, skipping.")
              return
+        
+        #test_img = read_image(infile)
+        #print(f'{os.path.basename(infile)} shape={test_img.shape} dtype={test_img.dtype} ndim={test_img.ndim}')
+        #return
 
         # try:
         with Image.open(infile) as img:
@@ -317,6 +322,8 @@ class NumpyToNeuroglancer():
         # img = read_image(infile)
         img=img_array
 
+        #img = read_image(infile)
+        #img = tifffile.imread(infile)
         if img.ndim > 2:
             img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
             img = np.rot90(img, 1)
@@ -350,7 +357,7 @@ class NumpyToNeuroglancer():
         :param file_key: file_key: tuple
         """
 
-        debug = False
+        debug = True
 
         index, infile, orientation, progress_dir, scaling_factor = file_key
         basefile = os.path.basename(infile)
@@ -365,6 +372,7 @@ class NumpyToNeuroglancer():
         except IOError as ioe:
             print(f'could not open {infile} {ioe}')
             return
+        
         
         try:
             if scaling_factor > 1:
@@ -387,6 +395,7 @@ class NumpyToNeuroglancer():
             ids, counts = np.unique(img, return_counts=True)
             print(f'{basefile} dtype={img.dtype}, shape={img.shape}, ids={ids}, counts={counts}')
 
+
         try:
             self.precomputed_vol[:, :, index] = img
         except Exception as ex:
@@ -397,5 +406,62 @@ class NumpyToNeuroglancer():
         touch(progress_file)
         del img
         return
+
+
+    def process_image_shell(self, file_key):
+        """
+        Processes an image file and updates the precomputed volume.
+
+        Args:
+            file_key (tuple): A tuple containing the index, input file path, and progress directory.
+
+        Returns:
+            None
+
+        The function performs the following steps:
+        1. Extracts the index, input file path, and progress directory from the file_key.
+        2. Checks if the image has already been processed by looking for a progress file.
+        3. Reads the image from the input file path.
+        4. Converts the image to the specified data type (MESHDTYPE).
+        5. Attempts to reshape the image.
+        6. Logs the unique IDs and their counts in the image.
+        7. Updates the precomputed volume with the processed image.
+        8. Creates a progress file to indicate that the image has been processed.
+        9. Deletes the image from memory.
+
+        If any step fails, appropriate error messages are printed, and the function returns early.
+        13281.tif dtype=uint8, shape=(518, 563, 1), ids=[0 1], counts=[291540     94]
+        dtype=uint8, shape=(1796, 984, 1)
+        """
+
+        index, infile, progress_dir = file_key
+        basefile = os.path.basename(infile)
+        progress_file = os.path.join(progress_dir, basefile)
+        if os.path.exists(progress_file):
+             return
+
+        img = read_image(infile)
+        img = img.astype(MESHDTYPE)
+
+        try:
+            img = img.reshape(1, img.shape[0], img.shape[1]).T
+        except:
+            print(f'could not reshape {infile}')
+            return
+
+        #ids, counts = np.unique(img, return_counts=True)
+        #print(f'{infile} dtype={img.dtype}, shape={img.shape}, ids={ids}, counts={counts}')
+        
+        try:
+            self.precomputed_vol[:, :, index] = img
+        except Exception as ex:
+            print(f'could not set {infile} with img shape={img.shape} to precomputed index={index}')
+            print(ex)
+            return
+
+        touch(progress_file)
+        del img
+        return
+
 
 

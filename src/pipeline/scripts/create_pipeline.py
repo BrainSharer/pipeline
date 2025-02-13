@@ -8,6 +8,7 @@ them again for the remaining channels and then for the full resolution version:
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
 
 Explanation for the tasks:
@@ -25,7 +26,8 @@ Explanation for the tasks:
     the images are cleaned from the masks.
 - histogram - Histograms showing the distribution of the image intensity levels are created \
     for all cleaned channel 1 sections.
-- align - Section to section alignment with Elastix is then run on the cleaned images using a rigid transformation. 
+- align - Section to section alignment with Elastix is then run on the cleaned and cropped images using a rigid transformation. 
+- realign - If the alignment needs improvement, the user can run the realign task to realign the images.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 
 **Timing results**
@@ -45,17 +47,20 @@ are in the correct order and the images look good.
 - After the first create mask method - the user needs to check the colored masks \
 and possible dilate or crop them.
 - After the alignment process - the user needs to verify the alignment looks good. \
-increasing the step size will make the pipeline move forward in the process.
+Creating fiducials and then running the realing task will improve the alignment.
 
 **Switching projection in Neuroglancer** 
 
 - This switches the top left and bottom right quadrants. Place this JSON directly below the 'position' key:
 - crossSectionOrientation: [0, -0.7071067690849304, 0, 0.7071067690849304],
+ 
+ - Pipeline web pages: https://pmc.ncbi.nlm.nih.gov/articles/PMC11266044/
+ - https://github.com/Texera/texera/wiki/Getting-Started
 
 """
 import argparse
 from pathlib import Path
-import sys, socket
+import sys
 from timeit import default_timer as timer
 
 
@@ -68,9 +73,7 @@ from library.image_manipulation.pipeline_process import Pipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument(
-        "--channel", help="Enter channel", required=False, default=1, type=int
-    )
+    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument(
         "--downsample",
         help="Enter true or false",
@@ -78,9 +81,8 @@ if __name__ == "__main__":
         default="true",
         type=str,
     )
-    parser.add_argument(
-        "--debug", help="Enter true or false", required=False, default="false", type=str
-    )
+    parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32.0, type=float)
+    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
@@ -97,12 +99,12 @@ if __name__ == "__main__":
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
-    process_hostname = socket.gethostname()
 
     pipeline = Pipeline(
         animal,
         channel=channel,
         downsample=downsample,
+        scaling_factor=args.scaling_factor,
         task=task,
         debug=debug,
     )
@@ -119,12 +121,12 @@ if __name__ == "__main__":
         "neuroglancer": pipeline.neuroglancer,
         "cell_labels": pipeline.cell_labels,
         "omezarr": pipeline.omezarr,
+        "shell": pipeline.shell,
         "status": pipeline.check_status,
     }
 
     if task in function_mapping:
         start_time = timer()
-        print(f"START  {str(task)} @ PROCESS_HOST={process_hostname}, downsample: {str(downsample)}")
         function_mapping[task]()
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)

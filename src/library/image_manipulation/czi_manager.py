@@ -7,6 +7,8 @@ import os
 from PIL import Image
 from aicspylibczi import CziFile
 from aicsimageio import AICSImage
+from pylibCZIrw import czi as pyczi
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
@@ -126,7 +128,7 @@ class CZIManager():
         scene = self.file.get_scene_bounding_box(scene_index)
         return scene.x, scene.y, scene.w, scene.h
     
-    def get_scene(self, scene_index, channel, scale=1):
+    def get_scene(self, scene_index, channel, scale=1.0):
         """Gets the correct scene from the slide
 
         :param scene_index: integer of the scene index
@@ -139,18 +141,16 @@ class CZIManager():
         return self.file.read_mosaic(region=region, scale_factor=scale, C=channel - 1)[0]
 
  
-def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
+def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None:
     """Gets the TIFF file out of the CZI and writes it to the filesystem
 
     :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
     
-    czi_file, outfile, scenei, channel, scale, debug = file_key    
+    czi_file, outfile, scenei, channel, scale = file_key    
     czi = CZIManager(czi_file)
     data = None
     try:
-        if debug:
-            print(f"DEBUG: [extract_tiff_from_czi]: {czi_file=}, {scenei=}, {outfile=}")
         data = czi.get_scene(scene_index=scenei, channel=channel, scale=scale)
     except Exception as e:
         print(f" ERROR READING [extract_tiff_from_czi]: {scenei=}, {channel=}, {czi_file=}; {e=}")
@@ -158,16 +158,35 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
     write_image(outfile, data, message=message)
-    """#####MOVED 
-    #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
-    if not os.path.exists(checksum_filepath):
-        org_file = Path(outfile)
-        with open(org_file, 'rb') as f:
-            bytes = f.read()  # Read the entire file as bytes
-            readable_hash = hashlib.sha256(bytes).hexdigest()
-            with open(checksum_filepath, 'w') as f:
-                f.write(readable_hash)
+ 
+def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     """
+    Extracts a TIFF image from a CZI file based on the provided parameters.
+    Args:
+        file_key (tuple[str, str, int, bool, str]): A tuple containing the following elements:
+            - czi_file (str): Path to the input CZI file.
+            - outfile (str): Path to the output TIFF file.
+            - scenei (int): Index of the scene to extract.
+            - channel (int): Channel number to extract.
+            - scale (bool): Scaling factor for the image.
+    Returns:
+        None
+    Raises:
+        IOError: If there is an error writing the output TIFF file.
+    """
+    
+    czi_file, outfile, scenei, channel, scale = file_key    
+    with pyczi.open_czi(czi_file) as czidoc:
+        # get the bounding boxes for each individual scene
+        scenes_bounding_rectangle = czidoc.scenes_bounding_rectangle
+        bounding_box = scenes_bounding_rectangle[scenei]
+        data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
+        if data.ndim == 3 and data.shape[2] == 1:
+            data = data.squeeze(axis=2)
+        write_image(outfile, data)
+    
+    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+    write_image(outfile, data, message=message)
 
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing
