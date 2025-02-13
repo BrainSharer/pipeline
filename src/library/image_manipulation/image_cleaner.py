@@ -88,10 +88,10 @@ class ImageCleaner:
 
         if self.downsample:
             INPUT = self.fileLocationManager.get_thumbnail(self.channel)
-            MASKS = self.fileLocationManager.get_thumbnail_masked(self.channel)
+            MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1)
         else:
             INPUT = self.fileLocationManager.get_full(self.channel)
-            MASKS = self.fileLocationManager.get_full_masked(self.channel)
+            MASKS = self.fileLocationManager.get_full_masked(channel=1)
 
         CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
 
