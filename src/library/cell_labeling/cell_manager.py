@@ -606,6 +606,29 @@ class CellMaker():
         return total_sections
     
     def parse_cell_labels(self):
+        """
+        Note, the point information from the CSV must be converted to 
+        meters. 
+        Parses cell label data from CSV files and inserts annotations with labels into the database.
+        This method performs the following steps:
+        1. Sets default properties for cell annotations.
+        2. Initializes empty lists for points and child JSON objects.
+        3. Generates a unique parent ID for the annotation session.
+        4. Retrieves the XY and Z resolutions from the SQL controller.
+        5. Constructs the path to the directory containing cell label CSV files.
+        6. Checks if the CSV directory exists and exits if not found.
+        7. Retrieves and sorts all CSV files in the directory.
+        8. Parses each CSV file and extracts cell data if the file name contains 'detections_057'.
+        9. Converts cell coordinates and predictions, and creates JSON objects for each detected cell.
+        10. Aggregates the cell points and creates a cloud point annotation.
+        11. Inserts the annotation with labels into the database if not in debug mode.
+        Raises:
+            SystemExit: If the CSV directory or files are not found.
+            Exception: If there is an error inserting data into the database.
+        Prints:
+            Status messages indicating the progress and results of the parsing and insertion process.
+        """
+
         default_props = ["#ffff00", 1, 1, 5, 3, 1]
         points = []
         childJsons = []

@@ -337,7 +337,7 @@ class ImageCleaner:
 
         self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height)
 
-    def update_bg_colorTODO(self):
+    def update_bg_color(self):
             """
             Updates the background color of the image.
 
@@ -358,7 +358,7 @@ class ImageCleaner:
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
 
 
-    def create_shell_from_maskTODO(self):
+    def create_shell_from_mask(self):
         CLEAN = True
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
@@ -463,8 +463,8 @@ class ImageCleaner:
         ##### first mesh task, create meshing tasks
         ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
 
-    def mask_aligned_imageTODO(self, img, file):
-        from scipy.ndimage import binary_fill_holes
+    def mask_aligned_imageNOTUSED(self, img, file):
+        #from scipy.ndimage import binary_fill_holes
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray[gray > 0] = 255
@@ -524,7 +524,7 @@ class ImageCleaner:
 
         return gray.astype(np.uint8)
 
-    def create_shellTODO(self):
+    def create_shell(self):
         WHITE = 255
         WRITE_MASKS = False
         iteration = self.get_alignment_status()
