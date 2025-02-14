@@ -638,13 +638,14 @@ class CellMaker():
         z_resolution = self.sqlController.scan_run.zresolution
 
         csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
+        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_data.csv')
         if os.path.exists(csvpath):
             print(f'Parsing cell labels from {csvpath}')
         else:
             print(f'ERROR: {csvpath} NOT FOUND')
             sys.exit(1)
-
-        self.files = sorted(glob.glob( os.path.join(csvpath, f'*.csv') ))
+        dataframe_data = []
+        self.files = sorted(glob.glob( os.path.join(csvpath, f'detections_*.csv') ))
         if len(self.files) == 0:
             print(f'ERROR: NO CSV FILES FOUND IN {csvpath}')
             sys.exit(1)
@@ -658,11 +659,12 @@ class CellMaker():
                         section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
                         x = float(row['col'])
                         y = float(row['row'])
-                        x = x / M_UM_SCALE * xy_resolution
-                        y = y / M_UM_SCALE * xy_resolution
-                        section = section * z_resolution / M_UM_SCALE
 
                         if prediction > 0:
+                            dataframe_data.append([x, y, int(section - 0.5)])
+                            x = x / M_UM_SCALE * xy_resolution
+                            y = y / M_UM_SCALE * xy_resolution
+                            section = section * z_resolution / M_UM_SCALE
                             found += 1
                             if self.debug:
                                 print(f'{prediction=} {x=} {y=} {section=}')
@@ -694,6 +696,9 @@ class CellMaker():
                 cloud_points["sessionID"] = f"{parent_id}"
                 cloud_points["props"] = default_props
                 cloud_points["childJsons"] = childJsons
+
+                df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
+                df.to_csv(dfpath, index=False)
 
 
                 if not self.debug:
