@@ -14,6 +14,7 @@ from compress_pickle import dump, load
 import pandas as pd
 import xgboost as xgb
 
+from library.database_model.annotation_points import AnnotationSession, AnnotationSessionLabel
 from library.utilities.utilities_process import M_UM_SCALE, random_string
 
 sys.path.append(os.path.abspath('./../../'))
@@ -649,38 +650,34 @@ class CellMaker():
             sys.exit(1)
         else:
             for file_path in self.files:
-                if 'detections_057' in file_path:
-                    rows = self.parse_csv(file_path)
-                    row0 = rows[0]
-                    for k,v in row0.items():
-                        print(f'{k=} {v=}')
-                    found = 0
-                    if rows:
-                        print(f'Data type = {type(rows)}, PARSED {len(rows)} CELLS FROM {file_path}')
-                        for row in rows:
-                            prediction = float(row['predictions'])
-                            section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
-                            x = float(row['col'])
-                            y = float(row['row'])
-                            x = x / M_UM_SCALE * xy_resolution
-                            y = y / M_UM_SCALE * xy_resolution
-                            section = section * z_resolution / M_UM_SCALE
+                rows = self.parse_csv(file_path)
+                found = 0
+                if rows:
+                    for row in rows:
+                        prediction = float(row['predictions'])
+                        section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
+                        x = float(row['col'])
+                        y = float(row['row'])
+                        x = x / M_UM_SCALE * xy_resolution
+                        y = y / M_UM_SCALE * xy_resolution
+                        section = section * z_resolution / M_UM_SCALE
 
-                            if prediction > 0:
-                                found += 1
+                        if prediction > 0:
+                            found += 1
+                            if self.debug:
                                 print(f'{prediction=} {x=} {y=} {section=}')
-                                point = [x, y, section]
-                                childJson = {
-                                    "point": point,
-                                    "type": "point",
-                                    "parentAnnotationId": f"{parent_id}",
-                                    "props": default_props
-                                }
-                                childJsons.append(childJson)
-                                points.append(childJson["point"])
+                            point = [x, y, section]
+                            childJson = {
+                                "point": point,
+                                "type": "point",
+                                "parentAnnotationId": f"{parent_id}",
+                                "props": default_props
+                            }
+                            childJsons.append(childJson)
+                            points.append(childJson["point"])
 
 
-                        print(f'Found {found} neurons')
+                    print(f'Found {found} neurons from {os.path.basename(file_path)}')
             if found > 0:
                 FK_user_id = 1
                 FK_prep_id = self.animal
@@ -700,6 +697,13 @@ class CellMaker():
 
 
                 if not self.debug:
+                    label_objects = self.sqlController.get_labels(labels)
+                    label_ids = [label.id for label in label_objects]
+
+                    annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, FK_user_id)
+                    if annotation_session is not None:
+                        self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
+
 
                     try:
                         id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
