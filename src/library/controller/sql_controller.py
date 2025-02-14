@@ -146,29 +146,37 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
 
         return self.get_row(search_dictionary,model) is not None
     
-    def query_table(self,search_dictionary,model):
-        """query a sql table and return all the results fitting the search criterias
+    def query_row(self, model, search_dictionary):
+        """
+        Queries a single row from the database based on the provided search criteria.
 
-        :param search_dictionary: (dict): search field and value
-        :param model: (sqalchemy ORM class): sqalchemy ORM
+        Args:
+            search_dictionary (dict): A dictionary where the keys are the column names and the values are the values to search for.
+            model (Base): The SQLAlchemy model class to query.
 
-        returns list: the query result in a list of ORM objects 
+        Returns:
+            model: The first row that matches the search criteria, or None if no match is found.
         """
 
         query_start = self.session.query(model)
         exec(f'from {model.__module__} import {model.__name__}')
         for key, value in search_dictionary.items():
             query_start = eval(f'query_start.filter({model.__name__}.{key}=="{value}")')
-        return query_start.all()
+        return query_start.first()
     
-    def delete_row(self, search_dictionary, model):
-        """Deletes one row of any table
+    def delete_row(self, model, search_dictionary):
+        """
+        Deletes a row from the database based on the given search criteria.
 
-        :param search_dictionary: (dict): search field and value
-        :param model: (sqalchemy ORM class): sqalchemy ORM
+        Args:
+            search_dictionary (dict): A dictionary containing the search criteria to find the row to delete.
+            model (Base): The SQLAlchemy model class representing the table from which the row will be deleted.
+
+        Returns:
+            None
         """
 
-        row = self.get_row(search_dictionary,model)
+        row = self.get_row(search_dictionary, model)
         self.session.delete(row)
         self.session.commit()
 

@@ -44,14 +44,25 @@ class AnnotationSessionController:
             .one_or_none()
         )
         return brain_region
+    
+    def get_labels(self, labels):
+        annotation_labels = (
+            self.session.query(AnnotationLabel)
+            .filter(AnnotationLabel.label.in_(labels))
+            .all()
+        )
+        return annotation_labels
 
-    def get_annotation_session(self, prep_id, label_id, annotator_id):
+
+    def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int):
+        if isinstance(label_ids, int):
+            label_ids = [label_ids]
         annotation_session = (
             self.session.query(AnnotationSession)
             .filter(AnnotationSession.active == True)
             .filter(AnnotationSession.FK_prep_id == prep_id)
             .filter(AnnotationSession.FK_user_id == annotator_id)
-            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([label_id])))
+            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
             .order_by(AnnotationSession.updated.desc())
             .first()
         )
