@@ -636,6 +636,7 @@ class CellMaker():
         parent_id = f"{random_string()}"
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
+        found = 0
 
         csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_data.csv')
@@ -649,76 +650,77 @@ class CellMaker():
         if len(self.files) == 0:
             print(f'ERROR: NO CSV FILES FOUND IN {csvpath}')
             sys.exit(1)
-        else:
-            for file_path in self.files:
-                rows = self.parse_csv(file_path)
-                found = 0
-                if rows:
-                    for row in rows:
-                        prediction = float(row['predictions'])
-                        section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
-                        x = float(row['col'])
-                        y = float(row['row'])
 
-                        if prediction > 0:
-                            dataframe_data.append([x, y, int(section - 0.5)])
-                            x = x / M_UM_SCALE * xy_resolution
-                            y = y / M_UM_SCALE * xy_resolution
-                            section = section * z_resolution / M_UM_SCALE
-                            found += 1
-                            if self.debug:
-                                print(f'{prediction=} {x=} {y=} {section=}')
-                            point = [x, y, section]
-                            childJson = {
-                                "point": point,
-                                "type": "point",
-                                "parentAnnotationId": f"{parent_id}",
-                                "props": default_props
-                            }
-                            childJsons.append(childJson)
-                            points.append(childJson["point"])
+        for file_path in self.files:
+            rows = self.parse_csv(file_path)
+            if rows:
+                for row in rows:
+                    prediction = float(row['predictions'])
+                    section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
+                    x = float(row['col'])
+                    y = float(row['row'])
+
+                    if prediction > 0:
+                        dataframe_data.append([x, y, int(section - 0.5)])
+                        x = x / M_UM_SCALE * xy_resolution
+                        y = y / M_UM_SCALE * xy_resolution
+                        section = section * z_resolution / M_UM_SCALE
+                        found += 1
+                        if self.debug:
+                            print(f'{prediction=} {x=} {y=} {section=}')
+                        point = [x, y, section]
+                        childJson = {
+                            "point": point,
+                            "type": "point",
+                            "parentAnnotationId": f"{parent_id}",
+                            "props": default_props
+                        }
+                        childJsons.append(childJson)
+                        points.append(childJson["point"])
+
+        print(f'Found {found} total neurons')
+        if found == 0:
+            print('No neurons found')
+            sys.exit()
+
+        FK_user_id = 1
+        FK_prep_id = self.animal
+        labels = ['MACHINE_SURE']
+        id = None
+        description = labels[0]
+        cloud_points = {}
+
+        cloud_points["source"] = points[0]
+        cloud_points["centroid"] = np.mean(points, axis=0).tolist()
+        cloud_points["childrenVisible"] = True
+        cloud_points["type"] = "cloud"
+        cloud_points["description"] = f"{description}"
+        cloud_points["sessionID"] = f"{parent_id}"
+        cloud_points["props"] = default_props
+        cloud_points["childJsons"] = childJsons
+
+        df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
+        print(f'Found {len(df)} total neurons and writing to {dfpath}')
+        df.to_csv(dfpath, index=False)
+
+        if not self.debug:
+            label_objects = self.sqlController.get_labels(labels)
+            label_ids = [label.id for label in label_objects]
+
+            annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, FK_user_id)
+            if annotation_session is not None:
+                self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
 
 
-                    print(f'Found {found} neurons from {os.path.basename(file_path)}')
-            if found > 0:
-                FK_user_id = 1
-                FK_prep_id = self.animal
-                labels = ['MACHINE_SURE']
-                id = None
-                description = labels[0]
-                cloud_points = {}
+            try:
+                id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
+            except Exception as e:
+                print(f'Error inserting data: {e}')
 
-                cloud_points["source"] = points[0]
-                cloud_points["centroid"] = np.mean(points, axis=0).tolist()
-                cloud_points["childrenVisible"] = True
-                cloud_points["type"] = "cloud"
-                cloud_points["description"] = f"{description}"
-                cloud_points["sessionID"] = f"{parent_id}"
-                cloud_points["props"] = default_props
-                cloud_points["childJsons"] = childJsons
-
-                df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
-                df.to_csv(dfpath, index=False)
-
-
-                if not self.debug:
-                    label_objects = self.sqlController.get_labels(labels)
-                    label_ids = [label.id for label in label_objects]
-
-                    annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, FK_user_id)
-                    if annotation_session is not None:
-                        self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
-
-
-                    try:
-                        id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
-                    except Exception as e:
-                        print(f'Error inserting data: {e}')
-
-                    if id is not None:
-                        print(f'Inserted annotation with labels with id: {id}')
-                    else:
-                        print('Error inserting annotation with labels')
+            if id is not None:
+                print(f'Inserted annotation with labels with id: {id}')
+            else:
+                print('Error inserting annotation with labels')
 
 
 
