@@ -241,7 +241,7 @@ class AnnotationSessionController:
         return coms
 
 
-    def get_annotation(self, session_id):
+    def get_annotation_volume(self, session_id):
 
         annotation_session = self.session.query(AnnotationSession).get(session_id)
         polygons = defaultdict(list)
@@ -249,21 +249,29 @@ class AnnotationSessionController:
         if not annotation_session:
             print("No data for this animal was found.")
             return
+        
+        annotation = annotation_session.annotation
 
         xy_resolution = self.scan_run.resolution
         z_resolution = self.scan_run.zresolution
 
         # first test data to make sure it has the right keys
         try:
-            data = annotation_session.annotation["childJsons"]
-        except KeyError:
+            data = annotation["childJsons"]
+        except KeyError as ke:
             print("No childJsons key in data")
+            print(f"Error: {ke}")
+            return
+        
         x_offset = 2200 // 32
         y_offset = 5070 // 32
         x_offset = 0
         y_offset = 65
 
         for points in data:
+            if 'childJsons' not in points:
+                print('No childJsons in points')
+                return
             for child in points['childJsons']:
                 x,y,z = child['pointA']
                 x = int(np.round(x * M_UM_SCALE / xy_resolution / SCALING_FACTOR) - x_offset)
@@ -273,3 +281,14 @@ class AnnotationSessionController:
                 polygons[section].append((x,y))
 
         return polygons
+
+
+    def get_annotation_by_id(self, session_id):
+
+        annotation_session = self.session.query(AnnotationSession).get(session_id)
+
+        if annotation_session is not None:
+            return annotation_session
+        else:
+            print("No data for this animal was found.")
+            return None
