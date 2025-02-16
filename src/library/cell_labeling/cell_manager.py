@@ -639,7 +639,7 @@ class CellMaker():
         found = 0
 
         csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
-        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_data.csv')
+        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
         if os.path.exists(csvpath):
             print(f'Parsing cell labels from {csvpath}')
         else:
