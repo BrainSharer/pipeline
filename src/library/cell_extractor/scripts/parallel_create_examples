@@ -1,0 +1,24 @@
+#!/bin/bash
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+channel=3
+path="/$2/cell_segmentation/$1/CH$channel"
+count=0
+files_to_process=()
+for file in "$path"/*;
+do
+  file=$(basename "$file")
+#   if ! (ls "$path/$file" | grep -q 'extracted_cells'); then
+  files_to_process+=("$file")
+#   fi
+done
+
+(
+for file in "${files_to_process[@]}"
+do
+   echo $file
+   ((i=i%10)); ((i++==0)) && wait
+   python $SCRIPT_DIR/create_example_for_one_section.py --animal "$1" --section "$file" --disk "$2"&
+done
+)
+

@@ -1,0 +1,19 @@
+#!/bin/bash
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+birdstore_dir="/net/birdstore/Active_Atlas_Data/"
+# avg_image="/net/birdstore/Active_Atlas_Data/cell_segmentation/DK55/average_cell_image.pkl"
+brain_dir="/$birdstore_dir/cell_segmentation/$1/"
+
+# echo segmenting tifs
+# eval "python $SCRIPT_DIR/segment_tifs.py --animal $1 --disk $2"
+
+echo create examples
+eval "$SCRIPT_DIR/parallel_create_examples $1 $birdstore_dir"
+# cp $avg_image $brain_dir
+
+echo calculate features
+eval "$SCRIPT_DIR/parallel_calculate_features $1 $birdstore_dir"
+
+# echo detect cell
+# eval "python $SCRIPT_DIR/detect_cell_for_one_brain.py --animal $1 --disk $birdstore_dir"
+# mv $brain_dir $birdstore_dir
