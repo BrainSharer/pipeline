@@ -660,14 +660,14 @@ class CellMaker():
                     x = float(row['col'])
                     y = float(row['row'])
 
-                    if prediction > 0:
+                    if prediction > 0 and int(section) == 182:
+                        if self.debug:
+                            print(f'{prediction=} x={int(x)} y={int(y)} section={int(section)}')
                         dataframe_data.append([x, y, int(section - 0.5)])
                         x = x / M_UM_SCALE * xy_resolution
                         y = y / M_UM_SCALE * xy_resolution
                         section = section * z_resolution / M_UM_SCALE
                         found += 1
-                        if self.debug:
-                            print(f'{prediction=} {x=} {y=} {section=}')
                         point = [x, y, section]
                         childJson = {
                             "point": point,
