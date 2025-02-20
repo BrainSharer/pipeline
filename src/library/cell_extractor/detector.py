@@ -1,5 +1,5 @@
 from attr import has
-from library.cell_extractor.detection_predictor import GreedyPredictor
+from library.cell_extractor.cell_predictor import GreedyPredictor
 import numpy as np
 import xgboost as xgb
 import matplotlib.pyplot as plt

@@ -21,7 +21,7 @@ import pandas as pd
 
 from library.cell_extractor.retraining.lib.logger  import logger
 from library.cell_extractor.cell_detector_base import CellDetectorBase
-from library.cell_extractor.detection_predictor import GreedyPredictor
+from library.cell_extractor.cell_predictor import GreedyPredictor
 from library.cell_extractor.CellAnnotationUtilities import CellAnnotationUtilities
 from library.cell_extractor.detector import Detector   
 
@@ -122,6 +122,57 @@ class CellDetectorTrainer(Detector,CellDetectorBase):
         self.last_round = CellDetectorBase(animal,round = round-1,segmentation_threshold=segmentation_threshold)
         self.init_parameter()
         self.predictor = GreedyPredictor()
+
+    
+    def create_positive_labels(self):
+        combined_features = self.get_combined_features()
+        test_counts,train_sections = pk.load(open(self.last_round.QUALIFICATIONS,'rb'))
+        all_segment = np.array([combined_features.col,combined_features.row,combined_features.section]).T
+
+        cells = test_counts['computer sure, human unmarked']
+        cells = np.array([[ci[1]['x'],ci[1]['y'],ci[1]['section']] for ci in cells])
+        cells_index = self.find_cloest_neighbor_among_points(all_segment,cells)
+
+        original = train_sections['original training set after mind change']
+        original = np.array([[ci[1]['x'],ci[1]['y'],ci[1]['section']] for ci in original])
+        original_index = self.find_cloest_neighbor_among_points(all_segment,original)
+
+        qc_annotation_input_path = os.path.join(os.path.dirname(__file__),'retraining')
+        neg = qc_annotation_input_path+'/DK55_premotor_manual_negative_round1_2021-12-09.csv'
+        pos = qc_annotation_input_path+'/DK55_premotor_manual_positive_round1_2021-12-09.csv'
+        neg = pd.read_csv(neg,header=None).to_numpy()
+        pos = pd.read_csv(pos,header=None).to_numpy()
+        positive = self.find_cloest_neighbor_among_points(all_segment,pos)
+        negative = self.find_cloest_neighbor_among_points(all_segment,neg)
+        dirs=glob('/net/birdstore/Active_Atlas_Data/cell_segmentation/DK55/CH3/*/DK55*.csv') 
+        manual_sections = [int(i.split('/')[-2]) for i in dirs]
+        labels = np.zeros(len(combined_features))
+        positive_index = cells_index+original_index+positive
+        for i in positive_index:
+            labels[i] = 1
+        include = [labels[i]==1 or i in negative or all_segment[i,2] in manual_sections for i in range(len(combined_features))]
+        pk.dump((labels,include),open(self.POSITIVE_LABELS,'wb'))    
+
+
+    def get_positive_labels(self):
+        if not os.path.exists(self.POSITIVE_LABELS):
+            self.create_positive_labels()
+        return pk.load(open(self.POSITIVE_LABELS,'rb'))
+        
+
+    def load_new_features_with_coordinate(self):
+        labels,include = self.get_positive_labels()
+        combined_features = self.get_combined_features()
+        combined_features['label'] = labels
+        return combined_features[include]
+
+
+    def load_new_features(self):
+        df_in_section = self.load_new_features_with_coordinate()
+        drops = ['animal', 'section', 'index', 'row', 'col'] 
+        df_in_section=df_in_section.drop(drops,axis=1)
+        return df_in_section
+
 
     def gen_scale(self,n,reverse=False):
         s=np.arange(0,1,1/n)
