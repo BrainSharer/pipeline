@@ -475,8 +475,10 @@ class CellMaker():
         return df_features
 
     def calculate_correlation_and_energy(self, avg_cell_img, cell_candidate_img):  
-        '''PART OF STEP 3. CALCULATE CELL FEATURES; CALCULATE CORRELATION [BETWEEN cell_candidate_img AND avg_cell_img] and AND ENERGY FOR CELL CANIDIDATE
-            NOTE: avg_cell_img AND cell_candidate_img CONTAIN RESPECTIVE CHANNELS PRIOR TO PASSING IN ARGUMENTS
+        '''PART OF STEP 3. 
+        CALCULATE CELL FEATURES; CALCULATE CORRELATION [BETWEEN cell_candidate_img 
+        AND avg_cell_img] and AND ENERGY FOR CELL CANIDIDATE
+        NOTE: avg_cell_img AND cell_candidate_img CONTAIN RESPECTIVE CHANNELS PRIOR TO PASSING IN ARGUMENTS
         '''
 
         # ENSURE IMAGE ARRAYS TO SAME SIZE
@@ -548,7 +550,8 @@ class CellMaker():
                     double m12,
                     double m03
                     );
-            Hu Moments are described in this paper: https://www.researchgate.net/publication/224146066_Analysis_of_Hu's_moment_invariants_on_image_scaling_and_rotation
+            Hu Moments are described in this paper: 
+            https://www.researchgate.net/publication/224146066_Analysis_of_Hu's_moment_invariants_on_image_scaling_and_rotation
 
             NOTE: image moments (weighted average of pixel intensities) are used to calculate centroid of arbritary shapes in opencv library
             '''

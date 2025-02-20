@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from library.cell_extractor.plotter import Plotter
 from library.cell_extractor.detection_plotter import DetectionPlotter
-from library.cell_extractor.detection_predictor import Predictor
+from library.cell_extractor.cell_predictor import Predictor
 from library.cell_extractor.detector import Detector
 import concurrent.futures
 
@@ -145,6 +145,7 @@ class CellDetectorBase(Brain):
             self.save_tile_information()
     
     def list_detectors(self):
+        print(f'listing detectors at {self.DETECTOR}')
         return os.listdir(self.DETECTOR)
         
     def get_tile_and_image_dimensions(self):
