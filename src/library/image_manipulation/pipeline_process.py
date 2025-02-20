@@ -120,7 +120,7 @@ class Pipeline(
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         self.report_status()
-        self.check_programs()
+        self.check_settings()
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -171,6 +171,7 @@ class Pipeline(
 
     def clean(self):
         print(self.TASK_CLEAN)
+        self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
             self.set_max_width_and_height()
@@ -249,6 +250,7 @@ class Pipeline(
         also be run from the align and realign methods
         """
 
+        self.check_ram()
         self.iteration = self.get_alignment_status()
         if self.iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
@@ -277,6 +279,7 @@ class Pipeline(
 
     def omezarr(self):
         print(self.TASK_OMEZARR)
+        self.check_ram()
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
 
@@ -393,19 +396,34 @@ class Pipeline(
         url_status = self.check_url(self.animal)
         print(url_status)
 
-    def check_programs(self):
+    def check_settings(self):
         """
-        Make sure imagemagick is installed.
         Make sure there is a ./src/settings.py file and make sure there is enough RAM
         I set an arbitrary limit of 50GB of RAM for the full resolution images
         """
 
         error = ""
-        if not os.path.exists("/usr/bin/identify"):
-            error += "\nImagemagick is not installed"
 
         if not os.path.exists("./src/settings.py"):
             error += "\nThere is no ./src/settings.py file!"
+
+        if not self.downsample and self.available_memory < 50:
+            error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
+            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
+            error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
+            error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
+            
+
+        if len(error) > 0:
+            print(error)
+            sys.exit()
+
+    def check_ram(self):
+        """
+        I set an arbitrary limit of 50GB of RAM for the full resolution images
+        """
+
+        error = ""
 
         if not self.downsample and self.available_memory < 50:
             error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
