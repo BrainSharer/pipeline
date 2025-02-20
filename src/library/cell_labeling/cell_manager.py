@@ -89,7 +89,6 @@ class CellMaker():
             print(f'TEMP STORAGE LOCATION: {SCRATCH}')
         self.fileLogger.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
 
-
         # CHECK FOR PRESENCE OF meta-data.json
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
@@ -99,7 +98,7 @@ class CellMaker():
             if os.path.isfile(meta_store):
                 print(f'FOUND NEUROANATOMICAL TRACING INFO; READING FROM {meta_store}')
 
-                # verify you have 2 required channels 
+                # verify you have 2 required channels
                 with open(meta_store) as fp:
                     info = json.load(fp)
                 self.meta_channel_mapping = info['Neuroanatomical_tracing']
@@ -118,8 +117,15 @@ class CellMaker():
 
                 # steps to create
                 channels_count = 3
-                self.meta_channel_mapping = {1:{'mode':'dye', 'description':'NeurotraceBlue', 'channel_name': 'C1'}, 3:{'mode':'virus', 'description':'GFP', 'channel_name': 'C3'}}
-                meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
+                self.meta_channel_mapping = {
+                    1: {
+                        "mode": "dye",
+                        "description": "NeurotraceBlue",
+                        "channel_name": "C1",
+                    },
+                    3: {"mode": "virus", "description": "GFP", "channel_name": "C3"},
+                }
+                meta_data_info["Neuroanatomical_tracing"] = self.meta_channel_mapping
 
                 with open(meta_store, 'w') as fp:
                     json.dump(meta_data_info, fp, indent=4)
@@ -155,7 +161,6 @@ class CellMaker():
             self.fileLogger.logevent(f'MODEL FILE NOT FOUND @ {self.model_file}; EXITING')
             sys.exit(1)
 
-
     def start_labels(self):
         '''1. USE DASK TO CREATE VIRTUAL TILES OF FULL-RESOLUTION IMAGES
                 Which mode (dye/virus: Neurotrace/GFP is for which directory) -> rename input
@@ -177,8 +182,8 @@ class CellMaker():
         self.fileLogger.logevent(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
         if self.debug:
             print(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
-        
-        #TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
+
+        # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
         for channel_number, channel_data in self.meta_channel_mapping.items():
             if channel_data['mode'] == 'dye':
                 self.dye_channel = channel_number
@@ -187,6 +192,7 @@ class CellMaker():
                 self.virus_channel = channel_number
                 self.fileLogger.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
             else:
+                continue
                 msg = "Neuroanatomical_tracing is missing either dye or virus channel."
                 if self.debug:
                     print(msg)
@@ -601,7 +607,7 @@ class CellMaker():
             _mean = np.mean(scores, axis=1)
             _std = np.std(scores, axis=1)
             return _mean, _std
-        
+
         def get_prediction_and_label(_mean) -> list:
             threshold = 1.5
             predictions = []
@@ -614,7 +620,7 @@ class CellMaker():
                     classification = 0 #UNKNOWN/UNSURE
                 predictions.append(classification)
             return predictions
-        
+
         drops = ['animal', 'section', 'index', 'row', 'col']        
         cell_features_selected_columns = cell_features.drop(drops,axis=1)
         _mean, _std = calculate_scores(cell_features_selected_columns, model_file)#STEP 4-2-1-2) calculate_scores(features) - CALCULATES SCORES, LABELS, MEAN STD FOR EACH FEATURE
@@ -683,7 +689,7 @@ class CellMaker():
         childJsons = []
         parent_id = f"{random_string()}"
 
-        #TODO: RESOLUTION STORED IN meta-data.json
+        # TODO: RESOLUTION STORED IN meta-data.json
         # meta_data_file = 'meta-data.json'
         # meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
         # if os.path.exists(meta_store):
