@@ -1,10 +1,8 @@
-import shutil
-import os, sys, glob, json, math, time
+import os, sys, glob, json, math
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 import dask
 from dask import delayed
-import dask.dataframe as dd
 import dask.array as da
 import imageio.v2 as imageio
 from pathlib import Path
