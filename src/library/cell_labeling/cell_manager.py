@@ -55,7 +55,6 @@ class CellMaker():
 
     def __init__(self):
         """Set up the class with the name of the file and the path to it's location."""
-        print('Init of cell maker')
         self.channel = 1
 
     def check_prerequisites(self, SCRATCH):
@@ -102,7 +101,7 @@ class CellMaker():
             if os.path.isfile(meta_store):
                 print(f'FOUND NEUROANATOMICAL TRACING INFO; READING FROM {meta_store}')
 
-                # verify you have 2 channels required
+                # verify you have 2 required channels 
                 with open(meta_store) as fp:
                     info = json.load(fp)
                 self.meta_channel_mapping = info['Neuroanatomical_tracing']
@@ -180,13 +179,21 @@ class CellMaker():
         self.fileLogger.logevent(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
         if self.debug:
             print(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
+        
+        #TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
         for channel_number, channel_data in self.meta_channel_mapping.items():
             if channel_data['mode'] == 'dye':
                 self.dye_channel = channel_number
                 self.fileLogger.logevent(f'DYE CHANNEL DETECTED: {self.dye_channel}')
-            else:
+            elif channel_data['mode'] == 'virus':
                 self.virus_channel = channel_number
                 self.fileLogger.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
+            else:
+                msg = "Neuroanatomical_tracing is missing either dye or virus channel."
+                if self.debug:
+                    print(msg)
+                self.fileLogger.logevent(msg)
+                raise ValueError(msg)
 
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
         avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
@@ -298,13 +305,7 @@ class CellMaker():
             return cell_candidates
 
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates')
-        tmp_path = os.path.join(SCRATCH, 'pipeline_tmp', animal)
-        if os.path.exists(tmp_path):
-            print(f'Removing existing scratch data: {tmp_path}')
-            shutil.rmtree(output_path)
-        os.makedirs(output_path, exist_ok=True)
-
-
+        output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
 
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
@@ -517,7 +518,7 @@ class CellMaker():
         sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
         sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
         _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
-        _std = np.sqrt((np.var(sobel_x)+np.var(sobel_y))/2)
+        _std = np.sqrt((np.var(sobel_x) + np.var(sobel_y))/2)
         sobel_x = (sobel_x - _mean) / _std
         sobel_y = (sobel_y - _mean) / _std
         return sobel_x, sobel_y
@@ -590,7 +591,6 @@ class CellMaker():
         if debug:
             print(f'STARTING FUNCTION score_and_detect_cell ON SECTION {section}')
 
-
         def calculate_scores(features: pd.DataFrame, model):
             all = xgb.DMatrix(features) #RENAME VARIABLE
             scores=np.zeros([features.shape[0], len(model)])
@@ -600,6 +600,7 @@ class CellMaker():
             _mean = np.mean(scores, axis=1)
             _std = np.std(scores, axis=1)
             return _mean, _std
+        
         def get_prediction_and_label(_mean) -> list:
             threshold = 1.5
             predictions = []
@@ -612,6 +613,7 @@ class CellMaker():
                     classification = 0 #UNKNOWN/UNSURE
                 predictions.append(classification)
             return predictions
+        
         drops = ['animal', 'section', 'index', 'row', 'col']        
         cell_features_selected_columns = cell_features.drop(drops,axis=1)
         _mean, _std = calculate_scores(cell_features_selected_columns, model_file)#STEP 4-2-1-2) calculate_scores(features) - CALCULATES SCORES, LABELS, MEAN STD FOR EACH FEATURE
