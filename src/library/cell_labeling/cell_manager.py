@@ -1,3 +1,4 @@
+import shutil
 import os, sys, glob, json, math, time
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
@@ -14,11 +15,9 @@ from compress_pickle import dump, load
 import pandas as pd
 import xgboost as xgb
 
-from library.database_model.annotation_points import AnnotationSession, AnnotationSessionLabel
+from library.database_model.annotation_points import AnnotationSession
 from library.utilities.utilities_process import M_UM_SCALE, random_string
 
-sys.path.append(os.path.abspath('./../../'))
-from library.image_manipulation.filelocation_manager import FileLocationManager
 
 def detect_cells_all_sections(file_keys: tuple):
     #LAUNCHER FOR MULTIPROCESSING OF ALL (4) STEPS - ALL FUNCTIONS MUST BE SERIALIZABLE ('PICKLEABLE')
@@ -61,13 +60,19 @@ class CellMaker():
 
     def check_prerequisites(self, SCRATCH):
         '''
-        CELL LABELING REQUIRES A) AVAILABLE FULL-RESOLUTION IMAGES, B) 2 CHANNELS (NAME, TYPE), C) SCRATCH DIRECTORY, D) OUTPUT DIRECTORY, E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), F) models: models_example.pkl
+        CELL LABELING REQUIRES 
+        A) AVAILABLE FULL-RESOLUTION IMAGES, 
+        B) 2 CHANNELS (NAME, TYPE), 
+        C) SCRATCH DIRECTORY, 
+        D) OUTPUT DIRECTORY, 
+        E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), 
+        F) models: models_example_json.pkl
         '''
-        #CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 22-OCT-2023)
+        # CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 22-OCT-2023)
         # INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
         # print(f'OME-ZARR FOUND: {INPUT}') #SEND TO LOG FILE
 
-        #CHECK FOR FULL-RESOLUTION TIFF IMAGES (IF OME-ZARR NOT PRESENT)
+        # CHECK FOR FULL-RESOLUTION TIFF IMAGES (IF OME-ZARR NOT PRESENT)
         INPUT = self.fileLocationManager.get_full_aligned(channel=self.channel)
         if os.path.exists(INPUT):
             if self.debug:
@@ -84,10 +89,11 @@ class CellMaker():
 
         self.SCRATCH = SCRATCH #TODO SEE IF WE CAN AUTO-DETECT NVME
         if self.debug:
-             print(f'TEMP STORAGE LOCATION: {SCRATCH}')
+            print(f'TEMP STORAGE LOCATION: {SCRATCH}')
         self.fileLogger.logevent(f'TEMP STORAGE LOCATION: {SCRATCH}')
-        
-        #CHECK FOR PRESENCE OF meta-data.json
+
+
+        # CHECK FOR PRESENCE OF meta-data.json
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
 
@@ -96,24 +102,24 @@ class CellMaker():
             if os.path.isfile(meta_store):
                 print(f'FOUND NEUROANATOMICAL TRACING INFO; READING FROM {meta_store}')
 
-                #verify you have 2 channels required
+                # verify you have 2 channels required
                 with open(meta_store) as fp:
                     info = json.load(fp)
                 self.meta_channel_mapping = info['Neuroanatomical_tracing']
                 meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
 
-                #TODO: MOVE ASSERTIONS TO SEPARATE FUNCTION (UNIT TEST) - maybe on send to log w/ error - missing file X
+                # TODO: MOVE ASSERTIONS TO SEPARATE FUNCTION (UNIT TEST) - maybe on send to log w/ error - missing file X
                 # self.dyes = [item['description'] for item in info['Neuroanatomical_tracing']]
                 # assert 'GFP' in self.dyes and 'NeurotraceBlue' in self.dyes
                 # print('TWO CHANNELS READY')
                 # #self.fileLogger.logevent(f"USING 2 CHANNELS FOR AUTOMATIC CELL DETECTION: {self.dyes}")
-        
+
             else:
-                #CREATE META-DATA STORE (PULL FROM DATABASE)
+                # CREATE META-DATA STORE (PULL FROM DATABASE)
                 if self.debug:
                     print(f'NOT FOUND; CREATING META-DATA STORE @ {meta_store}')
-                
-                #steps to create
+
+                # steps to create
                 channels_count = 3
                 self.meta_channel_mapping = {1:{'mode':'dye', 'description':'NeurotraceBlue', 'channel_name': 'C1'}, 3:{'mode':'virus', 'description':'GFP', 'channel_name': 'C3'}}
                 meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
@@ -122,7 +128,7 @@ class CellMaker():
                     json.dump(meta_data_info, fp, indent=4)
 
         finally:
-            #CHECK IF meta_data_info['Neuroanatomical_tracing'] CONTAINS A DYE AND VIRUS CHANNEL
+            # CHECK IF meta_data_info['Neuroanatomical_tracing'] CONTAINS A DYE AND VIRUS CHANNEL
             modes = [channel.get('mode') for channel in meta_data_info['Neuroanatomical_tracing'].values()]
             if 'dye' in modes and 'virus' in modes:
                 msg = "Neuroanatomical_tracing contains both dye and virus channels."
@@ -133,18 +139,19 @@ class CellMaker():
                 self.fileLogger.logevent(msg)
                 raise ValueError(msg)
 
-        #CHECK FOR CELL TRAINING DEFINITIONS FILE (average-cell_image.pkl)
+        # CHECK FOR CELL TRAINING DEFINITIONS FILE (average-cell_image.pkl)
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
         if self.avg_cell_img_file.is_file():
             if self.debug:
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
-        #CHECK FOR MODEL FILE (models_example.pkl)
-        self.model_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example.pkl')
-        if self.model_file.is_file():
+        # CHECK FOR MODEL FILE (models_example_json.pkl)
+        self.model_file = os.path.join(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example_json.pkl')
+        if os.path.exists(self.model_file):
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
+
             self.fileLogger.logevent(f'FOUND MODEL FILE @ {self.model_file}')
         else:
             print(f'MODEL FILE NOT FOUND @ {self.model_file}')
@@ -194,16 +201,22 @@ class CellMaker():
         else:
             INPUT = input_path_dye = self.fileLocationManager.get_ome_zarr(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_ome_zarr(channel=self.virus_channel)
-            #OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
-        
+            # OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
+
         file_keys = []
-        for section in range(section_count):
-        #for section in range(100, 110): #21-JUN-2024 DEBUG
-            if section_count > 1000:
-                str_section_number = str(section).zfill(4)
-            else:
-                str_section_number = str(section).zfill(3) 
-            file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
+        if self.debug:
+            files = sorted(os.listdir(INPUT))
+            for file in files:
+                str_section_number = str(file).replace('.tif', '') 
+                section = int(str_section_number)
+                file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
+        else:
+            for section in range(section_count):
+                if section_count > 1000:
+                    str_section_number = str(section).zfill(4)
+                else:
+                    str_section_number = str(section).zfill(3) 
+                file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
 
         if self.debug:
             workers=1
@@ -212,7 +225,6 @@ class CellMaker():
             workers = math.floor(min([self.get_nworkers(), 10])*.5) # MAX 50% OF PREV. CALCS [DASK IS RAM INTENSIVE]
             print(f'RUNNING IN PARALLEL WITH {workers} WORKERS; {len(file_keys)} SECTIONS TO PROCESS, out: {self.SCRATCH}')
         self.run_commands_concurrently(detect_cells_all_sections, file_keys, workers)
-
 
     def identify_cell_candidates(self, file_keys: tuple) -> int:
         '''2. IDENTIFY CELL CANDIDATES - PREV: find_examples()
@@ -237,7 +249,11 @@ class CellMaker():
         if debug:
             print(f'STARTING identify_cell_candidates ON SECTION: {str_section_number}')
         def load_image(file: str):
-            return imageio.imread(file)
+            if os.path.exists(file):
+                return imageio.imread(file)
+            else:
+                print(f'ERROR: {file} NOT FOUND')
+                sys.exit(1)
         def subtract_blurred_image(image):
             '''PART OF STEP 2. IDENTIFY CELL CANDIDATES: average the image by subtracting gaussian blurred mean'''
             image = np.float32(image)
@@ -280,12 +296,18 @@ class CellMaker():
                         'mask': segment_mask.T}
                 cell_candidates.append(candidate)
             return cell_candidates
-    
+
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates')
-        output_path.mkdir(parents=True, exist_ok=True)
+        tmp_path = os.path.join(SCRATCH, 'pipeline_tmp', animal)
+        if os.path.exists(tmp_path):
+            print(f'Removing existing scratch data: {tmp_path}')
+            shutil.rmtree(output_path)
+        os.makedirs(output_path, exist_ok=True)
+
+
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
 
-        #TODO: CLEAN UP - maybe extend dask to more dimensions?
+        # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number IS ALREADY STRING FOR LEGACY PROCESSING 'tif' (zfill)
             input_file_virus = Path(input_path_virus, str_section_number + '.tif')
             input_file_dye = Path(input_path_dye, str_section_number + '.tif')
@@ -311,39 +333,39 @@ class CellMaker():
             input_file_dye = []
             for img in dask_data[0][0][0]:
                 input_file_dye.append(img)
-            
-            #TODO: DIFFERENT PROCESSING FOR OME-ZARR
-            #see del_img_extract2.py (this folder) for more info
-        
+
+            # TODO: DIFFERENT PROCESSING FOR OME-ZARR
+            # see del_img_extract2.py (this folder) for more info
+
         # Create delayed tasks for loading the images (SEPARATE TASK LIST PER CHANNEL)
         delayed_tasks_virus = [delayed(load_image)(path) for path in [input_file_virus]]
         delayed_tasks_dye = [delayed(load_image)(path) for path in [input_file_dye]]
-        
-        #GET SHAPE WITHOUT COMPUTING
+
+        # GET SHAPE WITHOUT COMPUTING
         org_img_shape = dask.compute(delayed_tasks_virus[0].shape) 
 
-        #SHAPE WILL BE SAME FOR BOTH CHANNELS (stores as y-axis then x-axis)
+        # SHAPE WILL BE SAME FOR BOTH CHANNELS (stores as y-axis then x-axis)
         x_dim = org_img_shape[0][1]
         y_dim = org_img_shape[0][0]
-        
+
         # Create a Dask array from the delayed tasks (NOTE: DELAYED)
         image_stack_virus = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_virus]
         image_stack_dye = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_dye]
         data_virus = dask.compute(image_stack_virus[0])[0] #FULL IMAGE
         data_dye = dask.compute(image_stack_dye[0])[0] #FULL IMAGE
 
-        #SWAP X AND Y AXES (READ IN Y-AXIS, THEN X-AXIS BUT WE WANT X,Y)
+        # SWAP X AND Y AXES (READ IN Y-AXIS, THEN X-AXIS BUT WE WANT X,Y)
         data_virus = np.swapaxes(data_virus, 1, 0)
         data_dye = np.swapaxes(data_dye, 1, 0)
 
-        #FINAL VERSION BELOW:
+        # FINAL VERSION BELOW:
         total_virtual_tile_rows = 5
         total_virtual_tile_columns = 2
         x_window = int(math.ceil(x_dim / total_virtual_tile_rows))
         y_window = int(math.ceil(y_dim / total_virtual_tile_columns))
 
         if debug:
-            print(f'PROCESSING identify_cell_candidates: DASK ARRAY CREATED WITH FOLLOWING PARAMETERS: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
+            print(f'DASK ARRAY CREATED WITH FOLLOWING PARAMETERS: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
         cell_candidates=[]
         for row in range(total_virtual_tile_rows):
@@ -352,10 +374,10 @@ class CellMaker():
                 x_end = x_window*(row+1)
                 y_start = col*y_window
                 y_end = y_window*(col+1)
-                
+
                 image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS NUMPY ARRAY
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS NUMPY ARRAY
-                
+
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
                 difference_ch3 = subtract_blurred_image(image_roi_virus) #CALCULATE IMG DIFFERENCE FOR VIRUS CHANNEL (e.g. FLUORESCENCE)
 
@@ -369,7 +391,7 @@ class CellMaker():
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
                     difference_ch1 = subtract_blurred_image(image_roi_dye) #CALCULATE IMG DIFFERENCE FOR DYE CHANNEL (e.g. NEUROTRACE)
                     cell_candidate = filter_cell_candidates(animal, section, connected_segments, max_segment_size, cell_radius, x_window, y_window, absolute_coordinates, difference_ch1, difference_ch3)
-                    #print(f'ADDING CELL CANDIDATE: {cell_candidate}')
+                    # print(f'ADDING CELL CANDIDATE: {cell_candidate}')
                     cell_candidates.extend(cell_candidate) #MUST USE EXTEND!
                 else:
                     if debug:
@@ -386,7 +408,6 @@ class CellMaker():
 
         return cell_candidates
 
-
     def calculate_features(self, file_keys: tuple, cell_candidate_data) -> pd.DataFrame:
         '''PART OF STEP 3. CALCULATE CELL FEATURES;
 
@@ -398,8 +419,23 @@ class CellMaker():
             C) features_using_center_connected_components(example)
             D) SAVE FEATURES (CSV FILE)
         '''
-        
-        animal, section, str_section_number, segmentation_threshold, cell_radius, max_segment_size, SCRATCH, OUTPUT, avg_cell_img, model_filename, input_format, input_path_dye, input_path_virus, debug = file_keys
+
+        (
+            animal,
+            section,
+            str_section_number,
+            segmentation_threshold,
+            cell_radius,
+            max_segment_size,
+            SCRATCH,
+            OUTPUT,
+            avg_cell_img,
+            model_filename,
+            input_format,
+            input_path_dye,
+            input_path_virus,
+            debug,
+        ) = file_keys
         if debug:
             print(f'STARTING FUNCTION: calculate_features WITH {len(cell_candidate_data)} CELL CANDIDATES')
 
@@ -407,17 +443,17 @@ class CellMaker():
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'cell_features_{str_section_number}.csv')
 
-        #STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **NOW PASSED AS PARAMETER**
+        # STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **NOW PASSED AS PARAMETER**
         output_spreadsheet = []
         for idx, cell in enumerate(cell_candidate_data):
-            #STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
+            # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
             ch1_corr, ch1_energy = self.calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
             ch3_corr, ch3_energy = self.calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
 
-            #STEP 3-D) features_using_center_connected_components
+            # STEP 3-D) features_using_center_connected_components
             ch1_contrast, ch3_constrast, moments_data = self.features_using_center_connected_components(cell)
 
-            #BUILD FEATURES DICTIONARY
+            # BUILD FEATURES DICTIONARY
             spreadsheet_row = {'animal': animal, 'section': section, 'index': idx, 'row': cell["absolute_coordinates_YX"][0], 'col': cell["absolute_coordinates_YX"][1], 'area': cell['area'], 
                                 'height': cell['cell_shape_XY'][1], 'width': cell['cell_shape_XY'][0],  
                                 'corr_CH1': ch1_corr, 'energy_CH1': ch1_energy, 'corr_CH3': ch3_corr, 'energy_CH3': ch3_energy}
@@ -436,29 +472,27 @@ class CellMaker():
             print('COMPLETED calculate_features')
 
         return df_features
-        
 
     def calculate_correlation_and_energy(self, avg_cell_img, cell_candidate_img):  
         '''PART OF STEP 3. CALCULATE CELL FEATURES; CALCULATE CORRELATION [BETWEEN cell_candidate_img AND avg_cell_img] and AND ENERGY FOR CELL CANIDIDATE
             NOTE: avg_cell_img AND cell_candidate_img CONTAIN RESPECTIVE CHANNELS PRIOR TO PASSING IN ARGUMENTS
         '''
-        
-        #ENSURE IMAGE ARRAYS TO SAME SIZE
+
+        # ENSURE IMAGE ARRAYS TO SAME SIZE
         cell_candidate_img, avg_cell_img = self.equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
 
-        #COMPUTE NORMALIZED SOBEL EDGE MAGNITUDES USING GRADIENTS OF CANDIDATE IMAGE vs. GRADIENTS OF THE EXAMPLE IMAGE
+        # COMPUTE NORMALIZED SOBEL EDGE MAGNITUDES USING GRADIENTS OF CANDIDATE IMAGE vs. GRADIENTS OF THE EXAMPLE IMAGE
         avg_cell_img_x, avg_cell_img_y = self.sobel(avg_cell_img)
         cell_candidate_img_x, cell_candidate_img_y = self.sobel(cell_candidate_img)
-        
-        #corr = the mean correlation between the dot products at each pixel location
+
+        # corr = the mean correlation between the dot products at each pixel location
         dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
         corr = np.mean(dot_prod.flatten())      
-        
-        #energy: the mean of the norm of the image gradients at each pixel location
+
+        # energy: the mean of the norm of the image gradients at each pixel location
         mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
         energy = np.mean((mag * avg_cell_img).flatten())  
         return corr, energy
-
 
     def equalize_array_size_by_trimming(self, array1, array2):
         '''PART OF STEP 3. CALCULATE CELL FEATURES; array1 and array 2 the same size'''
@@ -467,7 +501,6 @@ class CellMaker():
         array1 = self.trim_array_to_size(array1, size0, size1)
         array2 = self.trim_array_to_size(array2, size0, size1)
         return array1, array2    
-
 
     def trim_array_to_size(self, array, size0, size2):
         '''PART OF STEP 3. CALCULATE CELL FEATURES'''
@@ -479,7 +512,6 @@ class CellMaker():
             array = array[:, size_difference:size_difference+size2]
         return array
 
-
     def sobel(self, img):
         '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
         sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
@@ -490,7 +522,6 @@ class CellMaker():
         sobel_y = (sobel_y - _mean) / _std
         return sobel_x, sobel_y
 
-
     def features_using_center_connected_components(self, cell_candidate_data):   
         '''PART OF STEP 3. CALCULATE CELL FEATURES'''
         def mask_mean(mask,image):
@@ -500,7 +531,7 @@ class CellMaker():
 
         def append_string_to_every_key(dictionary, post_fix): 
             return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
-        
+
         def calc_moments_of_mask(mask):   
             '''
             calculate moments (how many) and Hu Moments (7)
@@ -526,24 +557,39 @@ class CellMaker():
             huMoments = cv2.HuMoments(moments)
             moments = append_string_to_every_key(moments, f'_mask')
             return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
-        
+
         mask = cell_candidate_data['mask']  
         moments_data = calc_moments_of_mask(mask)
 
-        #CALCULATE CONSTRASTS RELATIVE TO MASK
+        # CALCULATE CONSTRASTS RELATIVE TO MASK
         ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
         ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
 
         return ch1_contrast, ch3_constrast, moments_data
 
-
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pd.DataFrame):
         ''' PART OF STEP 4. DETECT CELLS; SCORE CELLS BASED ON FEATURES (PRIOR TRAINED MODELS (30) USED FOR CALCULATION)'''
-        
-        animal, section, str_section_number, segmentation_threshold, cell_radius, max_segment_size, SCRATCH, OUTPUT, avg_cell_img, model_filename, input_format, input_path_dye, input_path_virus, debug = file_keys
-        model_file =  load(model_filename)
+
+        (
+            animal,
+            section,
+            str_section_number,
+            segmentation_threshold,
+            cell_radius,
+            max_segment_size,
+            SCRATCH,
+            OUTPUT,
+            avg_cell_img,
+            model_filename,
+            input_format,
+            input_path_dye,
+            input_path_virus,
+            debug,
+        ) = file_keys
+        model_file = load(model_filename)
         if debug:
             print(f'STARTING FUNCTION score_and_detect_cell ON SECTION {section}')
+
 
         def calculate_scores(features: pd.DataFrame, model):
             all = xgb.DMatrix(features) #RENAME VARIABLE
@@ -570,19 +616,18 @@ class CellMaker():
         cell_features_selected_columns = cell_features.drop(drops,axis=1)
         _mean, _std = calculate_scores(cell_features_selected_columns, model_file)#STEP 4-2-1-2) calculate_scores(features) - CALCULATES SCORES, LABELS, MEAN STD FOR EACH FEATURE
 
-        #STEP 4-2-1-3) PREDICTIVE CELL LABELING BASED ON MEAN
+        # STEP 4-2-1-3) PREDICTIVE CELL LABELING BASED ON MEAN
         cell_features['mean_score'] = _mean
         cell_features['std_score'] = _std
         cell_features['predictions'] = np.array(get_prediction_and_label(_mean)) #PUTATIVE ID: POSITIVE (2), NEGATIVE (-2), UNKNOWN/UNSURE (0)
 
-        #STEP 4-2-2) STORES DATAFRAME AS CSV FILE
+        # STEP 4-2-2) STORES DATAFRAME AS CSV FILE
         if debug:
             print(f'CELL LABELS OUTPUT DIR: {OUTPUT}')
         Path(OUTPUT).mkdir(parents=True, exist_ok=True)
         cell_features.to_csv(Path(OUTPUT, f'detections_{str_section_number}.csv'), index=False)
         if debug:
             print('COMPLETED detect_cell')
-    
 
     def capture_total_sections(self, input_format: str, INPUT):
         '''PART OF STEP 1. USE DASK TO 'TILE' IMAGES
@@ -605,7 +650,7 @@ class CellMaker():
             total_sections = dask_data[0].shape[2]
             del dask_data
         return total_sections
-    
+
     def parse_cell_labels(self):
         """
         Note, the point information from the CSV must be converted to 
@@ -660,7 +705,7 @@ class CellMaker():
                     x = float(row['col'])
                     y = float(row['row'])
 
-                    if prediction > 0 and int(section) == 182:
+                    if prediction > 0:
                         if self.debug:
                             print(f'{prediction=} x={int(x)} y={int(y)} section={int(section)}')
                         dataframe_data.append([x, y, int(section - 0.5)])
@@ -711,7 +756,6 @@ class CellMaker():
             if annotation_session is not None:
                 self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
 
-
             try:
                 id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
             except Exception as e:
@@ -721,8 +765,6 @@ class CellMaker():
                 print(f'Inserted annotation with labels with id: {id}')
             else:
                 print('Error inserting annotation with labels')
-
-
 
     @staticmethod
     def parse_csv(file_path):
