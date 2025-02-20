@@ -684,6 +684,17 @@ class CellMaker():
         points = []
         childJsons = []
         parent_id = f"{random_string()}"
+
+        #TODO: RESOLUTION STORED IN meta-data.json
+        # meta_data_file = 'meta-data.json'
+        # meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
+        # if os.path.exists(meta_store):
+        #     with open(meta_store, 'r') as fp:
+        #         meta_data_info = json.load(fp)
+        #     xy_resolution = meta_data_info['xy_resolution_unit']
+        # else:
+        #     xy_resolution = self.sqlController.scan_run.resolution
+
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         found = 0
