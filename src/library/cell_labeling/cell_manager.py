@@ -1,3 +1,6 @@
+import gzip
+import shutil
+import struct
 import os, sys, glob, json, math
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
@@ -54,6 +57,7 @@ class CellMaker():
     def __init__(self):
         """Set up the class with the name of the file and the path to it's location."""
         self.channel = 1
+        self.section_count = 0
 
     def check_prerequisites(self, SCRATCH):
         '''
@@ -208,15 +212,15 @@ class CellMaker():
         if self.input_format == 'tif':
             INPUT = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_channel)
-            section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL TO GET TOTAL SECTION COUNT
+            self.section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL TO GET TOTAL SECTION COUNT
         else:
             INPUT = input_path_dye = self.fileLocationManager.get_ome_zarr(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_ome_zarr(channel=self.virus_channel)
             # OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
 
         file_keys = []
-        for section in range(section_count):
-            if section_count > 1000:
+        for section in range(self.section_count):
+            if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
                 str_section_number = str(section).zfill(3) 
@@ -763,6 +767,49 @@ class CellMaker():
         df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
         print(f'Found {len(df)} total neurons and writing to {dfpath}')
         df.to_csv(dfpath, index=False)
+        spatial_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions', 'spatial0')
+        info_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions')
+        if os.path.exists(spatial_dir):
+            print(f'Removing existing directory {spatial_dir}')
+            shutil.rmtree(spatial_dir)
+        os.makedirs(spatial_dir, exist_ok=True)
+        point_filename = os.path.join(spatial_dir, '0_0_0.gz')
+        info_filename = os.path.join(info_dir, 'info')
+        #dataframe_data = [(x*xy_resolution,y*xy_resolution,z*z_resolution) for x,y,z in dataframe_data]
+        with open(point_filename, 'wb') as outfile:
+            buf = struct.pack('<Q', len(dataframe_data))
+            pt_buf = b''.join(struct.pack('<3f', x, y, z) for (x, y, z) in dataframe_data)
+            buf += pt_buf
+            id_buf = struct.pack('<%sQ' % len(dataframe_data), *range(len(dataframe_data)))
+            buf += id_buf
+            bufout = gzip.compress(buf)
+            outfile.write(bufout)
+            print(f'Wrote {len(dataframe_data)} neurons to {point_filename}')
+            self.section_count = 348
+            chunk_size = [self.sqlController.scan_run.width, self.sqlController.scan_run.height, self.section_count]
+            info = {}
+            spatial = {}
+            spatial['chunk_size'] = chunk_size
+            spatial['grid_shape'] = [1, 1, 1]
+            spatial['key'] = 'spatial0'
+            spatial['limit'] = 10000
+            info['@type'] = "neuroglancer_annotations_v1"
+            info['annotation_type'] = "POINT"
+            info['by_id'] = {'key':'spatial0'}
+            info['dimensions'] = {'x':[str(xy_resolution),'um'],
+                                'y':[str(xy_resolution),'um'],
+                                'z':[str(z_resolution),'um']}
+            info['lower_bound'] = [0,0,0]
+            info['upper_bound'] = chunk_size
+            info['properties'] = []
+            info['relationships'] = []
+            info['spatial'] = [spatial]    
+
+
+            with open(info_filename, 'w') as infofile:
+                json.dump(info, infofile, indent=2)
+                print(f'Wrote {info} to {info_filename}')
+
 
         if not self.debug:
             label_objects = self.sqlController.get_labels(labels)
