@@ -215,19 +215,12 @@ class CellMaker():
             # OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
 
         file_keys = []
-        if self.debug:
-            files = sorted(os.listdir(INPUT))
-            for file in files:
-                str_section_number = str(file).replace('.tif', '') 
-                section = int(str_section_number)
-                file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
-        else:
-            for section in range(section_count):
-                if section_count > 1000:
-                    str_section_number = str(section).zfill(4)
-                else:
-                    str_section_number = str(section).zfill(3) 
-                file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
+        for section in range(section_count):
+            if section_count > 1000:
+                str_section_number = str(section).zfill(4)
+            else:
+                str_section_number = str(section).zfill(3) 
+            file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
 
         if self.debug:
             workers=1
@@ -603,7 +596,10 @@ class CellMaker():
             scores=np.zeros([features.shape[0], len(model)])
             for i in range(len(model)):
                 bst = model[i]
-                scores[:,i] = bst.predict(all, iteration_range=[1,bst.best_ntree_limit], output_margin=True)
+                attributes = bst.attributes()
+                best_ntree_limit = int(attributes["best_ntree_limit"])
+                scores[:,i] = bst.predict(all, iteration_range=[1, best_ntree_limit], output_margin=True)
+                
             _mean = np.mean(scores, axis=1)
             _std = np.std(scores, axis=1)
             return _mean, _std
