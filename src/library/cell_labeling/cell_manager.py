@@ -764,8 +764,21 @@ class CellMaker():
         cloud_points["props"] = default_props
         cloud_points["childJsons"] = childJsons
 
+        ###############################################
+        # 'WORKAROUND' FOR DB TIMEOUT [SAVE TO FILE AND THEN SQL INSERT FROM FILE]
+        # LONG-TERM STORE IN www FOLDER FOR DIRECT IMPORT
+        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+        with open(annotations_file, 'w') as fh:
+            json.dump(cloud_points, fh)
+        print(f'Annotations saved to {annotations_file}')
+        ###############################################
+
         df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
         print(f'Found {len(df)} total neurons and writing to {dfpath}')
+
+        
         df.to_csv(dfpath, index=False)
         spatial_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions', 'spatial0')
         info_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions')
@@ -810,7 +823,7 @@ class CellMaker():
                 json.dump(info, infofile, indent=2)
                 print(f'Wrote {info} to {info_filename}')
 
-
+        ###############################################
         if not self.debug:
             label_objects = self.sqlController.get_labels(labels)
             label_ids = [label.id for label in label_objects]
