@@ -20,6 +20,9 @@ class CellDetector(CellDetectorBase):
     def get_detection_results(self):
         features = self.get_combined_features_for_detection()
         scores, labels, _mean, _std = self.detector.calculate_scores(features)
+        import sys
+        print('exitng')
+        sys.exit()
         print(f'{scores=} {labels=} {_mean=} {_std=}')
         predictions = self.detector.get_prediction(_mean, _std)
         detection_df = self.get_combined_features()
@@ -41,6 +44,8 @@ class CellDetector(CellDetectorBase):
         return detection_df
 
     def calculate_and_save_detection_results(self):
+        print('calculating detection results line 43')
+
         detection_df = self.get_detection_results()
         detection_df.to_csv(self.DETECTION_RESULT_DIR,index=False)
 
@@ -133,6 +138,7 @@ class MultiThresholdDetector(CellDetector,AnnotationProximityTool):
         return final_cell_detection
 
     def calculate_and_save_detection_results(self):
+        print('calculating detection results line 136')
         detections,scores,non_detections,non_detection_scores = self.get_detections_and_scores_for_all_threshold()
         self.set_annotations_to_compare(detections)
         self.find_equivalent_points()

@@ -21,12 +21,10 @@ class Detector():
         labels=all.get_label()
         scores=np.zeros([features.shape[0],len(self.model)])
         for i in range(len(self.model)):
+            print(f'predicting for model {i}')
             bst=self.model[i]
-            try:
-                scores[:,i] = bst.predict(all, iteration_range=[1,bst.best_ntree_limit], output_margin=True)
-            except Exception as e:
-                print(f'Exception with scores:')
-                continue
+            best_ntree_limit = 676
+            scores[:,i] = bst.predict(all, iteration_range=[1, best_ntree_limit], output_margin=True)
         mean=np.mean(scores,axis=1)
         std=np.std(scores,axis=1)
         return scores,labels,mean,std

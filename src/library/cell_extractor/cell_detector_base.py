@@ -294,12 +294,14 @@ class CellDetectorBase(Brain):
     def get_combined_features(self):
         if not os.path.exists(self.ALL_FEATURES):
             self.create_combined_features()
+        print(f'loading combined features from {self.ALL_FEATURES}')
         return pd.read_csv(self.ALL_FEATURES,index_col=False)
 
     def get_combined_features_for_detection(self):
         all_features = self.get_combined_features()
         drops = ['animal', 'section', 'index', 'row', 'col'] 
         all_features=all_features.drop(drops,axis=1)
+        print('all_features shape=',all_features.shape)
         print(all_features.head())
         return all_features
     
@@ -382,7 +384,7 @@ class CellDetectorBase(Brain):
         ...
 
     def save_models(self,models):
-        print(f'saving models to self.MODEL_PATH')
+        print(f'saving models to {self.MODEL_PATH}')
         try:
             with open(self.MODEL_PATH,'wb') as pkl_file:
                 pkl.dump(models,pkl_file)
