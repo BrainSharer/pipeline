@@ -19,3 +19,11 @@ my_features=my_features.drop(drops,axis=1)
 trainer = CellDetectorTrainer('DK184', round=1)
 new_models = trainer.train_classifier(my_features, 676, 3)
 trainer.save_models(new_models)
+
+"""
+trainer = CellDetectorTrainer('DK184', round=4) # Use Detector 4 as the basis
+new_models = trainer.train_classifier(my_features, 676, 3, models = trainer.load_models()) # pass Detector 4 for training
+trainer = CellDetectorTrainer('DK184', round=7) # Be careful when saving the model. The model path is only relevant to 'round'. 
+You need to use a new round to save the model, otherwise the previous models would be overwritten.
+trainer.save_models(new_models)
+"""
