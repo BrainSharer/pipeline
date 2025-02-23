@@ -10,11 +10,8 @@ import os
 import sys
 import numpy as np
 import xgboost as xgb
-import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.metrics import roc_curve
 import pickle as pk
-from collections import Counter
 print(xgb.__version__)
 from glob import glob
 import pandas as pd
@@ -116,14 +113,14 @@ class DK55DataLoader(CellAnnotationUtilities):
         df_in_section = df[include]
         return df_in_section
 
-class CellDetectorTrainer(Detector,CellDetectorBase):
-    def __init__(self,animal,round =2,segmentation_threshold=2000):
-        CellDetectorBase.__init__(self,animal,round = round,segmentation_threshold=segmentation_threshold)
-        self.last_round = CellDetectorBase(animal,round = round-1,segmentation_threshold=segmentation_threshold)
+class CellDetectorTrainer(Detector, CellDetectorBase):
+
+    def __init__(self, animal, round=2, segmentation_threshold=2000):
+        CellDetectorBase.__init__(self, animal, round=round, segmentation_threshold=segmentation_threshold)
+        self.last_round = CellDetectorBase(animal, round=round - 1, segmentation_threshold=segmentation_threshold)
         self.init_parameter()
         self.predictor = GreedyPredictor()
 
-    
     def create_positive_labels(self):
         combined_features = self.get_combined_features()
         test_counts,train_sections = pk.load(open(self.last_round.QUALIFICATIONS,'rb'))
@@ -153,12 +150,10 @@ class CellDetectorTrainer(Detector,CellDetectorBase):
         include = [labels[i]==1 or i in negative or all_segment[i,2] in manual_sections for i in range(len(combined_features))]
         pk.dump((labels,include),open(self.POSITIVE_LABELS,'wb'))    
 
-
     def get_positive_labels(self):
         if not os.path.exists(self.POSITIVE_LABELS):
             self.create_positive_labels()
         return pk.load(open(self.POSITIVE_LABELS,'rb'))
-        
 
     def load_new_features_with_coordinate(self):
         labels,include = self.get_positive_labels()
@@ -166,13 +161,11 @@ class CellDetectorTrainer(Detector,CellDetectorBase):
         combined_features['label'] = labels
         return combined_features[include]
 
-
     def load_new_features(self):
         df_in_section = self.load_new_features_with_coordinate()
         drops = ['animal', 'section', 'index', 'row', 'col'] 
         df_in_section=df_in_section.drop(drops,axis=1)
         return df_in_section
-
 
     def gen_scale(self,n,reverse=False):
         s=np.arange(0,1,1/n)
@@ -227,16 +220,15 @@ class CellDetectorTrainer(Detector,CellDetectorBase):
                     xgb_model=models[i],
                 )
             bst_list.append(bst)
-            y_pred = bst.predict(
-                test, iteration_range=[1, bst.best_ntree_limit], output_margin=True
-            )
+            best_ntree_limit = 676 # I had to hard code this
+            y_pred = bst.predict(test, iteration_range=[1, best_ntree_limit], output_margin=True)
             y_test = test.get_label()
             pos_preds = y_pred[y_test == 1]
             neg_preds = y_pred[y_test == 0]
             pos_preds = np.sort(pos_preds)
             neg_preds = np.sort(neg_preds)
-            plt.plot(pos_preds, self.gen_scale(pos_preds.shape[0]))
-            plt.plot(neg_preds, self.gen_scale(neg_preds.shape[0], reverse=True))
+            #plt.plot(pos_preds, self.gen_scale(pos_preds.shape[0]))
+            #plt.plot(neg_preds, self.gen_scale(neg_preds.shape[0], reverse=True))
         return bst_list
 
     def test_xgboost(self,df,depths = [1,3,5],num_round = 1000,**kwrds):
@@ -248,16 +240,16 @@ class CellDetectorTrainer(Detector,CellDetectorBase):
         param['max_depth']= depth
         train,test,_=self.get_train_and_test(features)
         evallist = [(train, 'train'), (test, 'eval')]
-        _, axes = plt.subplots(1,2,figsize=(12,5))
+        #_, axes = plt.subplots(1,2,figsize=(12,5))
         i=0
         for _eval in ['error','logloss']:
             Logger=logger()
             logall=Logger.get_logger()  
             param['eval_metric'] = _eval 
             bst = xgb.train(param, train, num_round, evallist, verbose_eval=False, callbacks=[logall],**kwrds)
-            _=Logger.parse_log(ax=axes[i])
+            #_=Logger.parse_log(ax=axes[i])
             i+=1
-        plt.show()
+        #plt.show()
         print(depth)
         return bst,Logger
 
