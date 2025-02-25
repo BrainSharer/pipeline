@@ -119,10 +119,9 @@ if __name__ == "__main__":
         "affine": pipeline.affine_align,
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
-        "cell_labels": pipeline.cell_labels,
-        "extract_cell_labels": pipeline.extract_cell_labels,
         "omezarr": pipeline.omezarr,
         "shell": pipeline.shell,
+        "align_masks": pipeline.align_masks,
         "status": pipeline.check_status,
     }
 

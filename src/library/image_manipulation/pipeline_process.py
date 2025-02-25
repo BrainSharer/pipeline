@@ -287,6 +287,11 @@ class Pipeline(
         self.create_shell()
         print(f'Finished {self.TASK_SHELL}.')
 
+    def align_masks(self):
+        print("Aligning masks")
+        self.create_rotated_aligned_masks()
+        print(f'Finished aligning masks.')
+
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 

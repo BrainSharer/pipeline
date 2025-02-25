@@ -14,9 +14,9 @@ from skimage.filters import gaussian
 import cv2
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.filelocation_manager import CLEANED_DIR
+from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR, REALIGNED_DIR
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_mask import clean_and_rotate_image, get_image_box, mask_with_contours, place_image, rotate_image
+from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, get_image_box, mask_with_contours, place_image, rotate_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 
 
@@ -357,9 +357,14 @@ class ImageCleaner:
             update_dict = {'bgcolor': image_manager.get_bgcolor() }
             self.sqlController.update_scan_run(self.sqlController.scan_run.id, update_dict)
 
+    def create_rotated_aligned_masks(self):
 
-    def create_shell_from_mask(self):
-        CLEAN = True
+        def cleanup(dirs):
+            for output_dir in output_dirs:
+                test_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=output_dir)
+                if os.path.exists(test_dir):
+                    print(f'Removing {test_dir}')
+                    shutil.rmtree(test_dir)
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1) # usually channel=1, except for step 6
         maskfiles = sorted(os.listdir(self.maskpath))
         rotation = self.sqlController.scan_run.rotation
@@ -370,10 +375,11 @@ class ImageCleaner:
         max_height = int(max_height / SCALING_FACTOR)
         bgcolor = 0
 
+        # Clean up
+        output_dirs = ['mask_placed', 'mask_placed_aligned_0', 'mask_placed_aligned']
+        cleanup(output_dirs)
+
         self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='placed_mask')
-        if os.path.exists(self.output) and CLEAN:
-            print(f'Removing {self.output}')
-            shutil.rmtree(self.output)
         os.makedirs(self.output, exist_ok=True)
 
         for maskfile in maskfiles:
@@ -393,21 +399,38 @@ class ImageCleaner:
             if flip == "flop":
                 cleaned = np.flip(cleaned, axis=1)
             del mask
-            zmidr = max_height // 2
-            zmidc = max_width // 2
-            startr = max(0, zmidr - (cleaned.shape[0] // 2))
-            endr = min(max_height, startr + cleaned.shape[0])
-            startc = max(0, zmidc - (cleaned.shape[1] // 2))
-            endc = min(max_width, startc + cleaned.shape[1])
 
-            placed_img = np.full((max_height, max_width), bgcolor, dtype=cleaned.dtype)
-            try:
-                placed_img[startr:endr, startc:endc] = cleaned[:endr-startr, :endc-startc]
-            except Exception as e:
-                print(f"Error placing {maskfile}: {e}")
+            placed_img = place_image(cleaned, maskpath, max_width, max_height, bgcolor)
+            del cleaned
 
             message = f'Error in saving {outfile} with shape {placed_img.shape} img type {placed_img.dtype}'
             write_image(outfile, placed_img, message=message)
+        ##### now align images iteration 0
+        self.input = self.output
+        self.files = os.listdir(self.input)
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='mask_placed_aligned_0')
+        os.makedirs(self.output, exist_ok=True)
+        self.iteration = 0
+        self.start_image_alignment()
+        #compare_directories(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=ALIGNED_DIR), self.output)
+        ##### now align images iteration 1
+        self.input = self.output
+        self.files = os.listdir(self.input)
+        self.output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='mask_placed_aligned')
+        os.makedirs(self.output, exist_ok=True)
+        self.iteration = 1
+        self.start_image_alignment()
+
+        # Test the placed_aligned images
+        #compare_directories(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=REALIGNED_DIR), self.output)
+        # Cleanup
+        output_dirs = ['placed', 'mask_placed_aligned_0']
+        cleanup(output_dirs)
+        
+
+
+    def create_shell_from_mask(self):
+        self.create_rotated_aligned_masks()
         ##### now align images
         self.input = self.output
         self.files = os.listdir(self.input)
