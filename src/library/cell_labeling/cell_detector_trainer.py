@@ -91,7 +91,7 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         train = pd.DataFrame(df.sample(frac=frac))
         test = df.drop(train.index,axis=0)
         #test = test[train.columns]
-        print(f'{train.shape} {test.shape=} {train.index.shape=} {df.shape=}')
+        #print(f'{train.shape=} {test.shape=} {train.index.shape=} {df.shape=}')
         train=self.createDM(train)
         test=self.createDM(test)
         all=self.createDM(df)
