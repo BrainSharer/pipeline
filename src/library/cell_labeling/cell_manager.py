@@ -46,6 +46,8 @@ def detect_cells_all_sections(file_keys: tuple):
         if file_keys[-1]: #DEBUG
             print(f"DEBUG: CREATE CELL FEATURES WITH IDENTIFIED CELL CANDIDATES (auto_cell_labels - STEP 3)")
         cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #STEP 3. CALCULATE CELL FEATURES
+        print(f'type cell features {type(cell_features)}')
+        print(cell_features.head())
         if file_keys[-1]: #DEBUG
             print(f'DEBUG: start_labels - STEP 4 (DETECT CELLS [BASED ON FEATURES])')
             print(f'CELL FEATURES: {len(cell_features)}')
@@ -58,6 +60,7 @@ class CellMaker():
         """Set up the class with the name of the file and the path to it's location."""
         self.channel = 1
         self.section_count = 0
+
 
     def check_prerequisites(self, SCRATCH):
         '''
@@ -153,8 +156,8 @@ class CellMaker():
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
-        # CHECK FOR MODEL FILE (models_example_json.pkl)
-        self.model_file = os.path.join(os.getcwd(), 'src', 'library', 'cell_labeling', 'models_example_json.pkl')
+        # CHECK FOR MODEL FILE (models_example_json.pkl) in the models dir
+        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_example_json.pkl')
         if os.path.exists(self.model_file):
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
@@ -204,7 +207,12 @@ class CellMaker():
                 raise ValueError(msg)
 
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
-        avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
+        if os.path.exists(self.avg_cell_img_file):
+            avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
+        else:
+            print(f'Could not find {self.avg_cell_img_file}')
+            sys.exit()
+
         self.max_segment_size = 100000
         self.segmentation_threshold = 2000 
         self.cell_radius = 40
@@ -224,7 +232,24 @@ class CellMaker():
                 str_section_number = str(section).zfill(4)
             else:
                 str_section_number = str(section).zfill(3) 
-            file_keys.append([self.animal, section, str_section_number, self.segmentation_threshold, self.cell_radius, self.max_segment_size, self.SCRATCH, self.OUTPUT, avg_cell_img, self.model_file, self.input_format, input_path_dye, input_path_virus, self.debug])
+            file_keys.append(
+                [
+                    self.animal,
+                    section,
+                    str_section_number,
+                    self.segmentation_threshold,
+                    self.cell_radius,
+                    self.max_segment_size,
+                    self.SCRATCH,
+                    self.OUTPUT,
+                    avg_cell_img,
+                    self.model_file,
+                    self.input_format,
+                    input_path_dye,
+                    input_path_virus,
+                    self.debug,
+                ]
+            )
 
         if self.debug:
             workers=1
@@ -601,9 +626,12 @@ class CellMaker():
             for i in range(len(model)):
                 bst = model[i]
                 attributes = bst.attributes()
-                best_ntree_limit = int(attributes["best_ntree_limit"])
+                try:
+                    best_ntree_limit = int(attributes["best_ntree_limit"])
+                except KeyError:
+                    best_ntree_limit = 676
                 scores[:,i] = bst.predict(all, iteration_range=[1, best_ntree_limit], output_margin=True)
-                
+
             _mean = np.mean(scores, axis=1)
             _std = np.std(scores, axis=1)
             return _mean, _std
@@ -703,20 +731,19 @@ class CellMaker():
         z_resolution = self.sqlController.scan_run.zresolution
         found = 0
 
-        csvpath = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
-        if os.path.exists(csvpath):
-            print(f'Parsing cell labels from {csvpath}')
+        if os.path.exists(self.cell_label_path):
+            print(f'Parsing cell labels from {self.cell_label_path}')
         else:
-            print(f'ERROR: {csvpath} NOT FOUND')
+            print(f'ERROR: {self.cell_label_path} NOT FOUND')
             sys.exit(1)
         dataframe_data = []
-        self.files = sorted(glob.glob( os.path.join(csvpath, f'detections_*.csv') ))
-        if len(self.files) == 0:
-            print(f'ERROR: NO CSV FILES FOUND IN {csvpath}')
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
             sys.exit(1)
 
-        for file_path in self.files:
+        for file_path in detection_files:
             rows = self.parse_csv(file_path)
             if rows:
                 for row in rows:
@@ -778,7 +805,6 @@ class CellMaker():
         df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
         print(f'Found {len(df)} total neurons and writing to {dfpath}')
 
-        
         df.to_csv(dfpath, index=False)
         spatial_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions', 'spatial0')
         info_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions')
@@ -788,7 +814,7 @@ class CellMaker():
         os.makedirs(spatial_dir, exist_ok=True)
         point_filename = os.path.join(spatial_dir, '0_0_0.gz')
         info_filename = os.path.join(info_dir, 'info')
-        #dataframe_data = [(x*xy_resolution,y*xy_resolution,z*z_resolution) for x,y,z in dataframe_data]
+        # dataframe_data = [(x*xy_resolution,y*xy_resolution,z*z_resolution) for x,y,z in dataframe_data]
         with open(point_filename, 'wb') as outfile:
             buf = struct.pack('<Q', len(dataframe_data))
             pt_buf = b''.join(struct.pack('<3f', x, y, z) for (x, y, z) in dataframe_data)
@@ -818,7 +844,6 @@ class CellMaker():
             info['relationships'] = []
             info['spatial'] = [spatial]    
 
-
             with open(info_filename, 'w') as infofile:
                 json.dump(info, infofile, indent=2)
                 print(f'Wrote {info} to {info_filename}')
@@ -841,6 +866,9 @@ class CellMaker():
                 print(f'Inserted annotation with labels with id: {id}')
             else:
                 print('Error inserting annotation with labels')
+
+    def create_training():
+        pass
 
     @staticmethod
     def parse_csv(file_path):
