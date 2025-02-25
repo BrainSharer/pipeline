@@ -5,13 +5,15 @@ import os
 import sys
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
-from library.utilities.utilities_process import get_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image
 
 
 class CellPipeline(
@@ -53,6 +55,45 @@ class CellPipeline(
         self.parse_cell_labels()
         print(f'Finished extraction.')
 
+    def check_detection_coordinates(self):
+
+        def check_df(csvfile, df):
+            section = os.path.basename(csvfile).replace('detections_', '').replace('.csv', '')
+            tif = str(section).zfill(3) + '.tif'
+            maskpath = os.path.join(
+                self.fileLocationManager.get_directory(channel=1, downsample=True, inpath='mask_placed_aligned'), tif )
+            if os.path.exists(maskpath):
+                print(f'Found mask {maskpath}')
+                mask = read_image(maskpath)
+            else:
+                print(f'ERROR: Mask not found {maskpath}')
+                sys.exit(1)
+
+            df = df.reset_index()  # make sure indexes pair with number of rows
+
+            for index, df_row in df.iterrows():
+                row = df_row['row']
+                col = df_row['col']
+                row = int(row // SCALING_FACTOR)
+                col = int(col // SCALING_FACTOR)
+                prediction = df_row['predictions']
+                found = mask[row, col] > 0
+                if prediction > 0 and not found:
+                    #print(f'ERROR: Predicted cell {index=} not found at {row=}, {col=} {prediction=}')
+                    df.loc[index, 'predictions'] = -2
+
+            return df
+
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
+            sys.exit(1)
+
+        for csvfile in tqdm(detection_files):
+            df = pd.read_csv(csvfile)
+            df = check_df(csvfile, df)
+            df.to_csv(csvfile, index=False)
+
     def train(self):
         import warnings
         warnings.filterwarnings("ignore")
@@ -63,21 +104,26 @@ class CellPipeline(
             sys.exit(1)
 
         dfs = []
-        for csvfile in detection_files:
+        for csvfile in tqdm(detection_files):
             df = pd.read_csv(csvfile)
+            df = self.check_detection_coordinates(csvfile, df)
+            df.to_csv(csvfile, index=False)
             dfs.append(df)
 
+        detection_features=pd.concat(dfs)
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
-        detection_features=pd.concat(dfs)
+            print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
+            #print(detection_features.head())
+            return
+        
+
 
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
         #mean_score, predictions, std_score are results, not features
 
         drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
         detection_features=detection_features.drop(drops,axis=1)
-        if self.debug:
-            print(detection_features.head())
             
         #trainer = CellDetectorTrainer(self.animal, round=1)
         #new_models = trainer.train_classifier(detection_features, 676, 3)

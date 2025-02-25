@@ -32,7 +32,8 @@ if __name__ == "__main__":
     function_mapping = {
         "detect": pipeline.create_detections,
         "extract": pipeline.extract_predictions,
-        "train": pipeline.train
+        "train": pipeline.train,
+        "check_detection_coordinates": pipeline.check_detection_coordinates,
     }
     
 
