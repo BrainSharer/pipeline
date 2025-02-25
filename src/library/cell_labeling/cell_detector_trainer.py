@@ -86,7 +86,8 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
             s=s[-1::-1]
         return s
 
-    def get_train_and_test(self,df,frac=0.5):
+    def get_train_and_test(self,df,frac=0.8):
+        """I changed the fraction from 0.5 to 0.8 - Ed"""
         train = pd.DataFrame(df.sample(frac=frac))
         test = df.drop(train.index,axis=0)
         #print(train.shape,test.shape,train.index.shape,df.shape)

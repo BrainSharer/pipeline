@@ -103,11 +103,15 @@ class CellPipeline(
             sys.exit(1)
 
         dfs = []
-        for csvfile in tqdm(detection_files):
+        for csvfile in tqdm(detection_files, desc="Reading csv files"):
             df = pd.read_csv(csvfile)
             dfs.append(df)
 
         detection_features=pd.concat(dfs)
+        detection_features_path = os.path.join(self.cell_label_path, 'detection_features.csv')
+        detection_features.to_csv(detection_features_path, index=False)
+        return
+
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
