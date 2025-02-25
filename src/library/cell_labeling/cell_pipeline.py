@@ -97,7 +97,7 @@ class CellPipeline(
         import warnings
         warnings.filterwarnings("ignore")
 
-        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_0*.csv') ))
         if len(detection_files) == 0:
             print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
             sys.exit(1)
@@ -109,8 +109,9 @@ class CellPipeline(
 
         detection_features=pd.concat(dfs)
         detection_features_path = os.path.join(self.cell_label_path, 'detection_features.csv')
-        detection_features.to_csv(detection_features_path, index=False)
-        return
+        #detection_features.to_csv(detection_features_path, index=False)
+        print(detection_features.info())
+        
 
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
