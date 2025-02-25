@@ -97,7 +97,7 @@ class CellPipeline(
         import warnings
         warnings.filterwarnings("ignore")
 
-        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_0*.csv') ))
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_00*.csv') ))
         if len(detection_files) == 0:
             print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
             sys.exit(1)
