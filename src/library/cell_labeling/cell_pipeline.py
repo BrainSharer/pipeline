@@ -67,6 +67,8 @@ class CellPipeline(
             df = pd.read_csv(csvfile)
             dfs.append(df)
 
+        if self.debug:
+            print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
         detection_features=pd.concat(dfs)
 
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
