@@ -55,7 +55,7 @@ class CellPipeline(
         self.parse_cell_labels()
         print(f'Finished extraction.')
 
-    def check_detection_coordinates(self):
+    def fix_coordinates(self):
 
         def check_df(csvfile, df):
             section = os.path.basename(csvfile).replace('detections_', '').replace('.csv', '')
@@ -67,8 +67,6 @@ class CellPipeline(
             else:
                 print(f'ERROR: Mask not found {maskpath}')
                 sys.exit(1)
-
-            df = df.reset_index()  # make sure indexes pair with number of rows
 
             for index, df_row in df.iterrows():
                 row = df_row['row']

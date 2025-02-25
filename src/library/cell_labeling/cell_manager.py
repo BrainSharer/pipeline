@@ -70,7 +70,7 @@ class CellMaker():
         C) SCRATCH DIRECTORY, 
         D) OUTPUT DIRECTORY, 
         E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), 
-        F) models: models_example_json.pkl
+        F) models: models_round_4_threshold_2000.pkl
         '''
         # CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 22-OCT-2023)
         # INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
@@ -156,8 +156,8 @@ class CellMaker():
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
-        # CHECK FOR MODEL FILE (models_example_json.pkl) in the models dir
-        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_example_json.pkl')
+        # CHECK FOR MODEL FILE (models_round_4_threshold_2000.pkl) in the models dir
+        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_round_4_threshold_2000.pkl')
         if os.path.exists(self.model_file):
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
