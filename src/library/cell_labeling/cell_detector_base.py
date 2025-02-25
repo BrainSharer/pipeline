@@ -392,6 +392,7 @@ class CellDetectorBase(Brain):
             print(e)
 
     def load_models(self):
+        print(f'loading models from {self.MODEL_PATH}')
         try:
             with open(self.MODEL_PATH,'rb') as pkl_file:
                 models = pkl.load(pkl_file)
