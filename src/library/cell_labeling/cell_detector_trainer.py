@@ -90,8 +90,8 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         """I changed the fraction from 0.5 to 0.8 - Ed"""
         train = pd.DataFrame(df.sample(frac=frac))
         test = df.drop(train.index,axis=0)
-        test = test[train.columns]
-        #print(train.shape,test.shape,train.index.shape,df.shape)
+        #test = test[train.columns]
+        print(f'{train.shape} {test.shape=} {train.index.shape=} {df.shape=}')
         train=self.createDM(train)
         test=self.createDM(test)
         all=self.createDM(df)
