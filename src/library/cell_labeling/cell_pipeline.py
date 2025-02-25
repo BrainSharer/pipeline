@@ -63,7 +63,6 @@ class CellPipeline(
             maskpath = os.path.join(
                 self.fileLocationManager.get_directory(channel=1, downsample=True, inpath='mask_placed_aligned'), tif )
             if os.path.exists(maskpath):
-                print(f'Found mask {maskpath}')
                 mask = read_image(maskpath)
             else:
                 print(f'ERROR: Mask not found {maskpath}')
@@ -106,17 +105,12 @@ class CellPipeline(
         dfs = []
         for csvfile in tqdm(detection_files):
             df = pd.read_csv(csvfile)
-            df = self.check_detection_coordinates(csvfile, df)
-            df.to_csv(csvfile, index=False)
             dfs.append(df)
 
         detection_features=pd.concat(dfs)
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
-            #print(detection_features.head())
-            return
-        
 
 
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
