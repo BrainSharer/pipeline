@@ -137,6 +137,7 @@ class CellDetectorBase(Brain):
             print(e)
 
     def check_tile_information(self):
+        print(f'Checking tile information at {self.TILE_INFO_DIR}')
         if os.path.exists(self.TILE_INFO_DIR):
             tile_information = pd.read_csv(self.TILE_INFO_DIR)
             tile_information.tile_origin = tile_information.tile_origin.apply(eval)
