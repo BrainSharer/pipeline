@@ -21,9 +21,10 @@ class CellPipeline(
     ParallelManager
 ):
     
-    def __init__(self, animal, task, debug=False):
+    def __init__(self, animal, task, round=4, debug=False):
         self.animal = animal
         self.task = task
+        self.round = round
         self.debug = debug
         self.channel = 1
         self.fileLocationManager = FileLocationManager(animal)
@@ -126,10 +127,11 @@ class CellPipeline(
         #new_models = trainer.train_classifier(detection_features, 676, 3)
         #trainer.save_models(new_models)
 
-        round = 4
-        trainer = CellDetectorTrainer('DK184', round=round) # Use Detector 4 as the basis
+        print(f'Starting training on {self.animal} round={self.round} with {len(detection_features)} features')
+        
+        trainer = CellDetectorTrainer(self.animal, round=self.round) # Use Detector 4 as the basis
         new_models = trainer.train_classifier(detection_features, 676, 3, models = trainer.load_models()) # pass Detector 4 for training
-        trainer = CellDetectorTrainer('DK184', round=round+1) # Be careful when saving the model. The model path is only relevant to 'round'. 
+        trainer = CellDetectorTrainer(self.animal, round=self.round + 1) # Be careful when saving the model. The model path is only relevant to 'round'. 
         #You need to use a new round to save the model, otherwise the previous models would be overwritten.
         trainer.save_models(new_models)
         
