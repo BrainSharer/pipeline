@@ -728,6 +728,7 @@ class CellMaker():
         z_resolution = self.sqlController.scan_run.zresolution
         found = 0
 
+        self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
         if os.path.exists(self.cell_label_path):
             print(f'Parsing cell labels from {self.cell_label_path}')
