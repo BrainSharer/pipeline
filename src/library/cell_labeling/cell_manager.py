@@ -46,8 +46,6 @@ def detect_cells_all_sections(file_keys: tuple):
         if file_keys[-1]: #DEBUG
             print(f"DEBUG: CREATE CELL FEATURES WITH IDENTIFIED CELL CANDIDATES (auto_cell_labels - STEP 3)")
         cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #STEP 3. CALCULATE CELL FEATURES
-        print(f'type cell features {type(cell_features)}')
-        print(cell_features.head())
         if file_keys[-1]: #DEBUG
             print(f'DEBUG: start_labels - STEP 4 (DETECT CELLS [BASED ON FEATURES])')
             print(f'CELL FEATURES: {len(cell_features)}')
@@ -58,7 +56,6 @@ class CellMaker():
 
     def __init__(self):
         """Set up the class with the name of the file and the path to it's location."""
-        self.channel = 1
         self.section_count = 0
 
 
