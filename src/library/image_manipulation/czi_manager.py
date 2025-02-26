@@ -143,8 +143,7 @@ class CZIManager():
  
 def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None:
     """Gets the TIFF file out of the CZI and writes it to the filesystem
-
-    :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
+        :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
     """
     
     czi_file, outfile, scenei, channel, scale = file_key    
@@ -162,17 +161,14 @@ def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None
 def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     """
     Extracts a TIFF image from a CZI file based on the provided parameters.
-    Args:
-        file_key (tuple[str, str, int, bool, str]): A tuple containing the following elements:
-            - czi_file (str): Path to the input CZI file.
-            - outfile (str): Path to the output TIFF file.
-            - scenei (int): Index of the scene to extract.
-            - channel (int): Channel number to extract.
-            - scale (bool): Scaling factor for the image.
-    Returns:
-        None
-    Raises:
-        IOError: If there is an error writing the output TIFF file.
+    :param file_key (tuple[str, str, int, bool, str]): A tuple containing the following elements:
+    - czi_file (str): Path to the input CZI file.
+    - outfile (str): Path to the output TIFF file.
+    - scenei (int): Index of the scene to extract.
+    - channel (int): Channel number to extract.
+    - scale (bool): Scaling factor for the image.
+    :return None
+    :raise IOError: If there is an error writing the output TIFF file.
     """
     
     czi_file, outfile, scenei, channel, scale = file_key    

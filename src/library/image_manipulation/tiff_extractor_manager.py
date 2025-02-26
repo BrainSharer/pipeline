@@ -26,8 +26,7 @@ class TiffExtractor():
         5. For each section, extracts the TIFF image from the corresponding CZI file if it does not already exist.
         6. Logs and prints errors if CZI files are missing or if no sections are found.
         7. Checks for duplicate files in the output directory and logs and prints any duplicates found.
-        Raises:
-            SystemExit: If no sections are found in the database or if duplicate files are found.
+        :raise: SystemExit: If no sections are found in the database or if duplicate files are found.
 
         Note, it cannot be run with threads.
         """

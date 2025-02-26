@@ -17,6 +17,27 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir,
 
 
 class CellPipeline(
+    CellPipeline is a class that handles the automated cell labeling process, including creating detections,
+    extracting predictions, fixing coordinates, and training models for cell detection.
+    Attributes:
+        animal (str): The animal identifier.
+        task (str): The task identifier.
+        round (int): The round number for the process. Default is 4.
+        debug (bool): Flag to enable debug mode. Default is False.
+        channel (int): The channel number. Default is 1.
+        fileLocationManager (FileLocationManager): Manages file locations for the given animal.
+        sqlController (SqlController): Manages SQL operations for the given animal.
+        fileLogger (FileLogger): Logs file operations.
+        cell_label_path (str): Path to the cell labels directory.
+    Methods:
+        create_detections():
+            Starts the cell detection process and checks prerequisites.
+        extract_predictions():
+            Extracts cell label predictions.
+        fix_coordinates():
+            Fixes the coordinates of detected cells by checking against mask images.
+        train():
+            Trains the cell detection model using the detected features.
     CellMaker,
     ParallelManager
 ):
