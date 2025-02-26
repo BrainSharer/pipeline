@@ -48,7 +48,6 @@ class FileLocationManager(object):
         self.histogram = os.path.join(self.www, "histogram")
         self.neuroglancer_data = os.path.join(self.www, "neuroglancer_data")
         self.neuroglancer_progress = os.path.join(self.neuroglancer_data, 'progress')
-        self.ome_zarr_data = os.path.join(self.root, stack, "ome-zarr")
         self.cell_labels_data = os.path.join(self.prep, "cell_labels")
         self.section_web = os.path.join(self.www, "section")
         self.tif = os.path.join(self.prep, "tif")
@@ -69,10 +68,6 @@ class FileLocationManager(object):
     def get_full_aligned(self, channel=1):
         """This is used in cell labeling"""
         validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
-        return validated_path
-
-    def get_ome_zarr(self, channel=1):
-        validated_path = os.path.join(self.ome_zarr_data, f"C{channel}.zarr")
         return validated_path
 
     def get_alignments(self, iteration=0):
