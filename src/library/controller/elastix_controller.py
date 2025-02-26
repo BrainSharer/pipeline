@@ -26,14 +26,11 @@ class ElastixController():
     def get_elastix_row(self, animal, section, iteration):
         """
         Retrieve a specific row from the ElastixTransformation table based on the given animal, section, and iteration.
-        Args:
-            animal (str): The identifier for the animal.
-            section (int): The section number.
-            iteration (int, optional): The iteration number. Defaults to 0.
-        Returns:
-            ElastixTransformation: The first matching row from the ElastixTransformation table, or None if no match is found.
-        Raises:
-            NoResultFound: If no matching row is found in the database.
+        :param animal (str): The identifier for the animal.
+        :param section (int): The section number.
+        :param iteration (int, optional): The iteration number. Defaults to 0.
+        :return ElastixTransformation: The first matching row from the ElastixTransformation table, or None if no match is found.
+        :raises NoResultFound: If no matching row is found in the database.
         """
 
         row = self.session.query(ElastixTransformation).filter(

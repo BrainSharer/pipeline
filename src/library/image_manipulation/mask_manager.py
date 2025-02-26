@@ -40,20 +40,19 @@ class MaskManager:
         Input dir is the colored merged masks
         Remove the binary mask files as they might be stale.
         """
-        
+
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         if os.path.exists(self.output):
             shutil.rmtree(self.output)
 
-
         os.makedirs(self.output, exist_ok=True)
-        
+
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=False)
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
         self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
         self.fileLogger.logevent(f"MASKS FOLDER: {self.output}")
-        
+
         for file in files:
             filepath = os.path.join(self.input, file)
             maskpath = os.path.join(self.output, file)
@@ -72,7 +71,7 @@ class MaskManager:
                 mask = read_image(maskfillpath)
                 white = np.where(mask==255)
                 whiterows = white[0]
-                #whitecols = white[1]
+                # whitecols = white[1]
                 firstrow = whiterows[0]
                 lastrow = whiterows[-1]
                 lastcol = max(white[1])
@@ -81,7 +80,6 @@ class MaskManager:
 
         compare_directories(self.input, self.output)
 
-
     def get_model_instance_segmentationTESTING(self, num_classes):
         """This loads the mask model CNN
 
@@ -89,18 +87,18 @@ class MaskManager:
         """
 
         # load an instance segmentation model pre-trained pre-trained on COCO
-        #model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+        # model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
 
         # TESTING
         weights = MaskRCNN_ResNet50_FPN_Weights.DEFAULT
         modelpath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth'
         model_name='mask.model'
-        #model_path = '~/.cache/torch/hub/checkpoints/deeplabv3_resnet101_coco-586e9e4e.pth'
-        #model = deeplabv3_resnet101(pretrained=True)
-        #model.eval()        
-        #model = torch.hub.load(modelpath, 'custom', source='local', path = model_name, force_reload = True)        
-        #model = torch.hub.load(modelpath, 'junk', weights=weights)        
-        #model = maskrcnn_resnet50_fpn(weights=weights, progress=False)
+        # model_path = '~/.cache/torch/hub/checkpoints/deeplabv3_resnet101_coco-586e9e4e.pth'
+        # model = deeplabv3_resnet101(pretrained=True)
+        # model.eval()
+        # model = torch.hub.load(modelpath, 'custom', source='local', path = model_name, force_reload = True)
+        # model = torch.hub.load(modelpath, 'junk', weights=weights)
+        # model = maskrcnn_resnet50_fpn(weights=weights, progress=False)
         # original
         model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
         model.load_state_dict(torch.load(modelpath, map_location = 'cpu', weights_only=False))
@@ -117,7 +115,7 @@ class MaskManager:
             in_features_mask, hidden_layer, num_classes
         )
         return model
-    
+
     def get_model_instance_segmentation(self, num_classes):
         """This loads the mask model CNN
 
@@ -139,8 +137,6 @@ class MaskManager:
         )
         return model
 
-
-
     def create_mask(self):
         """Helper method to call either full resolition of downsampled.
         Create the images masks for extracting the tissue from the surrounding 
@@ -148,7 +144,7 @@ class MaskManager:
         If the images are from the MDXXX brains, they are 3 dimenions so the masks
         need to be done differently
         """
-        
+
         if self.downsample:
             self.create_colored_mask_qc()
         else:
@@ -157,7 +153,7 @@ class MaskManager:
     def load_machine_learning_model(self):
         """Load the CNN model used to generate image masks
         """
-        
+
         modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth")
         self.loaded_model = self.get_model_instance_segmentation(num_classes=2)
         workers = 2
@@ -180,7 +176,7 @@ class MaskManager:
         if self.mask_image == FULL_MASK_NO_CROP:
             print('Skipping full resolution mask creation as it is not needed')
             return
-        
+
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
         self.output = self.fileLocationManager.get_full_masked(channel=self.channel) # usually channel=1, except for step 6
@@ -211,11 +207,11 @@ class MaskManager:
         The input files are the files that have not been normalized
         The output files are the colored merged files. 
         """
-        
+
         self.input = self.fileLocationManager.get_thumbnail(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(channel=1)
         os.makedirs(self.output, exist_ok=True)
-        
+
         files, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         for file in files:
             infile = os.path.join(self.input, file)
@@ -232,7 +228,7 @@ class MaskManager:
             new_img[(new_img > 200)] = 0
             lowerbound = 0
             upperbound = 255
-            #all pixels value above lowerbound will  be set to upperbound 
+            # all pixels value above lowerbound will  be set to upperbound
             _, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
             thresh = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel)
@@ -244,7 +240,7 @@ class MaskManager:
         The input files are the files that have been normalized.
         The output files are the colored merged files. 
         """
-        
+
         if self.debug:
             print(f"DEBUG: MaskManager::create_downsampled_mask START")
 
@@ -253,7 +249,7 @@ class MaskManager:
         self.input = self.fileLocationManager.get_normalized(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_colored(channel=self.channel) # usually channel=1, except for step 6
         self.fileLogger.logevent(f"Input FOLDER: {self.input}")
-        
+
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=False)
         compare_directories(self.input, self.fileLocationManager.get_thumbnail(self.channel))
         os.makedirs(self.output, exist_ok=True)
@@ -326,14 +322,14 @@ class MaskManager:
     def remove_small_contours(raw_img, debug=False):
         """
         Removes small contours from the given image.
-        This function processes the input image to find and remove contours with an area smaller than 200 pixels.
-        Optionally, it can also annotate the image with contour areas and bounding rectangles for debugging purposes.
+        This function processes the input image to find and remove contours that are smaller than a predefined area threshold.
+        Optionally, it can also annotate the image with contour area values and bounding rectangles for debugging purposes.
         Args:
-            raw_img (numpy.ndarray): The input image in which contours are to be detected and removed.
-            debug (bool, optional): If True, the function will annotate the image with contour areas and bounding rectangles. Defaults to False.
-        Returns:
-            numpy.ndarray: The processed image with small contours removed.
+        :param raw_img (numpy.ndarray): The input image in which contours are to be detected and removed.
+        :param debug (bool, optional): If True, the function will annotate the image with contour area values and bounding rectangles. Defaults to False.
+        return: numpy.ndarray: The processed image with small contours removed.
         """
+
         font = cv2.FONT_HERSHEY_PLAIN
         ret, thresh = cv2.threshold(raw_img, 200, 255, 0)
         contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)

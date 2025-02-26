@@ -42,9 +42,8 @@ def use_scratch_dir(directory: str) -> bool:
     Determines if there is enough free space in the /scratch directory to accommodate
     the specified directory with a buffer factor applied.
     Args:
-        directory (str): The path to the directory whose size needs to be checked.
-    Returns:
-        bool: True if there is enough free space in the /scratch directory, False otherwise.
+    :param directory (str): The path to the directory whose size needs to be checked.
+    :return: bool: True if there is enough free space in the /scratch directory, False otherwise.
     """
     
     BUFFER_FACTOR = 1.25
@@ -96,19 +95,17 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
     """
     Tests the directory for image files, checks their sizes, and validates the number of files.
     Args:
-        animal (str): The name of the animal.
-        directory (str): The path to the directory containing the image files.
-        section_count (int): The expected number of sections (files) in the directory.
-        downsample (bool, optional): Whether to downsample the images. Defaults to True.
-        same_size (bool, optional): Whether all images should be of the same size. Defaults to False.
-    Returns:
-        tuple[list[str], int, int, int]: A tuple containing:
-            - A list of filenames in the directory.
-            - The number of files in the directory.
-            - The maximum width of the images.
-            - The maximum height of the images.
-    Raises:
-        SystemExit: If there are errors in processing the files or if the number of files is incorrect.
+    :param animal (str): The name of the animal.
+    :param directory (str): The path to the directory containing the image files.
+    :param section_count (int): The expected number of sections (files) in the directory.
+    :param downsample (bool, optional): Whether to downsample the images. Defaults to True.
+    :param same_size (bool, optional): Whether all images should be of the same size. Defaults to False.
+    :return: tuple[list[str], int, int, int]: A tuple containing:
+    - A list of filenames in the directory.
+    - The number of files in the directory.
+    - The maximum width of the images.
+    - The maximum height of the images.
+    :raise: SystemExit: If there are errors in processing the files or if the number of files is incorrect.
     """
 
     error = ""

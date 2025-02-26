@@ -185,12 +185,11 @@ def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:
     """
     Rescales the transformation matrices by a given scaling factor.
     Args:
-        transforms (dict): A dictionary where keys are file names and values are 
-                           2D numpy arrays representing transformation matrices.
-        scaling_factor (float): The factor by which to scale the transformation matrices.
-    Returns:
-        dict: A dictionary with the same keys as the input, where each transformation 
-              matrix has been rescaled by the given scaling factor.
+    :param transforms (dict): A dictionary where keys are file names and values are 
+    2D numpy arrays representing transformation matrices.
+    scaling_factor (float): The factor by which to scale the transformation matrices.
+    :return: dict: A dictionary with the same keys as the input, where each transformation 
+    matrix has been rescaled by the given scaling factor.
     """
 
     tf_mat_mult_factor = np.array([[1, 1, scaling_factor], [1, 1, scaling_factor]], dtype=np.float32)

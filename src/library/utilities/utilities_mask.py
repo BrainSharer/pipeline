@@ -575,11 +575,10 @@ def compare_directories(dir1: str, dir2: str) -> None:
     Compares the contents of two directories to ensure they have the same files and that the images
     within those files have the same dimensions.
     Args:
-        dir1 (str): The path to the first directory.
-        dir2 (str): The path to the second directory.
-    Raises:
-        AssertionError: If the number of files in the directories are not equal or if any directory is empty.
-        SystemExit: If there are any mismatches in file names or image dimensions, the function prints the errors and exits the program.
+    :param dir1 (str): The path to the first directory.
+    :param dir2 (str): The path to the second directory.
+    :raise: AssertionError: If the number of files in the directories are not equal or if any directory is empty.
+    SystemExit: If there are any mismatches in file names or image dimensions, the function prints the errors and exits the program.
     """
     error = ""
     files1 = sorted(os.listdir(dir1))
