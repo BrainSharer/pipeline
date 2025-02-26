@@ -17,6 +17,10 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir,
 
 
 class CellPipeline(
+    CellMaker,
+    ParallelManager
+):
+    """
     CellPipeline is a class that handles the automated cell labeling process, including creating detections,
     extracting predictions, fixing coordinates, and training models for cell detection.
     Attributes:
@@ -38,9 +42,7 @@ class CellPipeline(
             Fixes the coordinates of detected cells by checking against mask images.
         train():
             Trains the cell detection model using the detected features.
-    CellMaker,
-    ParallelManager
-):
+    """
     
     def __init__(self, animal, task, round=4, debug=False):
         self.animal = animal
