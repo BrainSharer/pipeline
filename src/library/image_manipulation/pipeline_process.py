@@ -43,7 +43,6 @@ except ImportError:
 
 
 class Pipeline(
-    CellMaker,
     ElastixManager,
     HistogramMaker,
     ImageCleaner,
@@ -293,31 +292,6 @@ class Pipeline(
         self.create_rotated_aligned_masks()
         print(f'Finished aligning masks.')
 
-    def cell_labels(self):
-        """
-        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
-        """
-        print(self.TASK_CELL_LABELS)
-
-        scratch_tmp = get_scratch_dir()
-        self.check_prerequisites(scratch_tmp)
-
-        # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
-
-        # ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
-
-        self.start_labels()
-        print(f'Finished {self.TASK_CELL_LABELS}.')
-
-        # ADD CLEANUP OF SCRATCH FOLDER
-
-    def extract_cell_labels(self):
-        '''
-        TODO: consolidate with cell_labels
-        '''
-        print(self.TASK_CELL_LABELS)
-        self.parse_cell_labels()
-        print(f'Finished {self.TASK_CELL_LABELS}.')
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
