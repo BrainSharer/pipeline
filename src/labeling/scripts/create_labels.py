@@ -13,7 +13,7 @@ Explanation for the tasks:
     This task will run the cell detection model on the images and create the detections.
 - extract - This task will extract the predictions from the detection files and create the \
     cell_labels/all_predictions.csv file.
-- train - This task tasks the detection_XXX.csv files created above and trains the model. \
+- train - This task creates the detection_XXX.csv files created above and trains the model. \
     The features are taken from the detection_XXX.csv files. \
     The model is saved in the cell_segmentation/models dir. \
     This new model can then be used to rerun the detection process. Repeat as necessary.

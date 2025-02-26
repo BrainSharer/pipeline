@@ -52,7 +52,6 @@ html_static_path = ['_static']
 html_logo = "_static/250.png"
 html_theme_options = {
     'logo_only': True,
-    'display_version': False,
     # Toc options
     'collapse_navigation': True,
     'titles_only': True
