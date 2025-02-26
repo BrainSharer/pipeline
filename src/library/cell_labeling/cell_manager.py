@@ -46,6 +46,8 @@ def detect_cells_all_sections(file_keys: tuple):
         if file_keys[-1]: #DEBUG
             print(f"DEBUG: CREATE CELL FEATURES WITH IDENTIFIED CELL CANDIDATES (auto_cell_labels - STEP 3)")
         cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #STEP 3. CALCULATE CELL FEATURES
+        print(f'type cell features {type(cell_features)}')
+        print(cell_features.head())
         if file_keys[-1]: #DEBUG
             print(f'DEBUG: start_labels - STEP 4 (DETECT CELLS [BASED ON FEATURES])')
             print(f'CELL FEATURES: {len(cell_features)}')
@@ -56,6 +58,7 @@ class CellMaker():
 
     def __init__(self):
         """Set up the class with the name of the file and the path to it's location."""
+        self.channel = 1
         self.section_count = 0
 
 
@@ -67,7 +70,7 @@ class CellMaker():
         C) SCRATCH DIRECTORY, 
         D) OUTPUT DIRECTORY, 
         E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), 
-        F) models: models_round_4_threshold_2000.pkl
+        F) models: models_example_json.pkl
         '''
         # CHECK FOR OME-ZARR (NOT IMPLEMENTED AS OF 22-OCT-2023)
         # INPUT = self.fileLocationManager.get_ome_zarr(channel=self.channel)
@@ -153,8 +156,8 @@ class CellMaker():
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
-        # CHECK FOR MODEL FILE (models_round_4_threshold_2000.pkl) in the models dir
-        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_round_4_threshold_2000.pkl')
+        # CHECK FOR MODEL FILE (models_example_json.pkl) in the models dir
+        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_example_json.pkl')
         if os.path.exists(self.model_file):
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
@@ -728,7 +731,6 @@ class CellMaker():
         z_resolution = self.sqlController.scan_run.zresolution
         found = 0
 
-        self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
         if os.path.exists(self.cell_label_path):
             print(f'Parsing cell labels from {self.cell_label_path}')
