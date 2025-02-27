@@ -23,15 +23,15 @@ from library.cell_labeling.detector import Detector
 
 class CellDetectorTrainer(Detector, CellDetectorBase):
 
-    def __init__(self, animal, round=2, segmentation_threshold=2000):
-        CellDetectorBase.__init__(self, animal, round=round, segmentation_threshold=segmentation_threshold)
-        self.last_round = CellDetectorBase(animal, round=round - 1, segmentation_threshold=segmentation_threshold)
+    def __init__(self, animal, step=2, segmentation_threshold=2000):
+        CellDetectorBase.__init__(self, animal, step=step, segmentation_threshold=segmentation_threshold)
+        self.last_step = CellDetectorBase(animal, step=step - 1, segmentation_threshold=segmentation_threshold)
         self.init_parameter()
         self.predictor = GreedyPredictor()
 
     def create_positive_labels(self):
         combined_features = self.get_combined_features()
-        test_counts,train_sections = pk.load(open(self.last_round.QUALIFICATIONS,'rb'))
+        test_counts,train_sections = pk.load(open(self.last_step.QUALIFICATIONS,'rb'))
         all_segment = np.array([combined_features.col,combined_features.row,combined_features.section]).T
 
         cells = test_counts['computer sure, human unmarked']
@@ -179,7 +179,7 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         points = np.array([detection_df.col,detection_df.row,detection_df.section]).T
         for pointi in points:
             pointi = pointi*np.array([0.325,0.325,20])
-            trainer.sqlController.add_layer_data_row(trainer.animal,34,1,pointi,52,f'detected_soma_round_{self.round}')
+            trainer.sqlController.add_layer_data_row(trainer.animal,34,1,pointi,52,f'detected_soma_round_{self.step}')
 
     def save_detector(self):
         detector = Detector(self.model,self.predictor)

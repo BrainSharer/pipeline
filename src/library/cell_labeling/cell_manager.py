@@ -14,52 +14,32 @@ import cv2
 import numpy as np
 from compress_pickle import dump, load
 import pandas as pd
+from tqdm import tqdm
 import xgboost as xgb
 
+from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
+from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
-from library.utilities.utilities_process import M_UM_SCALE, random_string
+from library.image_manipulation.file_logger import FileLogger
+from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.parallel_manager import ParallelManager
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image
 
 
-def detect_cells_all_sections(file_keys: tuple):
-    #LAUNCHER FOR MULTIPROCESSING OF ALL (4) STEPS - ALL FUNCTIONS MUST BE SERIALIZABLE ('PICKLEABLE')
-    #CLASS INSTANCES ARE NOT SERIALIZABLE; USE STATIC METHODS INSTEAD
-    #NOTES: model_filename HAS PLACEHOLDER, BUT CANNOT BE LOADED INTO file_keys (NOT SERIALIZABLE)
-    #FILELOGGER NOT CURRENTLY ACTIVE IN MULTI-PROCESSING MODE
-    
-    #think about how to inherit, or reinstantiate Pipeline/Filelogger
-    # filemanager = FileLocationManager(file_key[0])
-    # filelogger = FileLogger(filemanager.get_logdir())
-    # cellmaker = filelogger(CellMaker)
+class CellMaker(ParallelManager):
 
-    # currently debug (bool) is set at end of file_keys
-
-    cellmaker = CellMaker()
-    if file_keys[-1]: #LAST ELEMENT OF TUPLE IS DEBUG
-        print(f"DEBUG: auto_cell_labels - STEP 1 & 2 (IDENTIFY CELL CANDIDATES)")
-
-    cell_candidates = cellmaker.identify_cell_candidates(file_keys) #STEPS 1 & 2. VIRTUAL TILING AND CELL CANDIDATE IDENTIFICATION
-    
-    if file_keys[-1]: #DEBUG
-        print(f"DEBUG: FOUND {len(cell_candidates)} CELL CANDIDATES ON SECTION {file_keys[1]}")
-
-    if len(cell_candidates) > 0: #CONTINUE IF CELL CANDIDATES WERE DETECTED [NOTE: THIS IS LIST OF ALL CELL CANDIDATES]
-        if file_keys[-1]: #DEBUG
-            print(f"DEBUG: CREATE CELL FEATURES WITH IDENTIFIED CELL CANDIDATES (auto_cell_labels - STEP 3)")
-        cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #STEP 3. CALCULATE CELL FEATURES
-        print(f'type cell features {type(cell_features)}')
-        print(cell_features.head())
-        if file_keys[-1]: #DEBUG
-            print(f'DEBUG: start_labels - STEP 4 (DETECT CELLS [BASED ON FEATURES])')
-            print(f'CELL FEATURES: {len(cell_features)}')
-        cellmaker.score_and_detect_cell(file_keys, cell_features)
-
-class CellMaker():
-    """ML autodetection of cells in image"""
-
-    def __init__(self):
+    def __init__(self, animal, task, step=4, channel=1, debug=False):
         """Set up the class with the name of the file and the path to it's location."""
-        self.channel = 1
+        self.animal = animal
+        self.task = task
+        self.step = step
+        self.channel = channel
         self.section_count = 0
+        self.fileLocationManager = FileLocationManager(animal)
+        self.sqlController = SqlController(animal)
+        self.debug = debug
+        self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
+        self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
 
 
     def check_prerequisites(self, SCRATCH):
@@ -70,7 +50,7 @@ class CellMaker():
         C) SCRATCH DIRECTORY, 
         D) OUTPUT DIRECTORY, 
         E) cell_definitions (manual training of what cell looks like: average_cell_image.pkl), 
-        F) models: models_example_json.pkl
+        F) models: /net/birdstore/Active_Atlas_Data/cell_segmentation/models/models_round_{self.step}_threshold_2000.pkl
         '''
         
         self.OUTPUT = self.fileLocationManager.get_cell_labels()
@@ -190,8 +170,8 @@ class CellMaker():
                 print(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'FOUND CELL TRAINING DEFINITIONS FILE @ {self.avg_cell_img_file}')
 
-        # CHECK FOR MODEL FILE (models_example_json.pkl) in the models dir
-        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', 'models_example_json.pkl')
+        # CHECK FOR MODEL FILE (models_round_{self.step}_threshold_2000.pkl) in the models dir
+        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_round_{self.step}_threshold_2000.pkl')
         if os.path.exists(self.model_file):
             if self.debug:
                 print(f'FOUND MODEL FILE @ {self.model_file}')
@@ -200,6 +180,13 @@ class CellMaker():
         else:
             print(f'MODEL FILE NOT FOUND @ {self.model_file}')
             self.fileLogger.logevent(f'MODEL FILE NOT FOUND @ {self.model_file}; EXITING')
+            sys.exit(1)
+
+        # check for available sections
+        self.section_count = self.capture_total_sections('tif', INPUT_dye)
+        if self.section_count == 0:
+            print('NO SECTIONS FOUND; EXITING')
+            self.fileLogger.logevent(f'NO SECTIONS FOUND; EXITING')
             sys.exit(1)
 
     def start_labels(self):
@@ -240,7 +227,7 @@ class CellMaker():
                 self.fileLogger.logevent(msg)
                 raise ValueError(msg)
 
-        self.input_format = 'ome-zarr' #options are 'tif' and 'ome-zarr'
+        self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
         if os.path.exists(self.avg_cell_img_file):
             avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
         else:
@@ -292,7 +279,7 @@ class CellMaker():
         else:
             workers = math.floor(min([self.get_nworkers(), 10])*.5) # MAX 50% OF PREV. CALCS [DASK IS RAM INTENSIVE]
             print(f'RUNNING IN PARALLEL WITH {workers} WORKERS; {len(file_keys)} SECTIONS TO PROCESS, out: {self.SCRATCH}')
-        self.run_commands_concurrently(detect_cells_all_sections, file_keys, workers)
+        self.run_commands_concurrently(self.detect_cells_all_sections, file_keys, workers)
 
     def identify_cell_candidates(self, file_keys: tuple) -> int:
         '''2. IDENTIFY CELL CANDIDATES - PREV: find_examples()
@@ -722,6 +709,61 @@ class CellMaker():
             total_sections = dask_data[0].shape[2]
             del dask_data
         return total_sections
+    
+
+    def create_precomputed_annotations(self):
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+
+        spatial_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions0', 'spatial0')
+        info_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions0')
+        if os.path.exists(info_dir):
+            print(f'Removing existing directory {info_dir}')
+            shutil.rmtree(info_dir)
+        os.makedirs(spatial_dir, exist_ok=True)
+        point_filename = os.path.join(spatial_dir, '0_0_0.gz')
+        info_filename = os.path.join(info_dir, 'info')
+        dataframe_data = []
+        for i in range(348):
+            for j in range(0, self.sqlController.scan_run.height,200):
+                x = j
+                y = j
+                dataframe_data.append([x, y, i])
+        print(f'length of dataframe_data: {len(dataframe_data)}')
+        with open(point_filename, 'wb') as outfile:
+            buf = struct.pack('<Q', len(dataframe_data))
+            pt_buf = b''.join(struct.pack('<3f', x, y, z) for (x, y, z) in dataframe_data)
+            buf += pt_buf
+            id_buf = struct.pack('<%sQ' % len(dataframe_data), *range(len(dataframe_data)))
+            buf += id_buf
+            bufout = gzip.compress(buf)
+            outfile.write(bufout)
+
+
+        chunk_size = [self.sqlController.scan_run.width, self.sqlController.scan_run.height, 348]
+        info = {}
+        spatial = {}
+        spatial["chunk_size"] = chunk_size
+        spatial["grid_shape"] = [1, 1, 1]
+        spatial["key"] = "spatial0"
+        spatial["limit"] = 1
+
+        info["@type"] = "neuroglancer_annotations_v1"
+        info["annotation_type"] = "CLOUD"
+        info["by_id"] = {"key":"by_id"}
+        info["dimensions"] = {"x":[str(xy_resolution),"um"],
+                            "y":[str(xy_resolution),"um"],
+                            "z":[str(z_resolution),"um"]}
+        info["lower_bound"] = [0,0,0]
+        info["upper_bound"] = chunk_size
+        info["properties"] = []
+        info["relationships"] = []
+        info["spatial"] = [spatial]    
+
+        with open(info_filename, 'w') as infofile:
+            json.dump(info, infofile, indent=2)
+            print(f'Wrote {info} to {info_filename}')
+
 
     def parse_cell_labels(self):
         """
@@ -841,47 +883,6 @@ class CellMaker():
         print(f'Found {len(df)} total neurons and writing to {dfpath}')
 
         df.to_csv(dfpath, index=False)
-        spatial_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions', 'spatial0')
-        info_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions')
-        if os.path.exists(spatial_dir):
-            print(f'Removing existing directory {spatial_dir}')
-            shutil.rmtree(spatial_dir)
-        os.makedirs(spatial_dir, exist_ok=True)
-        point_filename = os.path.join(spatial_dir, '0_0_0.gz')
-        info_filename = os.path.join(info_dir, 'info')
-        # dataframe_data = [(x*xy_resolution,y*xy_resolution,z*z_resolution) for x,y,z in dataframe_data]
-        with open(point_filename, 'wb') as outfile:
-            buf = struct.pack('<Q', len(dataframe_data))
-            pt_buf = b''.join(struct.pack('<3f', x, y, z) for (x, y, z) in dataframe_data)
-            buf += pt_buf
-            id_buf = struct.pack('<%sQ' % len(dataframe_data), *range(len(dataframe_data)))
-            buf += id_buf
-            bufout = gzip.compress(buf)
-            outfile.write(bufout)
-            print(f'Wrote {len(dataframe_data)} neurons to {point_filename}')
-            self.section_count = 348
-            chunk_size = [self.sqlController.scan_run.width, self.sqlController.scan_run.height, self.section_count]
-            info = {}
-            spatial = {}
-            spatial['chunk_size'] = chunk_size
-            spatial['grid_shape'] = [1, 1, 1]
-            spatial['key'] = 'spatial0'
-            spatial['limit'] = 10000
-            info['@type'] = "neuroglancer_annotations_v1"
-            info['annotation_type'] = "POINT"
-            info['by_id'] = {'key':'spatial0'}
-            info['dimensions'] = {'x':[str(xy_resolution),'um'],
-                                'y':[str(xy_resolution),'um'],
-                                'z':[str(z_resolution),'um']}
-            info['lower_bound'] = [0,0,0]
-            info['upper_bound'] = chunk_size
-            info['properties'] = []
-            info['relationships'] = []
-            info['spatial'] = [spatial]    
-
-            with open(info_filename, 'w') as infofile:
-                json.dump(info, infofile, indent=2)
-                print(f'Wrote {info} to {info_filename}')
 
         ###############################################
         if not self.debug:
@@ -902,8 +903,106 @@ class CellMaker():
             else:
                 print('Error inserting annotation with labels')
 
-    def create_training():
-        pass
+    ##### start methods from cell pipeline
+    def create_detections(self):
+        """
+        USED FOR AUTOMATED CELL LABELING - FINAL OUTPUT FOR CELLS DETECTED
+        """
+        print("Starting cell detections")
+
+        scratch_tmp = get_scratch_dir()
+        self.check_prerequisites(scratch_tmp)
+
+        # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
+
+        # ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
+
+        self.start_labels()
+        print(f'Finished cell detections')
+
+        # ADD CLEANUP OF SCRATCH FOLDER
+
+    def extract_predictions(self):
+        print('Starting extraction')
+        self.parse_cell_labels()
+        print(f'Finished extraction.')
+
+    def fix_coordinates(self):
+
+        def check_df(csvfile, df):
+            section = os.path.basename(csvfile).replace('detections_', '').replace('.csv', '')
+            tif = str(section).zfill(3) + '.tif'
+            maskpath = os.path.join(
+                self.fileLocationManager.get_directory(channel=1, downsample=True, inpath='mask_placed_aligned'), tif )
+            if os.path.exists(maskpath):
+                mask = read_image(maskpath)
+            else:
+                print(f'ERROR: Mask not found {maskpath}')
+                sys.exit(1)
+
+            for index, df_row in df.iterrows():
+                row = df_row['row']
+                col = df_row['col']
+                row = int(row // SCALING_FACTOR)
+                col = int(col // SCALING_FACTOR)
+                prediction = df_row['predictions']
+                found = mask[row, col] > 0
+                if prediction > 0 and not found:
+                    #print(f'ERROR: Predicted cell {index=} not found at {row=}, {col=} {prediction=}')
+                    df.loc[index, 'predictions'] = -2
+
+            return df
+
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
+            sys.exit(1)
+
+        for csvfile in tqdm(detection_files):
+            df = pd.read_csv(csvfile)
+            df = check_df(csvfile, df)
+            df.to_csv(csvfile, index=False)
+
+    def train(self):
+        import warnings
+        warnings.filterwarnings("ignore")
+
+        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_00*.csv') ))
+        if len(detection_files) == 0:
+            print(f'ERROR: NO CSV FILES FOUND IN {self.cell_label_path}')
+            sys.exit(1)
+
+        dfs = []
+        for csvfile in tqdm(detection_files, desc="Reading csv files"):
+            df = pd.read_csv(csvfile)
+            dfs.append(df)
+
+        detection_features=pd.concat(dfs)
+        detection_features_path = os.path.join(self.cell_label_path, 'detection_features.csv')
+        #detection_features.to_csv(detection_features_path, index=False)
+        print(detection_features.info())
+        
+
+        if self.debug:
+            print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
+            print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
+
+
+        detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
+        #mean_score, predictions, std_score are results, not features
+
+        drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
+        detection_features=detection_features.drop(drops,axis=1)
+            
+        print(f'Starting training on {self.animal} step={self.step} with {len(detection_features)} features')
+        
+        trainer = CellDetectorTrainer(self.animal, step=self.step) # Use Detector 4 as the basis
+        new_models = trainer.train_classifier(detection_features, 676, 3, models = trainer.load_models()) # pass Detector 4 for training
+        trainer = CellDetectorTrainer(self.animal, step=self.step + 1) # Be careful when saving the model. The model path is only relevant to 'step'. 
+        #You need to use a new step to save the model, otherwise the previous models would be overwritten.
+        trainer.save_models(new_models)
+            
+    ##### end methods from cell pipeline
 
     @staticmethod
     def parse_csv(file_path):
@@ -919,3 +1018,37 @@ class CellMaker():
         except Exception as e:
             print(f"Error: {e}")
             return None
+        
+    @staticmethod
+    def detect_cells_all_sections(file_keys: tuple):
+        #LAUNCHER FOR MULTIPROCESSING OF ALL (4) STEPS - ALL FUNCTIONS MUST BE SERIALIZABLE ('PICKLEABLE')
+        #CLASS INSTANCES ARE NOT SERIALIZABLE; USE STATIC METHODS INSTEAD
+        #NOTES: model_filename HAS PLACEHOLDER, BUT CANNOT BE LOADED INTO file_keys (NOT SERIALIZABLE)
+        #FILELOGGER NOT CURRENTLY ACTIVE IN MULTI-PROCESSING MODE
+        
+        #think about how to inherit, or reinstantiate Pipeline/Filelogger
+        # filemanager = FileLocationManager(file_key[0])
+        # filelogger = FileLogger(filemanager.get_logdir())
+        # cellmaker = filelogger(CellMaker)
+
+        # currently debug (bool) is set at end of file_keys
+        animal, *_ = file_keys
+        cellmaker = CellMaker(animal, task=None)
+        if file_keys[-1]: #LAST ELEMENT OF TUPLE IS DEBUG
+            print(f"DEBUG: auto_cell_labels - STEP 1 & 2 (IDENTIFY CELL CANDIDATES)")
+
+        cell_candidates = cellmaker.identify_cell_candidates(file_keys) #STEPS 1 & 2. VIRTUAL TILING AND CELL CANDIDATE IDENTIFICATION
+        
+        if file_keys[-1]: #DEBUG
+            print(f"DEBUG: FOUND {len(cell_candidates)} CELL CANDIDATES ON SECTION {file_keys[1]}")
+
+        if len(cell_candidates) > 0: #CONTINUE IF CELL CANDIDATES WERE DETECTED [NOTE: THIS IS LIST OF ALL CELL CANDIDATES]
+            if file_keys[-1]: #DEBUG
+                print(f"DEBUG: CREATE CELL FEATURES WITH IDENTIFIED CELL CANDIDATES (auto_cell_labels - STEP 3)")
+            cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #STEP 3. CALCULATE CELL FEATURES
+            print(f'type cell features {type(cell_features)}')
+            print(cell_features.head())
+            if file_keys[-1]: #DEBUG
+                print(f'DEBUG: start_labels - STEP 4 (DETECT CELLS [BASED ON FEATURES])')
+                print(f'CELL FEATURES: {len(cell_features)}')
+            cellmaker.score_and_detect_cell(file_keys, cell_features)
