@@ -30,7 +30,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background, get_section_count
 from library.database_model.scan_run import IMAGE_MASK
 
 try:
@@ -104,7 +104,7 @@ class Pipeline(
         self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        self.section_count = self.get_section_count()
+        self.section_count = self.get_section_count(self.animal)
         self.multiple_slides = []
         self.channel = channel
         self.scaling_factor = scaling_factor
@@ -136,14 +136,7 @@ class Pipeline(
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
-    def get_section_count(self):
-        section_count = self.sqlController.get_section_count(self.animal)
-        if section_count == 0:
-            INPUT = self.fileLocationManager.get_thumbnail(channel=1)
-            if os.path.exists(INPUT):
-                section_count = len(os.listdir(INPUT))
 
-        return section_count
 
     def extract(self):
         print(self.TASK_EXTRACT)
