@@ -1,6 +1,7 @@
 """Creates all histograms that displayed in the database portal
 """
 import os
+import inspect
 from collections import Counter
 from matplotlib import pyplot as plt
 from skimage import io
@@ -26,8 +27,11 @@ class HistogramMaker:
         :returns: nothing
         """
         workers = self.get_nworkers()
+
         if self.debug:
-            print(f"DEBUG: START HistogramMaker::make_histogram")
+            # Dynamically get the current function's name
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
             workers = 1
 
         if self.downsample:
@@ -199,54 +203,3 @@ def make_single_histogram(file_key: tuple[str, str, str, str, str]) -> None:
     plt.style.use("ggplot")
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
-
-    #PREV. (PRIOR TO 27-SEP-2024) BELOW
-    #REVISIONS:
-    #-Combine filtering and flattening into one step: img[img > 0].ravel() instead of separate operations.
-    #-Use ravel() instead of flatten() as it's generally faster (returns a view instead of a copy when possible).
-    #-Use ax.hist() instead of plt.hist() for better control and to avoid creating multiple figures.
-    #-Set the number of bins to the minimum of flat.max() and 1000 to prevent excessive memory usage for high bit-depth images.
-    #-Enable log scale for y-axis by default, as it's often more informative for image histograms. (unclear if David/Beth wants this)
-    #-Create figure and axes in one step with fig, ax = plt.subplots().
-    #-Removed unnecessary del statements as Python's garbage collector will handle memory management.
-
-
-    # img = read_image(input_path)
-    # dtype = img.dtype
-    # if img.dtype == np.uint8:
-    #     end = 255
-    # else:
-    #     end = 65535
-
-    # mask = read_image(mask_path)
-
-    # try:
-    #     img = cv2.bitwise_and(img, img, mask=mask)
-    # except Exception as e:
-    #     print(f"Could not apply mask {mask_path} to {input_path}")
-    #     print(e)
-    #     return
-
-    # img = img[img > 0]
-    # try:
-    #     flat = img.flatten()
-    # except:
-    #     print(f"Could not flatten {input_path}")
-    #     return
-    
-    # del img
-    # del mask
-    # fig = plt.figure()
-    # plt.rcParams["figure.figsize"] = [10, 6]
-    # plt.hist(flat, flat.max(), [0, end], color=COLORS[channel])
-    # plt.style.use("ggplot")
-
-    #plt.yscale("log")
-
-    # plt.grid(axis="y", alpha=0.75)
-    # plt.xlabel("Value")
-    # plt.ylabel("Frequency")
-    # plt.title(f"{file.file_name} @{dtype}", fontsize=8)
-    # plt.close()
-    # fig.savefig(output_path, bbox_inches="tight")
-    # return

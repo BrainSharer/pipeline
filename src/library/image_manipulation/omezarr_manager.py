@@ -12,6 +12,7 @@ distributed:
       terminate: False  # fraction at which we terminate the worker
 """
 import os
+import inspect
 import shutil
 import dask
 
@@ -19,7 +20,8 @@ from dask.distributed import Client
 from distributed import LocalCluster
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, use_scratch_dir
+
 
 class OmeZarrManager():
     """
@@ -33,18 +35,9 @@ class OmeZarrManager():
         """Create OME-Zarr (NGFF) data store. WIP
         """
         if self.debug:
-            print(f"DEBUG: START OmeZarrManager::create_omezarr")
-
-        tmp_dir = get_scratch_dir()
-        tmp_dir = os.path.join(tmp_dir, f'{self.animal}')
-        if os.path.exists(tmp_dir):
-            shutil.rmtree(tmp_dir)
-        scratch_space = '/tmp/dask-scratch-space'
-        if os.path.exists(scratch_space):
-            print(f'Removing {scratch_space}')
-            shutil.rmtree(scratch_space)
-
-        os.makedirs(tmp_dir, exist_ok=True)
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         iteration = self.get_alignment_status()
@@ -99,7 +92,7 @@ class OmeZarrManager():
             files,
             resolution,
             originalChunkSize=originalChunkSize,
-            tmp_dir=tmp_dir,
+            tmp_dir=self.scratch_space,
             debug=self.debug,
             omero_dict=omero_dict,
             mips=mips,
@@ -113,7 +106,7 @@ class OmeZarrManager():
             threads_per_worker=omezarr.sim_jobs,
             memory_limit=mem_per_worker)
 
-        dask.config.set(temporary_directory=tmp_dir)
+        dask.config.set(temporary_directory=self.scratch_space)
         """
         """
         with Client(cluster) as client:

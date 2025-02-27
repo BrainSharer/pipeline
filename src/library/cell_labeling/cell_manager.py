@@ -1,7 +1,8 @@
+import os, sys, glob, json, math
+import inspect
 import gzip
 import shutil
 import struct
-import os, sys, glob, json, math
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 import dask
@@ -87,7 +88,7 @@ class CellMaker(ParallelManager):
             else:
                 # CREATE META-DATA STORE (PULL FROM DATABASE)
                 if self.debug:
-                    print(f'NOT FOUND; CREATING META-DATA STORE @ {meta_store}')
+                    print(f'META-DATA FILE NOT FOUND; CREATING META-DATA STORE @ {meta_store}')
 
                 # steps to create
                 channels_count = 3
@@ -118,7 +119,7 @@ class CellMaker(ParallelManager):
                 raise ValueError(msg)
 
         # CHECK FOR FULL-RESOLUTION IMAGES (TIFF OR OME-ZARR)
-        #CHECKS TIFF DIRECTORY FIRST, THEN OME-ZARR
+        # CHECKS TIFF DIRECTORY FIRST, THEN OME-ZARR [BUT MUST HAVE AT LEAST 1 TO PROCEED]
         for key, value in self.meta_channel_mapping.items():
             if value['mode'] == 'dye':
                 dye_channel = value.get('channel_name')
@@ -135,14 +136,14 @@ class CellMaker(ParallelManager):
             self.fileLogger.logevent(f'FULL-RESOLUTION TIFF STACK FOUND (dye channel): {INPUT_dye}')
             found_dye_channel = True
         else:
-            print(f'FULL-RESOLUTION TIFF STACK NOT FOUND (dye channel). EXPECTED LOCATION: {INPUT_dye}; SEARCHING FOR OME-ZARR')
+            print(f'FULL-RESOLUTION TIFF STACK NOT FOUND (dye channel). EXPECTED LOCATION: {INPUT_dye}; WILL SEARCH FOR OME-ZARR')
         if INPUT_virus.exists():
             if self.debug:
                 print(f'FULL-RESOLUTION TIFF STACK FOUND (virus channel): {INPUT_virus}')
             self.fileLogger.logevent(f'FULL-RESOLUTION TIFF STACK FOUND (virus channel): {INPUT_virus}')
             found_virus_channel = True
         else:
-            print(f'FULL-RESOLUTION TIFF STACK NOT FOUND (virus channel). EXPECTED LOCATION: {INPUT_virus}; SEARCHING FOR OME-ZARR')
+            print(f'FULL-RESOLUTION TIFF STACK NOT FOUND (virus channel). EXPECTED LOCATION: {INPUT_virus}; WILL SEARCH FOR OME-ZARR')
         
         if found_dye_channel == False:
             INPUT_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=dye_channel[1]) + '.zarr')
@@ -209,7 +210,9 @@ class CellMaker(ParallelManager):
         '''
         self.fileLogger.logevent(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
         if self.debug:
-            print(f"DEBUG: start_labels - STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            print(f"DEBUG: STEPS 1 & 2 (REVISED); START ON IMAGE SEGMENTATION")
 
         # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
         for channel_number, channel_data in self.meta_channel_mapping.items():
@@ -220,7 +223,6 @@ class CellMaker(ParallelManager):
                 self.virus_channel = channel_number
                 self.fileLogger.logevent(f'VIRUS CHANNEL DETECTED: {self.virus_channel}')
             else:
-                continue
                 msg = "Neuroanatomical_tracing is missing either dye or virus channel."
                 if self.debug:
                     print(msg)
@@ -228,6 +230,7 @@ class CellMaker(ParallelManager):
                 raise ValueError(msg)
 
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
+
         if os.path.exists(self.avg_cell_img_file):
             avg_cell_img = load(self.avg_cell_img_file) #LOAD AVERAGE CELL IMAGE ONCE
         else:
@@ -239,14 +242,14 @@ class CellMaker(ParallelManager):
         self.cell_radius = 40
 
         if self.input_format == 'tif':
-            INPUT = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
+            input_path_dye = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_channel)
             self.section_count = self.capture_total_sections(self.input_format, INPUT) #ONLY NEED SINGLE/FIRST CHANNEL TO GET TOTAL SECTION COUNT
         else:
-            INPUT_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.dye_channel) + '.zarr')
+            input_path_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.dye_channel) + '.zarr')
             input_path_virus = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.virus_channel) + '.zarr')
             
-            # OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER [DO NOT USE DATABASE]
+            # OME-ZARR SECTION COUNT MAY BE EXTRACTED FROM META-DATA IN FOLDER OR FROM META-DATA IN FILE [DO NOT USE DATABASE]
         
         file_keys = []
         for section in range(self.section_count):

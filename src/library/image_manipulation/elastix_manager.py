@@ -4,8 +4,9 @@ https://elastix.lumc.nl/
 The libraries are contained within the SimpleITK-SimpleElastix library
 """
 
-import glob
 import os
+import inspect
+import glob
 import shutil
 import sys
 import numpy as np
@@ -50,8 +51,11 @@ class ElastixManager():
         If cuda and GPU is available, we will use it, otherwise don't. 
         Home computers may not have a GPU
         """
+
         if self.debug:
-            print(f"DEBUG: START ElastixManager::create_within_stack_transformations with iteration={self.iteration}")
+            # Dynamically get the current function's name
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START with iteration={self.iteration}")
 
         files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
         
@@ -391,7 +395,9 @@ class ElastixManager():
         :param transforms: (dict): dictionary of transformations that are index by the id of moving sections #THIS ARGUMENT NOT ACTUALLY PASSED TO METHOD
         """
         if self.debug:
-            print("DEBUG: START ElastixManager::start_image_alignment")
+            # Dynamically get the current function's name
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         if self.downsample:
             transformations = self.get_transformations(self.iteration)
@@ -504,7 +510,7 @@ class ElastixManager():
         """
 
         fileLocationManager = FileLocationManager(self.animal)
-        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)
+        self.input, _ = fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)
         self.output = fileLocationManager.section_web
 
         os.makedirs(self.output, exist_ok=True)

@@ -2,6 +2,7 @@
 the brain area by using masks.
 """
 import os
+import inspect
 import shutil
 import sys
 from PIL import Image
@@ -75,6 +76,7 @@ class ImageCleaner:
         MASKS = self.fileLocationManager.get_full_masked(channel=1) #usually channel=1, except for step 6
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
+
     def create_cleaned_images(self):
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
@@ -101,7 +103,8 @@ class ImageCleaner:
             print(f"Error: Could not find the input directory: {INPUT}")
             return
 
-        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
+        current_function_name = inspect.currentframe().f_code.co_name
+        self.fileLogger.logevent(f"{self.__class__.__name__}::{current_function_name} Input FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
         if self.downsample and os.path.exists(CLEANED):
             print(f'Removing {CLEANED}')
             shutil.rmtree(CLEANED)        
@@ -193,7 +196,8 @@ class ImageCleaner:
             print(f"Error: Could not find the input directory: {self.input}")
             return
 
-        self.fileLogger.logevent(f"image_cleaner::create_cleaned_images Input FOLDER: {self.input} FILE COUNT: {len(starting_files)}")
+        current_function_name = inspect.currentframe().f_code.co_name
+        self.fileLogger.logevent(f"{self.__class__.__name__}::{current_function_name} Input FOLDER: {self.input} FILE COUNT: {len(starting_files)}")
         self.fileLogger.logevent(f"MASK FOLDER: {self.maskpath}")
         os.makedirs(self.output, exist_ok=True)
         image_manager = ImageManager(self.input)
@@ -427,7 +431,6 @@ class ImageCleaner:
         output_dirs = ['placed', 'mask_placed_aligned_0']
         cleanup(output_dirs)
         
-
 
     def create_shell_from_mask(self):
         self.create_rotated_aligned_masks()

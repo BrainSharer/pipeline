@@ -2,6 +2,8 @@
 """
 import os
 import sys
+from library.utilities.utilities_process import get_scratch_dir
+
 
 data_path = "/net/birdstore/Active_Atlas_Data/data_root"
 ALIGNED = 0
@@ -10,7 +12,6 @@ CLEANED_DIR = 'cleaned'
 CROPPED_DIR = 'cropped'
 ALIGNED_DIR = 'aligned'
 REALIGNED_DIR = 'realigned'
- 
 
 class FileLocationManager(object):
     """Master class to house all file paths for preprocessing-pipeline
@@ -174,7 +175,8 @@ class FileLocationManager(object):
 
         channel_outdir += f"_rechunkme_{outpath}"
         if use_scratch_dir:
-            rechunkme_dir = os.path.join("/scratch", self.prep_id, channel_outdir)
+            scratch_tmp = get_scratch_dir()
+            rechunkme_dir = os.path.join(scratch_tmp, 'pipeline_tmp', self.prep_id, channel_outdir)
         else:
             rechunkme_dir = os.path.join(self.neuroglancer_data, f"{channel_outdir}")
         os.makedirs(rechunkme_dir, exist_ok=True)

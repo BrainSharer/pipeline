@@ -3,6 +3,7 @@
 
 import hashlib
 import os, sys, time, re, io, json
+import inspect
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -28,7 +29,8 @@ class MetaUtilities:
 
         workers = self.get_nworkers()
         if self.debug:
-            print(f"DEBUG: START MetaUtilities::extract_slide_meta_data_and_insert_to_database")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
             workers = 1
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
@@ -76,7 +78,8 @@ class MetaUtilities:
         """
 
         if self.debug:
-            print(f"DEBUG: START MetaUtilities::file_validation")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         slide_id = []
         for file in czi_files:
@@ -115,7 +118,8 @@ class MetaUtilities:
         unprocessed_czifiles = czi_files
         
         if self.debug:
-            print(f"DEBUG: START MetaUtilities::all_slide_meta_data_exists_in_database")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         # active slides
         active_query = self.sqlController.session.query(Slide)\
@@ -346,7 +350,8 @@ class MetaUtilities:
         """
 
         if self.debug:
-            print(f"DEBUG: START MetaUtilities::correct_multiples on {len(self.multiple_slides)} slides")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START on {len(self.multiple_slides)} slides")
                     
         for slide_physical_id in self.multiple_slides:
             if self.debug:

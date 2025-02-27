@@ -5,6 +5,7 @@ https://www.cis.upenn.edu/~jshi/ped_html/
 
 import os
 import shutil
+import inspect
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -242,7 +243,9 @@ class MaskManager:
         """
 
         if self.debug:
-            print(f"DEBUG: MaskManager::create_downsampled_mask START")
+            # Dynamically get the current function's name
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         self.load_machine_learning_model()
         transform = torchvision.transforms.ToTensor()
