@@ -12,14 +12,10 @@ from library.cell_labeling.cell_manager import CellMaker
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.parallel_manager import ParallelManager
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image
 
 
-class CellPipeline(
-    CellMaker,
-    ParallelManager
-):
+class CellPipeline():
     """
     CellPipeline is a class that handles the automated cell labeling process, including creating detections,
     extracting predictions, fixing coordinates, and training models for cell detection.
@@ -53,6 +49,14 @@ class CellPipeline(
         self.fileLocationManager = FileLocationManager(animal)
         self.sqlController = SqlController(animal)
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
+        """
+        self.cellMaker = CellMaker(self.animal, self.round, self.channel, 
+                                   self.fileLocationManager, 
+                                   self.sqlController, 
+                                   self.fileLogger, 
+                                   self.debug)
+        """
+        self.cellMaker = CellMaker()
         self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
 
 
@@ -63,20 +67,20 @@ class CellPipeline(
         print("Starting cell detections")
 
         scratch_tmp = get_scratch_dir()
-        self.check_prerequisites(scratch_tmp)
+        self.cellMaker.check_prerequisites(scratch_tmp)
 
         # IF ANY ERROR FROM check_prerequisites(), PRINT ERROR AND EXIT
 
         # ASSERT STATEMENT COULD BE IN UNIT TEST (SEPARATE)
 
-        self.start_labels()
+        self.cellMaker.start_labels()
         print(f'Finished cell detections')
 
         # ADD CLEANUP OF SCRATCH FOLDER
 
     def extract_predictions(self):
         print('Starting extraction')
-        self.parse_cell_labels()
+        self.cellMaker.parse_cell_labels()
         print(f'Finished extraction.')
 
     def fix_coordinates(self):
@@ -146,10 +150,6 @@ class CellPipeline(
         drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
         detection_features=detection_features.drop(drops,axis=1)
             
-        #trainer = CellDetectorTrainer(self.animal, round=1)
-        #new_models = trainer.train_classifier(detection_features, 676, 3)
-        #trainer.save_models(new_models)
-
         print(f'Starting training on {self.animal} round={self.round} with {len(detection_features)} features')
         
         trainer = CellDetectorTrainer(self.animal, round=self.round) # Use Detector 4 as the basis

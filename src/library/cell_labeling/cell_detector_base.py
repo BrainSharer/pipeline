@@ -48,12 +48,21 @@ class Brain:
 
 
 class CellDetectorBase(Brain):
-    def __init__(self,animal='DK55',section = 0,disk = '/net/birdstore/Active_Atlas_Data',round = 1,segmentation_threshold=2000,replace=False):
+
+    def __init__(
+        self,
+        animal="DK55",
+        section=0,
+        disk="/net/birdstore/Active_Atlas_Data",
+        step=1,
+        segmentation_threshold=2000,
+        replace=False,
+    ):
         super().__init__(animal)
         self.replace = replace
         self.disk = disk
-        self.round = round
-        self.segmentation_threshold=segmentation_threshold
+        self.step = step
+        self.segmentation_threshold = segmentation_threshold
         self.ncol = 2
         self.nrow = 5
         self.section = section
@@ -79,19 +88,19 @@ class CellDetectorBase(Brain):
         self.CH3_SECTION_DIR = os.path.join(self.CH3, f"{self.section:03}")
         self.CH1_SECTION_DIR = os.path.join(self.CH1, f"{self.section:03}")
         self.QUALIFICATIONS = os.path.join(
-            self.FEATURE_PATH, f"categories_round{self.round}.pkl"
+            self.FEATURE_PATH, f"categories_round{self.step}.pkl"
         )
         self.POSITIVE_LABELS = os.path.join(
             self.FEATURE_PATH,
-            f"positive_labels_for_round_{self.round}_threshold_{self.segmentation_threshold}.pkl",
+            f"positive_labels_for_round_{self.step}_threshold_{self.segmentation_threshold}.pkl",
         )
         self.DETECTOR_PATH = os.path.join(
             self.DETECTOR,
-            f"detector_round_{self.round}_threshold_{self.segmentation_threshold}.pkl",
+            f"detector_round_{self.step}_threshold_{self.segmentation_threshold}.pkl",
         )
         self.DETECTION_RESULT_DIR = os.path.join(
             self.DETECTION,
-            f"detections_{self.animal}.{str(self.round)}_threshold_{self.segmentation_threshold}.csv",
+            f"detections_{self.animal}.{str(self.step)}_threshold_{self.segmentation_threshold}.csv",
         )
         self.ALL_FEATURES = os.path.join(
             self.FEATURE_PATH,
@@ -99,7 +108,7 @@ class CellDetectorBase(Brain):
         )
         self.MODEL_PATH = os.path.join(
             self.MODELS,
-            f"models_round_{self.round}_threshold_{self.segmentation_threshold}.pkl",
+            f"models_round_{self.step}_threshold_{self.segmentation_threshold}.pkl",
         )
 
     def check_path_exists(self):
@@ -141,7 +150,7 @@ class CellDetectorBase(Brain):
         if os.path.exists(self.TILE_INFO_DIR):
             tile_information = pd.read_csv(self.TILE_INFO_DIR)
             tile_information.tile_origin = tile_information.tile_origin.apply(eval)
-            assert (tile_information == self.get_tile_information()).all().all()
+            assert (tile_information == self.get_tile_information()).all().all(), 'tile information does not match'
         else:
             self.save_tile_information()
 

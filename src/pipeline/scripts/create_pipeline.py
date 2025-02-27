@@ -1,5 +1,5 @@
 """This program will create everything.
-The only required argument is the animal and step. By default it will work on channel=1
+The only required argument is the animal and task. By default it will work on channel=1
 and downsample = True. Run them in this sequence for channel 1, when that is done, run
 them again for the remaining channels and then for the full resolution version:
 
@@ -10,6 +10,7 @@ them again for the remaining channels and then for the full resolution version:
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task omezarr
 
 Explanation for the tasks:
 
@@ -26,9 +27,10 @@ Explanation for the tasks:
     the images are cleaned from the masks.
 - histogram - Histograms showing the distribution of the image intensity levels are created \
     for all cleaned channel 1 sections.
-- align - Section to section alignment with Elastix is then run on the cleaned and cropped images using a rigid transformation. 
+- align - Section to section alignment with Elastix is then run on the cleaned and placed images using a rigid transformation. 
 - realign - If the alignment needs improvement, the user can run the realign task to realign the images.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
+- omezarr - The final step is creating the OME-Zarr data from the aligned and cleaned images. You can run this instead of neuroglancer.
 
 **Timing results**
 
@@ -52,10 +54,10 @@ Creating fiducials and then running the realing task will improve the alignment.
 **Switching projection in Neuroglancer** 
 
 - This switches the top left and bottom right quadrants. Place this JSON directly below the 'position' key:
-- crossSectionOrientation: [0, -0.7071067690849304, 0, 0.7071067690849304],
+    crossSectionOrientation: [0, -0.7071067690849304, 0, 0.7071067690849304],
+- if you use omezarr, you will need to switch the projection in the viewer.
+    crossSectionOrientation: [0, 0, 0, -1],
  
- - Pipeline web pages: https://pmc.ncbi.nlm.nih.gov/articles/PMC11266044/
- - https://github.com/Texera/texera/wiki/Getting-Started
 
 """
 import argparse

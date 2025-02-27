@@ -8,16 +8,17 @@ Setup
     muralis by running: ``source /usr/local/share/pipeline/bin/activate``
 
 *   To run any of these commands at high resolution, prefix each command
-    with ``nohup``\ and end the command with ``&``. That will make it run
-    in the background and you can log out.
+    with ``nohup``\ and end the command with ``> DKXX.log 2>&1 &``. That will make it run
+    in the background, redirect loggging to DKXX.log  and you can log out.
 
 Running the initial task - extract
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Create a folder with brain id under
     /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX create
-    subfolder DKXX/czi and DKXX/tif. Then copy the czi files to
-    DKXX/czi.
+    subfolder DKXX/czi. Then copy the czi files to
+    DKXX/czi. You could also link the files from the original origin folder. Copying
+    czi files takes a long time.
 *   Add entries in the animal, scan run and histology table in the
     database using the `admin portal <https://www.brainsharer.org/brainsharer/admin>`__.
 *   All functionality for running the pipeline is found in
@@ -32,14 +33,14 @@ Running the initial task - extract
     #. Also creates the downsampled tif files
     #. By default it works on channel 1 and the downsampled stack.
     #. Create png files for channel 1.
-    #. After this is one you’ll want to do the Django database portal QC
+    #. After this task is done, you’ll want to do the Django database portal QC
        on the slides
 
 Database portal QC after extract task
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   Have someone confirm the status of each slide in:
-    https://www.brainsharer.org/brainsharer/admin
+    https://brainsharer.org/brainsharer/admin
 
     #.  After logging in, go to the Slides link in the Brain category.
     #.  Enter the animal name in the search box.
@@ -47,16 +48,11 @@ Database portal QC after extract task
         to edit.
     #.  If the entire slide is bad or out of focus or is the very last scene, 
         mark it accordingly under it's Slide Status dropdown menu.
-    #.  **When performing any operations on a scene, do them one at a time**
+    #.  When performing any operations on a scene, **do the operations one at a time**
         and make use of the 'Save and continue' button. If a scene or scenes are bad, first
         mark it as bad, hit the 'Save and continue'. Do this individually for each scene.
         **Don't** try to mark multiple slides as Bad, and then hit 'Save and continue'.
-    #.  If a scene needs to be marked as Bad, Out of Focus or the End
-        slide, select the appropriate Scene QC. If you mark it as Bad or
-        Out of Focus, the nearest neighbor will NOT be inserted. 
-    #.  Do all scene replication after you have marked scenes bad. Make
-        use of the ‘Save and continue’ button instead of the ‘Submit’
-        button.
+    #.  If a scene needs is no good, mark it as inactive at the bottom area of the page.
     #.  If you want to replicate a scene, choose the Replicate field and
         add an amount to replicate.
     #.  The list of scenes are listed near the bottom of the page.
@@ -84,6 +80,7 @@ Running the mask task
     #. Check the rotation necessary for the images by viewing the
        normalized files and then updating the scan run table in the
        Django database portal and update the rotations. It is usually 3.
+    #. The tighter the mask, the better the alignment will be.
 
 
 Running the clean task
@@ -114,11 +111,7 @@ Running the alignment task
     #. The alignment process is then run from the elastix data
     #. View the aligned images to make sure they all look good. ImageJ
        or geeqie is good for viewing lots of files.
-    #. Some of the images might need manual alignment. Use the
-       Manual_Alignment.ipynb jupyter notebook to do the manual
-       alignment. Note, this will only work with sections before the
-       midpoint. You’ll need to update the database with new parameters.
-       The SQL is produced in the last cell of the notebook.
+    #. Some of the images might need manual alignment. You will need to run the realign task.
 
 Running the realignment task
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
