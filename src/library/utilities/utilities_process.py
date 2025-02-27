@@ -55,6 +55,7 @@ def use_scratch_dir(directory: str) -> bool:
         return True
     return False 
 
+
 def get_directory_size(directory):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(directory):

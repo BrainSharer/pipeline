@@ -30,7 +30,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.database_model.scan_run import IMAGE_MASK
 
 try:
@@ -178,16 +178,17 @@ class Pipeline(
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
 
+
     def histogram(self):
         print(self.TASK_HISTOGRAM)
         if self.downsample:
             self.make_histogram()
             self.make_combined_histogram()
-            print(f'Finished {self.TASK_HISTOGRAM}.')
             if self.channel == 1:
                 self.create_web_friendly_sections()
         else:
             print(f'No histogram for full resolution images')
+        print(f'Finished {self.TASK_HISTOGRAM}.')
 
 
     def affine_align(self):
@@ -198,6 +199,7 @@ class Pipeline(
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
         os.makedirs(self.output, exist_ok=True)
         self.create_affine_transformations()
+
 
     def align(self):
         """Perform the section to section alignment (registration)
@@ -279,6 +281,17 @@ class Pipeline(
     def omezarr(self):
         print(self.TASK_OMEZARR)
         self.check_ram()
+
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)     
+        use_scratch = use_scratch_dir(self.input)
+        
+        self.scratch_space = os.path.join('/tmp', 'pipeline_tmp', self.animal, 'dask-scratch-space')
+        if use_scratch:
+            self.scratch_space = os.path.join(get_scratch_dir(), 'pipeline_tmp', self.animal, 'dask-scratch-space')
+            if os.path.exists(self.scratch_space):
+                delete_in_background(self.scratch_space)
+            os.makedirs(self.scratch_space, exist_ok=True)
+    
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
 
@@ -388,7 +401,7 @@ class Pipeline(
         if not os.path.exists("./src/settings.py"):
             error += "\nThere is no ./src/settings.py file!"
 
-        if not self.downsample and self.available_memory < 50:
+        if not self.downsample and not self.TASK_EXTRACT and self.available_memory < 50:
             error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
             error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'

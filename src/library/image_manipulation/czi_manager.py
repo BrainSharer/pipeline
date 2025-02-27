@@ -4,6 +4,7 @@ which is a set of Java tools, but we opted to use a pure python library that
 can handle CZI files. https://github.com/AllenCellModeling/aicspylibczi
 """
 import os
+import inspect
 from PIL import Image
 from aicspylibczi import CziFile
 from aicsimageio import AICSImage
@@ -38,9 +39,10 @@ class CZIManager():
         :return: dictionary of the metadata
         """
 
-        if debug:
-            print(f"DEBUG: START CZIManager::extract_metadata_from_czi_file")
-            
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+    
         czi_aics = AICSImage(czi_file_path)
         total_scenes = czi_aics.scenes
 
