@@ -15,7 +15,7 @@ from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image
 
 
-class CellPipeline():
+class CellPipeline(CellMaker):
     """
     CellPipeline is a class that handles the automated cell labeling process, including creating detections,
     extracting predictions, fixing coordinates, and training models for cell detection.
@@ -40,25 +40,6 @@ class CellPipeline():
             Trains the cell detection model using the detected features.
     """
     
-    def __init__(self, animal, task, round=4, debug=False):
-        self.animal = animal
-        self.task = task
-        self.round = round
-        self.debug = debug
-        self.channel = 1
-        self.fileLocationManager = FileLocationManager(animal)
-        self.sqlController = SqlController(animal)
-        self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
-        """
-        self.cellMaker = CellMaker(self.animal, self.round, self.channel, 
-                                   self.fileLocationManager, 
-                                   self.sqlController, 
-                                   self.fileLogger, 
-                                   self.debug)
-        """
-        self.cellMaker = CellMaker()
-        self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
-
 
     def create_detections(self):
         """
