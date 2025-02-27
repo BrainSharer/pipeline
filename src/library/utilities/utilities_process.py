@@ -16,6 +16,9 @@ from concurrent.futures import Future
 import random
 import string
 
+from library.controller.sql_controller import SqlController
+from library.image_manipulation.filelocation_manager import FileLocationManager
+
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
@@ -65,6 +68,16 @@ def get_directory_size(directory):
                 total_size += os.path.getsize(file_path)
     return total_size
 
+
+def get_section_count(animal: str) -> int:
+    section_count = SqlController.get_section_count(animal)
+    if section_count == 0:
+        INPUT = FileLocationManager.get_thumbnail(channel=1)
+        if os.path.exists(INPUT):
+            section_count = len(os.listdir(INPUT))
+
+    return section_count
+    
 
 def get_hostname() -> str:
     """Returns hostname of server where code is processed
