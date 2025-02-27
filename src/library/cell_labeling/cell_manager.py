@@ -768,7 +768,7 @@ class CellMaker(ParallelManager):
             print(f'Wrote {info} to {info_filename}')
 
 
-    def parse_cell_labels(self):
+    def extract_predictions(self):
         """
         Note, the point information from the CSV must be converted to 
         meters. 
@@ -924,11 +924,6 @@ class CellMaker(ParallelManager):
         print(f'Finished cell detections')
 
         # ADD CLEANUP OF SCRATCH FOLDER
-
-    def extract_predictions(self):
-        print('Starting extraction')
-        self.parse_cell_labels()
-        print(f'Finished extraction.')
 
     def fix_coordinates(self):
 
