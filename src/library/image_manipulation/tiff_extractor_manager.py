@@ -1,4 +1,5 @@
 import os
+import inspect
 import glob
 import sys
 from pathlib import Path
@@ -32,7 +33,8 @@ class TiffExtractor():
         """
 
         if self.debug:
-            print(f"DEBUG: START TiffExtractor::extract_tiffs_from_czi")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         if self.downsample:
             self.output = self.fileLocationManager.thumbnail_original
@@ -55,7 +57,7 @@ class TiffExtractor():
         sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
         if self.debug:
             print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
-
+            print(f"OUTPUT FILES DESTINATION: {self.output}")
 
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
@@ -78,7 +80,6 @@ class TiffExtractor():
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
             extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
         
-
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
         if duplicates:
@@ -99,8 +100,12 @@ class TiffExtractor():
         viewed on the Django admin portal.
         These images are used for Quality Control.
         """
+        workers = self.get_nworkers()
+
         if self.debug:
-            print(f"DEBUG: START TiffExtractor::create_web_friendly_image")
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            workers = 1
 
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums', 'scene')
 
@@ -125,7 +130,8 @@ class TiffExtractor():
                 files_skipped += 1
                 continue
             scene = section.scene_index
-
+            file_keys.append([i, infile, outfile, checksum_filepath, scene, scale])
+            
             scale = 0.01
 
             # CREATE .sha256 CHECKSUM FILENAME
@@ -140,7 +146,6 @@ class TiffExtractor():
         n_processing_elements = len(file_keys)
         self.fileLogger.logevent(f"PROCESSING [NOT PRE-EXISTING] FILES: {n_processing_elements}")
 
-        workers = self.get_nworkers()
         self.run_commands_concurrently(extract_png_from_czi, file_keys, workers)
 
     def create_previews(self):
