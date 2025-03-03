@@ -16,8 +16,8 @@ from concurrent.futures import Future
 import random
 import string
 
-from library.controller.sql_controller import SqlController
-from library.image_manipulation.filelocation_manager import FileLocationManager
+#from library.controller.sql_controller import SqlController
+#from library.image_manipulation.filelocation_manager import FileLocationManager
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000

@@ -281,6 +281,51 @@ class AnnotationSessionController:
                 polygons[section].append((x,y))
 
         return polygons
+    
+
+    def get_annotation_features(self, prep_id: str, annotator_id: int, debug: bool = False):
+
+        features = defaultdict(list)
+
+        # Define query
+        query = (
+            self.session.query(AnnotationSession)
+            .filter(AnnotationSession.active == True)
+            .filter(AnnotationSession.FK_prep_id == prep_id)
+            .filter(AnnotationSession.FK_user_id == annotator_id)
+            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_([FIDUCIAL])))
+            .order_by(AnnotationSession.updated.desc())
+        )
+        
+        annotation_session = query.first()
+
+        if not annotation_session:
+            print("No annotation session for this animal was found.")
+            return features
+
+        xy_resolution = self.scan_run.resolution
+        z_resolution = self.scan_run.zresolution
+
+        try:
+            data = annotation_session.annotation["childJsons"]
+        except KeyError:
+            print("No childJsons key in data")
+            return features
+
+
+        for point in data:
+            x, y, z = point["point"]
+            x = x * M_UM_SCALE / xy_resolution
+            y = y * M_UM_SCALE / xy_resolution
+            section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
+            if debug:
+                print(x, y, section)
+            features[section].append((x, y))
+
+
+        return features
+
+
 
 
     def get_annotation_by_id(self, session_id):
