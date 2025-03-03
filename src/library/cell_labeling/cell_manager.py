@@ -1025,15 +1025,15 @@ class CellMaker(ParallelManager):
         image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
         print(f'shape of image_roi_virus {image_roi_virus.shape} and shape of data_virus {image_roi_dye.shape}')
 
-        connected_segments = find_connected_segments(image_roi_virus, 2600)
+        connected_segments = find_connected_segments(image_roi_virus, 2000)
         n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
         print(f'Found {n_segments} segments')
         print(f'{segment_stats=}')
         print(f'{segment_location=}')
         print(f'segment masks shape {segment_masks.shape}')
 
-        segment_row, segment_col = segment_location[0, :]
-        segmenti = 0
+        segmenti = 1
+        segment_row, segment_col = segment_location[segmenti, :]
         _, _, width, height, object_area = segment_stats[segmenti, :]
         #segment_row, segment_col = segment_location[segmenti, :]
         print(f'{segment_row=}, {segment_col=}, {width=}, {height=}, {object_area=}')

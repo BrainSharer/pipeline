@@ -667,7 +667,9 @@ class VolumeRegistration:
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
-            
+        else:
+            print(f'Creating precomputed from {volumepath}')
+
         PRECOMPUTED = self.neuroglancer_data_path
         scale = self.um * 1000
         scales = (scale, scale, scale)
@@ -678,7 +680,6 @@ class VolumeRegistration:
         volume_size = volume.shape
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
         #volume = normalize16(volume)
-        print(f'volume shape={volume.shape} dtype={volume.dtype}')
 
         ng = NumpyToNeuroglancer(
             self.moving,
