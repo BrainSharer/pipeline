@@ -1,11 +1,10 @@
+import os, sys
 from datetime import datetime
 import shutil
-import os, sys
 import socket
 import concurrent
 from skimage import io
 from PIL import Image
-Image.MAX_IMAGE_PIXELS = None
 import cv2
 import numpy as np
 import gc
@@ -16,14 +15,11 @@ from concurrent.futures import Future
 import random
 import string
 
-#from library.controller.sql_controller import SqlController
-#from library.image_manipulation.filelocation_manager import FileLocationManager
 
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
-
 
 def delete_in_background(path: str) -> Future:
     current_date = datetime.now().strftime('%Y-%m-%d')
@@ -67,16 +63,6 @@ def get_directory_size(directory):
             if not os.path.islink(file_path):
                 total_size += os.path.getsize(file_path)
     return total_size
-
-
-def get_section_count(animal: str) -> int:
-    section_count = SqlController.get_section_count(animal)
-    if section_count == 0:
-        INPUT = FileLocationManager.get_thumbnail(channel=1)
-        if os.path.exists(INPUT):
-            section_count = len(os.listdir(INPUT))
-
-    return section_count
     
 
 def get_hostname() -> str:

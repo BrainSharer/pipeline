@@ -30,7 +30,7 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background, get_section_count
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.database_model.scan_run import IMAGE_MASK
 
 try:
@@ -96,7 +96,6 @@ class Pipeline(
         self.animal = animal
         self.downsample = downsample
         self.debug = debug
-
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
         self.sqlController = SqlController(animal)
         self.session = self.sqlController.session
@@ -104,7 +103,6 @@ class Pipeline(
         self.iteration = None
         self.mask_image = self.sqlController.scan_run.mask
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
-        self.section_count = self.get_section_count(self.animal)
         self.multiple_slides = []
         self.channel = channel
         self.scaling_factor = scaling_factor
@@ -121,6 +119,7 @@ class Pipeline(
         self.report_status()
         self.check_settings()
 
+
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
@@ -135,7 +134,6 @@ class Pipeline(
         print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
-
 
 
     def extract(self):

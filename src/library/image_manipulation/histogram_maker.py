@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 
 from library.image_manipulation.image_manager import ImageManager
+from library.controller.sections_controller import SectionsController
 from library.utilities.utilities_process import test_dir
 
 COLORS = {1: "b", 2: "r", 3: "g"}
@@ -29,13 +30,20 @@ class HistogramMaker:
         workers = self.get_nworkers()
 
         if self.debug:
-            # Dynamically get the current function's name
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
             workers = 1
 
         if self.downsample:
             self.input = self.fileLocationManager.get_thumbnail(self.channel)
+            
+            section_count = self.sqlController.get_section_count(self.animal)
+
+            if section_count == 0:
+                if os.path.exists(self.input):
+                    section_count = len(os.listdir(self.input))
+            section_count = section_count
+            
             if not os.path.exists(self.input):
                 print(f"Input path does not exist {self.input}")
                 return
@@ -43,27 +51,33 @@ class HistogramMaker:
             if not os.path.exists(self.masks):
                 print(f"Mask path does not exist {self.masks}")
                 return
-            files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, downsample=True, same_size=False)
+            files, nfiles, *_ = test_dir(self.animal, self.input, section_count, downsample=True, same_size=False)
             if nfiles == 0:
                 print("No sections in the database or folder")
 
             self.output = self.fileLocationManager.get_histogram(self.channel)
             os.makedirs(self.output, exist_ok=True)
+            
             file_keys = []
             for i, file in enumerate(files):
                 filename = str(i).zfill(3) + ".tif"
                 input_path = os.path.join(self.input, filename)
+                real_path = os.path.realpath(input_path) #FOLLOWS LINK TO ORG. FILENAME
+                real_filename = os.path.basename(real_path)
+                
                 mask_path = os.path.join(self.masks, filename)
                 output_path = os.path.join(
-                    self.output, os.path.splitext(filename)[0] + ".png"
+                    self.output, os.path.splitext(real_filename)[0] + ".png"
                 )
-                if not os.path.exists(input_path):
-                    print("Input tif does not exist", input_path)
+
+                if not os.path.exists(real_path):
+                    print("Input tif does not exist", real_path)
                     continue
                 if os.path.exists(output_path):
                     continue
+            
                 file_keys.append(
-                    [input_path, mask_path, self.channel, file, output_path]
+                    [real_path, mask_path, self.channel, file, output_path, self.debug]
                 )
 
             self.run_commands_concurrently(make_single_histogram, file_keys, workers)
@@ -164,8 +178,8 @@ def make_single_histogram(file_key: tuple[str, str, str, str, str]) -> None:
     :param file_key: tuple of input_path, mask_path, channel, file, output_path
     """
 
-    input_path, mask_path, channel, file, output_path = file_key
-
+    input_path, mask_path, channel, file, output_path, debug = file_key
+    
     # Read image and mask
     img = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
@@ -179,6 +193,11 @@ def make_single_histogram(file_key: tuple[str, str, str, str, str]) -> None:
         img = cv2.bitwise_and(img, img, mask=mask)
     except Exception as e:
         print(f"Could not apply mask {mask_path} to {input_path}: {e}")
+
+        if debug:
+            print(f"Image dimensions (height, width): {img.shape}")
+            print(f"Mask dimensions (height, width): {mask.shape}")
+
         return
     
     # Filter out zero values and flatten
