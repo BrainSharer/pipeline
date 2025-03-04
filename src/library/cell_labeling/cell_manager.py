@@ -17,6 +17,7 @@ from compress_pickle import dump, load
 import pandas as pd
 from tqdm import tqdm
 import xgboost as xgb
+import warnings
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_utilities import calculate_correlation_and_energy, find_connected_segments, load_image, subtract_blurred_image
@@ -762,9 +763,9 @@ class CellMaker(ParallelManager):
         info["@type"] = "neuroglancer_annotations_v1"
         info["annotation_type"] = "CLOUD"
         info["by_id"] = {"key":"by_id"}
-        info["dimensions"] = {"x":[str(xy_resolution),"um"],
-                            "y":[str(xy_resolution),"um"],
-                            "z":[str(z_resolution),"um"]}
+        info["dimensions"] = {"x":[str(xy_resolution),"μm"],
+                            "y":[str(xy_resolution),"μm"],
+                            "z":[str(z_resolution),"μm"]}
         info["lower_bound"] = [0,0,0]
         info["upper_bound"] = chunk_size
         info["properties"] = []
@@ -964,9 +965,22 @@ class CellMaker(ParallelManager):
             df.to_csv(csvfile, index=False)
 
     def train(self):
-        import warnings
+        '''
+        METHODS TO TRAIN CELL DETECTOR MODEL
+
+        HIGH LEVEL STEPS:
+        1. Read all csv files in cell_label_path
+        2. Concatenate all csv files
+        3. Drop columns: animal, section, index, row, col, mean_score, std_score, predictions
+        4. Add label column based on predictions
+        5. Train model using concatenated data
+        '''
+
         warnings.filterwarnings("ignore")
 
+        #TODO: It seems like we could export single file from database with appropriate columns
+        # would also suggest putting the human validated 'ground truth' files in separate directory (for auditing purposes)
+        # maybe cell_labels/human_validated_{date} alone with a json file with details of the training (annotators, evaluation dates, sample sizes, other)
         detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_00*.csv') ))
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.cell_label_path}')
@@ -1003,6 +1017,8 @@ class CellMaker(ParallelManager):
     def create_features(self):
         # col=11347, row=17614
         #col=5718, row=26346
+
+        #TODO: Why hard-coded variables?
         col = 5718
         row = 26346
         section = 0
@@ -1048,6 +1064,8 @@ class CellMaker(ParallelManager):
             "mask": segment_masks,
         }
 
+        #TODO: see calculate_features() ~line 489 [consolidate in cell_utilities.py or similar]
+        #to avoid duplicate code
         ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], image_roi_dye)
         ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], image_roi_virus)
 

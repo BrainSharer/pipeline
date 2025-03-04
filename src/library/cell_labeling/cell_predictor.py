@@ -2,6 +2,7 @@ from numpy import *
 from pylab import plot
 
 class Predictor:
+    #TODO: FUNCTIONALITY DUPLICATED IN cell_manager.py (get_prediction_and_label) ~line 675
     def __init__(self,std=1.5):
         self.std = std
     
