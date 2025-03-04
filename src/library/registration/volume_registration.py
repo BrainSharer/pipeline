@@ -621,6 +621,9 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
+        if os.path.exists(self.moving_volume_path):
+            print(f'{self.moving_volume_path} exists, exiting')
+            return
         scaling_factor = 1
         if self.um == 25:
             scaling_factor = 2
