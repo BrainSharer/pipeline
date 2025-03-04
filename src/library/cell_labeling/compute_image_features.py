@@ -42,6 +42,8 @@ def calc_img_features(img,mean_s):
          img_x,img_y = the gradients of the image
 
     """
+
+    #TODO: Formerly integrated into cell_manager.py (calculate_correlation_and_energy). is this deprecated?
          
     img,mean=equalize_array_size_by_trimming(img,mean_s)
     mean_x,mean_y=sobel(mean)

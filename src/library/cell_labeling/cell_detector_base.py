@@ -63,6 +63,7 @@ class CellDetectorBase(Brain):
         self.disk = disk
         self.step = step
         self.segmentation_threshold = segmentation_threshold
+        #TODO: self.ncol, self.nrow ALSO DEFINED IN cell_manager.py (total_virtual_tile_rows, total_virtual_tile_columns) ~line 437; CONSOLIDATE (AND !HARD CODING VARIBLES)
         self.ncol = 2
         self.nrow = 5
         self.section = section

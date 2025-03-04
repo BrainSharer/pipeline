@@ -1,11 +1,10 @@
-
-
 import glob
 import os
 import sys
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import warnings
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_manager import CellMaker
@@ -14,6 +13,7 @@ from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image
 
+#TODO: SEEMS LIKE THIS ENTIRE FILE IS DUPLICATED IN cell_manager.py; CONSOLIDATE
 
 class CellPipeline(CellMaker):
     """
@@ -64,8 +64,9 @@ class CellPipeline(CellMaker):
         self.cellMaker.parse_cell_labels()
         print(f'Finished extraction.')
 
-    def fix_coordinates(self):
 
+    def fix_coordinates(self):
+        #TODO: DUPLICATE METHODS IN cell_manager.py ~line 931; CONSOLIDATE
         def check_df(csvfile, df):
             section = os.path.basename(csvfile).replace('detections_', '').replace('.csv', '')
             tif = str(section).zfill(3) + '.tif'
@@ -101,7 +102,8 @@ class CellPipeline(CellMaker):
             df.to_csv(csvfile, index=False)
 
     def train(self):
-        import warnings
+        
+        #TODO: DUPLICATE METHODS IN cell_manager.py ~line 967; CONSOLIDATE
         warnings.filterwarnings("ignore")
 
         detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_00*.csv') ))

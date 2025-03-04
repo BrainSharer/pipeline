@@ -15,7 +15,7 @@ from concurrent.futures import Future
 import random
 import string
 
-
+#TODO: CONSOLIDATE ANY HARD-CODED VARIABLES IN SINGLE FILE?
 SCALING_FACTOR = 32.0
 M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR

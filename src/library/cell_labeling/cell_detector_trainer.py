@@ -20,7 +20,7 @@ from library.cell_labeling.cell_detector_base import CellDetectorBase
 from library.cell_labeling.cell_predictor import GreedyPredictor
 from library.cell_labeling.detector import Detector   
 
-
+t
 class CellDetectorTrainer(Detector, CellDetectorBase):
 
     def __init__(self, animal, step=2, segmentation_threshold=2000):
