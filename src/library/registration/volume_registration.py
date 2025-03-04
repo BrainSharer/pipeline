@@ -130,7 +130,7 @@ class VolumeRegistration:
         self.data_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.data_path, exist_ok=True)
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
-        self.allen_path = os.path.join(self.registration_path, 'atlas/Allen')
+        self.allen_path = os.path.join(self.registration_path, 'Allen')
         self.tmp_dir = get_scratch_dir()
         self.moving = moving
         self.animal = moving
@@ -147,7 +147,7 @@ class VolumeRegistration:
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
-        self.fixed_volume_path = os.path.join(self.allen_path, f'{self.fixed}_{um}um_{orientation}.tif' )
+        self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
         self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
