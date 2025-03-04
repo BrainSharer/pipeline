@@ -48,7 +48,7 @@ from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_mask import normalize8, smooth_image
+from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
@@ -679,7 +679,7 @@ class VolumeRegistration:
         num_channels = 1
         volume_size = volume.shape
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
-        #volume = normalize16(volume)
+        volume = normalize16(volume)
 
         ng = NumpyToNeuroglancer(
             self.moving,
