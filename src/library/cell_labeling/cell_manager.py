@@ -17,6 +17,7 @@ from compress_pickle import dump, load
 import pandas as pd
 from tqdm import tqdm
 import xgboost as xgb
+import psutil
 import warnings
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
@@ -26,8 +27,15 @@ from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
-from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image, get_hostname
 
+try:
+    from settings import data_path, host, schema
+except ImportError:
+    print('Missing settings using defaults')
+    data_path = "/net/birdstore/Active_Atlas_Data/data_root"
+    host = "db.dk.ucsd.edu"
+    schema = "brainsharer"
 
 class CellMaker(ParallelManager):
 
@@ -38,6 +46,7 @@ class CellMaker(ParallelManager):
         self.step = step
         self.channel = channel
         self.section_count = 0
+        self.hostname = get_hostname()
         self.fileLocationManager = FileLocationManager(animal)
         self.sqlController = SqlController(animal)
         self.debug = debug
@@ -45,6 +54,21 @@ class CellMaker(ParallelManager):
         self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels')
         #####TODO put average cell someplace better
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
+        self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
+        self.report_status()
+
+    def report_status(self):
+        print("RUNNING CELL MANAGER WITH THE FOLLOWING SETTINGS:")
+        print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
+        print("\tDB host:".ljust(20), f"{host}".ljust(20))
+        print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
+        print("\tschema:".ljust(20), f"{schema}".ljust(20))
+        print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
+        print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
+        print("f\tavg cell image:".ljust(20), f"{str(self.avg_cell_img_file)}".ljust(20))
+        print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
+        print()
+
 
     def check_prerequisites(self, SCRATCH):
         '''

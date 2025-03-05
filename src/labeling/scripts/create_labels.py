@@ -71,7 +71,7 @@ if __name__ == "__main__":
     step = args.step
 
     pipeline = CellMaker(animal=animal, task=task, step=step, debug=debug)
-
+    
     function_mapping = {
         "create_features": pipeline.create_features,
         "detect": pipeline.create_detections,
