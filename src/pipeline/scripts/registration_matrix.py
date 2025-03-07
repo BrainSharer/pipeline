@@ -7,6 +7,40 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.algorithm import umeyama
 
+def compute_affine_transformation_centroid(set1, set2):
+    """
+    Computes the affine transformation (scale, shear, rotation, translation) between two sets of 3D points.
+    
+    Parameters:
+        set1: np.ndarray of shape (N, 3) - Source set of 3D points
+        set2: np.ndarray of shape (N, 3) - Target set of 3D points
+    
+    Returns:
+        A: np.ndarray of shape (3, 3) - Linear transformation matrix
+        t: np.ndarray of shape (3,)   - Translation vector
+    """
+    set1 = np.array(set1)
+    set2 = np.array(set2)
+    
+    assert set1.shape == set2.shape, "Input point sets must have the same shape"
+    assert set1.shape[1] == 3, "Point sets must have 3D coordinates"
+    
+    # Compute centroids
+    centroid1 = np.mean(set1, axis=0)
+    centroid2 = np.mean(set2, axis=0)
+    
+    # Center the points
+    centered1 = set1 - centroid1
+    centered2 = set2 - centroid2
+    
+    # Compute the affine transformation matrix using least squares
+    A, residuals, rank, s = np.linalg.lstsq(centered1, centered2, rcond=None)
+    
+    # Compute the translation vector
+    t = centroid2 - np.dot(centroid1, A)
+    
+    return A, t
+
 def compute_affine_transformation(source_points, target_points):
     """
     Computes the affine transformation matrix that maps source_points to target_points in 3D.
@@ -232,3 +266,8 @@ print(t)
 
 transform = compute_affine_transformation(atlas_src, allen_src)
 print(transform)
+print()
+A, t = compute_affine_transformation_centroid(atlas_src, allen_src)
+
+print(A)
+print(t)
