@@ -22,6 +22,11 @@ COM info:
 allen SC: (368, 62, 227)
 pred  SC: 369, 64, 219
 TODO, transform polygons in DB using the transformation below
+TODO Mar 2025 - 
+See how our structures fit on top of the Allen structure positions.
+Try changing our atlas to the Allen COMs
+Do an affine trans of our atlas to Allen
+Also try registering to the Princeton mouse atlas
 """
 
 import argparse

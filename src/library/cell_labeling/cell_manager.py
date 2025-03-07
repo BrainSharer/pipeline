@@ -21,11 +21,21 @@ import psutil
 import warnings
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
-from library.cell_labeling.cell_utilities import calculate_correlation_and_energy, find_connected_segments, load_image, subtract_blurred_image
+from library.cell_labeling.cell_utilities import (
+    calc_moments_of_mask,
+    calculate_correlation_and_energy,
+    filter_cell_candidates,
+    find_connected_segments,
+    load_image,
+    subtract_blurred_image,
+)
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, FileLocationManager
+from library.image_manipulation.filelocation_manager import (
+    ALIGNED_DIR,
+    FileLocationManager,
+)
 from library.image_manipulation.parallel_manager import ParallelManager
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image, get_hostname
 
@@ -39,7 +49,7 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal, task, step=4, channel=1, debug=False):
+    def __init__(self, animal, task, step=4, channel=1, x=0, y=0, debug=False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -350,61 +360,23 @@ class CellMaker(ParallelManager):
             print(f'ERROR: {input_path_dye} not found')
             sys.exit(1)
 
-        if debug:
-            print(f'Starting identify_cell_candidates on section: {str_section_number}')
-
-        def filter_cell_candidates(
-            animal,
-            section_number,
-            connected_segments,
-            max_segment_size,
-            cell_radius,
-            x_window,
-            y_window,
-            absolute_coordinates,
-            difference_ch1,
-            difference_ch3,
-        ):
-            """PART OF STEP 2. Identify cell candidates:  Area is for the object, where pixel values are not zero, 
-            Segments are filtered to remove those that are too large or too small"""
-            n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
-            cell_candidates = []
-            for segmenti in range(n_segments):
-                _, _, width, height, object_area = segment_stats[segmenti, :]
-                if object_area > max_segment_size:
-                    continue
-                segment_row, segment_col = segment_location[segmenti, :]
-
-                row_start = int(segment_row - cell_radius)
-                col_start = int(segment_col - cell_radius)
-                if row_start < 0 or col_start < 0:
-                    continue
-                row_end = int(segment_row + cell_radius)
-                col_end = int(segment_col + cell_radius)
-                if (
-                    row_end > x_window or col_end > y_window
-                ):  # row evaluates with x-axis (width), col evaluates with y-axis (height)
-                    continue
-                segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
-                cell = {
-                    "animal": animal,
-                    "section": section_number,
-                    "area": object_area,
-                    "absolute_coordinates_YX": (
-                        absolute_coordinates[2] + segment_col,
-                        absolute_coordinates[0] + segment_row,
-                    ),
-                    "cell_shape_XY": (height, width),
-                    "image_CH3": difference_ch3[row_start:row_end, col_start:col_end].T,
-                    "image_CH1": difference_ch1[row_start:row_end, col_start:col_end].T,
-                    "mask": segment_mask.T,
-                }                                        
-                cell_candidates.append(cell)
-            return cell_candidates
-
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates')
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
+
+        #TODO check if candidates already extracted
+        if os.path.exists(output_file):
+            print(f'Cell candidates already extracted. Using: {output_file}')
+            cell_candidates = load(output_file)
+            return cell_candidates
+        else:
+            cell_candidates = []
+
+
+        if debug:
+            print(f'Starting identify_cell_candidates on section: {str_section_number}')
+
+
 
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number is already string for legacy processing 'tif' (zfill)
@@ -466,7 +438,6 @@ class CellMaker(ParallelManager):
         if debug:
             print(f'dask array created with following parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
-        cell_candidates=[]
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
                 x_start = row*x_window
@@ -590,13 +561,20 @@ class CellMaker(ParallelManager):
 
             fx = 26346
             fy = 5718
+            #col = 5908
+            #row = 27470
             srow = int(spreadsheet_row['row'])
             scol = int(spreadsheet_row['col'])
             if debug:
-                if srow == 5718 and scol == 26346:
+                # NOTE, col and row are switched
+                if srow == fy and scol == fx:
                     for k,v in spreadsheet_row.items():
                         print(f'{k}: {v}')
-                    print('Found cell')
+                    mask = cell['mask']
+                    print(f'fx: {fx}, fy: {fy} srow: {srow}, scol: {scol} self.test_x: {self.test_x}, self.test_y: {self.test_y}')
+                    maskpath = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK184/preps/mask.npy'
+                    np.save(maskpath, mask)
+                    print(f'Found cell with mask shape {mask.shape} dtype {mask.dtype}')
                     print()
 
         df_features = pd.DataFrame(output_spreadsheet)
@@ -607,55 +585,6 @@ class CellMaker(ParallelManager):
 
         return df_features
 
-    def features_using_center_connected_components(self, cell_candidate_data):   
-        '''Part of step 3. calculate cell features'''
-        def mask_mean(mask,image):
-            mean_in=np.mean(image[mask==1])
-            mean_all=np.mean(image.flatten())
-            return (mean_in-mean_all)/(mean_in+mean_all)    # calculate the contrast: mean
-
-        def append_string_to_every_key(dictionary, post_fix): 
-            return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
-
-        def calc_moments_of_mask(mask):   
-            '''
-            calculate moments (how many) and Hu Moments (7)
-            Moments(
-                    double m00,
-                    double m10,
-                    double m01,
-                    double m20,
-                    double m11,
-                    double m02,
-                    double m30,
-                    double m21,
-                    double m12,
-                    double m03
-                    );
-            Hu Moments are described in this paper: 
-            https://www.researchgate.net/publication/224146066_Analysis_of_Hu's_moment_invariants_on_image_scaling_and_rotation
-
-            NOTE: image moments (weighted average of pixel intensities) are used to calculate centroid of arbritary shapes in opencv library
-            '''
-            mask = mask.astype(np.float32)
-            moments = cv2.moments(mask)
-
-            huMoments = cv2.HuMoments(moments)
-            moments = append_string_to_every_key(moments, f'_mask')
-            return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
-
-        mask = cell_candidate_data['mask']  
-
-        moments_data = calc_moments_of_mask(mask)
-        #ids, counts = np.unique(mask, return_counts=True)
-        #print(f'mask shape: {mask.shape}')
-        #print(f'{ids=}, {counts=}')
-
-        # Calculate constrasts relative to mask
-        ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
-        ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
-
-        return ch1_contrast, ch3_constrast, moments_data
 
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pd.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
@@ -1039,21 +968,20 @@ class CellMaker(ParallelManager):
         trainer.save_models(new_models)
 
     def create_features(self):
-        # col=11347, row=17614
-        #col=5718, row=26346
-
-        #TODO: Why hard-coded variables?
-        col = 5718
-        row = 26346
+        """This is not ready. I am testing on specific x,y,z coordinates to see if they match
+        the results returned from the detection process. Once they match, we can pull
+        coordinates from the database and run the detection process on them.
+        Note, x and y are switched.
+        """
         section = 0
-        print(f'processing coordinates {col=}, {row=}, {section=}')
+        print(f'processing coordinates {self.test_y=}, {self.test_x=}, {section=}')
         idx = 0
         avg_cell_img = load(self.avg_cell_img_file) #Load average cell image once
         height = 80
         width = 80
-        x_start = col - (width//2)
+        x_start = self.test_y - (width//2)
         x_end = x_start + 80
-        y_start = row - 40
+        y_start = self.test_x - 40
         y_end = y_start + 80
 
         input_file_virus_path = os.path.join(self.fileLocationManager.get_directory(channel=3, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
@@ -1067,25 +995,20 @@ class CellMaker(ParallelManager):
 
         connected_segments = find_connected_segments(image_roi_virus, 2000)
         n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
-        print(f'Found {n_segments} segments')
-        print(f'{segment_stats=}')
-        print(f'{segment_location=}')
-        print(f'segment masks shape {segment_masks.shape}')
-
-        segmenti = 1
-        segment_row, segment_col = segment_location[segmenti, :]
-        _, _, width, height, object_area = segment_stats[segmenti, :]
-        #segment_row, segment_col = segment_location[segmenti, :]
-        print(f'{segment_row=}, {segment_col=}, {width=}, {height=}, {object_area=}')
+        segmenti = 0
+        #_, _, width, height, object_area = segment_stats[segmenti, :]
+        mask = segment_masks.copy()
+        mask = mask.astype(np.uint8)
+        mask[mask > 0] = 255
         cell = {
             "animal": self.animal,
             "section": section,
-            "area": object_area,
-            "absolute_coordinates_YX": (col,row),
+            "area": width*height,
+            "absolute_coordinates_YX": (self.test_y,self.test_x),
             "cell_shape_XY": (height, width),
             "image_CH3": image_roi_virus,
             "image_CH1": image_roi_dye,
-            "mask": segment_masks,
+            "mask": mask.T,
         }
 
         #TODO: see calculate_features() ~line 489 [consolidate in cell_utilities.py or similar]
@@ -1167,4 +1090,3 @@ class CellMaker(ParallelManager):
                 print(f'DEBUG: start_labels - STEP 4 (Detect cells [based on features])')
                 print(f'Cell features: {len(cell_features)}')
             cellmaker.score_and_detect_cell(file_keys, cell_features)
-

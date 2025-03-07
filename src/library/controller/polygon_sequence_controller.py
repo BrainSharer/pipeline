@@ -2,7 +2,7 @@ import pandas as pd
 
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import PolygonSequence
-from library.database_model.annotation_points import AnnotationSession,AnnotationType
+from library.database_model.annotation_points import AnnotationSession
 
 
 

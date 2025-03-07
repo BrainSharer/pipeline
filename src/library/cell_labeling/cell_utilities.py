@@ -80,3 +80,101 @@ def find_connected_segments(image, segmentation_threshold) -> tuple:
     segment_location = np.int32(segment_location)
     segment_location = np.flip(segment_location, 1) 
     return (n_segments, segment_masks, segment_stats, segment_location)
+
+
+def filter_cell_candidates(
+    animal,
+    section_number,
+    connected_segments,
+    max_segment_size,
+    cell_radius,
+    x_window,
+    y_window,
+    absolute_coordinates,
+    difference_ch1,
+    difference_ch3,
+):
+    """PART OF STEP 2. Identify cell candidates:  Area is for the object, where pixel values are not zero,
+    Segments are filtered to remove those that are too large or too small"""
+    n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
+    cell_candidates = []
+    for segmenti in range(n_segments):
+        _, _, width, height, object_area = segment_stats[segmenti, :]
+        if object_area > max_segment_size:
+            continue
+        segment_row, segment_col = segment_location[segmenti, :]
+
+        row_start = int(segment_row - cell_radius)
+        col_start = int(segment_col - cell_radius)
+        if row_start < 0 or col_start < 0:
+            continue
+        row_end = int(segment_row + cell_radius)
+        col_end = int(segment_col + cell_radius)
+        if (
+            row_end > x_window or col_end > y_window
+        ):  # row evaluates with x-axis (width), col evaluates with y-axis (height)
+            continue
+        segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
+        cell = {
+            "animal": animal,
+            "section": section_number,
+            "area": object_area,
+            "absolute_coordinates_YX": (
+                absolute_coordinates[2] + segment_col,
+                absolute_coordinates[0] + segment_row,
+            ),
+            "cell_shape_XY": (height, width),
+            "image_CH3": difference_ch3[row_start:row_end, col_start:col_end].T,
+            "image_CH1": difference_ch1[row_start:row_end, col_start:col_end].T,
+            "mask": segment_mask.T,
+        }                                        
+        cell_candidates.append(cell)
+    return cell_candidates
+
+def append_string_to_every_key(dictionary, post_fix): 
+    return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
+
+
+def calc_moments_of_mask(mask):   
+    '''
+    calculate moments (how many) and Hu Moments (7)
+    Moments(
+            double m00,
+            double m10,
+            double m01,
+            double m20,
+            double m11,
+            double m02,
+            double m30,
+            double m21,
+            double m12,
+            double m03
+            );
+    Hu Moments are described in this paper: 
+    https://www.researchgate.net/publication/224146066_Analysis_of_Hu's_moment_invariants_on_image_scaling_and_rotation
+
+    NOTE: image moments (weighted average of pixel intensities) are used to calculate centroid of arbritary shapes in opencv library
+    '''
+    mask = mask.astype(np.float32)
+    moments = cv2.moments(mask)
+
+    huMoments = cv2.HuMoments(moments)
+    moments = append_string_to_every_key(moments, f'_mask')
+    return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
+
+def features_using_center_connected_components(cell_candidate_data):   
+    '''Part of step 3. calculate cell features'''
+    def mask_mean(mask,image):
+        mean_in=np.mean(image[mask==1])
+        mean_all=np.mean(image.flatten())
+        return (mean_in-mean_all)/(mean_in+mean_all)    # calculate the contrast: mean
+
+    mask = cell_candidate_data['mask']  
+
+    moments_data = calc_moments_of_mask(mask)
+
+    # Calculate constrasts relative to mask
+    ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
+    ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
+
+    return ch1_contrast, ch3_constrast, moments_data

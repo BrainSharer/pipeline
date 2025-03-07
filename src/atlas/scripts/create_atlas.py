@@ -164,7 +164,7 @@ class AtlasCreator:
             xy_resolution = 25 * 1000 # Allen isotropic
             z_resolution = xy_resolution
         else:
-            dir_path = os.path.join(self.DATA_PATH, 'pipeline_data', self.animal, 'preps/CH1/thumbnail_aligned')
+            dir_path = os.path.join(self.DATA_PATH, 'pipeline_data', self.animal, 'preps/C1/thumbnail_aligned')
             z_length = len(os.listdir(dir_path))
             self.sqlController = SqlController(self.animal)
             rows = int(round(self.sqlController.scan_run.height / SCALING_FACTOR)) + 100

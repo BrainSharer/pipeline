@@ -11,7 +11,8 @@ from library.controller.sql_controller import SqlController
 def load_coms(animal, annotator_id):
     controller = SqlController(animal)
     coms = controller.get_com_dictionary(animal, annotator_id)
-    print(coms)
+    for k,v in coms.items():
+        print(k, v)
 
 
 if __name__ == "__main__":

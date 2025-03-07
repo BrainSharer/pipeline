@@ -45,6 +45,14 @@ class AnnotationSessionController:
         )
         return brain_region
     
+    def get_brain_regions(self):
+        brain_regions = (
+            self.session.query(BrainRegion)
+            .filter(BrainRegion.active == True)
+            .all()
+        )
+        return brain_regions
+    
     def get_labels(self, labels):
         annotation_labels = (
             self.session.query(AnnotationLabel)
@@ -57,6 +65,7 @@ class AnnotationSessionController:
     def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int):
         if isinstance(label_ids, int):
             label_ids = [label_ids]
+            
         annotation_session = (
             self.session.query(AnnotationSession)
             .filter(AnnotationSession.active == True)
@@ -229,10 +238,9 @@ class AnnotationSessionController:
                 return coms
 
             label = annotation_session.labels[0].label
-
             x, y, z = data
-            x = x * M_UM_SCALE / xy_resolution / SCALING_FACTOR
-            y = y * M_UM_SCALE / xy_resolution / SCALING_FACTOR
+            x = x * M_UM_SCALE / xy_resolution
+            y = y * M_UM_SCALE / xy_resolution
             z = z * M_UM_SCALE / z_resolution
             section = int(np.round((z), 2))
             #print(label, x,y,z, section)
