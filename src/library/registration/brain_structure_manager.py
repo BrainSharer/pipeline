@@ -1,24 +1,31 @@
 import os
+from pathlib import Path
+import shutil
 import sys
 import numpy as np
 from collections import defaultdict
 import cv2
 import json
 from scipy.ndimage import center_of_mass
+from skimage.filters import gaussian
+import math
 
 
+
+from atlas.scripts.create_atlas import NumpyToNeuroglancer
+from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.registration.algorithm import brain_to_atlas_transform, umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.utilities.utilities_process import SCALING_FACTOR
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
 
 
 
 class BrainStructureManager():
 
-    def __init__(self, animal, region='all', debug=False):
+    def __init__(self, animal, region='all', um=25, debug=False):
 
         self.animal = animal
         self.fixed_brain = None
@@ -30,6 +37,7 @@ class BrainStructureManager():
         self.mesh_path = os.path.join(self.data_path, self.animal, 'mesh')
         self.com_path = os.path.join(self.data_path, self.animal, 'com')
         self.point_path = os.path.join(self.fileLocationManager.prep, 'points')
+        self.reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.aligned_contours = {}
         self.com_annotator_id = 2
         self.polygon_annotator_id = 0
@@ -38,11 +46,12 @@ class BrainStructureManager():
         self.midbrain_keys = {'3N_L','3N_R','4N_L','4N_R','IC','PBG_L','PBG_R','SC','SNC_L','SNC_R','SNR_L','SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
         self.region = region
-        self.allen_um = 25 # size in um of allen atlas
+        self.allen_um = um # size in um of allen atlas
         self.com = None
         self.origin = None
         self.volume = None
         self.abbreviation = None
+
 
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -68,13 +77,16 @@ class BrainStructureManager():
             np array: COM of the brain
         """
         #self.load_com()
-        controller = AnnotationSessionController(self.animal)
-        coms = controller.get_COM(self.animal, annotator_id=annotator_id)
+
+        coms = self.sqlController.get_com_dictionary(self.animal, annotator_id=annotator_id)
         return coms
 
-    def get_transform_to_align_brain(self, brain):
+    def get_transform_to_align_brain(self, brain=None):
         """Used in aligning data to fixed brain
+        TODO fix this to use the fixed brain
         """
+        return np.eye(3), np.zeros((3,1))
+    
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
         
@@ -127,9 +139,15 @@ class BrainStructureManager():
 
 
     def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, polygon_annotator_id):
+        """TODO this needs work. The volume has to be fetched from the new annotation session table instead
+        of the polygon sequence table.
+        """
         self.animal = brainManager.animal
-        controller = AnnotationSessionController(self.animal)
-        structures = controller.get_structures()
+        #controller = PolygonSequenceController(self.animal)
+        #controller = AnnotationSessionController()
+        #structures = controller.get_brain_regions()
+        files = sorted(os.listdir(self.origin_path))
+        structures = [str(structure).split('.')[0] for structure in files]
         # get transformation at um 
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
@@ -138,39 +156,46 @@ class BrainStructureManager():
 
         # loop through structure objects
         for structure in structures:
-            self.abbreviation = structure.abbreviation
-            if self.data_exists():
+            self.abbreviation = structure
+            if self.data_exists() or True:
                 com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
+                if not os.path.exists(com_filepath):
+                    print(f'{com_filepath} does not exist')
+                    continue
                 origin_filepath = os.path.join(self.origin_path, f'{self.abbreviation}.txt')
                 volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
                 self.com = np.loadtxt(com_filepath)
                 self.origin = np.loadtxt(origin_filepath)
                 self.volume = np.load(volume_filepath)
             else:
+                print('xxxxxxxxxxxxxxxxxxxxx')
+                sys.exit()
                 #if structure.abbreviation not in self.allen_structures_keys:
                 #    continue
-                
                 df = controller.get_volume(self.animal, polygon_annotator_id, structure.id)
                 if df.empty:
                     continue;
 
                 #####TRANSFORMED point dictionary
+                # polygons were drawn at xy resolution of 0.452um for the MDXXX brains
+                # and 20um for the z axis
                 polygons = defaultdict(list)
 
                 for _, row in df.iterrows():
                     x = row['coordinate'][0] 
                     y = row['coordinate'][1] 
                     z = row['coordinate'][2]
+                    print(f'structure={structure} x={x} y={y} z={z}')
                     # transform points to fixed brain um with rigid transform
-                    x,y,z = brain_to_atlas_transform((x,y,z), R, t)
-                    # scale transformed points to 25um
+                    #x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+                    # scale transformed points to 25um. I'm not sure where this 25um comes from
                     x = x / SCALING_FACTOR / self.sqlController.scan_run.resolution
                     y = y / SCALING_FACTOR / self.sqlController.scan_run.resolution
                     z /= 20
                     xy = (x, y)
+                    print(structure, x, y, z)
                     section = int(np.round(z))
                     polygons[section].append(xy)
-
                 origin, section_size = self.get_origin_and_section_size(polygons)
                 volume = []
                 for _, contour_points in polygons.items():
@@ -183,7 +208,7 @@ class BrainStructureManager():
                 volume = np.swapaxes(volume,0,2)
                 #volume = gaussian(volume, 1)
                 # set structure object values
-                self.abbreviation = structure.abbreviation
+                self.abbreviation = structure
                 self.origin = origin
                 self.volume = volume
                 # Add origin and com
@@ -193,9 +218,9 @@ class BrainStructureManager():
                 del origin, volume
                 
             # merge data
-            brainMerger.volumes_to_merge[structure.abbreviation].append(self.volume)
-            brainMerger.origins_to_merge[structure.abbreviation].append(self.origin)
-            brainMerger.coms_to_merge[structure.abbreviation].append(self.com)
+            brainMerger.volumes_to_merge[structure].append(self.volume)
+            brainMerger.origins_to_merge[structure].append(self.origin)
+            brainMerger.coms_to_merge[structure].append(self.com)
             # debug info
             ids, counts = np.unique(self.volume, return_counts=True)
             print(polygon_annotator_id, self.animal, self.abbreviation, self.origin, self.com, end="\t")
@@ -204,8 +229,9 @@ class BrainStructureManager():
 
 
     def inactivate_coms(self, animal):
-        controller = AnnotationSessionController(animal)
-        sessions = controller.get_active_animal_sessions(animal)
+        print('Inactivating COMS')
+        return
+        sessions = self.sqlController.get_active_animal_sessions(animal)
         for sc_session in sessions:
             sc_session.active=False
             controller.update_row(sc_session)
@@ -263,3 +289,112 @@ class BrainStructureManager():
             return True
         else:
             return False
+
+    def get_allen_id(self, structure):
+        try:
+            allen_color = allen_structures[structure]
+        except KeyError:
+            print(f'Could not get allen color for {structure}')
+            sys.exit()
+
+        if type(allen_color) == list:
+            allen_color = allen_color[0]
+        
+        return allen_color
+    
+    def create_neuroglancer_volume(self):
+        # origin is in animal scan_run.resolution coordinates
+        # volume is in 10um
+        if not os.path.exists(self.origin_path):
+            print(f'{self.origin_path} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(self.volume_path):
+            print(f'{self.volume_path} does not exist, exiting.')
+            sys.exit()
+
+        # Use size of existing Allen atlas at 10um
+        x_length = 1320
+        y_length = 800
+        z_length = 1140
+        
+        atlas_box_size=(x_length, y_length, z_length)
+        atlas_box_scales=(10, 10, 10)
+        atlas_raw_scale=10
+        atlas_box_scales = np.array(atlas_box_scales)
+        atlas_box_size = np.array(atlas_box_size)
+        atlas_box_center = atlas_box_size / 2
+        atlas_volume = np.zeros((x_length, y_length, z_length), dtype=np.uint32)
+
+        print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
+        print(f'Using data from {self.origin_path}')
+        origins = sorted(os.listdir(self.origin_path))
+        volumes = sorted(os.listdir(self.volume_path))
+        print(f'Working with {len(origins)} origins and {len(volumes)} volumes.')
+        ids = {}
+        atlas_centers = {}
+        for origin_file, volume_file in zip(origins, volumes):
+            if Path(origin_file).stem != Path(volume_file).stem:
+                print(f'{Path(origin_file).stem} and {Path(volume_file).stem} do not match')
+                sys.exit()
+            structure = Path(origin_file).stem
+            allen_color = self.get_allen_id(structure)
+            origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
+            volume = np.load(os.path.join(self.volume_path, volume_file))
+            volume = np.rot90(volume, axes=(0, 1)) 
+            volume = np.flip(volume, axis=0)
+            # transform into the atlas box coordinates that neuroglancer assumes
+            COM = center_of_mass(volume)
+            center = (origin + COM )
+            center = atlas_box_center + center * atlas_raw_scale / atlas_box_scales
+
+            atlas_centers[structure] = center
+
+            volume = volume * allen_color
+            volume = volume.astype(np.uint32)
+            volume[volume > 0] = allen_color
+            volume = volume.astype(np.uint32)
+
+            ids[structure] = allen_color
+
+            x_start = int(center[0] - COM[0])
+            y_start = int(center[1] - COM[1])
+            z_start = int(center[2] - COM[2])
+
+            x_end = x_start + volume.shape[0]
+            y_end = y_start + volume.shape[1]
+            z_end = z_start + volume.shape[2]
+
+            if self.debug:
+                print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
+                continue
+
+
+            try:
+                atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume            
+            except ValueError as ve:
+                print(f'Error adding {structure} to atlas: {ve}')
+                continue
+
+        for k,v in atlas_centers.items():
+            print(k,v)
+        print(f'Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
+        if self.debug:
+            return
+
+        outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_{self.allen_um}um_sagittal.tif'
+        structure_path = f'/var/www/brainsharer/structures/atlasV9'
+        if os.path.exists(structure_path):
+            print(f'Removing {structure_path}')
+            shutil.rmtree(structure_path)
+        os.makedirs(structure_path, exist_ok=True)
+        
+        #os.remove(outpath)
+        #print(f'saving image to {outpath}')
+        #write_image(outpath, atlas_volume)
+    
+        neuroglancer = NumpyToNeuroglancer(atlas_volume, atlas_box_scales * 1000, offset=[0,0,0])
+        neuroglancer.init_precomputed(structure_path)
+        neuroglancer.add_segment_properties(ids)
+        neuroglancer.add_downsampled_volumes()
+        neuroglancer.add_segmentation_mesh()
+

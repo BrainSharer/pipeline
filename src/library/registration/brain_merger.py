@@ -111,24 +111,26 @@ class BrainMerger():
 
     def save_coms_to_db(self):
         """Saves COMs to DB
+        FIX this
         """
         animal = 'Atlas'
-        brainManager = BrainStructureManager(animal)
+        #brainManager = BrainStructureManager(animal)
         source = 'MANUAL'
-        brainManager.inactivate_coms(animal)
-        structureController = StructureCOMController(animal)
-        annotationSessionController = AnnotationSessionController(animal)
+        #brainManager.inactivate_coms(animal)
+        #structureController = StructureCOMController(animal)
+        #annotationSessionController = AnnotationSessionController(animal)
 
         for abbreviation in self.coms.keys():
             point = self.coms[abbreviation]
             #origin = self.origins[abbreviation]
-            FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
-            FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
-                                                                                    FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
+            #FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
+            #FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
+            #                                                                        FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
             x,y,z = (p*25 for p in point)
+            print(abbreviation, x, y, z)
             #minx, miny, minz = (p for p in origin)
-            com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
-            brainManager.sqlController.add_row(com)
+            #com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
+            #brainManager.sqlController.add_row(com)
 
 
     # should be static

@@ -59,7 +59,7 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         
         try:
             self.histology = self.session.query(Histology).filter(
-                Histology.FK_prep_id == animal).one()
+                Histology.FK_prep_id == animal).first()
         except NoResultFound:
             print(f'No histology for {animal}')
 

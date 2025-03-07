@@ -85,13 +85,10 @@ def create_elastix_transformation(rotation, xshift, yshift, center):
 def load_elastix_transformation(animal, moving_index):
     controller = SqlController(animal)
 
-    elastixTransformation = controller.get_elastix_row(animal, moving_index)
+    R, xshift, yshift = controller.get_elastix_row(animal, moving_index, iteration=0)
     #elastixTransformation = session.query(ElastixTransformation).filter(ElastixTransformation.prep_id == animal)\
     #    .filter(ElastixTransformation.section == moving_index).one()
 
-    R = elastixTransformation.rotation
-    xshift = elastixTransformation.xshift
-    yshift = elastixTransformation.yshift
     return R, xshift, yshift
 
 def parse_elastix(animal):
@@ -103,7 +100,7 @@ def parse_elastix(animal):
     """
     fileLocationManager = FileLocationManager(animal)
     DIR = fileLocationManager.prep
-    INPUT = os.path.join(DIR, 'CH1', 'thumbnail_cleaned')
+    INPUT = os.path.join(DIR, 'C1', 'thumbnail_cleaned')
 
     files = sorted(os.listdir(INPUT))
     midpoint = len(files) // 2

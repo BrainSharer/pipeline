@@ -41,7 +41,7 @@ def save_volume_origin(animal, structure, volume, xyz_offsets):
 
 
 def create_volumes(animal, debug):
-    sqlController = SqlController(animal)
+    #sqlController = SqlController(animal)
     jsonpath = os.path.join(DATA_PATH, 'atlas_data', animal,  'aligned_padded_structures.json')
     if not os.path.exists(jsonpath):
         print(f'{jsonpath} does not exist')
@@ -96,7 +96,7 @@ def create_volumes(animal, debug):
             volume.append(volume_slice)
         
         # should this be a boolean?
-        volume = np.array(volume).astype(np.bool8)
+        volume = np.array(volume).astype(np.bool_)
         to_um = 32 * 0.452
         ndcom = center_of_mass(volume)
         comx = (ndcom[0] + min_x) * to_um

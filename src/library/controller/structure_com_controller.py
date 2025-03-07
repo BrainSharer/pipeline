@@ -3,7 +3,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy import func, not_
 
 from library.controller.sql_controller import SqlController
-from library.database_model.annotation_points import AnnotationSession, AnnotationType, StructureCOM
+from library.database_model.annotation_points import AnnotationSession, StructureCOM
 from library.database_model.brain_region import BrainRegion
 
 

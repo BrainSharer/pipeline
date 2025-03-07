@@ -50,7 +50,7 @@ def create_clean_transform(animal):
     #downsampled_aligned_shape = np.round(aligned_shape / DOWNSAMPLE_FACTOR).astype(int)
     downsampled_aligned_shape = aligned_shape / DOWNSAMPLE_FACTOR
     print(f'downsampled shape {downsampled_aligned_shape}')
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'thumbnail')
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail')
     files = sorted(os.listdir(INPUT))
     section_offsets = {}
     for file in tqdm(files):
@@ -104,7 +104,7 @@ def create_json(animal):
     structures = controller.get_structures()
     for structure in structures:
         abbreviation = structure.abbreviation
-        contour_annotations, first_sec, last_sec = get_contours_from_annotations(animal, abbreviation, hand_annotations, densify=4)
+        contour_annotations, first_sec, last_sec = get_contours_from_annotations(animal, abbreviation, hand_annotations, densify=6)
         for section in contour_annotations:
             section_structure_vertices[section][abbreviation] = contour_annotations[section]
 
