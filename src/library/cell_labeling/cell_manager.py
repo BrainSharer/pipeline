@@ -28,6 +28,7 @@ from library.cell_labeling.cell_utilities import (
     find_connected_segments,
     load_image,
     subtract_blurred_image,
+    features_using_center_connected_components
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
@@ -49,11 +50,12 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal, task, step=4, channel=1, x=0, y=0, debug=False):
+    def __init__(self, animal, task, step=4, model="", channel=1, x=0, y=0, debug=False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
         self.step = step
+        self.model = model
         self.channel = channel
         self.section_count = 0
         self.hostname = get_hostname()
@@ -75,7 +77,7 @@ class CellMaker(ParallelManager):
         print("\tschema:".ljust(20), f"{schema}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
-        print("f\tavg cell image:".ljust(20), f"{str(self.avg_cell_img_file)}".ljust(20))
+        print("\tavg cell image:".ljust(20), f"{str(self.avg_cell_img_file)}".ljust(20))
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
@@ -145,11 +147,11 @@ class CellMaker(ParallelManager):
         finally:
             # CHECK IF meta_data_info['Neuroanatomical_tracing'] CONTAINS A DYE AND VIRUS CHANNEL
             modes = [channel.get('mode') for channel in meta_data_info['Neuroanatomical_tracing'].values()]
-
-            if 'dye' in modes and 'virus' in modes:
-                msg = "Neuroanatomical_tracing contains both dye and virus channels."
+            
+            if 'dye' in modes and ('virus' in modes or 'ctb' in modes) :
+                msg = "Neuroanatomical_tracing contains a dye channel and either virus or ctb channel."
             else:
-                msg = "Neuroanatomical_tracing is missing either dye or virus channel."
+                msg = "Neuroanatomical_tracing is missing either dye, virus or ctb channel."
                 if self.debug:
                     print(msg)
                 self.fileLogger.logevent(msg)
@@ -160,13 +162,13 @@ class CellMaker(ParallelManager):
         for key, value in self.meta_channel_mapping.items():
             if value['mode'] == 'dye':
                 dye_channel = value.get('channel_name')
-            elif value['mode'] == 'virus':
-                virus_channel = value.get('channel_name')
+            elif value['mode'] == 'virus' or value['mode'] == 'ctb':
+                virus_marker_channel = value.get('channel_name')
 
         found_dye_channel = False
-        found_virus_channel = False
+        found_virus_marker_channel = False
         INPUT_dye = Path(self.fileLocationManager.get_full_aligned(channel=dye_channel[1]))
-        INPUT_virus = Path(self.fileLocationManager.get_full_aligned(channel=virus_channel[1]))
+        INPUT_virus_marker = Path(self.fileLocationManager.get_full_aligned(channel=virus_marker_channel[1]))
         if INPUT_dye.exists():
             if self.debug:
                 print(f'Full-resolution tiff stack found (dye channel): {INPUT_dye}')
@@ -174,17 +176,17 @@ class CellMaker(ParallelManager):
             found_dye_channel = True
         else:
             print(f'Full-resolution tiff stack not found (dye channel). Expected location: {INPUT_dye}; will search for ome-zarr')
-        if INPUT_virus.exists():
+        if INPUT_virus_marker.exists():
             if self.debug:
-                print(f'Full-resolution tiff stack found (virus channel): {INPUT_virus}')
-            self.fileLogger.logevent(f'Full-resolution tiff stack found (virus channel): {INPUT_virus}')
-            found_virus_channel = True
+                print(f'Full-resolution tiff stack found (virus channel): {INPUT_virus_marker}')
+            self.fileLogger.logevent(f'Full-resolution tiff stack found (virus channel): {INPUT_virus_marker}')
+            found_virus_marker_channel = True
         else:
-            print(f'Full-resolution tiff stack not found (virus channel). Expected location: {INPUT_virus}; will search for ome-zarr')
+            print(f'Full-resolution tiff stack not found (virus channel). Expected location: {INPUT_virus_marker}; will search for ome-zarr')
 
         if found_dye_channel == False:
             INPUT_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=dye_channel[1]) + '.zarr')
-            INPUT_virus = Path(self.fileLocationManager.get_neuroglancer(False, channel=virus_channel[1]) + '.zarr')
+            INPUT_virus_marker = Path(self.fileLocationManager.get_neuroglancer(False, channel=virus_marker_channel[1]) + '.zarr')
             if INPUT_dye.exists():
                 if self.debug:
                     print(f'Full-resolution ome-zarr stack found (dye channel): {INPUT_dye}')
@@ -192,13 +194,13 @@ class CellMaker(ParallelManager):
             else:
                 print(f'Full-resolution ome-zarr stack not found (dye channel). Expected location: {INPUT_dye}; Exiting')
                 sys.exit(1)
-        if found_virus_channel == False:
-            if INPUT_virus.exists():
+        if found_virus_marker_channel == False:
+            if INPUT_virus_marker.exists():
                 if self.debug:
-                    print(f'Full-resolution ome-zarr stack found (virus channel): {INPUT_virus}')
-                self.fileLogger.logevent(f'full-resolution ome-zarr stack found (virus channel): {INPUT_virus}')
+                    print(f'Full-resolution ome-zarr stack found (virus channel): {INPUT_virus_marker}')
+                self.fileLogger.logevent(f'full-resolution ome-zarr stack found (virus channel): {INPUT_virus_marker}')
             else:
-                print(f'Full-resolution ome-zarr stack not found (virus channel). expected location: {INPUT_virus}; exiting')
+                print(f'Full-resolution ome-zarr stack not found (virus channel). expected location: {INPUT_virus_marker}; exiting')
                 sys.exit(1)
 
         # Check for cell training definitions file (average-cell_image.pkl)
@@ -208,16 +210,26 @@ class CellMaker(ParallelManager):
             self.fileLogger.logevent(f'Found cell training definitions file @ {self.avg_cell_img_file}')
 
         # Check for model file (models_round_{self.step}_threshold_2000.pkl) in the models dir
-        self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_round_{self.step}_threshold_2000.pkl')
+        if self.model: #IF SPECIFIC MODEL SELECTED
+            if self.debug:
+                print(f'SEARCHING FOR SPECIFIC MODEL FILE: {self.model}')
+            self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_{self.model}_round_{self.step}_threshold_2000.pkl')
+        else:
+            self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_round_{self.step}_threshold_2000.pkl')
+
         if os.path.exists(self.model_file):
             if self.debug:
                 print(f'Found model file @ {self.model_file}')
 
             self.fileLogger.logevent(f'Found model file @ {self.model_file}')
         else:
-            print(f'Model file not found @ {self.model_file}')
-            self.fileLogger.logevent(f'Model file not found @ {self.model_file}; Exiting')
-            sys.exit(1)
+            #IF STEP==1, MODEL FILE IS NOT REQUIRED (FIRST TRAINING)
+            if self.step >1:
+                print(f'Model file not found @ {self.model_file}')
+                self.fileLogger.logevent(f'Model file not found @ {self.model_file}; Exiting')
+                sys.exit(1)
+            else:
+                print('TRAINING MODEL CREATION MODE; NO SCORING')
 
         # check for available sections
         self.section_count = self.capture_total_sections('tif', INPUT_dye)
@@ -251,13 +263,14 @@ class CellMaker(ParallelManager):
             print(f"DEBUG: steps 1 & 2 (revised); Start on image segmentation")
 
         # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
+        # SPINAL CORD WILL HAVE C1 (DYE) AND C2 (CTB) CHANNELS
         for channel_number, channel_data in self.meta_channel_mapping.items():
             if channel_data['mode'] == 'dye':
                 self.dye_channel = channel_number
                 self.fileLogger.logevent(f'Dye channel detected: {self.dye_channel}')
-            elif channel_data['mode'] == 'virus':
-                self.virus_channel = channel_number
-                self.fileLogger.logevent(f'Virus channel detected: {self.virus_channel}')
+            elif channel_data['mode'] == 'virus' or channel_data['mode'] == 'ctb':
+                self.virus_marker_channel = channel_number
+                self.fileLogger.logevent(f'Virus or CTB channel detected: {self.virus_marker_channel}')
             elif channel_data['mode'] == 'unknown':
                 continue
             else:
@@ -282,11 +295,11 @@ class CellMaker(ParallelManager):
 
         if self.input_format == 'tif':
             input_path_dye = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
-            input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_channel)
+            input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_marker_channel)
             self.section_count = self.capture_total_sections(self.input_format, input_path_dye) #Only need single/first channel to get total section count
         else:
             input_path_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.dye_channel) + '.zarr')
-            input_path_virus = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.virus_channel) + '.zarr')
+            input_path_virus = Path(self.fileLocationManager.get_neuroglancer(False, channel=self.virus_marker_channel) + '.zarr')
 
             # OME-ZARR Section count may be extracted from meta-data in folder or from meta-data in file [do not use database]
 
@@ -311,6 +324,7 @@ class CellMaker(ParallelManager):
                     self.input_format,
                     input_path_dye,
                     input_path_virus,
+                    self.step,
                     self.debug,
                 ]
             )
@@ -349,6 +363,7 @@ class CellMaker(ParallelManager):
             input_format,
             input_path_dye,
             input_path_virus,
+            step,
             debug,
             *_,
         ) = file_keys
@@ -519,6 +534,7 @@ class CellMaker(ParallelManager):
             input_format,
             input_path_dye,
             input_path_virus,
+            step,
             debug,
         ) = file_keys
 
@@ -536,7 +552,7 @@ class CellMaker(ParallelManager):
             ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
 
             # STEP 3-D) features_using_center_connected_components
-            ch1_contrast, ch3_constrast, moments_data = self.features_using_center_connected_components(cell)
+            ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
 
             # Build features dictionary
             spreadsheet_row = {
@@ -603,9 +619,16 @@ class CellMaker(ParallelManager):
             input_format,
             input_path_dye,
             input_path_virus,
+            step,
             debug,
         ) = file_keys
-        model_file = load(model_filename)
+
+        if debug and step == 1:
+            print('Training model creation mode; no scoring')
+
+        if  step > 1:
+            model_file = load(model_filename)
+
         if debug:
             print(f'Starting function score_and_detect_cell on section {section}')
 
@@ -640,12 +663,15 @@ class CellMaker(ParallelManager):
 
         drops = ['animal', 'section', 'index', 'row', 'col']        
         cell_features_selected_columns = cell_features.drop(drops,axis=1)
+
         # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
-        _mean, _std = calculate_scores(cell_features_selected_columns, model_file)
-        # Step 4-2-1-3) predictive cell labeling based on mean
-        cell_features['mean_score'] = _mean
-        cell_features['std_score'] = _std
-        cell_features['predictions'] = np.array(get_prediction_and_label(_mean)) #PUTATIVE ID: POSITIVE (2), NEGATIVE (-2), UNKNOWN/UNSURE (0)
+        if step > 1:
+            _mean, _std = calculate_scores(cell_features_selected_columns, model_file)
+
+            # Step 4-2-1-3) predictive cell labeling based on mean
+            cell_features['mean_score'] = _mean
+            cell_features['std_score'] = _std
+            cell_features['predictions'] = np.array(get_prediction_and_label(_mean)) #PUTATIVE ID: POSITIVE (2), NEGATIVE (-2), UNKNOWN/UNSURE (0)
 
         # STEP 4-2-2) Stores dataframe as csv file
         if debug:
@@ -919,7 +945,7 @@ class CellMaker(ParallelManager):
 
     def train(self):
         '''
-        METHODS TO TRAIN CELL DETECTOR MODEL
+        METHODS TO [RE]TRAIN CELL DETECTOR MODEL
 
         HIGH LEVEL STEPS:
         1. Read all csv files in cell_label_path
@@ -934,11 +960,21 @@ class CellMaker(ParallelManager):
         #TODO: It seems like we could export single file from database with appropriate columns
         # would also suggest putting the human validated 'ground truth' files in separate directory (for auditing purposes)
         # maybe cell_labels/human_validated_{date} alone with a json file with details of the training (annotators, evaluation dates, sample sizes, other)
-        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_00*.csv') ))
+
+        if not Path(self.cell_label_path).is_dir() and self.debug:
+            print(f"CREATE TRAINING MODEL")
+            print(f"MISSING 'GROUND TRUTH' DIRECTORY; CREATING {self.cell_label_path}")
+            Path(self.cell_label_path).mkdir()
+            print(f"PLEASE ADD 'HUMAN_POSITIVE' DETECTION FILES TO {self.cell_label_path}")
+            print(f"For template see: https://webdev.dk.ucsd.edu/docs/brainsharer/pipeline/modules/cell_labeling.html")
+            sys.exit(1)
+
+        print(f"Reading csv files from {self.cell_label_path}")
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_00*.csv') ))
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.cell_label_path}')
             sys.exit(1)
-
+        
         dfs = []
         for csvfile in tqdm(detection_files, desc="Reading csv files"):
             df = pd.read_csv(csvfile)
@@ -952,7 +988,7 @@ class CellMaker(ParallelManager):
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
-
+        sys.exit(1)
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
         # mean_score, predictions, std_score are results, not features
 

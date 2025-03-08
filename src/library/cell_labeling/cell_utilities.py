@@ -167,7 +167,14 @@ def features_using_center_connected_components(cell_candidate_data):
     def mask_mean(mask,image):
         mean_in=np.mean(image[mask==1])
         mean_all=np.mean(image.flatten())
-        return (mean_in-mean_all)/(mean_in+mean_all)    # calculate the contrast: mean
+        if np.isnan(mean_in) or np.isnan(mean_all):
+            return 0
+        else:
+            #print(f'DEBUG: {mean_in=}, {mean_all=}')
+            return (mean_in-mean_all)/(mean_in+mean_all)    # calculate the contrast: mean
+    
+        #TODO: FIX BUG:
+        # 'cell_utilities.py:170: RuntimeWarning: invalid value encountered in float_scalars
 
     mask = cell_candidate_data['mask']  
 
