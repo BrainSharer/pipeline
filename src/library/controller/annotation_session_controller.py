@@ -14,7 +14,7 @@ FIDUCIAL = 8  # label ID in table annotation_label
 class AnnotationSessionController:
     """The class that queries and addes entry to the annotation_session table"""
 
-    def update_session(self, id, update_dict):
+    def update_session(self, id: int, update_dict: dict):
         """
         Update the table with the given ID using the provided update dictionary.
 
@@ -36,7 +36,7 @@ class AnnotationSessionController:
             print(f"No merge for  {e}")
             self.session.rollback()
 
-    def get_brain_region(self, abbreviation):
+    def get_brain_regionDEPRECATED(self, abbreviation):
         brain_region = (
             self.session.query(BrainRegion)
             .filter(BrainRegion.abbreviation == abbreviation)
@@ -45,7 +45,7 @@ class AnnotationSessionController:
         )
         return brain_region
     
-    def get_brain_regions(self):
+    def get_brain_regionsDEPRECATED(self):
         brain_regions = (
             self.session.query(BrainRegion)
             .filter(BrainRegion.active == True)
@@ -87,46 +87,6 @@ class AnnotationSessionController:
         )
 
         return annotation_label
-
-    def upsert_structure_com(self, entry):
-        """Method to do update/insert. It first checks if there is already an entry. If not,
-        it does insert otherwise it updates.
-        """
-        FK_session_id = entry["FK_session_id"]
-        annotation_session = self.session.query(AnnotationSession).get(FK_session_id)
-        annotation_session.updated = datetime.datetime.now()
-        structure_com = (
-            self.session.query(StructureCOM)
-            .filter(StructureCOM.FK_session_id == FK_session_id)
-            .first()
-        )
-        if structure_com is None:
-            data = StructureCOM(
-                source=entry["source"],
-                FK_session_id=FK_session_id,
-                x=entry["x"],
-                y=entry["y"],
-                z=entry["z"],
-            )
-            self.add_row(data)
-        else:
-            self.session.query(StructureCOM).filter(
-                StructureCOM.FK_session_id == FK_session_id
-            ).update(entry)
-            self.session.commit()
-
-    def create_annotation_sessionDEPRECATED(self, annotation_type, FK_user_id, FK_prep_id, FK_brain_region_id):
-        data = AnnotationSession(
-            annotation_type=annotation_type,
-            FK_user_id=FK_user_id,
-            FK_prep_id=FK_prep_id,
-            FK_brain_region_id=FK_brain_region_id,
-            created=datetime.datetime.now(),
-            active=True,
-        )
-        self.add_row(data)
-        self.session.commit()
-        return data.id
     
     def create_annotation_session(self, FK_user_id, FK_prep_id, annotation):
         data = AnnotationSession(
@@ -140,7 +100,7 @@ class AnnotationSessionController:
         self.session.commit()
         return data.id
 
-    def insert_annotation_with_labels(self, FK_user_id, FK_prep_id, annotation, labels):
+    def insert_annotation_with_labels(self, FK_user_id: int, FK_prep_id: int, annotation: dict, labels: list):
 
         annotation_session = AnnotationSession(
             FK_user_id=FK_user_id,
@@ -210,6 +170,14 @@ class AnnotationSessionController:
 
 
     def get_com_dictionary(self, prep_id, annotator_id):
+        """This returns data in meters, not pixels or micrometers.
+        This is the way neuroglancer uses data. If you need
+        to convert to pixels, you will need to use the resolution
+        of the downsampled images. If you need to convert to micrometers,
+        just multiply by M_UM_SCALE.
+        The data is also not sorted by key. If you need it sorted,
+        use an ordered dictionary.
+        """
 
         coms = {}
         annotation_sessions = (
@@ -225,10 +193,6 @@ class AnnotationSessionController:
             print("No data for this animal was found.")
             return coms
 
-        xy_resolution = self.scan_run.resolution
-        z_resolution = self.scan_run.zresolution
-
-
         # first test data to make sure it has the right keys
         for annotation_session in annotation_sessions:
             try:
@@ -239,11 +203,6 @@ class AnnotationSessionController:
 
             label = annotation_session.labels[0].label
             x, y, z = data
-            x = x * M_UM_SCALE / xy_resolution
-            y = y * M_UM_SCALE / xy_resolution
-            z = z * M_UM_SCALE / z_resolution
-            section = int(np.round((z), 2))
-            #print(label, x,y,z, section)
             coms[label] = [x,y,z]
 
         return coms

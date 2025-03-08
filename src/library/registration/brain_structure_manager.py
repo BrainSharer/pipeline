@@ -9,18 +9,16 @@ import json
 from scipy.ndimage import center_of_mass
 from skimage.filters import gaussian
 import math
-
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 
 from atlas.scripts.create_atlas import NumpyToNeuroglancer
-from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.controller.sql_controller import SqlController
+from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
-from library.registration.algorithm import brain_to_atlas_transform, umeyama
+from library.registration.algorithm import umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
-from library.controller.annotation_session_controller import AnnotationSessionController
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, write_image
-
+from library.utilities.utilities_process import SCALING_FACTOR, M_UM_SCALE
 
 
 class BrainStructureManager():
@@ -52,13 +50,11 @@ class BrainStructureManager():
         self.volume = None
         self.abbreviation = None
 
-
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.point_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
-
 
     def load_aligned_contours(self):
         """load aligned contours
@@ -68,15 +64,13 @@ class BrainStructureManager():
         with open(aligned_and_padded_contour_path) as f:
             self.aligned_contours = json.load(f)
 
-
-
     def get_coms(self, annotator_id):
         """Get the center of mass values for this brain as an array
 
         Returns:
             np array: COM of the brain
         """
-        #self.load_com()
+        # self.load_com()
 
         coms = self.sqlController.get_com_dictionary(self.animal, annotator_id=annotator_id)
         return coms
@@ -86,12 +80,12 @@ class BrainStructureManager():
         TODO fix this to use the fixed brain
         """
         return np.eye(3), np.zeros((3,1))
-    
+
         if brain.animal == self.fixed_brain.animal:
             return np.eye(3), np.zeros((3,1))
-        
+
         moving_coms = brain.get_coms(brain.com_annotator_id)
-        
+
         if 'midbrain' in brain.region:
             area_keys = self.midbrain_keys
         elif 'brainstem' in brain.region:
@@ -104,8 +98,8 @@ class BrainStructureManager():
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
         moving_points = np.array([moving_coms[s] for s in common_keys])
 
-        #fixed_points /= 25
-        #moving_points /= 25
+        # fixed_points /= 25
+        # moving_points /= 25
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
             print(f'Error calculating transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
@@ -114,7 +108,6 @@ class BrainStructureManager():
         print(f'In get transform and using moving shape={moving_points.shape} fixed shape={fixed_points.shape}')
         R, t = umeyama(moving_points.T, fixed_points.T)
         return R, t
-
 
     def get_origin_and_section_size(self, structure_contours):
         """Gets the origin and section size
@@ -137,18 +130,17 @@ class BrainStructureManager():
         section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
-
     def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, polygon_annotator_id):
         """TODO this needs work. The volume has to be fetched from the new annotation session table instead
         of the polygon sequence table.
         """
         self.animal = brainManager.animal
-        #controller = PolygonSequenceController(self.animal)
-        #controller = AnnotationSessionController()
-        #structures = controller.get_brain_regions()
+        # controller = PolygonSequenceController(self.animal)
+        # controller = AnnotationSessionController()
+        # structures = controller.get_brain_regions()
         files = sorted(os.listdir(self.origin_path))
         structures = [str(structure).split('.')[0] for structure in files]
-        # get transformation at um 
+        # get transformation at um
         R, t = self.get_transform_to_align_brain(brainManager)
         if R is None:
             print(f'R is empty with {self.animal} ID={polygon_annotator_id}')
@@ -170,7 +162,7 @@ class BrainStructureManager():
             else:
                 print('xxxxxxxxxxxxxxxxxxxxx')
                 sys.exit()
-                #if structure.abbreviation not in self.allen_structures_keys:
+                # if structure.abbreviation not in self.allen_structures_keys:
                 #    continue
                 df = controller.get_volume(self.animal, polygon_annotator_id, structure.id)
                 if df.empty:
@@ -187,7 +179,7 @@ class BrainStructureManager():
                     z = row['coordinate'][2]
                     print(f'structure={structure} x={x} y={y} z={z}')
                     # transform points to fixed brain um with rigid transform
-                    #x,y,z = brain_to_atlas_transform((x,y,z), R, t)
+                    # x,y,z = brain_to_atlas_transform((x,y,z), R, t)
                     # scale transformed points to 25um. I'm not sure where this 25um comes from
                     x = x / SCALING_FACTOR / self.sqlController.scan_run.resolution
                     y = y / SCALING_FACTOR / self.sqlController.scan_run.resolution
@@ -206,7 +198,7 @@ class BrainStructureManager():
                     cv2.drawContours(volume_slice, [contour_points], -1, (1), thickness=-1)
                     volume.append(volume_slice)
                 volume = np.swapaxes(volume,0,2)
-                #volume = gaussian(volume, 1)
+                # volume = gaussian(volume, 1)
                 # set structure object values
                 self.abbreviation = structure
                 self.origin = origin
@@ -216,7 +208,7 @@ class BrainStructureManager():
                 # save individual structure, mesh and origin
                 self.save_brain_origins_and_volumes_and_meshes()
                 del origin, volume
-                
+
             # merge data
             brainMerger.volumes_to_merge[structure].append(self.volume)
             brainMerger.origins_to_merge[structure].append(self.origin)
@@ -227,7 +219,6 @@ class BrainStructureManager():
             print(self.volume.dtype, self.volume.shape, end="\t")
             print(ids, counts)
 
-
     def inactivate_coms(self, animal):
         print('Inactivating COMS')
         return
@@ -235,17 +226,6 @@ class BrainStructureManager():
         for sc_session in sessions:
             sc_session.active=False
             controller.update_row(sc_session)
-
-
-    def update_com(self, com, structure_id):
-        source = "MANUAL"
-        controller = AnnotationSessionController(self.animal)
-        annotation_session = controller.get_annotation_session(self.animal, structure_id, 2)
-        x = com[0] * 25
-        y = com[1] * 25
-        z = com[2] * 25
-        entry = {'source': source, 'FK_session_id': annotation_session.id, 'x': x, 'y':y, 'z': z}
-        controller.upsert_structure_com(entry)
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, Except for the mesh, no calculations, only saving!
@@ -257,13 +237,11 @@ class BrainStructureManager():
         volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
         mesh_filepath = os.path.join(self.mesh_path, f'{self.abbreviation}.stl')
         com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
-        
+
         np.savetxt(origin_filepath, self.origin)
         np.save(volume_filepath, self.volume)
         save_mesh(aligned_structure, mesh_filepath)
         np.savetxt(com_filepath, self.com)
-        
-
 
     def get_center_of_mass(self):
         com = center_of_mass(self.volume)
@@ -274,9 +252,9 @@ class BrainStructureManager():
             print(ids, counts)
             com = np.array([0,0,0])
         return com
-    
+
     def data_exists(self):
-            
+
         com_filepath = os.path.join(self.com_path, f'{self.abbreviation}.txt')
         origin_filepath = os.path.join(self.origin_path, f'{self.abbreviation}.txt')
         volume_filepath = os.path.join(self.volume_path, f'{self.abbreviation}.npy')
@@ -290,18 +268,75 @@ class BrainStructureManager():
         else:
             return False
 
-    def get_allen_id(self, structure):
+    def get_allen_id(self, structure: str) -> int:
         try:
             allen_color = allen_structures[structure]
         except KeyError:
             print(f'Could not get allen color for {structure}')
-            sys.exit()
+            allen_color = 0
 
         if type(allen_color) == list:
             allen_color = allen_color[0]
-        
+
         return allen_color
-    
+
+    def update_database_com(self, structure:str, com: np.ndarray) -> None:
+        """Annotator ID is hardcoded to 1
+        Data coming in is in pixels, so we need to convert to um and then to meters
+        """
+        annotator_id = 1
+        
+        com = com.tolist()
+        xy_resolution = self.sqlController.scan_run.resolution
+        zresolution = self.sqlController.scan_run.zresolution
+        x = com[0] * xy_resolution / M_UM_SCALE
+        y = com[1] * xy_resolution / M_UM_SCALE
+        z = com[2] * zresolution / M_UM_SCALE
+        com = [x, y, z]
+        json_entry = {"type": "point", "point": com, "description": "7N_L", "centroid": com, "props": ["#ffff00", 1, 1, 5, 3, 1]}
+        label = self.sqlController.get_annotation_label(structure)
+        if label is not None:
+            label_ids = [label.id]
+        else:
+            print(f'Could not find {structure} label in database')
+            return
+        # update label with allen ID
+        allen_id = self.get_allen_id(structure=structure)
+        label.allen_id = allen_id
+
+        update_dict = {"allen_id": allen_id}
+        self.sqlController.update_row(AnnotationLabel, label, update_dict=update_dict)
+
+        
+        try:
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_prep_id == self.animal)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                .filter(AnnotationSession.annotation['type'] == 'point')
+                .one()
+            )
+        except NoResultFound as nrf:
+            print(f"Inserting {structure} with {com}")
+            self.sqlController.insert_annotation_with_labels(
+                FK_user_id=annotator_id,
+                FK_prep_id=self.animal,
+                annotation=json_entry,
+                labels=[structure],
+            )
+            return
+
+        except MultipleResultsFound as mrf:
+            print(f'Multiple results found for {structure}')
+            return
+
+        if annotation_session:
+            print(f'Updating {structure} with {com} with ID={annotation_session.id}')
+            update_dict = {"annotation": json_entry}
+            self.sqlController.update_session(annotation_session.id, update_dict=update_dict)
+
     def create_neuroglancer_volume(self):
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um
@@ -316,7 +351,7 @@ class BrainStructureManager():
         x_length = 1320
         y_length = 800
         z_length = 1140
-        
+
         atlas_box_size=(x_length, y_length, z_length)
         atlas_box_scales=(10, 10, 10)
         atlas_raw_scale=10
@@ -368,15 +403,16 @@ class BrainStructureManager():
                 print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
                 continue
 
-
             try:
                 atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume            
             except ValueError as ve:
                 print(f'Error adding {structure} to atlas: {ve}')
                 continue
 
-        for k,v in atlas_centers.items():
-            print(k,v)
+        if self.debug:
+            for structure, com in atlas_centers.items():
+                self.update_database_com(structure, com)
+            return
         print(f'Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
         if self.debug:
             return
@@ -387,14 +423,13 @@ class BrainStructureManager():
             print(f'Removing {structure_path}')
             shutil.rmtree(structure_path)
         os.makedirs(structure_path, exist_ok=True)
-        
-        #os.remove(outpath)
-        #print(f'saving image to {outpath}')
-        #write_image(outpath, atlas_volume)
-    
+
+        # os.remove(outpath)
+        # print(f'saving image to {outpath}')
+        # write_image(outpath, atlas_volume)
+
         neuroglancer = NumpyToNeuroglancer(atlas_volume, atlas_box_scales * 1000, offset=[0,0,0])
         neuroglancer.init_precomputed(structure_path)
         neuroglancer.add_segment_properties(ids)
         neuroglancer.add_downsampled_volumes()
         neuroglancer.add_segmentation_mesh()
-

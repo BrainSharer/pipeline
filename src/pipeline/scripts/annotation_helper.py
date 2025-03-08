@@ -1,4 +1,5 @@
 import argparse
+from collections import OrderedDict
 from pathlib import Path
 import shutil
 import sys, os
@@ -134,46 +135,32 @@ class AnnotationHelper:
             self.sqlController.update_session(session_id, update_dict=update_dict)
 
 
-def write_polygonsXXX(polygons, path):
-    pipeline = None
-    pipeline.input = pipeline.fileLocationManager.get_directory(channel, downsample=True, inpath="aligned")
-    pipeline.output = pipeline.fileLocationManager.get_directory(channel, downsample=True, inpath="aligned_shell")
-    if os.path.exists(pipeline.output):
-        print(f"Output directory {pipeline.output} already exists")
-        shutil.rmtree(pipeline.output)
-    os.makedirs(pipeline.output, exist_ok=True)
-    files = sorted(os.listdir(pipeline.input))
+    def list_coms(self):
+        """
+        Lists the COMs from the annotation session table. The data
+        is stored in meters so you will want to convert it to micrometers
+        and then by the resolution of the scan run.
+        """
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        xy_resolution = 10
+        z_resolution = 10
 
-    polygons = pipeline.sqlController.get_annotation(session_id)
-    color = 65000
-    for file in files:
-        filepath = os.path.join(pipeline.input, file)
-        outpath = os.path.join(pipeline.output, file)
-        volume_slice = read_image(filepath)
-        section = int(file.split(".")[0])        
-        try:
-            contour_points = polygons[section]
-        except KeyError:
-            print(f"No data for section {section}")
-            continue
-        vertices = np.array(contour_points)
-        contour_points = (vertices).astype(np.int32)
-        if len(contour_points) < 3:
-            print(f"Skipping section {section} with less than 3 points")
-            continue
-        else:
-            print(f"{section} {contour_points[0]}")
-        try:
-            volume_slice = cv2.polylines(volume_slice, [contour_points], isClosed=True, color=color, thickness=10)
-        except Exception as e:
-            print(f"Error in section {section} with {e}")
-            continue
-        write_image(outpath, volume_slice)
-    
+        annotator_id = 1 # Hardcoded to edward
+        com_dictionaries = self.sqlController.get_com_dictionary(prep_id=self.animal, annotator_id=annotator_id)
+        com_dictionaries = OrderedDict(sorted(com_dictionaries.items()))
+        for k, v in com_dictionaries.items():
+            x = round(v[0] * M_UM_SCALE / xy_resolution, 2)
+            y = round(v[1] * M_UM_SCALE / xy_resolution, 2)
+            z = round(v[2] * M_UM_SCALE / z_resolution, 2)
+            print(k, x,y,z)
+        return
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Annotation with ID")
-    parser.add_argument("--session_id", help="Enter the session ID", required=True, type=int)
+    parser.add_argument("--session_id", help="Enter the session ID", required=False, default=0, type=int)
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
     parser.add_argument("--channel", help="Enter the channel", required=False, type=int)
     parser.add_argument("--xshift", help="Enter xshift", required=False, default=0, type=float)
@@ -198,7 +185,8 @@ if __name__ == "__main__":
 
     function_mapping = {
         "write_polygons": pipeline.write_polygons,
-        "shift_annotations": pipeline.shift_annotations
+        "shift_annotations": pipeline.shift_annotations,
+        "list_coms": pipeline.list_coms,
     }
 
     if task in function_mapping:

@@ -92,17 +92,28 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         elif histology.orientation == 'sagittal':
             return np.array([scan_run.resolution, scan_run.resolution, scan_run.zresolution])
 
-    def update_row(self, row):
-        """update one row of a database
-
-        :param row: a row of a database table.
+     
+    def update_row(self, model, row, update_dict: dict)-> None:
         """
+        Update the table with the given ID using the provided update dictionary.
+
+        Args:
+            id (int): The ID of the scan run to update.
+            update_dict (dict): A dictionary containing the fields to update and their new values.
+
+        Returns:
+            None
+        """
+        id = row.id
 
         try:
-            self.session.merge(row)
+            self.session.query(model).filter(
+                model.id == id
+            ).update(update_dict)
             self.session.commit()
+
         except Exception as e:
-            print(f'No merge for  {e}')
+            print(f"No merge for  {e}")
             self.session.rollback()
     
     def add_row(self, data):
@@ -119,7 +130,7 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
             self.session.rollback()
 
     
-    def get_row(self, search_dictionary, model):
+    def get_row(self, search_dictionary: dict, model: object) -> object:
         """look for a specific row in the database and return the result
 
         :param search_dictionary: (dict): field and value of the search
