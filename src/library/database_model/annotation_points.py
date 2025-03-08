@@ -26,6 +26,7 @@ class AnnotationSession(Base):
 class AnnotationLabel(Base):
     __tablename__ = 'annotation_label'
     id =  Column(Integer, primary_key=True, nullable=False)
+    allen_id = Column(Integer, nullable=True)
     label = Column(String, nullable=False)
     description = Column(String, nullable=False)
     active =  Column(Integer,default=1)
