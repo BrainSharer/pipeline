@@ -54,6 +54,7 @@ from library.cell_labeling.cell_manager import CellMaker
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
+    parser.add_argument("--model", help="Enter the model", required=False, type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--step", help="Enter step", required=False, default=4, type=int)
     parser.add_argument("--x", help="Enter x", required=False, default=0, type=int)
@@ -69,13 +70,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     animal = args.animal
+    model = args.model
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     step = args.step
     x = args.x
     y = args.y
 
-    pipeline = CellMaker(animal=animal, task=task, step=step, x=x, y=y, debug=debug)
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, x=x, y=y, debug=debug)
 
     function_mapping = {
         "create_features": pipeline.create_features,
