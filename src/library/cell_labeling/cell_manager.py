@@ -48,6 +48,7 @@ except ImportError:
     host = "db.dk.ucsd.edu"
     schema = "brainsharer"
 
+
 class CellMaker(ParallelManager):
 
     def __init__(self, animal, task, step=4, model="", channel=1, x=0, y=0, debug=False):
@@ -682,6 +683,7 @@ class CellMaker(ParallelManager):
         cell_features.to_csv(Path(OUTPUT, f'detections_{str_section_number}.csv'), index=False)
         if debug:
             print('Completed detect_cell')
+
 
     def capture_total_sections(self, input_format: str, INPUT):
         '''Part of step 1. use dask to 'tile' images

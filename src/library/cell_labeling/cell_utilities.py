@@ -4,56 +4,6 @@ import cv2
 import imageio
 import numpy as np
 
-def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
-    '''part of step 3. 
-    calculate cell features; calculate correlation [between cell_candidate_img 
-    and avg_cell_img] and and energy for cell canididate
-    NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
-    '''
-
-    # Ensure image arrays to same size
-    cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
-
-    # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
-    avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
-    cell_candidate_img_x, cell_candidate_img_y = sobel(cell_candidate_img)
-
-    # corr = the mean correlation between the dot products at each pixel location
-    dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
-    corr = np.mean(dot_prod.flatten())      
-
-    # energy: the mean of the norm of the image gradients at each pixel location
-    mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
-    energy = np.mean((mag * avg_cell_img).flatten())  
-    return corr, energy
-
-def equalize_array_size_by_trimming(array1, array2):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES; array1 and array 2 the same size'''
-    size0 = min(array1.shape[0], array2.shape[0])
-    size1 = min(array1.shape[1], array2.shape[1])
-    array1 = trim_array_to_size(array1, size0, size1)
-    array2 = trim_array_to_size(array2, size0, size1)
-    return array1, array2    
-
-def trim_array_to_size(arr, size0, size2):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES'''
-    if(arr.shape[0] > size0):
-        size_difference = int((arr.shape[0]-size0)/2)
-        arr = arr[size_difference:size_difference+size0, :]
-    if(arr.shape[1] > size2):
-        size_difference = int((arr.shape[1]-size2)/2)
-        arr = arr[:, size_difference:size_difference+size2]
-    return arr
-
-def sobel(img):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
-    sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
-    sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
-    _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
-    _std = np.sqrt((np.var(sobel_x) + np.var(sobel_y))/2)
-    sobel_x = (sobel_x - _mean) / _std
-    sobel_y = (sobel_y - _mean) / _std
-    return sobel_x, sobel_y
 
 def load_image(file: str):
     if os.path.exists(file):
@@ -61,6 +11,11 @@ def load_image(file: str):
     else:
         print(f'ERROR: {file} not found')
         sys.exit(1)
+
+
+def append_string_to_every_key(dictionary, post_fix): 
+    return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
+
 
 def subtract_blurred_image(image, make_smaller=True):
     '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean'''
@@ -73,6 +28,7 @@ def subtract_blurred_image(image, make_smaller=True):
     relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
     difference = image - relarge # Calculate the difference between the original and resized-blurred images
     return difference
+
 
 def find_connected_segments(image, segmentation_threshold) -> tuple:
     '''PART OF STEP 2. Identify cell candidates'''
@@ -131,8 +87,63 @@ def filter_cell_candidates(
         cell_candidates.append(cell)
     return cell_candidates
 
-def append_string_to_every_key(dictionary, post_fix): 
-    return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
+
+def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
+    '''part of step 3. 
+    calculate cell features; calculate correlation [between cell_candidate_img 
+    and avg_cell_img] and and energy for cell canididate
+    NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
+    '''
+
+    # Ensure image arrays to same size
+    cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
+
+    # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
+    avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
+    cell_candidate_img_x, cell_candidate_img_y = sobel(cell_candidate_img)
+
+    # corr = the mean correlation between the dot products at each pixel location
+    dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
+    corr = np.mean(dot_prod.flatten())      
+
+    # energy: the mean of the norm of the image gradients at each pixel location
+    mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
+    energy = np.mean((mag * avg_cell_img).flatten())  
+    return corr, energy
+
+
+def equalize_array_size_by_trimming(array1, array2):
+    '''PART OF STEP 3. CALCULATE CELL FEATURES; array1 and array 2 the same size'''
+    size0 = min(array1.shape[0], array2.shape[0])
+    size1 = min(array1.shape[1], array2.shape[1])
+    array1 = trim_array_to_size(array1, size0, size1)
+    array2 = trim_array_to_size(array2, size0, size1)
+    return array1, array2    
+
+
+def trim_array_to_size(arr, size0, size2):
+    '''PART OF STEP 3. CALCULATE CELL FEATURES'''
+    if(arr.shape[0] > size0):
+        size_difference = int((arr.shape[0]-size0)/2)
+        arr = arr[size_difference:size_difference+size0, :]
+    if(arr.shape[1] > size2):
+        size_difference = int((arr.shape[1]-size2)/2)
+        arr = arr[:, size_difference:size_difference+size2]
+    return arr
+
+
+def sobel(img):
+    '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
+
+    sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
+    sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
+    _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
+    _std = np.sqrt((np.var(sobel_x) + np.var(sobel_y))/2)
+
+    eps = 1e-8 #If _std is zero or contains NaN/Inf values, the normalization step will fail. 
+    sobel_x = (sobel_x - _mean) / (_std + eps)
+    sobel_y = (sobel_y - _mean) / (_std + eps)
+    return sobel_x, sobel_y
 
 
 def calc_moments_of_mask(mask):   
@@ -162,25 +173,34 @@ def calc_moments_of_mask(mask):
     moments = append_string_to_every_key(moments, f'_mask')
     return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
 
-def features_using_center_connected_components(cell_candidate_data):   
-    '''Part of step 3. calculate cell features'''
-    def mask_mean(mask,image):
-        mean_in=np.mean(image[mask==1])
-        mean_all=np.mean(image.flatten())
-        if np.isnan(mean_in) or np.isnan(mean_all):
-            return 0
-        else:
-            #print(f'DEBUG: {mean_in=}, {mean_all=}')
-            return (mean_in-mean_all)/(mean_in+mean_all)    # calculate the contrast: mean
-    
-        #TODO: FIX BUG:
-        # 'cell_utilities.py:170: RuntimeWarning: invalid value encountered in float_scalars
 
-    mask = cell_candidate_data['mask']  
+def features_using_center_connected_components(cell_candidate_data):
+    '''Part of step 3. calculate cell features'''
+    def mask_mean(mask, image):
+        # Handle empty mask case first
+        if np.sum(mask) == 0:
+            return 0.0 # No contrast in empty mask
+        
+        # Calculate means with NaN protection
+        mean_in = np.nanmean(image[mask==1])
+        mean_all = np.nanmean(image)
+        
+        # Handle zero denominator case
+        denominator = mean_in + mean_all
+        if denominator == 0:
+            # Both regions have zero intensity - no contrast
+            return 0.0
+        return (mean_in - mean_all) / denominator
+
+    mask = cell_candidate_data['mask']
+    
+    # Add input validation
+    if mask.max() == 0:
+        return 0.0, 0.0, calc_moments_of_mask(mask)
 
     moments_data = calc_moments_of_mask(mask)
 
-    # Calculate constrasts relative to mask
+    # Calculate contrasts with safe division
     ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
     ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
 
