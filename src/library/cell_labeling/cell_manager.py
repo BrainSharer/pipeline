@@ -70,7 +70,7 @@ class CellMaker(ParallelManager):
         #####TODO put average cell someplace better
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
         self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
-        self.report_status()
+
 
     def report_status(self):
         print("RUNNING CELL MANAGER WITH THE FOLLOWING SETTINGS:")
@@ -636,32 +636,55 @@ class CellMaker(ParallelManager):
             print(f'Starting function score_and_detect_cell on section {section}')
 
         def calculate_scores(features: pd.DataFrame, model):
-            all = xgb.DMatrix(features) #RENAME VARIABLE
+            """
+                Calculate scores, mean, and standard deviation for each feature.
+
+                Args:
+                features (pd.DataFrame): Input features.
+                model: XGBoost model.
+
+                Returns:
+                tuple: Mean scores and standard deviation scores.
+            """
+            all_data = xgb.DMatrix(features)
             scores=np.zeros([features.shape[0], len(model)])
-            for i in range(len(model)):
-                bst = model[i]
+
+            for i, bst in enumerate(model):
                 attributes = bst.attributes()
                 try:
                     best_ntree_limit = int(attributes["best_ntree_limit"])
                 except KeyError:
                     best_ntree_limit = 676
-                scores[:,i] = bst.predict(all, iteration_range=[1, best_ntree_limit], output_margin=True)
+                scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
 
-            _mean = np.mean(scores, axis=1)
-            _std = np.std(scores, axis=1)
-            return _mean, _std
+            mean_scores = np.mean(scores, axis=1)
+            std_scores = np.std(scores, axis=1)
+            return mean_scores, std_scores
 
-        def get_prediction_and_label(_mean) -> list:
+        def get_prediction_and_label(mean_scores: np.ndarray) -> list:
+            """
+                Get predictive cell labels based on mean scores.
+
+                Args:
+                mean_scores (np.ndarray): Mean scores.
+
+                Returns:
+                list: Predictive cell labels.
+            """
             threshold = 1.5
             predictions = []
-            for __mean in _mean:
-                __mean = float(__mean)
-                classification = -2 #Default: cell candidate is not actually a cell
-                if __mean > threshold: #Candidate is a cell
+
+            for mean_score in mean_scores:
+                mean_score = float(mean_score)
+                classification = -2  # Default: cell candidate is not actually a cell
+
+                if mean_score > threshold:  # Candidate is a cell
                     classification = 2
-                elif __mean > -threshold and __mean <= threshold:
-                    classification = 0 #UNKNOWN/UNSURE
+                elif -threshold <= mean_score <= threshold:
+                    classification = 0  # UNKNOWN/UNSURE
+
                 predictions.append(classification)
+
             return predictions
 
         drops = ['animal', 'section', 'index', 'row', 'col']        
@@ -669,12 +692,10 @@ class CellMaker(ParallelManager):
 
         # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
         if step > 1:
-            _mean, _std = calculate_scores(cell_features_selected_columns, model_file)
-
-            # Step 4-2-1-3) predictive cell labeling based on mean
-            cell_features['mean_score'] = _mean
-            cell_features['std_score'] = _std
-            cell_features['predictions'] = np.array(get_prediction_and_label(_mean)) #PUTATIVE ID: POSITIVE (2), NEGATIVE (-2), UNKNOWN/UNSURE (0)
+            mean_scores, std_scores = calculate_scores(cell_features_selected_columns, model_file)
+            cell_features['mean_score'] = mean_scores
+            cell_features['std_score'] = std_scores
+            cell_features['predictions'] = np.array(get_prediction_and_label(mean_scores))
 
         # STEP 4-2-2) Stores dataframe as csv file
         if debug:
@@ -903,6 +924,7 @@ class CellMaker(ParallelManager):
         Used for automated cell labeling - final output for cells detected
         """
         print("Starting cell detections")
+        self.report_status()
         scratch_tmp = get_scratch_dir()
         self.check_prerequisites(scratch_tmp)
 
