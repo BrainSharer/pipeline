@@ -38,8 +38,17 @@ def compute_affine_transformation_centroid(set1, set2):
     
     # Compute the translation vector
     t = centroid2 - np.dot(centroid1, A)
+    t = t.reshape(3,1)
+    # Convert to 4x4 matrix
+    transformation_matrix = A.copy()
+    print(f'shape of A: {transformation_matrix.shape} shape of t: {t.shape}')
+    #transformation_matrix[:3, :] = A
+    #transformation_matrix[... , 4] = t
+    transformation_matrix = np.hstack( [transformation_matrix, t ])
+    transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
+
     
-    return A, t
+    return A, t, transformation_matrix
 
 def compute_affine_transformation(source_points, target_points):
     """
@@ -263,12 +272,15 @@ R, t = umeyama(atlas_src.T,allen_src.T,  with_scaling=True)
 print(R)
 print()
 print(t)
-
+print()
 
 transform = compute_affine_transformation(atlas_src, allen_src)
 print(transform)
 print()
-A, t = compute_affine_transformation_centroid(atlas_src, allen_src)
+
+A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
 
 print(A)
 print(t)
+print()
+print(transformation)

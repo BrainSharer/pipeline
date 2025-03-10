@@ -57,7 +57,7 @@ class AnnotationHelper:
                 print(f"Error in section {section} with {e}")
                 continue
             write_image(outpath, volume_slice)
-    
+
     def shift_annotations(self):
         """
         Shifts the annotations based on the x and y shift values and updates the annotation session.
@@ -134,6 +134,15 @@ class AnnotationHelper:
             print(f'Updating session {self.session_id} with length {len(childJsons)}')
             self.sqlController.update_session(session_id, update_dict=update_dict)
 
+    def convert_to_allen(self, com):
+        affine_transformation = np.array(
+            [
+                [9.36873602e-01, 6.25910930e-02, 3.41078823e-03, 4.07945327e02],
+                [5.68396089e-04, 1.18742192e00, 6.28369930e-03, 4.01267566e01],
+                [-1.27831427e-02, 8.42516452e-03, 1.11913658e00, -6.42895756e01],
+                [0.00000000e00, 0.00000000e00, 0.00000000e00, 1.00000000e00],
+            ]
+        )
 
     def list_coms(self):
         """
@@ -143,8 +152,6 @@ class AnnotationHelper:
         """
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-        xy_resolution = 10
-        z_resolution = 10
 
         annotator_id = 1 # Hardcoded to edward
         com_dictionaries = self.sqlController.get_com_dictionary(prep_id=self.animal, annotator_id=annotator_id)
@@ -154,8 +161,8 @@ class AnnotationHelper:
             y = round(v[1] * M_UM_SCALE / xy_resolution, 2)
             z = round(v[2] * M_UM_SCALE / z_resolution, 2)
             print(k, x,y,z)
-        return
-
+            
+        return com_dictionaries
 
 
 if __name__ == "__main__":
@@ -196,5 +203,3 @@ if __name__ == "__main__":
         print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():
             print(f"\t{key}")
-
-

@@ -14,11 +14,8 @@ PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.brain_structure_manager import BrainStructureManager
-from library.controller.structure_com_controller import StructureCOMController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.database_model.annotation_points import PolygonSequence, AnnotationType, StructureCOM
 from library.utilities.atlas import allen_structures, singular_structures
-from library.controller.polygon_sequence_controller import PolygonSequenceController
 from library.utilities.utilities_process import SCALING_FACTOR
 
 
@@ -79,15 +76,14 @@ def update_coms(debug=False):
 
 def load_com():
     animal = 'Allen'
-    mcc = MouseConnectivityCache(resolution=25)
+    um = 10
+    mcc = MouseConnectivityCache(resolution=um)
     rsp = mcc.get_reference_space()
     print('Shape of entire brain', rsp.annotation.shape)
     midpoint = int(rsp.annotation.shape[2] / 2)
     print('Mid z', midpoint)
     brainManager = BrainStructureManager(animal)
     source = 'MANUAL'
-    annotationSessionController = AnnotationSessionController(animal)
-    structureController = StructureCOMController(animal)
     # Pn looks like one mass in Allen
     for abbreviation, structure_id in allen_structures.items():
         if type(structure_id) == list:
@@ -95,18 +91,18 @@ def load_com():
         else:
             sid = [structure_id]
         structure_mask = rsp.make_structure_mask(sid, direct_only=False)
-        FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
-        FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
-                                                                                FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
+        #FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
+        #FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
+        #                                                                        FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
         if abbreviation in singular_structures:
             x,y,z = center_of_mass(structure_mask)
             mins = np.where(structure_mask>0)
             minx = min(mins[0])
             miny = min(mins[1])
             minz = min(mins[2])            
-            x *= 25
-            y *= 25
-            z *= 25
+            x *= um
+            y *= um
+            z *= um
             print('Singular',end="\t")
         else:
 
@@ -120,15 +116,15 @@ def load_com():
                 miny = min(mins[1])
                 minz = min(mins[2])            
 
-                x *= 25
-                y *= 25
-                z *= 25
+                x *= um
+                y *= um
+                z *= um
             elif abbreviation.endswith('R'):
                 print('Right', end="\t")
                 x,y,z = center_of_mass(right_side)
-                x *= 25
-                y *= 25
-                z = (z + midpoint) * 25
+                x *= um
+                y *= um
+                z = (z + midpoint) * um
                 mins = np.where(structure_mask>0)
                 minx = min(mins[0])
                 miny = min(mins[1])
@@ -136,9 +132,9 @@ def load_com():
             else:
                 print(f'We should not be here abbreviation={abbreviation}')
 
-        print(f'{abbreviation} {FK_brain_region_id} {x} {y} {z}')
-        com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id, minx=minx, miny=miny, minz=minz)
-        brainManager.sqlController.add_row(com)
+        print(f'{abbreviation} {x=} {y=} {z=}')
+        #com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id, minx=minx, miny=miny, minz=minz)
+        #brainManager.sqlController.add_row(com)
 
 
 
@@ -204,7 +200,7 @@ def load_foundation_brain_polygon_sequences(animal):
 
 if __name__ == '__main__':
     animals = ['MD585', 'MD589', 'MD594']
-    for animal in animals:
-        load_foundation_brain_polygon_sequences(animal)
-    #load_com()
+    #for animal in animals:
+    #    load_foundation_brain_polygon_sequences(animal)
+    load_com()
     #update_coms()
