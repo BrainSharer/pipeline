@@ -7,23 +7,22 @@ from collections import defaultdict
 import cv2
 import json
 from scipy.ndimage import center_of_mass
-from skimage.filters import gaussian
-import math
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 
-from atlas.scripts.create_atlas import NumpyToNeuroglancer
+from library.atlas.atlas_manager import AtlasToNeuroglancer
+from library.atlas.atlas_utilities import apply_affine_transform
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
 from library.registration.algorithm import umeyama
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
-from library.utilities.utilities_process import SCALING_FACTOR, M_UM_SCALE
+from library.utilities.utilities_process import SCALING_FACTOR, M_UM_SCALE, write_image
 
 
 class BrainStructureManager():
 
-    def __init__(self, animal, region='all', um=25, debug=False):
+    def __init__(self, animal, region='all', um=10, debug=False):
 
         self.animal = animal
         self.fixed_brain = None
@@ -49,6 +48,18 @@ class BrainStructureManager():
         self.origin = None
         self.volume = None
         self.abbreviation = None
+
+        x_length = 1620
+        y_length = 800
+        z_length = 1140
+
+        self.atlas_box_size=(x_length, y_length, z_length)
+        self.atlas_box_scales=(self.allen_um, self.allen_um, self.allen_um)
+        self.atlas_raw_scale=10
+        self.atlas_box_scales = np.array(self.atlas_box_scales)
+        self.atlas_box_size = np.array(self.atlas_box_size)
+        self.atlas_box_center = self.atlas_box_size / 2
+
 
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -293,7 +304,7 @@ class BrainStructureManager():
         y = com[1] * xy_resolution / M_UM_SCALE
         z = com[2] * zresolution / M_UM_SCALE
         com = [x, y, z]
-        json_entry = {"type": "point", "point": com, "description": "7N_L", "centroid": com, "props": ["#ffff00", 1, 1, 5, 3, 1]}
+        json_entry = {"type": "point", "point": com, "description": f"{structure}", "centroid": com, "props": ["#ffff00", 1, 1, 5, 3, 1]}
         label = self.sqlController.get_annotation_label(structure)
         if label is not None:
             label_ids = [label.id]
@@ -329,7 +340,7 @@ class BrainStructureManager():
             return
 
         except MultipleResultsFound as mrf:
-            print(f'Multiple results found for {structure}')
+            print(f'Multiple results found for {structure} error: {mrf}')
             return
 
         if annotation_session:
@@ -337,30 +348,25 @@ class BrainStructureManager():
             update_dict = {"annotation": json_entry}
             self.sqlController.update_session(annotation_session.id, update_dict=update_dict)
 
-    def create_neuroglancer_volume(self):
+    @staticmethod
+    def check_for_existing_dir(path):
+        if not os.path.exists(path):
+            print(f'{path} does not exist, exiting.')
+            sys.exit()
+
+    def get_transformed(self, point):
+        new_point = apply_affine_transform(point)
+        return new_point
+        
+
+    def create_atlas_volume(self) -> np.ndarray:
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um
-        if not os.path.exists(self.origin_path):
-            print(f'{self.origin_path} does not exist, exiting.')
-            sys.exit()
-        if not os.path.exists(self.volume_path):
-            print(f'{self.volume_path} does not exist, exiting.')
-            sys.exit()
+        self.check_for_existing_dir(self.origin_path)
+        self.check_for_existing_dir(self.volume_path)
 
-        # Use size of existing Allen atlas at 10um
-        x_length = 1320
-        y_length = 800
-        z_length = 1140
-
-        atlas_box_size=(x_length, y_length, z_length)
-        atlas_box_scales=(10, 10, 10)
-        atlas_raw_scale=10
-        atlas_box_scales = np.array(atlas_box_scales)
-        atlas_box_size = np.array(atlas_box_size)
-        atlas_box_center = atlas_box_size / 2
-        atlas_volume = np.zeros((x_length, y_length, z_length), dtype=np.uint32)
-
-        print(f'atlas box size={atlas_box_size} shape={atlas_volume.shape}')
+        atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
+        print(f'atlas box size={self.atlas_box_size} shape={atlas_volume.shape}')
         print(f'Using data from {self.origin_path}')
         origins = sorted(os.listdir(self.origin_path))
         volumes = sorted(os.listdir(self.volume_path))
@@ -373,63 +379,86 @@ class BrainStructureManager():
                 sys.exit()
             structure = Path(origin_file).stem
             allen_color = self.get_allen_id(structure)
+            ids[structure] = allen_color
             origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
             volume = np.load(os.path.join(self.volume_path, volume_file))
             volume = np.rot90(volume, axes=(0, 1)) 
             volume = np.flip(volume, axis=0)
             # transform into the atlas box coordinates that neuroglancer assumes
-            COM = center_of_mass(volume)
-            center = (origin + COM )
-            center = atlas_box_center + center * atlas_raw_scale / atlas_box_scales
-
-            atlas_centers[structure] = center
 
             volume = volume * allen_color
             volume = volume.astype(np.uint32)
             volume[volume > 0] = allen_color
             volume = volume.astype(np.uint32)
 
-            ids[structure] = allen_color
+            use_transformed = True
+
+            COM = center_of_mass(volume)
+            center = (origin + COM )
+            center = self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales
+
+            if use_transformed:
+                center = apply_affine_transform(center)
 
             x_start = int(center[0] - COM[0])
             y_start = int(center[1] - COM[1])
             z_start = int(center[2] - COM[2])
 
+            atlas_centers[structure] = center
+
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
 
-            if self.debug:
-                print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
-                continue
+            print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
 
             try:
                 atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume            
             except ValueError as ve:
                 print(f'Error adding {structure} to atlas: {ve}')
                 continue
-
+        return atlas_volume, atlas_centers, ids
+    
+    def update_atlas_coms(self) -> None:
+        atlas_volume, atlas_centers, ids = self.create_atlas_volume()
         if self.debug:
+            for k,v in atlas_centers.items():
+                print(f'{k}={v}')   
+        else:
             for structure, com in atlas_centers.items():
                 self.update_database_com(structure, com)
-            return
-        print(f'Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
-        if self.debug:
-            return
 
-        outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_{self.allen_um}um_sagittal.tif'
-        structure_path = f'/var/www/brainsharer/structures/atlasV9'
-        if os.path.exists(structure_path):
-            print(f'Removing {structure_path}')
-            shutil.rmtree(structure_path)
-        os.makedirs(structure_path, exist_ok=True)
+    def save_atlas_volume(self) -> None:
 
-        # os.remove(outpath)
-        # print(f'saving image to {outpath}')
-        # write_image(outpath, atlas_volume)
+        atlas_volume, atlas_centers, ids = self.create_atlas_volume()
+        if not self.debug:
+            outpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DKAtlas_{self.allen_um}um_sagittal.tif'
 
-        neuroglancer = NumpyToNeuroglancer(atlas_volume, atlas_box_scales * 1000, offset=[0,0,0])
-        neuroglancer.init_precomputed(structure_path)
-        neuroglancer.add_segment_properties(ids)
-        neuroglancer.add_downsampled_volumes()
-        neuroglancer.add_segmentation_mesh()
+            if os.path.exists(outpath):
+                print(f'Removing {outpath}')
+                os.remove(outpath)
+            print(f'saving image to {outpath}')
+            write_image(outpath, atlas_volume)
+
+
+    def create_neuroglancer_volume(self):
+
+        atlas_volume, atlas_centers, ids = self.create_atlas_volume()
+
+        print(f'Pre Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
+        print(f'Post Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
+
+
+        if not self.debug:
+            structure_path = f'/var/www/brainsharer/structures/atlasV9'
+            if os.path.exists(structure_path):
+                print(f'Removing {structure_path}')
+                shutil.rmtree(structure_path)
+            os.makedirs(structure_path, exist_ok=True)
+            neuroglancer = AtlasToNeuroglancer(volume=atlas_volume, scales=self.atlas_box_scales * 1000)
+            neuroglancer.init_precomputed(path=structure_path)
+            neuroglancer.add_segment_properties(ids)
+            neuroglancer.add_downsampled_volumes()
+            neuroglancer.add_segmentation_mesh()
+
+
