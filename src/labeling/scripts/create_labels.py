@@ -47,7 +47,6 @@ from timeit import default_timer as timer
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-#from library.cell_labeling.cell_pipeline import CellPipeline
 from library.cell_labeling.cell_manager import CellMaker
 
 
@@ -77,7 +76,7 @@ if __name__ == "__main__":
     x = args.x
     y = args.y
 
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, x=x, y=y, debug=debug)
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, debug=debug)
 
     function_mapping = {
         "create_features": pipeline.create_features,

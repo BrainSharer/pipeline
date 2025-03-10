@@ -58,6 +58,8 @@ class CellMaker(ParallelManager):
         self.model = model
         self.channel = channel
         self.section_count = 0
+        self.test_x = x
+        self.test_y = y
         self.hostname = get_hostname()
         self.fileLocationManager = FileLocationManager(animal)
         self.sqlController = SqlController(animal)
@@ -1034,8 +1036,8 @@ class CellMaker(ParallelManager):
         segmenti = 0
         #_, _, width, height, object_area = segment_stats[segmenti, :]
         mask = segment_masks.copy()
-        mask = mask.astype(np.uint8)
-        mask[mask > 0] = 255
+        #mask = mask.astype(np.uint8)
+        #mask[mask > 0] = 255
         cell = {
             "animal": self.animal,
             "section": section,
@@ -1053,7 +1055,7 @@ class CellMaker(ParallelManager):
         ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], image_roi_virus)
 
         # STEP 3-D) features_using_center_connected_components
-        ch1_contrast, ch3_constrast, moments_data = self.features_using_center_connected_components(cell)
+        ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
 
         # Build features dictionary
         spreadsheet_row = {
