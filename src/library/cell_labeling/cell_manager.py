@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os, sys, glob, json, math
 import inspect
 import gzip
@@ -70,6 +71,10 @@ class CellMaker(ParallelManager):
         #####TODO put average cell someplace better
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
         self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
+        # These channels need to be defined for the create features process
+        self.dye_channel = 0
+        self.virus_channel = 0
+
 
 
     def report_status(self):
@@ -168,6 +173,8 @@ class CellMaker(ParallelManager):
             elif value['mode'] == 'virus' or value['mode'] == 'ctb':
                 virus_marker_channel = value.get('channel_name')
 
+        self.dye_channel = dye_channel[1]
+        self.virus_channel = virus_marker_channel[1]
         found_dye_channel = False
         found_virus_marker_channel = False
         INPUT_dye = Path(self.fileLocationManager.get_full_aligned(channel=dye_channel[1]))
@@ -996,7 +1003,7 @@ class CellMaker(ParallelManager):
             sys.exit(1)
 
         print(f"Reading csv files from {self.cell_label_path}")
-        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_00*.csv') ))
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.cell_label_path}')
             sys.exit(1)
@@ -1014,12 +1021,13 @@ class CellMaker(ParallelManager):
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
-        sys.exit(1)
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
         # mean_score, predictions, std_score are results, not features
 
         drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
-        detection_features=detection_features.drop(drops,axis=1)
+        for drop in drops:
+            if drop in detection_features.columns:
+                detection_features.drop(drop, axis=1, inplace=True)
 
         print(f'Starting training on {self.animal} step={self.step} with {len(detection_features)} features')
 
@@ -1035,73 +1043,110 @@ class CellMaker(ParallelManager):
         coordinates from the database and run the detection process on them.
         Note, x and y are switched.
         """
-        section = 0
-        print(f'processing coordinates {self.test_y=}, {self.test_x=}, {section=}')
-        idx = 0
+        print("Starting cell detections")
+        self.report_status()
+        scratch_tmp = get_scratch_dir()
+        self.check_prerequisites(scratch_tmp)
+
+        LABEL = 'HUMAN_POSITIVE'
+        label = self.sqlController.get_annotation_label(LABEL)
+        annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37)
+        if annotation_session is None:
+            print(f'No annotations found for {LABEL}')
+            sys.exit(1)
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+
+        try:
+            data = annotation_session.annotation["childJsons"]
+        except KeyError:
+            print("No childJsons key in data")
+            return
+
+        section_data = defaultdict(list)
+        for point in data:
+            x, y, z = point["point"]
+            x = int(round(x * M_UM_SCALE / xy_resolution))
+            y = int(round(y * M_UM_SCALE / xy_resolution))
+            section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
+            section_data[section].append((x,y))
+
+        print(f'data length: {len(data)} length section data {len(section_data)}')
         avg_cell_img = load(self.avg_cell_img_file) #Load average cell image once
-        height = 80
-        width = 80
-        x_start = self.test_y - (width//2)
-        x_end = x_start + 80
-        y_start = self.test_x - 40
-        y_end = y_start + 80
+        os.makedirs(self.cell_label_path, exist_ok=True)
+        idx = 0
+        for section in section_data:
+            input_file_virus_path = os.path.join(self.fileLocationManager.get_directory(channel=self.virus_channel, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
+            input_file_dye_path = os.path.join(self.fileLocationManager.get_directory(channel=self.dye_channel, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
+            if os.path.exists(input_file_virus_path) and os.path.exists(input_file_dye_path):
+                spreadsheet = []
+                data_virus = load_image(input_file_virus_path)
+                data_dye = load_image(input_file_dye_path)
+                for x, y in section_data[section]:
+                    print(f'processing coordinates {y=}, {x=}, {section=}')
+                    idx += 1
+                    height = 80
+                    width = 80
+                    x_start = y - (width//2)
+                    x_end = x_start + 80
+                    y_start = x - 40
+                    y_end = y_start + 80
 
-        input_file_virus_path = os.path.join(self.fileLocationManager.get_directory(channel=3, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
-        input_file_dye_path = os.path.join(self.fileLocationManager.get_directory(channel=1, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
-        data_virus = load_image(input_file_virus_path)
-        data_dye = load_image(input_file_dye_path)
+                    image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS numpy array
+                    image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
+                    print(f'shape of image_roi_virus {image_roi_virus.shape} and shape of data_virus {image_roi_dye.shape}')
 
-        image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS numpy array
-        image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
-        print(f'shape of image_roi_virus {image_roi_virus.shape} and shape of data_virus {image_roi_dye.shape}')
+                    connected_segments = find_connected_segments(image_roi_virus, 2000)
+                    n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
+                    segmenti = 0
+                    #_, _, width, height, object_area = segment_stats[segmenti, :]
+                    mask = segment_masks.copy()
+                    #mask = mask.astype(np.uint8)
+                    #mask[mask > 0] = 255
+                    cell = {
+                        "animal": self.animal,
+                        "section": section,
+                        "area": width*height,
+                        "absolute_coordinates_YX": (y,x),
+                        "cell_shape_XY": (height, width),
+                        "image_CH3": image_roi_virus,
+                        "image_CH1": image_roi_dye,
+                        "mask": mask.T,
+                    }
 
-        connected_segments = find_connected_segments(image_roi_virus, 2000)
-        n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
-        segmenti = 0
-        #_, _, width, height, object_area = segment_stats[segmenti, :]
-        mask = segment_masks.copy()
-        #mask = mask.astype(np.uint8)
-        #mask[mask > 0] = 255
-        cell = {
-            "animal": self.animal,
-            "section": section,
-            "area": width*height,
-            "absolute_coordinates_YX": (self.test_y,self.test_x),
-            "cell_shape_XY": (height, width),
-            "image_CH3": image_roi_virus,
-            "image_CH1": image_roi_dye,
-            "mask": mask.T,
-        }
+                    #TODO: see calculate_features() ~line 489 [consolidate in cell_utilities.py or similar]
+                    #to avoid duplicate code
+                    ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], image_roi_dye)
+                    ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], image_roi_virus)
 
-        #TODO: see calculate_features() ~line 489 [consolidate in cell_utilities.py or similar]
-        #to avoid duplicate code
-        ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], image_roi_dye)
-        ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], image_roi_virus)
+                    # STEP 3-D) features_using_center_connected_components
+                    ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
 
-        # STEP 3-D) features_using_center_connected_components
-        ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
+                    # Build features dictionary
+                    spreadsheet_row = {
+                        "animal": self.animal,
+                        "section": section,
+                        "index": idx,
+                        "row": cell["absolute_coordinates_YX"][0],
+                        "col": cell["absolute_coordinates_YX"][1],
+                        "area": cell["area"],
+                        "height": cell["cell_shape_XY"][1],
+                        "width": cell["cell_shape_XY"][0],
+                        "corr_CH1": ch1_corr,
+                        "energy_CH1": ch1_energy,
+                        "corr_CH3": ch3_corr,
+                        "energy_CH3": ch3_energy,
+                    }
+                    spreadsheet_row.update(moments_data[0])
+                    spreadsheet_row.update(moments_data[1]) #e.g. 'h1_mask' (6 items)
+                    spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast, 'predictions': 2})
+                    spreadsheet.append(spreadsheet_row)
 
-        # Build features dictionary
-        spreadsheet_row = {
-            "animal": self.animal,
-            "section": section,
-            "index": idx,
-            "row": cell["absolute_coordinates_YX"][0],
-            "col": cell["absolute_coordinates_YX"][1],
-            "area": cell["area"],
-            "height": cell["cell_shape_XY"][1],
-            "width": cell["cell_shape_XY"][0],
-            "corr_CH1": ch1_corr,
-            "energy_CH1": ch1_energy,
-            "corr_CH3": ch3_corr,
-            "energy_CH3": ch3_energy,
-        }
-        spreadsheet_row.update(moments_data[0])
-        spreadsheet_row.update(moments_data[1]) #e.g. 'h1_mask' (6 items)
-        spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast})
-
-        for k,v in spreadsheet_row.items():
-            print(f'{k}: {v}')  
+                df_features = pd.DataFrame(spreadsheet)
+                dfpath = os.path.join(self.cell_label_path, f'detections_{str(section).zfill(3)}.csv')
+                df_features.to_csv(dfpath, index=False)
+                print(f'Saved {len(df_features)} features to {dfpath}')
+        print(f'Finished processing {idx} coordinates')
 
 
     @staticmethod

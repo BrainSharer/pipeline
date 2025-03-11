@@ -62,7 +62,7 @@ class AnnotationSessionController:
         return annotation_labels
 
 
-    def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int):
+    def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int) -> AnnotationSession:
         if isinstance(label_ids, int):
             label_ids = [label_ids]
             
