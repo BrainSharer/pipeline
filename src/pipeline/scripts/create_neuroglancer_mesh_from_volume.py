@@ -17,9 +17,9 @@ import pandas as pd
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.controller.sql_controller import SqlController
 
-# from library.controller.sql_controller import SqlController
+from library.controller.sql_controller import SqlController
+from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import SCALING_FACTOR, get_hostname, read_image
 DTYPE = np.uint64
@@ -34,19 +34,20 @@ def get_ids_from_csv(csvfile, ids):
 def create_mesh(animal, filepath, csvfile=None):
     chunks = (64, 64, 64)
     sqlController = SqlController(animal)
+    fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
     z = sqlController.scan_run.zresolution * 1000
     outpath = os.path.basename(filepath)
     outpath = outpath.split('.')[0]
-    MESH_DIR = os.path.join('/var/www/brainsharer/structures', outpath)
+    MESH_DIR = os.path.join(fileLocationManager.root, 'structures', outpath)
     
     scales = (int(xy), int(xy), int(z))
     print(f'scales={scales}')
     
-    if 'mothra' in get_hostname():
-        print(f'Cleaning {MESH_DIR}')
-        if os.path.exists(MESH_DIR):
-            shutil.rmtree(MESH_DIR)
+    if os.path.exists(MESH_DIR):
+        print(f'Existing dir: {MESH_DIR}')
+        print('Please remove before running this script')
+        sys.exit(1)
 
 
     os.makedirs(MESH_DIR, exist_ok=True)
