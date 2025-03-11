@@ -5,10 +5,11 @@ The models are named by step: models_step_X_threshold_2000.pkl
 where 'X' is the step number.
 The program can be run with the following commands:
 
-- python sr/labeling/scripts/create_labels.py --animal DKXX --task detect
-- python sr/labeling/scripts/create_labels.py --animal DKXX --task extract
-- python sr/labeling/scripts/create_labels.py --animal DKXX --task train
-- python sr/labeling/scripts/create_labels.py --animal DKXX --task fix
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task create_features
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task detect
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task extract
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task train
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task fix
 
 Explanation for the tasks:
 

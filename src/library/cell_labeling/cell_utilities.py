@@ -174,7 +174,7 @@ def calc_moments_of_mask(mask):
     return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
 
 
-def features_using_center_connected_components(cell_candidate_data):
+def features_using_center_connected_components(cell_candidate_data: dict, debug: bool = False):
     '''Part of step 3. calculate cell features'''
     def mask_mean(mask, image):
         # Handle empty mask case first
@@ -193,15 +193,27 @@ def features_using_center_connected_components(cell_candidate_data):
         return (mean_in - mean_all) / denominator
 
     mask = cell_candidate_data['mask']
-    
+    if debug:
+        if mask.shape != cell_candidate_data['image_CH1'].shape or mask.shape != cell_candidate_data['image_CH3'].shape:
+            print(f"ERROR: mask shape does not match image shape")
+            print(f"mask shape: {mask.shape}")
+            print(f"image_CH1 shape: {cell_candidate_data['image_CH1'].shape}")
+            print(f"image_CH3 shape: {cell_candidate_data['image_CH3'].shape}")
+            sys.exit(1)
+
     # Add input validation
     if mask.max() == 0:
         return 0.0, 0.0, calc_moments_of_mask(mask)
 
     moments_data = calc_moments_of_mask(mask)
 
-    # Calculate contrasts with safe division
-    ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
-    ch3_constrast = mask_mean(mask, cell_candidate_data['image_CH3'])
-
-    return ch1_contrast, ch3_constrast, moments_data
+    try:
+        # Calculate contrasts with safe division
+        ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
+        ch3_contrast = mask_mean(mask, cell_candidate_data['image_CH3'])
+    except IndexError as e:
+        if debug:
+            print(f"IndexError: {e}. Skipping calculation of contrasts.")
+        ch1_contrast, ch3_contrast = 0.0, 0.0
+    
+    return ch1_contrast, ch3_contrast, moments_data

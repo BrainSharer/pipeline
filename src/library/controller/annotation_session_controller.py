@@ -62,21 +62,24 @@ class AnnotationSessionController:
         return annotation_labels
 
 
-    def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int) -> AnnotationSession:
+    def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int, debug: bool = False) -> AnnotationSession:
         if isinstance(label_ids, int):
             label_ids = [label_ids]
             
-        annotation_session = (
+        query = (
             self.session.query(AnnotationSession)
             .filter(AnnotationSession.active == True)
             .filter(AnnotationSession.FK_prep_id == prep_id)
             .filter(AnnotationSession.FK_user_id == annotator_id)
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
             .order_by(AnnotationSession.updated.desc())
-            .first()
         )
 
-        return annotation_session
+        if debug:  # Print the raw SQL query
+            print(f'RAW SQL: {query.statement.compile(compile_kwargs={"literal_binds": True})}')
+        
+        return query.first()
+
 
     def get_annotation_label(self, label):
 
