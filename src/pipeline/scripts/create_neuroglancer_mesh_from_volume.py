@@ -17,7 +17,6 @@ import pandas as pd
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.controller.sql_controller import SqlController
 
 # from library.controller.sql_controller import SqlController
@@ -32,23 +31,18 @@ def get_ids_from_csv(csvfile, ids):
         pass 
 
 
-def create_mesh(animal, volume_file, csvfile=None):
+def create_mesh(animal, filepath, csvfile=None):
     chunks = (64, 64, 64)
     sqlController = SqlController(animal)
-    fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
     z = sqlController.scan_run.zresolution * 1000
-    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'registration')
-    outpath = os.path.basename(volume_file)
+    outpath = os.path.basename(filepath)
     outpath = outpath.split('.')[0]
-    MESH_DIR = os.path.join(fileLocationManager.neuroglancer_data, f'mesh_{outpath}')
-    PROGRESS_DIR = os.path.join(fileLocationManager.neuroglancer_data, 'progress', f'mesh_{outpath}')
+    MESH_DIR = os.path.join('/var/www/brainsharer/structures', outpath)
     
-    xy *=  10
     scales = (int(xy), int(xy), int(z))
     print(f'scales={scales}')
     
-    #scales = (25000, 25000, 25000)
     if 'mothra' in get_hostname():
         print(f'Cleaning {MESH_DIR}')
         if os.path.exists(MESH_DIR):
@@ -56,21 +50,22 @@ def create_mesh(animal, volume_file, csvfile=None):
 
 
     os.makedirs(MESH_DIR, exist_ok=True)
-    os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-    infile = os.path.join(INPUT, volume_file)
-    volume = read_image(infile)
+    if not os.path.exists(filepath):
+        print(f'File {filepath} does not exist')
+        sys.exit(1)
+    volume = read_image(filepath)
     
     ids, counts = np.unique(volume, return_counts=True)
 
     data_type = volume.dtype
     
     print()
-    print(f'Volume: {infile} dtype={data_type}, shape={volume.shape}')
+    print(f'Volume: {filepath} dtype={data_type}, shape={volume.shape}')
     print(f'Initial chunks at {chunks} and chunks for downsampling={chunks} and scales with {scales}')
-    print(f'IDS={ids}')
-    print(f'counts={counts}')
-    
+    print(f'Creating in {outpath}')
+    print(f'IDS={len(ids)}')
+    #print(f'counts={counts}')
     
     ng = NumpyToNeuroglancer(animal, volume, scales, layer_type='segmentation', 
         data_type=data_type, chunk_size=chunks)
@@ -101,12 +96,12 @@ def create_mesh(animal, volume_file, csvfile=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
-    parser.add_argument('--volume', help='Enter the name of the volume file', required=True)
+    parser.add_argument('--filepath', help='Enter the name of the volume file path', required=True)
     parser.add_argument('--csvfile', help='Enter the path of the csv file', required=False)
     args = parser.parse_args()
     animal = args.animal
-    volume = args.volume
+    filepath = args.filepath
     csvfile = args.csvfile
     
-    create_mesh(animal, volume, csvfile)
+    create_mesh(animal, filepath, csvfile)
 

@@ -109,8 +109,8 @@ class BrainStructureManager():
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
         moving_points = np.array([moving_coms[s] for s in common_keys])
 
-        # fixed_points /= 25
-        # moving_points /= 25
+        # fixed_points /= self.allen_um
+        # moving_points /= self.allen_um
 
         if fixed_points.shape != moving_points.shape or len(fixed_points.shape) != 2 or fixed_points.shape[0] < 3:
             print(f'Error calculating transform {brain.animal} {fixed_points.shape} {moving_points.shape} {common_keys}')
@@ -191,7 +191,7 @@ class BrainStructureManager():
                     print(f'structure={structure} x={x} y={y} z={z}')
                     # transform points to fixed brain um with rigid transform
                     # x,y,z = brain_to_atlas_transform((x,y,z), R, t)
-                    # scale transformed points to 25um. I'm not sure where this 25um comes from
+                    # scale transformed points to self.allen_um.
                     x = x / SCALING_FACTOR / self.sqlController.scan_run.resolution
                     y = y / SCALING_FACTOR / self.sqlController.scan_run.resolution
                     z /= 20
@@ -359,7 +359,32 @@ class BrainStructureManager():
         return new_point
         
 
-    def create_atlas_volume(self) -> np.ndarray:
+    def create_atlas_volume(self):
+        """
+        Creates an atlas volume by combining individual brain structure volumes.
+
+        This method reads origin and volume data for various brain structures, transforms
+        the volumes into the atlas coordinate system, and combines them into a single
+        atlas volume. The atlas volume is represented as a 3D numpy array where each
+        voxel value corresponds to a specific brain structure.
+
+        Returns:
+            tuple: A tuple containing:
+                - atlas_volume (np.ndarray): The combined atlas volume.
+                - atlas_centers (dict): A dictionary mapping each brain structure to its center coordinates in the atlas.
+                - ids (dict): A dictionary mapping each brain structure to its corresponding Allen Institute color ID.
+
+        Raises:
+            SystemExit: If the origin and volume filenames do not match.
+            ValueError: If there is an error adding a structure to the atlas volume.
+
+        Notes:
+            - The origin and volume data are expected to be in specific directories defined by `self.origin_path` and `self.volume_path`.
+            - The method assumes that the filenames in the origin and volume directories match.
+            - The volumes are transformed and scaled according to the atlas box coordinates and scales.
+            - The method uses an affine transformation if `use_transformed` is set to True.
+        """
+
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um
         self.check_for_existing_dir(self.origin_path)
@@ -391,7 +416,7 @@ class BrainStructureManager():
             volume[volume > 0] = allen_color
             volume = volume.astype(np.uint32)
 
-            use_transformed = True
+            use_transformed = False
 
             COM = center_of_mass(volume)
             center = (origin + COM )
@@ -420,6 +445,16 @@ class BrainStructureManager():
         return atlas_volume, atlas_centers, ids
     
     def update_atlas_coms(self) -> None:
+        """
+        Updates the center of mass (COM) for each structure in the atlas.
+
+        This method creates an atlas volume and retrieves the center of mass for each structure.
+        If the debug mode is enabled, it prints the center of mass for each structure.
+        Otherwise, it updates the database with the new center of mass values.
+
+        Returns:
+            None
+        """
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
         if self.debug:
             for k,v in atlas_centers.items():
@@ -429,6 +464,16 @@ class BrainStructureManager():
                 self.update_database_com(structure, com)
 
     def save_atlas_volume(self) -> None:
+        """
+        Saves the atlas volume to a specified file path.
+
+        This method creates an atlas volume and saves it to a predefined location.
+        If the file already exists at the specified location, it will be removed
+        before saving the new atlas volume.
+
+        Returns:
+            None
+        """
 
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
         if not self.debug:
@@ -442,6 +487,27 @@ class BrainStructureManager():
 
 
     def create_neuroglancer_volume(self):
+        """
+        Creates a Neuroglancer volume from the atlas volume.
+
+        This method performs the following steps:
+        1. Creates the atlas volume by calling `self.create_atlas_volume()`.
+        2. Prints the shape and data type of the atlas volume before and after processing.
+        3. If not in debug mode:
+            a. Removes the existing structure directory if it exists.
+            b. Creates a new structure directory.
+            c. Initializes a Neuroglancer volume with the atlas volume and scales.
+            d. Adds segment properties to the Neuroglancer volume.
+            e. Adds downsampled volumes to the Neuroglancer volume.
+            f. Adds segmentation mesh to the Neuroglancer volume.
+
+        Note:
+            The structure directory is hardcoded to '/var/www/brainsharer/structures/atlasV9'.
+
+        Raises:
+            OSError: If there is an issue creating or removing directories.
+
+        """
 
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
 
