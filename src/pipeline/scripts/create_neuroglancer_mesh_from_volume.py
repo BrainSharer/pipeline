@@ -42,6 +42,7 @@ def create_mesh(animal, filepath, csvfile=None):
     MESH_DIR = os.path.join(fileLocationManager.root, 'structures', outpath)
     
     scales = (int(xy), int(xy), int(z))
+    scales = (25000, 25000, 25000)
     print(f'scales={scales}')
     
     if os.path.exists(MESH_DIR):
@@ -65,7 +66,7 @@ def create_mesh(animal, filepath, csvfile=None):
     print(f'Volume: {filepath} dtype={data_type}, shape={volume.shape}')
     print(f'Initial chunks at {chunks} and chunks for downsampling={chunks} and scales with {scales}')
     print(f'Creating in {outpath}')
-    print(f'IDS={len(ids)}')
+    print(f'IDS={ids}')
     #print(f'counts={counts}')
     
     ng = NumpyToNeuroglancer(animal, volume, scales, layer_type='segmentation', 
