@@ -76,7 +76,6 @@ class CellMaker(ParallelManager):
         self.virus_channel = 0
 
 
-
     def report_status(self):
         print("RUNNING CELL MANAGER WITH THE FOLLOWING SETTINGS:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
@@ -102,6 +101,10 @@ class CellMaker(ParallelManager):
         '''
 
         self.OUTPUT = self.fileLocationManager.get_cell_labels()
+
+        if self.step and not Path(self.OUTPUT).is_dir(): #TRAINING/RE-TRAINING [FIRST RUN WILL JUST CREATE]
+            self.OUTPUT = self.OUTPUT + f'{self.step}'
+
         if self.debug:
             print(f'Cell labels output dir: {self.OUTPUT}')
         self.fileLogger.logevent(f'Cell labels output dir: {self.OUTPUT}')
@@ -188,11 +191,11 @@ class CellMaker(ParallelManager):
             print(f'Full-resolution tiff stack not found (dye channel). Expected location: {INPUT_dye}; will search for ome-zarr')
         if INPUT_virus_marker.exists():
             if self.debug:
-                print(f'Full-resolution tiff stack found (virus channel): {INPUT_virus_marker}')
-            self.fileLogger.logevent(f'Full-resolution tiff stack found (virus channel): {INPUT_virus_marker}')
+                print(f'Full-resolution tiff stack found (virus/tracer channel): {INPUT_virus_marker}')
+            self.fileLogger.logevent(f'Full-resolution tiff stack found (virus/tracer channel): {INPUT_virus_marker}')
             found_virus_marker_channel = True
         else:
-            print(f'Full-resolution tiff stack not found (virus channel). Expected location: {INPUT_virus_marker}; will search for ome-zarr')
+            print(f'Full-resolution tiff stack not found (virus/tracer channel). Expected location: {INPUT_virus_marker}; will search for ome-zarr')
 
         if found_dye_channel == False:
             INPUT_dye = Path(self.fileLocationManager.get_neuroglancer(False, channel=dye_channel[1]) + '.zarr')
@@ -207,10 +210,10 @@ class CellMaker(ParallelManager):
         if found_virus_marker_channel == False:
             if INPUT_virus_marker.exists():
                 if self.debug:
-                    print(f'Full-resolution ome-zarr stack found (virus channel): {INPUT_virus_marker}')
-                self.fileLogger.logevent(f'full-resolution ome-zarr stack found (virus channel): {INPUT_virus_marker}')
+                    print(f'Full-resolution ome-zarr stack found (virus/tracer channel): {INPUT_virus_marker}')
+                self.fileLogger.logevent(f'full-resolution ome-zarr stack found (virus/tracer channel): {INPUT_virus_marker}')
             else:
-                print(f'Full-resolution ome-zarr stack not found (virus channel). expected location: {INPUT_virus_marker}; exiting')
+                print(f'Full-resolution ome-zarr stack not found (virus/tracer channel). expected location: {INPUT_virus_marker}; exiting')
                 sys.exit(1)
 
         # Check for cell training definitions file (average-cell_image.pkl)
@@ -299,6 +302,7 @@ class CellMaker(ParallelManager):
             print(f'Could not find {self.avg_cell_img_file}')
             sys.exit()
 
+        #TODO: MOVE CONSTANTS TO SETTINGS?
         self.max_segment_size = 100000
         self.segmentation_threshold = 2000 
         self.cell_radius = 40
@@ -315,6 +319,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
+            if section < 106:
+                continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -397,11 +403,8 @@ class CellMaker(ParallelManager):
         else:
             cell_candidates = []
 
-
         if debug:
             print(f'Starting identify_cell_candidates on section: {str_section_number}')
-
-
 
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number is already string for legacy processing 'tif' (zfill)
@@ -562,7 +565,7 @@ class CellMaker(ParallelManager):
             ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
 
             # STEP 3-D) features_using_center_connected_components
-            ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
+            ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell, debug)
 
             # Build features dictionary
             spreadsheet_row = {
@@ -598,7 +601,7 @@ class CellMaker(ParallelManager):
                         print(f'{k}: {v}')
                     mask = cell['mask']
                     print(f'fx: {fx}, fy: {fy} srow: {srow}, scol: {scol} self.test_x: {self.test_x}, self.test_y: {self.test_y}')
-                    maskpath = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK184/preps/mask.npy'
+                    maskpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/mask.npy'
                     np.save(maskpath, mask)
                     print(f'Found cell with mask shape {mask.shape} dtype {mask.dtype}')
                     print()
@@ -940,6 +943,7 @@ class CellMaker(ParallelManager):
         self.start_labels()
         print(f'Finished cell detections')
 
+
     def fix_coordinates(self):
 
         def check_df(csvfile, df):
@@ -1050,19 +1054,20 @@ class CellMaker(ParallelManager):
 
         LABEL = 'HUMAN_POSITIVE'
         label = self.sqlController.get_annotation_label(LABEL)
-        annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37)
+        annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37, self.debug)
+
         if annotation_session is None:
             print(f'No annotations found for {LABEL}')
             sys.exit(1)
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-
+        
         try:
             data = annotation_session.annotation["childJsons"]
         except KeyError:
             print("No childJsons key in data")
             return
-
+        
         section_data = defaultdict(list)
         for point in data:
             x, y, z = point["point"]
@@ -1073,7 +1078,12 @@ class CellMaker(ParallelManager):
 
         print(f'data length: {len(data)} length section data {len(section_data)}')
         avg_cell_img = load(self.avg_cell_img_file) #Load average cell image once
-        os.makedirs(self.cell_label_path, exist_ok=True)
+
+        if self.step:
+            #USED FOR TRAINING/RE-TRAINING MODELS
+            self.cell_label_path = self.cell_label_path + str(self.step)
+            os.makedirs(self.cell_label_path, exist_ok=True)
+
         idx = 0
         for section in section_data:
             input_file_virus_path = os.path.join(self.fileLocationManager.get_directory(channel=self.virus_channel, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
@@ -1114,13 +1124,11 @@ class CellMaker(ParallelManager):
                         "mask": mask.T,
                     }
 
-                    #TODO: see calculate_features() ~line 489 [consolidate in cell_utilities.py or similar]
-                    #to avoid duplicate code
                     ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], image_roi_dye)
                     ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], image_roi_virus)
-
+                    
                     # STEP 3-D) features_using_center_connected_components
-                    ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell)
+                    ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell, self.debug)
 
                     # Build features dictionary
                     spreadsheet_row = {
@@ -1191,8 +1199,8 @@ class CellMaker(ParallelManager):
             if file_keys[-1]: #DEBUG
                 print(f"DEBUG: create cell features with identified cell candidates (auto_cell_labels - step 3)")
             cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #Step 3. calculate cell features
-            print(f'type cell features {type(cell_features)}')
-            print(cell_features.head())
+            #print(f'type cell features {type(cell_features)}')
+            #print(cell_features.head())
             if file_keys[-1]: #DEBUG
                 print(f'DEBUG: start_labels - STEP 4 (Detect cells [based on features])')
                 print(f'Cell features: {len(cell_features)}')
