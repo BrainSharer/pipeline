@@ -17,7 +17,7 @@ from library.registration.brain_merger import BrainMerger
 
 class AtlasManager():
 
-    def __init__(self, animal, region='all', um=25, debug=False):
+    def __init__(self, animal, region='all', um=10, debug=False):
 
         self.animal = animal
         self.brainManager = BrainStructureManager(animal, 'all', um, debug)
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--animal', required=False, default='atlasV8')
     parser.add_argument('--debug', required=False, default='false', type=str)
     parser.add_argument('--region', required=False, default='all', type=str)
-    parser.add_argument('--um', required=False, default=25, type=int)
+    parser.add_argument('--um', required=False, default=10, type=int)
     
     parser.add_argument('--task', required=True, type=str)
 

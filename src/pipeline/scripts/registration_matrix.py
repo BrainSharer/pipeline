@@ -6,6 +6,30 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.algorithm import umeyama
+from library.controller.sql_controller import SqlController
+from library.utilities.utilities_process import M_UM_SCALE
+
+def list_coms(animal):
+    """
+    Lists the COMs from the annotation session table. The data
+    is stored in meters so you will want to convert it to micrometers
+    and then by the resolution of the scan run.
+    """
+    sqlController = SqlController(animal)
+    coms = {}
+    annotator_id = 1 # Hardcoded to edward
+    com_dictionaries = sqlController.get_com_dictionary(prep_id=animal, annotator_id=annotator_id)
+    for k, v in com_dictionaries.items():
+        #x = round(v[0] * M_UM_SCALE / xy_resolution, 2)
+        #y = round(v[1] * M_UM_SCALE / xy_resolution, 2)
+        #z = round(v[2] * M_UM_SCALE / z_resolution, 2)
+        x = round(v[0] * M_UM_SCALE / 10, 2)
+        y = round(v[1] * M_UM_SCALE / 10, 2)
+        z = round(v[2] * M_UM_SCALE / 10, 2)
+        coms[k] = (x,y,z)
+
+    return coms
+
 
 def compute_affine_transformation_centroid(set1, set2):
     """
@@ -164,67 +188,6 @@ AtlasV7
 
 """
 
-allen_src1 = np.array(
-    [
-        [914.045000, 238.799000, 569.250000],
-        [835.409000, 512.466000, 429.363000],
-        [835.582000, 512.261000, 709.221000],
-        [946.428000, 517.559000, 388.994000],
-        [946.513000, 517.384000, 749.539000]
-    ]
-)
-
-atlas_src1 = np.array(
-    [
-        [531.98228407, 158.87129162, 573.],
-        [428.51504099, 382.58140717, 448.93419186],
-        [428.51504099, 382.58140717, 691.06580814],
-        [538.01135349, 415.47069494, 421.60523958],
-        [538.01135349, 415.47069494, 718.39476042]
-    ]
-)
-allen_src = np.array(
-    [
-        [910.249000, 379.435000, 552.097000],
-        [910.339000, 379.396000, 586.436000],
-        [958.857000, 377.783000, 543.247000],
-        [958.680000, 377.479000, 595.290000],
-        [1019.303000, 528.655000, 409.163000],
-        [1019.342000, 528.553000, 729.279000],
-        [1077.123000, 521.476000, 529.086000],
-        [1077.144000, 521.459000, 609.408000],
-        [1085.270000, 677.545000, 433.998000],
-        [1085.258000, 677.531000, 704.518000],
-        [1068.702000, 548.283000, 470.613000],
-        [1068.811000, 548.193000, 667.747000],
-        [1265.324000, 501.046000, 569.213000],
-        [1188.314000, 661.780000, 432.363000],
-        [1188.114000, 661.770000, 706.186000],
-        [1127.027000, 500.199000, 322.900000],
-        [1127.093000, 500.197000, 815.639000],
-        [1040.000000, 232.500000, 567.500000],
-        [1070.959000, 427.799000, 473.198000],
-        [1070.990000, 427.852000, 665.216000],
-        [1234.438000, 699.060000, 439.272000],
-        [1234.402000, 699.091000, 699.262000],
-        [940.289000, 384.430000, 355.105000],
-        [940.069000, 384.628000, 783.327000],
-        [950.341000, 532.180000, 569.227000],
-        [914.045000, 238.799000, 569.250000],
-        [835.409000, 512.466000, 429.363000],
-        [835.582000, 512.261000, 709.221000],
-        [844.067000, 516.729000, 403.172000],
-        [844.038000, 516.722000, 735.346000],
-        [1283.254000, 589.603000, 398.000000],
-        [1210.655000, 587.175000, 374.784000],
-        [1210.652000, 587.203000, 763.771000],
-        [1113.894000, 591.189000, 378.676000],
-        [1113.847000, 591.309000, 759.760000],
-        [946.428000, 517.559000, 388.994000],
-        [946.513000, 517.384000, 749.539000],
-    ]
-)
-
 atlas_src = np.array(
     [
         [524.55527451, 291.50561214, 556.47161474],
@@ -266,21 +229,42 @@ atlas_src = np.array(
         [538.01135349, 415.47069494, 718.39476042],
     ]
 )
+print(f'orignal atlas src shape={atlas_src.shape}')
+atlas_structures = list_coms('Atlas')
+allen_structures = list_coms('Allen')
 
+common_structures = set()
 
-R, t = umeyama(atlas_src.T,allen_src.T,  with_scaling=True)
-print(R)
-print()
-print(t)
+common_keys = sorted(list(allen_structures.keys() & atlas_structures.keys()))
+
+atlas_items = {k:v for k,v in atlas_structures.items() if k in common_keys}
+atlas_src = np.array(list(map(list, atlas_items.values())))
+
+allen_items = {k:v for k,v in allen_structures.items() if k in common_keys}
+allen_src = np.array(list(map(list, allen_items.values())))
+
+"""
+print('umeyama')
+A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=True)
+print(np.array2string(A, separator=', '))
+print(np.array2string(t, separator=', '))
+transformation_matrix = np.hstack( [A, t ])
+transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
+print(np.array2string(transformation_matrix, separator=', '))
+"""
 print()
 
 transform = compute_affine_transformation(atlas_src, allen_src)
-print(transform)
+print(np.array2string(transform, separator=', '))
 print()
 
 A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
 
-print(A)
-print(t)
+#print(repr(A))
+#print(repr(t))
 print()
-print(transformation)
+print()
+print(np.array2string(transformation, separator=', '))
+print()
+print(f'allen SC: {allen_structures["SC"]}')
+print(f'atlas SC: {atlas_structures["SC"]}')
