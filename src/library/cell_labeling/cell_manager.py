@@ -75,6 +75,11 @@ class CellMaker(ParallelManager):
         self.dye_channel = 0
         self.virus_channel = 0
 
+        #TODO: MOVE CONSTANTS TO SETTINGS?
+        self.max_segment_size = 100000
+        self.segmentation_threshold = 2000 
+        self.cell_radius = 40
+
 
     def report_status(self):
         print("RUNNING CELL MANAGER WITH THE FOLLOWING SETTINGS:")
@@ -101,9 +106,12 @@ class CellMaker(ParallelManager):
         '''
 
         self.OUTPUT = self.fileLocationManager.get_cell_labels()
-
-        if self.step and not Path(self.OUTPUT).is_dir(): #TRAINING/RE-TRAINING [FIRST RUN WILL JUST CREATE]
+        
+        if self.step == 1: #TRAINING [FIRST RUN WILL JUST CREATE]
             self.OUTPUT = self.OUTPUT + f'{self.step}'
+        else:
+            self.OUTPUT = self.OUTPUT
+        
 
         if self.debug:
             print(f'Cell labels output dir: {self.OUTPUT}')
@@ -302,11 +310,6 @@ class CellMaker(ParallelManager):
             print(f'Could not find {self.avg_cell_img_file}')
             sys.exit()
 
-        #TODO: MOVE CONSTANTS TO SETTINGS?
-        self.max_segment_size = 100000
-        self.segmentation_threshold = 2000 
-        self.cell_radius = 40
-
         if self.input_format == 'tif':
             input_path_dye = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_marker_channel)
@@ -319,8 +322,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            if section < 106:
-                continue
+            # if section < 97:
+            #     continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -482,8 +485,12 @@ class CellMaker(ParallelManager):
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold)
 
                 if connected_segments[0] > 2:
+                    if debug:
+                        print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
+
                     # found cell candidate (first element of tuple is count)
                     difference_ch1 = subtract_blurred_image(image_roi_dye)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    
                     cell_candidate = filter_cell_candidates(
                         animal,
                         section,
@@ -496,18 +503,20 @@ class CellMaker(ParallelManager):
                         difference_ch1,
                         difference_ch3,
                     )
+                    
                     cell_candidates.extend(cell_candidate)  # Must use extend!
-                    print(f"Found tile: {absolute_coordinates=}, section={str_section_number}")
-
+        
         if len(cell_candidates) > 0:
-            print(f'Saving {len(cell_candidates)} Cell candidates TO {output_file}')
+            if debug:
+                print(f'Saving {len(cell_candidates)} Cell candidates TO {output_file}')
             # if debug:
             #     print(f'Raw cell_candidates: {cell_candidates=}')
             dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
 
-        print('Completed identify_cell_candidates')
-
+        if debug:
+            print('Completed identify_cell_candidates')
         return cell_candidates
+
 
     def calculate_features(self, file_keys: tuple, cell_candidate_data: list) -> pd.DataFrame:
         '''Part of step 3. calculate cell features;
@@ -560,6 +569,7 @@ class CellMaker(ParallelManager):
         # STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **Now passed as parameter**
         output_spreadsheet = []
         for idx, cell in enumerate(cell_candidate_data):
+            
             # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
             ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
             ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
@@ -1051,7 +1061,7 @@ class CellMaker(ParallelManager):
         self.report_status()
         scratch_tmp = get_scratch_dir()
         self.check_prerequisites(scratch_tmp)
-
+        
         LABEL = 'HUMAN_POSITIVE'
         label = self.sqlController.get_annotation_label(LABEL)
         annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37, self.debug)
