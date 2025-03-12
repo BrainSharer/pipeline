@@ -17,12 +17,11 @@ from library.registration.brain_merger import BrainMerger
 
 class AtlasManager():
 
-    def __init__(self, animal, region='all', um=10, debug=False):
+    def __init__(self, animal, um=10, affine=False, debug=False):
 
         self.animal = animal
-        self.brainManager = BrainStructureManager(animal, 'all', um, debug)
+        self.brainManager = BrainStructureManager(animal, um, affine, debug)
         self.debug = debug
-        self.regions = region
         self.um = um
 
 
@@ -80,7 +79,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--animal', required=False, default='atlasV8')
     parser.add_argument('--debug', required=False, default='false', type=str)
-    parser.add_argument('--region', required=False, default='all', type=str)
+    parser.add_argument('--affine', required=False, default='false', type=str)
     parser.add_argument('--um', required=False, default=10, type=int)
     
     parser.add_argument('--task', required=True, type=str)
@@ -89,16 +88,14 @@ if __name__ == '__main__':
     animal = str(args.animal).strip()
     task = str(args.task).strip().lower()
     debug = bool({'true': True, 'false': False}[args.debug.lower()])    
-    region = args.region.lower()
+    affine = bool({'true': True, 'false': False}[args.affine.lower()])    
     um = args.um
-    regions = ['midbrain', 'all', 'brainstem']
 
-    if region not in regions:
-        print(f'regions is wrong {region}')
-        print(f'use one of: {regions}')
+    if task == 'update_coms' and affine:
+        print('Cannot update COMs with affine set to True')
         sys.exit()
 
-    pipeline = AtlasManager(animal, region, um, debug)
+    pipeline = AtlasManager(animal, um, affine, debug)
 
     function_mapping = {'create_volumes': pipeline.volume_origin_creation,
                         'neuroglancer': pipeline.create_neuroglancer_volume,

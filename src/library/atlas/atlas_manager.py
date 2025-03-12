@@ -3,7 +3,6 @@ This is the last script for creating the atlas
 This will create a precomputed volume of the Active Brain Atlas which
 you can import into neuroglancer
 """
-import argparse
 import os
 import sys
 import json
@@ -12,21 +11,14 @@ import numpy as np
 
 np.finfo(np.dtype("float32"))
 np.finfo(np.dtype("float64"))
-import shutil
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 from cloudvolume import CloudVolume
 from pathlib import Path
-from skimage import io
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.controller.sql_controller import SqlController
-from library.controller.structure_com_controller import StructureCOMController
-from library.registration.algorithm import brain_to_atlas_transform, umeyama
-from library.utilities.atlas import allen_structures
-from library.utilities.utilities_process import SCALING_FACTOR
 
 class AtlasToNeuroglancer():
     viewer = None
