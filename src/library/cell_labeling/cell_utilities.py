@@ -13,10 +13,6 @@ def load_image(file: str):
         sys.exit(1)
 
 
-def append_string_to_every_key(dictionary, post_fix): 
-    return dict(zip([keyi + post_fix for keyi in dictionary.keys()],dictionary.values()))
-
-
 def subtract_blurred_image(image, make_smaller=True):
     '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean'''
     image = np.float32(image)
@@ -71,6 +67,17 @@ def filter_cell_candidates(
         ):  # row evaluates with x-axis (width), col evaluates with y-axis (height)
             continue
         segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
+
+        #FINAL SANITY CHECK
+        img_CH1 = difference_ch1[row_start:row_end, col_start:col_end].T
+        img_CH3 = difference_ch3[row_start:row_end, col_start:col_end].T
+        if img_CH1.shape != img_CH3.shape or img_CH1.shape != segment_mask.shape:
+            print(f"ERROR: Image shapes do not match. Skipping this segment.")
+            print(f'img_CH1: {img_CH1.shape}')
+            print(f'img_CH3: {img_CH3.shape}')
+            print(f'segment_mask: {segment_mask.shape}')
+            continue
+
         cell = {
             "animal": animal,
             "section": section_number,
@@ -80,8 +87,8 @@ def filter_cell_candidates(
                 absolute_coordinates[0] + segment_row,
             ),
             "cell_shape_XY": (height, width),
-            "image_CH3": difference_ch3[row_start:row_end, col_start:col_end].T,
-            "image_CH1": difference_ch1[row_start:row_end, col_start:col_end].T,
+            "image_CH3": img_CH3,
+            "image_CH1": img_CH1,
             "mask": segment_mask.T,
         }                                        
         cell_candidates.append(cell)
@@ -94,9 +101,18 @@ def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):
     and avg_cell_img] and and energy for cell canididate
     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
     '''
-
+    # print(f'DEBUG: {avg_cell_img.size}')
+    # print(f'DEBUGA: {cell_candidate_img.size}')
+    if avg_cell_img is None or avg_cell_img.size == 0:
+        raise ValueError(f"Error: 'avg_cell_img' is empty or not loaded properly.")
+    
     # Ensure image arrays to same size
     cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
+    # print(f'DEBUG2: {avg_cell_img.size}')
+    # print(f'DEBUGA2: {cell_candidate_img.size}')
+    # print('*'*40)
+    if avg_cell_img is None or avg_cell_img.size == 0:
+        raise ValueError(f"Error2: 'avg_cell_img' is empty or not loaded properly.")
 
     # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
     avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
@@ -135,6 +151,9 @@ def trim_array_to_size(arr, size0, size2):
 def sobel(img):
     '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
 
+    if img is None or img.size == 0:
+        raise ValueError("Error: The input image is empty or not loaded properly.")
+
     sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
     sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
     _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
@@ -170,7 +189,7 @@ def calc_moments_of_mask(mask):
     moments = cv2.moments(mask)
 
     huMoments = cv2.HuMoments(moments)
-    moments = append_string_to_every_key(moments, f'_mask')
+    moments = {key + "_mask": value for key, value in moments.items()} #append_string_to_every_key
     return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
 
 
