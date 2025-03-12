@@ -6,265 +6,44 @@ PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.algorithm import umeyama
-from library.controller.sql_controller import SqlController
-from library.utilities.utilities_process import M_UM_SCALE
+from library.atlas.atlas_utilities import compute_affine_transformation, compute_affine_transformation_centroid, list_coms
 
-def list_coms(animal):
-    """
-    Lists the COMs from the annotation session table. The data
-    is stored in meters so you will want to convert it to micrometers
-    and then by the resolution of the scan run.
-    """
-    sqlController = SqlController(animal)
-    coms = {}
-    annotator_id = 1 # Hardcoded to edward
-    com_dictionaries = sqlController.get_com_dictionary(prep_id=animal, annotator_id=annotator_id)
-    for k, v in com_dictionaries.items():
-        #x = round(v[0] * M_UM_SCALE / xy_resolution, 2)
-        #y = round(v[1] * M_UM_SCALE / xy_resolution, 2)
-        #z = round(v[2] * M_UM_SCALE / z_resolution, 2)
-        x = round(v[0] * M_UM_SCALE / 10, 2)
-        y = round(v[1] * M_UM_SCALE / 10, 2)
-        z = round(v[2] * M_UM_SCALE / 10, 2)
-        coms[k] = (x,y,z)
-
-    return coms
-
-
-def compute_affine_transformation_centroid(set1, set2):
-    """
-    Computes the affine transformation (scale, shear, rotation, translation) between two sets of 3D points.
-    
-    Parameters:
-        set1: np.ndarray of shape (N, 3) - Source set of 3D points
-        set2: np.ndarray of shape (N, 3) - Target set of 3D points
-    
-    Returns:
-        A: np.ndarray of shape (3, 3) - Linear transformation matrix
-        t: np.ndarray of shape (3,)   - Translation vector
-    """
-    set1 = np.array(set1)
-    set2 = np.array(set2)
-    
-    assert set1.shape == set2.shape, "Input point sets must have the same shape"
-    assert set1.shape[1] == 3, "Point sets must have 3D coordinates"
-    
-    # Compute centroids
-    centroid1 = np.mean(set1, axis=0)
-    centroid2 = np.mean(set2, axis=0)
-    
-    # Center the points
-    centered1 = set1 - centroid1
-    centered2 = set2 - centroid2
-    
-    # Compute the affine transformation matrix using least squares
-    A, residuals, rank, s = np.linalg.lstsq(centered1, centered2, rcond=None)
-    
-    # Compute the translation vector
-    t = centroid2 - np.dot(centroid1, A)
-    t = t.reshape(3,1)
-    # Convert to 4x4 matrix
-    transformation_matrix = A.copy()
-    print(f'shape of A: {transformation_matrix.shape} shape of t: {t.shape}')
-    #transformation_matrix[:3, :] = A
-    #transformation_matrix[... , 4] = t
-    transformation_matrix = np.hstack( [transformation_matrix, t ])
-    transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
-
-    
-    return A, t, transformation_matrix
-
-def compute_affine_transformation(source_points, target_points):
-    """
-    Computes the affine transformation matrix that maps source_points to target_points in 3D.
-    
-    Parameters:
-    source_points (numpy.ndarray): Nx3 array of source 3D points.
-    target_points (numpy.ndarray): Nx3 array of target 3D points.
-    
-    Returns:
-    numpy.ndarray: 4x4 affine transformation matrix.
-    """
-    print(f'source points shape: {source_points.shape}')
-
-    if source_points.shape != target_points.shape or source_points.shape[1] != 3:
-        raise ValueError("Input point sets must have the same shape (Nx3).")
-    
-    # Append a column of ones to the source points (homogeneous coordinates)
-    ones = np.ones((source_points.shape[0], 1))
-    source_h = np.hstack([source_points, ones])
-    
-    # Solve for the affine transformation using least squares
-    affine_matrix, _, _, _ = np.linalg.lstsq(source_h, target_points, rcond=None)
-    
-    # Convert to 4x4 matrix
-    transformation_matrix = np.eye(4)
-    transformation_matrix[:3, :] = affine_matrix.T
-    
-    return transformation_matrix
-
-
-"""
-Allen
-1  3N_L	[910.249000, 379.435000, 552.097000]
-2  3N_R	[910.339000, 379.396000, 586.436000]
-3  4N_L	[958.857000, 377.783000, 543.247000]
-4  4N_R	[958.680000, 377.479000, 595.290000]
-5  5N_L	[1019.303000, 528.655000, 409.163000]
-6  5N_R	[1019.342000, 528.553000, 729.279000]
-7  6N_L	[1077.123000, 521.476000, 529.086000]
-8  6N_R	[1077.144000, 521.459000, 609.408000]
-9  7N_L	[1085.270000, 677.545000, 433.998000]
-10 7N_R	[1085.258000, 677.531000, 704.518000]
-11 7n_L	[1068.702000, 548.283000, 470.613000]
-12 7n_R	[1068.811000, 548.193000, 667.747000]
-13 AP	[1265.324000, 501.046000, 569.213000]
-14 Amb_L	[1188.314000, 661.780000, 432.363000]
-15 Amb_R	[1188.114000, 661.770000, 706.186000]
-16 DC_L	[1127.027000, 500.199000, 322.900000]
-17 DC_R	[1127.093000, 500.197000, 815.639000]
-18 IC	[1040.000000, 232.500000, 567.500000]
-19 LC_L	[1070.959000, 427.799000, 473.198000]
-20 LC_R	[1070.990000, 427.852000, 665.216000]
-21 LRt_L	[1234.438000, 699.060000, 439.272000]
-22 LRt_R	[1234.402000, 699.091000, 699.262000]
-23 PBG_L	[940.289000, 384.430000, 355.105000]
-24 PBG_R	[940.069000, 384.628000, 783.327000]
-25 RtTg	[950.341000, 532.180000, 569.227000]
-26 SC	[914.045000, 238.799000, 569.250000]
-SC [9140.45, 2387.99, 5692.5]
-27 SNC_L	[835.409000, 512.466000, 429.363000]
-28 SNC_R	[835.582000, 512.261000, 709.221000]
-29 SNR_L	[844.067000, 516.729000, 403.172000]
-30 SNR_R	[844.038000, 516.722000, 735.346000]
-31 Sp5C_L	[1283.254000, 589.603000, 398.000000]
-32 Sp5I_L	[1210.655000, 587.175000, 374.784000]
-33 Sp5I_R	[1210.652000, 587.203000, 763.771000]
-34 Sp5O_L	[1113.894000, 591.189000, 378.676000]
-35 Sp5O_R	[1113.847000, 591.309000, 759.760000]
-36 VLL_L	[946.428000, 517.559000, 388.994000]
-37 VLL_R	[946.513000, 517.384000, 749.539000]
-AtlasV7
-1  3N_L [524.55527451 291.50561214 556.47161474]
-2  3N_R [524.55527451 291.50561214 583.52838526]
-3  4N_L [559.44078717 296.10405799 545.25750654]
-4  4N_R [559.44078717 296.10405799 594.74249346]
-5  5N_L [616.79919285 402.07948465 433.80110947]
-6  5N_R [616.79919285 402.07948465 706.19889053]
-7  6N_L [677.15970035 412.49218793 534.62696716]
-8  6N_R [677.15970035 412.49218793 605.37303284]
-9  7N_L [689.63289179 514.42425173 455.19196493]
-10 7N_R [689.63289179 514.42425173 684.80803507]
-11 7n_L [654.89181904 440.30703027 462.06329295]
-12 7n_R [654.89181904 440.30703027 677.93670705]
-13 AP [862.30623016 425.65250533 572.        ]
-14 Amb_L [772.43978309 503.82579638 446.53916723]
-15 Amb_R [772.43978309 503.82579638 693.46083277]
-16 DC_L [743.28847485 356.49543513 354.16831498]
-17 DC_R [743.28847485 356.49543513 785.83168502]
-18 IC [656.75289891 151.69323784 570.        ]
-19 LC_L [656.19734322 342.80793463 486.45025498]
-20 LC_R [656.19734322 342.80793463 653.54974502]
-21 LRt_L [848.19368823 546.86274546 457.50985386]
-22 LRt_R [848.19368823 546.86274546 682.49014614]
-23 PBG_L [556.0376214  272.98520464 383.98275807]
-24 PBG_R [556.0376214  272.98520464 756.01724193]
-25 RtTg [538.45412773 462.24769428 566.5       ]
-26 SC [531.98228407 158.87129162 573.        ]
-27 SNC_L [428.51504099 382.58140717 448.93419186]
-28 SNC_R [428.51504099 382.58140717 691.06580814]
-29 SNR_L [461.87504931 377.68259887 429.08417804]
-30 SNR_R [461.87504931 377.68259887 710.91582196]
-31 Sp5C_L [916.28290175 482.03350839 435.54788781]
-32 Sp5I_L [839.32639908 450.52235458 378.62816745]
-33 Sp5I_R [839.32639908 450.52235458 761.37183255]
-34 Sp5O_L [761.37756408 449.49770082 383.83548216]
-35 Sp5O_R [761.37756408 449.49770082 756.16451784]
-36 VLL_L [538.01135349 415.47069494 421.60523958]
-37 VLL_R [538.01135349 415.47069494 718.39476042]
-
-
-
-
-"""
-
-atlas_src = np.array(
-    [
-        [524.55527451, 291.50561214, 556.47161474],
-        [524.55527451, 291.50561214, 583.52838526],
-        [559.44078717, 296.10405799, 545.25750654],
-        [559.44078717, 296.10405799, 594.74249346],
-        [616.79919285, 402.07948465, 433.80110947],
-        [616.79919285, 402.07948465, 706.19889053],
-        [677.15970035, 412.49218793, 534.62696716],
-        [677.15970035, 412.49218793, 605.37303284],
-        [689.63289179, 514.42425173, 455.19196493],
-        [689.63289179, 514.42425173, 684.80803507],
-        [654.89181904, 440.30703027, 462.06329295],
-        [654.89181904, 440.30703027, 677.93670705],
-        [862.30623016, 425.65250533, 572.0],
-        [772.43978309, 503.82579638, 446.53916723],
-        [772.43978309, 503.82579638, 693.46083277],
-        [743.28847485, 356.49543513, 354.16831498],
-        [743.28847485, 356.49543513, 785.83168502],
-        [656.75289891, 151.69323784, 570.0],
-        [656.19734322, 342.80793463, 486.45025498],
-        [656.19734322, 342.80793463, 653.54974502],
-        [848.19368823, 546.86274546, 457.50985386],
-        [848.19368823, 546.86274546, 682.49014614],
-        [556.0376214, 272.98520464, 383.98275807],
-        [556.0376214, 272.98520464, 756.01724193],
-        [538.45412773, 462.24769428, 566.5],
-        [531.98228407, 158.87129162, 573.0],
-        [428.51504099, 382.58140717, 448.93419186],
-        [428.51504099, 382.58140717, 691.06580814],
-        [461.87504931, 377.68259887, 429.08417804],
-        [461.87504931, 377.68259887, 710.91582196],
-        [916.28290175, 482.03350839, 435.54788781],
-        [839.32639908, 450.52235458, 378.62816745],
-        [839.32639908, 450.52235458, 761.37183255],
-        [761.37756408, 449.49770082, 383.83548216],
-        [761.37756408, 449.49770082, 756.16451784],
-        [538.01135349, 415.47069494, 421.60523958],
-        [538.01135349, 415.47069494, 718.39476042],
-    ]
-)
-print(f'orignal atlas src shape={atlas_src.shape}')
 atlas_structures = list_coms('Atlas')
 allen_structures = list_coms('Allen')
 
-common_structures = set()
+common_keys = atlas_structures.keys() & allen_structures.keys()
+atlas_src = np.array([atlas_structures[s] for s in common_keys])
+allen_src = np.array([allen_structures[s] for s in common_keys])
 
-common_keys = sorted(list(allen_structures.keys() & atlas_structures.keys()))
 
-atlas_items = {k:v for k,v in atlas_structures.items() if k in common_keys}
-atlas_src = np.array(list(map(list, atlas_items.values())))
+print(f'orignal atlas src shape={atlas_src.shape} dtype={atlas_src.dtype} mean = {np.mean(atlas_src, axis=0)} min={np.min(atlas_src, axis=0)} max={np.max(atlas_src, axis=0)}')
+print(f'orignal allen src shape={allen_src.shape} dtype={allen_src.dtype} mean = {np.mean(allen_src, axis=0)} min={np.min(allen_src, axis=0)} max={np.max(allen_src, axis=0)}')
 
-allen_items = {k:v for k,v in allen_structures.items() if k in common_keys}
-allen_src = np.array(list(map(list, allen_items.values())))
+
 
 """
 print('umeyama')
 A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=True)
-print(np.array2string(A, separator=', '))
-print(np.array2string(t, separator=', '))
 transformation_matrix = np.hstack( [A, t ])
 transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 print(np.array2string(transformation_matrix, separator=', '))
-"""
-print()
+print()"
 
 transform = compute_affine_transformation(atlas_src, allen_src)
+print('compute affine transformation')
 print(np.array2string(transform, separator=', '))
 print()
+"""
 
+print('compute affine transformation centroid')
 A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
-
-#print(repr(A))
-#print(repr(t))
-print()
-print()
 print(np.array2string(transformation, separator=', '))
+
 print()
-print(f'allen SC: {allen_structures["SC"]}')
-print(f'atlas SC: {atlas_structures["SC"]}')
+for structure in common_keys:
+    print(f'allen {structure}: {allen_structures[structure]}', end="\t")
+    print(f'atlas {structure}: {atlas_structures[structure]}')
+
+#print(np.array2string(atlas_src, separator=', '))
+
+

@@ -11,7 +11,7 @@ from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 
 from library.atlas.atlas_manager import AtlasToNeuroglancer
-from library.atlas.atlas_utilities import apply_affine_transform
+from library.atlas.atlas_utilities import apply_affine_transform, get_affine_transformation
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
@@ -22,7 +22,7 @@ from library.utilities.utilities_process import SCALING_FACTOR, M_UM_SCALE, writ
 
 class BrainStructureManager():
 
-    def __init__(self, animal, region='all', um=10, debug=False):
+    def __init__(self, animal, um=10, affine=False, debug=False):
 
         self.animal = animal
         self.fixed_brain = None
@@ -42,24 +42,22 @@ class BrainStructureManager():
         # self.midbrain_keys = {'SNC_L', 'SNC_R', 'SC', '3N_L', '3N_R', '4N_L', '4N_R', 'IC', 'PBG_L', 'PBG_R', 'SNR_L',  'SNR_R'}
         self.midbrain_keys = {'3N_L','3N_R','4N_L','4N_R','IC','PBG_L','PBG_R','SC','SNC_L','SNC_R','SNR_L','SNR_R'}
         self.allen_structures_keys = allen_structures.keys()
-        self.region = region
         self.allen_um = um # size in um of allen atlas
         self.com = None
         self.origin = None
         self.volume = None
         self.abbreviation = None
 
-        x_length = 1620
-        y_length = 800
-        z_length = 1140
-
-        self.atlas_box_size=(x_length, y_length, z_length)
+        self.affine = affine
         self.atlas_box_scales=(self.allen_um, self.allen_um, self.allen_um)
         self.atlas_raw_scale=10
         self.atlas_box_scales = np.array(self.atlas_box_scales)
-        self.atlas_box_size = np.array(self.atlas_box_size)
-        self.atlas_box_center = self.atlas_box_size / 2
 
+        x_length = 1820
+        y_length = 1000
+        z_length = 1140
+        self.atlas_box_size = np.array((x_length, y_length, z_length))
+        self.atlas_box_center = self.atlas_box_size / 2
 
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -398,6 +396,14 @@ class BrainStructureManager():
         print(f'Working with {len(origins)} origins and {len(volumes)} volumes.')
         ids = {}
         atlas_centers = {}
+        matrix = get_affine_transformation(self.animal)
+        xs = []
+        ys = []
+        zs = []
+        xsT = []
+        ysT = []
+        zsT = []
+
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f'{Path(origin_file).stem} and {Path(volume_file).stem} do not match')
@@ -416,14 +422,20 @@ class BrainStructureManager():
             volume[volume > 0] = allen_color
             volume = volume.astype(np.uint32)
 
-            use_transformed = False
-
             COM = center_of_mass(volume)
             center = (origin + COM )
             center = self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales
-
-            if use_transformed:
-                center = apply_affine_transform(center)
+            xs.append(center[0])
+            ys.append(center[1])
+            zs.append(center[2])
+            if self.affine:
+                print(f'Center of mass for {structure} is {center}', end="\t")
+                center = apply_affine_transform(center, matrix)
+                xsT.append(center[0])
+                ysT.append(center[1])
+                zsT.append(center[2])
+                
+                print(f'tranformed {center}')
 
             x_start = int(center[0] - COM[0])
             y_start = int(center[1] - COM[1])
@@ -435,13 +447,17 @@ class BrainStructureManager():
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
 
-            print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
+            #print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
 
             try:
                 atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume            
             except ValueError as ve:
                 print(f'Error adding {structure} to atlas: {ve}')
                 continue
+        if self.affine:
+            print(f'Range of untransformed x={max(xs) - min(xs)} y={max(ys) - min(ys)} z={max(zs) - min(zs)}')
+            print(f'Range of transformed x={max(xsT) - min(xsT)} y={max(ysT) - min(ysT)} z={max(zsT) - min(zsT)}')
+            print(f'affine matrix=\n{matrix}')
         return atlas_volume, atlas_centers, ids
     
     def update_atlas_coms(self) -> None:
@@ -451,10 +467,13 @@ class BrainStructureManager():
         This method creates an atlas volume and retrieves the center of mass for each structure.
         If the debug mode is enabled, it prints the center of mass for each structure.
         Otherwise, it updates the database with the new center of mass values.
+        If you are updating the COMS, they need to be calculated from the correct
+        box size. The box size is defined in the `self.atlas_box_size` attribute.
 
         Returns:
             None
         """
+
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
         if self.debug:
             for k,v in atlas_centers.items():
@@ -512,10 +531,10 @@ class BrainStructureManager():
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
 
         print(f'Pre Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
-        print(f'Post Shape of atlas volume {atlas_volume.shape} dtype={atlas_volume.dtype}')
 
 
         if not self.debug:
+            self.sqlController.session.close()
             structure_path = f'/var/www/brainsharer/structures/atlasV9'
             if os.path.exists(structure_path):
                 print(f'Removing {structure_path}')
