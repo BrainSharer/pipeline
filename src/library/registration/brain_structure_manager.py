@@ -29,6 +29,7 @@ class BrainStructureManager():
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, 'atlas_data')
+        self.structure_path = os.path.join(data_path, 'pipeline_data', 'structures')
         self.volume_path = os.path.join(self.data_path, self.animal, 'structure')
         self.origin_path = os.path.join(self.data_path, self.animal, 'origin')
         self.mesh_path = os.path.join(self.data_path, self.animal, 'mesh')
@@ -534,7 +535,7 @@ class BrainStructureManager():
         if not self.debug:
             self.sqlController.session.close()
             atlas_name = f'DK.atlas.{self.allen_um}um'
-            structure_path = os.path.join(self.data_path, 'structures', atlas_name)
+            structure_path = os.path.join(self.structure_path, atlas_name)
             if os.path.exists(structure_path):
                 print(f'Path exists: {structure_path}')
                 print('Please remove before running this script')
