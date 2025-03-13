@@ -520,8 +520,6 @@ class BrainStructureManager():
             e. Adds downsampled volumes to the Neuroglancer volume.
             f. Adds segmentation mesh to the Neuroglancer volume.
 
-        Note:
-            The structure directory is hardcoded to '/var/www/brainsharer/structures/atlasV9'.
 
         Raises:
             OSError: If there is an issue creating or removing directories.
@@ -535,10 +533,14 @@ class BrainStructureManager():
 
         if not self.debug:
             self.sqlController.session.close()
-            structure_path = f'/var/www/brainsharer/structures/atlasV9'
+            atlas_name = f'DK.atlas.{self.allen_um}um'
+            structure_path = os.path.join(self.data_path, 'structures', atlas_name)
             if os.path.exists(structure_path):
-                print(f'Removing {structure_path}')
-                shutil.rmtree(structure_path)
+                print(f'Path exists: {structure_path}')
+                print('Please remove before running this script')
+                sys.exit(1)
+            else:
+                print(f'Creating data in {structure_path}')
             os.makedirs(structure_path, exist_ok=True)
             neuroglancer = AtlasToNeuroglancer(volume=atlas_volume, scales=self.atlas_box_scales * 1000)
             neuroglancer.init_precomputed(path=structure_path)
