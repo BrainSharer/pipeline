@@ -1,3 +1,4 @@
+import concurrent.futures
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ def sum_square_com(com):
     ss = np.sqrt(sum([s*s for s in com]))
     return ss
 
-def generate_combinations(lst, ncombos):
+def generate_combinations(lst):
     """
     Generate all combinations of at least 3 elements from the given list.
     
@@ -27,28 +28,15 @@ def generate_combinations(lst, ncombos):
     #return list(combinations(lst, ncombos ))
 
     result = []
-    for r in range(ncombos, 10):
+    for r in range(4, 12):
         result.extend(combinations(lst, r))
     return result
 
-
-atlas_all = list_coms('Atlas')
-allen_all = list_coms('Allen')
-common_keys = list(atlas_all.keys() & allen_all.keys())
-atlas_common = np.array([atlas_all[s] for s in common_keys])
-allen_common = np.array([allen_all[s] for s in common_keys])
-
-ncombos = 3
-combinations_list = generate_combinations(common_keys, ncombos=ncombos)
-print(f'Found {len(combinations_list)} for ncombos={ncombos}')
-
-error = {}
-
-for combo in combinations_list:
+def find_best_combo(combo):
     atlas_src = np.array([atlas_all[s] for s in combo])
     allen_src = np.array([allen_all[s] for s in combo])
-    df_list = []
     sss = []
+    error = {}
     matrix = compute_affine_transformation(atlas_src, allen_src)
     for structure in common_keys:
         atlas0 = np.array(atlas_all[structure])
@@ -57,15 +45,34 @@ for combo in combinations_list:
         transformed = [round(x,8) for x in transformed]
         difference = [round(a - b, 8) for a, b in zip(transformed, allen0)]
         ss = sum_square_com(difference)
-        row = [structure, atlas0, allen0, transformed, difference, ss]
-        df_list.append(row)
         sss.append(ss)
     error[combo] = sum(sss)
 
+    return error
 
 
-sorted_combos = {k: v for k, v in sorted(error.items(), key=lambda item: item[1])}
-results = list(sorted_combos.items())[:5]
+atlas_all = list_coms('Atlas')
+allen_all = list_coms('Allen')
+common_keys = list(atlas_all.keys() & allen_all.keys())
+atlas_common = np.array([atlas_all[s] for s in common_keys])
+allen_common = np.array([allen_all[s] for s in common_keys])
 
-for result in results:
-    print(result)
+combinations_list = generate_combinations(common_keys)
+print(f'Found {len(combinations_list)}')
+
+errors = []
+with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(find_best_combo, file_key) for file_key in combinations_list]
+
+    for future in concurrent.futures.as_completed(futures):
+        try:
+            one_error = future.result()
+            errors.append(one_error)
+        except Exception as e:
+            print(f"Task failed: {e}")    
+
+r = sorted(errors, key=lambda item: list(item.values())[0], reverse=False)
+print(f'Found {len(r)} errors')
+for k in r[:10]:
+    print(f'{k}')
+
