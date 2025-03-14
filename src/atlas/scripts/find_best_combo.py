@@ -44,7 +44,7 @@ print(f'Found {len(combinations_list)} for ncombos={ncombos}')
 
 error = {}
 
-for combo in combinations_list[:10000]:
+for combo in combinations_list:
     atlas_src = np.array([atlas_all[s] for s in combo])
     allen_src = np.array([allen_all[s] for s in combo])
     df_list = []
