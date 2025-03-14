@@ -19,19 +19,14 @@ def sum_square_com(com):
     ss = np.sqrt(sum([s*s for s in com]))
     return ss
 
-def generate_combinations(lst):
+def generate_combinations(lst, ncombos=5):
     """
     Generate all combinations of at least 3 elements from the given list.
     
     :param lst: List of elements
     :return: List of tuples containing the combinations
     """
-    #return list(combinations(lst, ncombos ))
-
-    result = []
-    for r in range(4, 10):
-        result.extend(combinations(lst, r))
-    return result
+    return list(combinations(lst, ncombos ))
 
 def find_best_combo(combo):
     atlas_src = np.array([atlas_all[s] for s in combo])
@@ -59,7 +54,8 @@ atlas_common = np.array([atlas_all[s] for s in common_keys])
 allen_common = np.array([allen_all[s] for s in common_keys])
 
 start_time = timer()
-combinations_list = generate_combinations(common_keys)
+ncombos = 3
+combinations_list = generate_combinations(common_keys, ncombos=5)
 print(f'Trying {len(combinations_list)} different combinations')
 end_time = timer()
 total_elapsed_time = round((end_time - start_time), 2)
@@ -81,9 +77,5 @@ end_time = timer()
 total_elapsed_time = round((end_time - start_time), 2)
 print(f'Elapsed time to get combos: {total_elapsed_time} seconds')
 r = sorted(errors, key=lambda item: list(item.values())[0], reverse=False)
-print(f'Found {len(r)} errors')
-for k in r[:10]:
+for k in r[:3]:
     print(f'{k}')
-
-
-
