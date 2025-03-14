@@ -11,7 +11,7 @@ from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 
 from library.atlas.atlas_manager import AtlasToNeuroglancer
-from library.atlas.atlas_utilities import apply_affine_transform, get_affine_transformation
+from library.atlas.atlas_utilities import apply_affine_transform, get_affine_transformation, get_umeyama, list_coms
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
@@ -289,6 +289,12 @@ class BrainStructureManager():
             allen_color = allen_color[0]
 
         return allen_color
+    
+    def list_coms_by_atlas(self):
+            structures = list_coms(self.animal)
+            for structure, com in structures.items():
+                print(f'{structure}={com}')
+
 
     def update_database_com(self, structure:str, com: np.ndarray) -> None:
         """Annotator ID is hardcoded to 1
@@ -398,6 +404,7 @@ class BrainStructureManager():
         ids = {}
         atlas_centers = {}
         matrix = get_affine_transformation(self.animal)
+        #matrix = get_umeyama(self.animal, scaling=True)
         xs = []
         ys = []
         zs = []
@@ -533,7 +540,6 @@ class BrainStructureManager():
 
 
         if not self.debug:
-            self.sqlController.session.close()
             atlas_name = f'DK.atlas.{self.allen_um}um'
             structure_path = os.path.join(self.structure_path, atlas_name)
             if os.path.exists(structure_path):

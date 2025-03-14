@@ -21,24 +21,25 @@ print(f'orignal allen src shape={allen_src.shape} dtype={allen_src.dtype} mean =
 
 
 
-"""
+
 print('umeyama')
-A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=True)
+A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=False)
 transformation_matrix = np.hstack( [A, t ])
 transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 print(np.array2string(transformation_matrix, separator=', '))
-print()"
+print()
 
+print('compute affine transformation')
 transform = compute_affine_transformation(atlas_src, allen_src)
 print('compute affine transformation')
 print(np.array2string(transform, separator=', '))
 print()
-"""
+
 
 print('compute affine transformation centroid')
 A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
 print(np.array2string(transformation, separator=', '))
-
+sys.exit()
 print()
 for structure in common_keys:
     print(f'allen {structure}: {allen_structures[structure]}', end="\t")

@@ -203,4 +203,4 @@ if __name__ == '__main__':
     #for animal in animals:
     #    load_foundation_brain_polygon_sequences(animal)
     load_com()
-    #update_coms()
+    update_coms()

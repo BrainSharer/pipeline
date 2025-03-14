@@ -9,23 +9,22 @@ PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.brain_structure_manager import BrainStructureManager
-from library.controller.structure_com_controller import StructureCOMController
 from library.controller.annotation_session_controller import AnnotationSessionController
-from library.database_model.annotation_points import PolygonSequence, AnnotationType, StructureCOM
 from library.utilities.atlas import allen_structures, singular_structures
 
 def load_com():
+    um = 10
     animal = 'Allen'
-    mcc = MouseConnectivityCache(resolution=25)
+    mcc = MouseConnectivityCache(resolution=um)
     rsp = mcc.get_reference_space()
     print('Shape of entire brain', rsp.annotation.shape)
     midpoint = int(rsp.annotation.shape[2] / 2)
     print('Mid z', midpoint)
     brainManager = BrainStructureManager(animal)
-    brainManager.inactivate_coms(animal)
+    #brainManager.inactivate_coms(animal)
     source = 'MANUAL'
-    annotationSessionController = AnnotationSessionController(animal)
-    structureController = StructureCOMController(animal)
+    #annotationSessionController = AnnotationSessionController(animal)
+    #structureController = StructureCOMController(animal)
     # Pn looks like one mass in Allen
     for abbreviation, structure_id in allen_structures.items():
         if type(structure_id) == list:
@@ -33,14 +32,14 @@ def load_com():
         else:
             sid = [structure_id]
         structure_mask = rsp.make_structure_mask(sid, direct_only=False)
-        FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
-        FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
-                                                                                FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
+        #FK_brain_region_id = structureController.structure_abbreviation_to_id(abbreviation=abbreviation)
+        #FK_session_id = annotationSessionController.create_annotation_session(annotation_type=AnnotationType.STRUCTURE_COM, 
+        #                                                                        FK_user_id=1, FK_prep_id=animal, FK_brain_region_id=FK_brain_region_id)
         if abbreviation in singular_structures:
             x,y,z = center_of_mass(structure_mask)
-            x *= 25
-            y *= 25
-            z *= 25
+            x *= um
+            y *= um
+            z *= um
             print('Singular',end="\t")
         else:
 
@@ -49,21 +48,21 @@ def load_com():
                 left_side = structure_mask[:,:,0:midpoint]
                 right_side = structure_mask[:,:,midpoint:]
                 x,y,z = center_of_mass(left_side)
-                x *= 25
-                y *= 25
-                z *= 25
+                x *= um
+                y *= um
+                z *= um
             elif abbreviation.endswith('R'):
                 print('Right', end="\t")
                 x,y,z = center_of_mass(right_side)
-                x *= 25
-                y *= 25
+                x *= um
+                y *= um
                 z = (z + midpoint) * 25
             else:
                 print(f'We should not be here abbreviation={abbreviation}')
 
-        print(f'{abbreviation} {FK_brain_region_id} {x} {y} {z}')
-        com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
-        brainManager.sqlController.add_row(com)
+        print(f'{abbreviation} {x} {y} {z}')
+        #com = StructureCOM(source=source, x=x, y=y, z=z, FK_session_id=FK_session_id)
+        #brainManager.sqlController.add_row(com)
 
 
 

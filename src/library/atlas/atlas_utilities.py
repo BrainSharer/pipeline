@@ -1,5 +1,6 @@
 import numpy as np
 from library.controller.sql_controller import SqlController
+from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE
 
 def apply_affine_transform(point: list, matrix) -> np.ndarray:
@@ -142,3 +143,23 @@ def get_affine_transformation(animal='Atlas'):
     A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
 
     return transformation   
+
+
+def get_umeyama(animal='Atlas', scaling=False):
+    """
+    Get the umeyama transformation matrix between the Allen
+    and animal brains.
+    """
+
+    atlas_structures = list_coms(animal)
+    allen_structures = list_coms('Allen')
+
+    common_keys = atlas_structures.keys() & allen_structures.keys()
+    atlas_src = np.array([atlas_structures[s] for s in common_keys])
+    allen_src = np.array([allen_structures[s] for s in common_keys])
+
+    A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=scaling)
+    transformation_matrix = np.hstack( [A, t ])
+    transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
+
+    return transformation_matrix
