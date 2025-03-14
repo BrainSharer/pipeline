@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from itertools import combinations
+from timeit import default_timer as timer
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -28,7 +29,7 @@ def generate_combinations(lst):
     #return list(combinations(lst, ncombos ))
 
     result = []
-    for r in range(4, 12):
+    for r in range(4, 10):
         result.extend(combinations(lst, r))
     return result
 
@@ -57,11 +58,16 @@ common_keys = list(atlas_all.keys() & allen_all.keys())
 atlas_common = np.array([atlas_all[s] for s in common_keys])
 allen_common = np.array([allen_all[s] for s in common_keys])
 
+start_time = timer()
 combinations_list = generate_combinations(common_keys)
-print(f'Found {len(combinations_list)}')
+print(f'Trying {len(combinations_list)} different combinations')
+end_time = timer()
+total_elapsed_time = round((end_time - start_time), 2)
+print(f'Elapsed time to get combos: {total_elapsed_time} seconds')
 
+start_time = timer()
 errors = []
-with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
     futures = [executor.submit(find_best_combo, file_key) for file_key in combinations_list]
 
     for future in concurrent.futures.as_completed(futures):
@@ -71,8 +77,13 @@ with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
         except Exception as e:
             print(f"Task failed: {e}")    
 
+end_time = timer()
+total_elapsed_time = round((end_time - start_time), 2)
+print(f'Elapsed time to get combos: {total_elapsed_time} seconds')
 r = sorted(errors, key=lambda item: list(item.values())[0], reverse=False)
 print(f'Found {len(r)} errors')
 for k in r[:10]:
     print(f'{k}')
+
+
 
