@@ -7,12 +7,6 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.registration.brain_structure_manager import BrainStructureManager
 from library.registration.brain_merger import BrainMerger
-#from library.controller.annotation_session_controller import AnnotationSessionController
-#from library.controller.polygon_sequence_controller import PolygonSequenceController
-#from library.controller.structure_com_controller import StructureCOMController
-
-# get average brain the same scale as atlas
-# put the dk atlas on the average brain
 
 
 class AtlasManager():
@@ -72,6 +66,12 @@ class AtlasManager():
     def update_atlas_coms(self):
         self.brainManager.update_atlas_coms()
 
+    def list_coms(self):
+        self.brainManager.list_coms_by_atlas()
+
+    def update_one_com(self):
+        self.brainManager.update_database_com(structure, com)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')
@@ -100,7 +100,8 @@ if __name__ == '__main__':
     function_mapping = {'create_volumes': pipeline.volume_origin_creation,
                         'neuroglancer': pipeline.create_neuroglancer_volume,
                         'save_atlas': pipeline.save_atlas_volume,
-                        'update_coms': pipeline.update_atlas_coms
+                        'update_coms': pipeline.update_atlas_coms,
+                        'list_coms': pipeline.list_coms,
     }
 
     if task in function_mapping:
