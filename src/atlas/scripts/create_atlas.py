@@ -69,8 +69,6 @@ class AtlasManager():
     def list_coms(self):
         self.brainManager.list_coms_by_atlas()
 
-    def update_one_com(self):
-        self.brainManager.update_database_com(structure, com)
 
 
 if __name__ == '__main__':

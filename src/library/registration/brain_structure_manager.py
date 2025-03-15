@@ -11,7 +11,7 @@ from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 
 from library.atlas.atlas_manager import AtlasToNeuroglancer
-from library.atlas.atlas_utilities import apply_affine_transform, get_affine_transformation, get_umeyama, list_coms
+from library.atlas.atlas_utilities import apply_affine_transform, compute_affine_transformation, get_affine_transformation, get_umeyama, list_coms
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
 from library.image_manipulation.filelocation_manager import data_path, FileLocationManager
@@ -395,6 +395,8 @@ class BrainStructureManager():
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.volume_path)
 
+
+
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f'atlas box size={self.atlas_box_size} shape={atlas_volume.shape}')
         print(f'Using data from {self.origin_path}')
@@ -403,8 +405,14 @@ class BrainStructureManager():
         print(f'Working with {len(origins)} origins and {len(volumes)} volumes.')
         ids = {}
         atlas_centers = {}
-        matrix = get_affine_transformation(self.animal)
-        #matrix = get_umeyama(self.animal, scaling=True)
+        atlas_all = list_coms('Atlas')
+        allen_all = list_coms('Allen')
+        ckeys_single = ('LRt_L', 'LRt_R', 'SC', 'SNC_R')
+        atlas_src = np.array([atlas_all[s] for s in ckeys_single])
+        allen_src = np.array([allen_all[s] for s in ckeys_single])
+        matrix = compute_affine_transformation(atlas_src, allen_src)
+
+        #matrix = get_affine_transformation(self.animal)
         xs = []
         ys = []
         zs = []
