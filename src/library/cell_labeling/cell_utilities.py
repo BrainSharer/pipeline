@@ -101,9 +101,9 @@ def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):
     and avg_cell_img] and and energy for cell canididate
     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
     '''
-    # print(f'DEBUG: {avg_cell_img.size}')
-    # print(f'DEBUGA: {cell_candidate_img.size}')
+    
     if avg_cell_img is None or avg_cell_img.size == 0:
+        print(f'DEBUG: avg_cell_img={avg_cell_img.size}, cell_candidate_img={cell_candidate_img.size}')
         raise ValueError(f"Error: 'avg_cell_img' is empty or not loaded properly.")
     
     # Ensure image arrays to same size
@@ -195,23 +195,21 @@ def calc_moments_of_mask(mask):
 
 def features_using_center_connected_components(cell_candidate_data: dict, debug: bool = False):
     '''Part of step 3. calculate cell features'''
-    def mask_mean(mask, image):
-        # Handle empty mask case first
-        if np.sum(mask) == 0:
-            return 0.0 # No contrast in empty mask
+    def mask_mean(mask, image): #ORG CODE FROM Kui github (FeatureFinder)
+        mean_in = np.mean(image[mask == 1])
+        mean_all = np.mean(image.flatten())
         
-        # Calculate means with NaN protection
-        mean_in = np.nanmean(image[mask==1])
-        mean_all = np.nanmean(image)
-        
-        # Handle zero denominator case
+        numerator = mean_in - mean_all
         denominator = mean_in + mean_all
-        if denominator == 0:
-            # Both regions have zero intensity - no contrast
-            return 0.0
-        return (mean_in - mean_all) / denominator
+        if numerator == 0 and denominator == 0:
+            return 1
+        else:
+            return numerator / denominator 
 
+    image1 = cell_candidate_data['image_CH1']
+    image3 = cell_candidate_data['image_CH3']
     mask = cell_candidate_data['mask']
+
     if debug:
         if mask.shape != cell_candidate_data['image_CH1'].shape or mask.shape != cell_candidate_data['image_CH3'].shape:
             print(f"ERROR: mask shape does not match image shape")
@@ -223,16 +221,9 @@ def features_using_center_connected_components(cell_candidate_data: dict, debug:
     # Add input validation
     if mask.max() == 0:
         return 0.0, 0.0, calc_moments_of_mask(mask)
-
     moments_data = calc_moments_of_mask(mask)
 
-    try:
-        # Calculate contrasts with safe division
-        ch1_contrast = mask_mean(mask, cell_candidate_data['image_CH1'])
-        ch3_contrast = mask_mean(mask, cell_candidate_data['image_CH3'])
-    except IndexError as e:
-        if debug:
-            print(f"IndexError: {e}. Skipping calculation of contrasts.")
-        ch1_contrast, ch3_contrast = 0.0, 0.0
+    ch1_contrast = mask_mean(mask, image1)
+    ch3_contrast = mask_mean(mask, image3)
     
     return ch1_contrast, ch3_contrast, moments_data
