@@ -52,21 +52,20 @@ class VariableManager:
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f'Elapsed time to get combos: {total_elapsed_time} seconds')
-
         start_time = timer()
         errors = []
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=self.cpus) as executor:
-                # Map function to items in the list concurrently
-                for found_combo, rms in executor.map(find_best_combo, combos):
-                    if rms < starting_rms:
-                        starting_rms = rms
-                        print(f'New best combo: {found_combo} with {rms=}') 
-                        errors.append([found_combo, rms])
+            # Map function to items in the list concurrently
+            for found_combo, rms in executor.map(find_best_combo, combos):
+                if rms < starting_rms:
+                    starting_rms = rms
+                    print(f'New best combo: {found_combo} with {rms=}') 
+                    errors.append([found_combo, rms])
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f'Elapsed time to get combos: {total_elapsed_time} seconds')
+        print(f'Elapsed time to process {len(errors)} good combos: {total_elapsed_time} seconds')
 
         #r = sorted(errors, key=lambda item: list(item.values())[0], reverse=True)
         for combo, rms in errors:

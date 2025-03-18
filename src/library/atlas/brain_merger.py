@@ -1,0 +1,212 @@
+"""
+This script will take a source brain (where the data comes from) and an image brain 
+(the brain whose images you want to display unstriped) and align the data from the point brain
+to the image brain. It first aligns the point brain data to the atlas, then that data
+to the image brain. It prints out the data by default and also will insert
+into the database if given a layer name.
+"""
+import os
+import numpy as np
+from collections import defaultdict
+from skimage.filters import gaussian
+
+from library.atlas.atlas_utilities import apply_affine_transform, compute_affine_transformation, list_coms
+from library.image_manipulation.filelocation_manager import data_path
+from library.utilities.atlas import volume_to_polygon, save_mesh
+from library.utilities.atlas import singular_structures
+
+
+class BrainMerger():
+
+    def __init__(self, animal):
+        self.animal = animal
+        self.symmetry_list = singular_structures
+        self.volumes_to_merge = defaultdict(list)
+        self.origins_to_merge = defaultdict(list)
+        self.volumes = {}
+        self.origins = {}
+        self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
+        self.volume_path = os.path.join(self.data_path, 'structure')
+        self.origin_path = os.path.join(self.data_path, 'origin')
+        self.mesh_path = os.path.join(self.data_path, 'mesh')
+        self.csv_path = os.path.join(self.data_path, 'csv')
+        #self.volumes = {}
+        #self.coms = {}
+        #self.origins = {}
+        self.margin = 50
+        self.threshold = 0.5  # the closer to zero, the bigger the structures
+        # a value of 0.01 results in very big close fitting structures
+
+        os.makedirs(self.origin_path, exist_ok=True)
+        os.makedirs(self.volume_path, exist_ok=True)
+        os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.csv_path, exist_ok=True)
+
+
+    def pad_volume(self, size, volume):
+        size_difference = size - volume.shape
+        xr, yr, zr = ((size_difference)/2).astype(int)
+        xl, yl, zl = size_difference - np.array([xr, yr, zr])
+        return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
+
+    def merge_volumes(self, structure, volumes):
+        lvolumes = len(volumes)
+        if '10N_R' in structure:
+            print(f'{structure} has {lvolumes} volumes')
+            for volume in volumes:
+                ids, counts = np.unique(volume, return_counts=True)
+                print(volume.shape, volume.dtype, ids, counts)            
+        if lvolumes == 1:
+            #print(f'{structure} has only one volume {volumes[0].shape} {volumes[0].dtype}')
+            return volumes[0]
+        elif lvolumes > 1:
+            sizes = np.array([vi.shape for vi in volumes])
+            volume_size = sizes.max(0) + self.margin
+            volumes = [self.pad_volume(volume_size, vi) for vi in volumes]
+            volumes = list([(v > 0).astype(np.uint32) for v in volumes])
+
+            merged_volume = np.sum(volumes, axis=0)
+            merged_volume_prob = merged_volume / float(np.max(merged_volume))
+            # increasing the STD makes the volume smoother
+            # Smooth the probability
+            average_volume = gaussian(merged_volume_prob, 1.0)
+            color = 1
+            #average_volume[average_volume > 0] = color
+            average_volume[average_volume > self.threshold] = color
+            average_volume[average_volume != color] = 0
+
+
+            average_volume = average_volume.astype(np.uint32)
+            return average_volume
+        else:
+            print(f'{structure} has no volumes to merge')
+            return None
+
+    def save_brain_origins_and_volumes_and_meshes(self):
+
+        mesh_mean = np.mean(list(self.origins_to_merge.values()), axis=0)
+
+        for structure, volume in self.volumes_to_merge.items():
+            origin = self.origins_to_merge[structure]
+            # mesh needs a center in the middle for all the STL files
+            mesh_origin = np.round(origin - mesh_mean)
+            print(f'{self.animal} {structure} origin={np.round(origin)} mesh_origin={np.round(mesh_origin)} {np.round(mesh_mean)}')
+            mesh = np.rot90(volume, axes=(0, 1))
+            mesh = np.flip(mesh, axis=0)
+            # correct orientation of mesh, the volume gets corrected in the create atlas process
+            aligned_structure = volume_to_polygon(volume=mesh, origin=mesh_origin, times_to_simplify=3)
+            
+            origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
+            volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+
+            np.savetxt(origin_filepath, origin)
+            np.save(volume_filepath, volume)
+            save_mesh(aligned_structure, mesh_filepath)
+
+    def save_atlas_origins_and_volumes_and_meshes(self):
+
+        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+
+        for structure in self.volumes.keys():
+            volume = self.volumes[structure]
+            origin = origins[structure]
+            self.origins[structure] = origin
+            # mesh needs a center in the middle for all the STL files
+            origins_array = np.array(list(origins.values()))
+            mesh_origin = origin - origins_array.mean(0)
+            mesh = np.rot90(volume, axes=(0, 1))
+            mesh = np.flip(volume, axis=0)
+            # correct orientation of mesh, the volume gets corrected in the create atlas process
+            aligned_structure = volume_to_polygon(volume=mesh, origin=mesh_origin, times_to_simplify=3)
+            
+            origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
+            volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+
+            np.savetxt(origin_filepath, origin)
+            np.save(volume_filepath, volume)
+            save_mesh(aligned_structure, mesh_filepath)
+
+
+    def evaluate(self, animal):
+        annotator_id = 1 # Edward created all the COMs for the DK atlas and the Allen
+        def sum_square_com(com):
+            ss = np.sqrt(sum([s*s for s in com]))
+            return ss
+
+        atlas_all = {}
+        for com in sorted(os.listdir(self.com_path)):
+            structure = com.split('.')[0]
+            com_path = os.path.join(self.com_path, com)
+            com = np.loadtxt(com_path)
+            atlas_all[structure] = com
+
+        allen_all = list_coms('Allen')
+        common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
+
+        atlas_src = np.array([atlas_all[s] for s in common_keys])
+        allen_src = np.array([allen_all[s] for s in common_keys])
+        matrix = compute_affine_transformation(atlas_src, allen_src)
+
+        error = []
+        for structure in common_keys:
+            atlas0 = np.array(atlas_all[structure])
+            allen0 = np.array(allen_all[structure]) 
+            transformed = apply_affine_transform(atlas0, matrix)
+            transformed = [x for x in transformed]
+            difference = [a - b for a, b in zip(transformed, allen0)]
+            ss = sum_square_com(difference)
+            error.append(ss)
+            print(f'{structure} error={round(ss,4)} transformed={np.round( np.array(transformed) )} allen={np.round(np.array(allen0))}')
+        print('RMS', sum(error)/len(common_keys))
+
+
+            
+    def fetch_allen_origins(self):
+        structures = {
+            '3N_L': (354.00, 147.00, 216.00),
+            '3N_R': (354.00, 147.00, 444.00),
+            '4N_L': (381.00, 147.00, 214.00),
+            '4N_R': (381.00, 147.00, 442.00),
+            '5N_L': (393.00, 195.00, 153.00),
+            '5N_R': (393.00, 195.00, 381.00),
+            '6N_L': (425.00, 204.00, 204.00),
+            '6N_R': (425.00, 204.00, 432.00),
+            '7N_L': (415.00, 256.00, 153.00),
+            '7N_R': (415.00, 256.00, 381.00),
+            '7n_L': (407.00, 199.00, 157.00),
+            '7n_R': (407.00, 199.00, 385.00),
+            'AP': (495.00, 193.00, 217.00),
+            'Amb_L': (454.00, 258.00, 167.00),
+            'Amb_R': (454.00, 258.00, 395.00),
+            'DC_L': (424.00, 177.00, 114.00),
+            'DC_R': (424.00, 177.00, 342.00),
+            'IC': (369.00, 44.00, 141.00),
+            'LC_L': (424.00, 161.00, 185.00),
+            'LC_R': (424.00, 161.00, 413.00),
+            'LRt_L': (464.00, 262.00, 150.00),
+            'LRt_R': (464.00, 262.00, 378.00),
+            'PBG_L': (365.00, 141.00, 138.00),
+            'PBG_R': (365.00, 141.00, 366.00),
+            'Pn_L': (342.00, 139.00, 119.00),
+            'Pn_R': (342.00, 139.00, 347.00),
+            'RtTg': (353.00, 185.00, 161.00),
+            'SC': (329.00, 41.00, 161.00),
+            'SNC_L': (313.00, 182.00, 148.00),
+            'SNC_R': (313.00, 182.00, 376.00),
+            'SNR_L': (310.00, 175.00, 137.00),
+            'SNR_R': (310.00, 175.00, 365.00),
+            'Sp5C_L': (495.00, 202.00, 136.00),
+            'Sp5I_L': (465.00, 202.00, 127.00),
+            'Sp5I_R': (465.00, 202.00, 355.00),
+            'Sp5O_L': (426.00, 207.00, 137.00),
+            'Sp5O_R': (426.00, 207.00, 365.00),
+            'VLL_L': (361.00, 149.00, 137.00),
+            'VLL_R': (361.00, 149.00, 365.00),
+        }
+        return structures
+    
+    @staticmethod
+    def calculate_distance(self, com1, com2):
+        return (np.linalg.norm(com1 - com2))

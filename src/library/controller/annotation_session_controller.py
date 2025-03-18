@@ -236,7 +236,7 @@ class AnnotationSessionController:
         x_offset = 2200 // 32
         y_offset = 5070 // 32
         x_offset = 0
-        y_offset = 65
+        y_offset = 0
 
         for points in data:
             if 'childJsons' not in points:
