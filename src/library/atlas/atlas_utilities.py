@@ -3,6 +3,10 @@ from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE
 
+ORIGINAL_ATLAS = 'AtlasV7'
+NEW_ATLAS = 'AtlasV8'
+
+
 def apply_affine_transform(point: list, matrix) -> np.ndarray:
     """
     Applies an affine transformation to a 3D point.
@@ -32,7 +36,7 @@ def apply_affine_transform(point: list, matrix) -> np.ndarray:
     return transformed_point[:3]
 
 
-def list_coms(animal):
+def list_coms(animal, annotator_id=1):
     """
     Lists the COMs from the annotation session table. The data
     is stored in meters so you will want to convert it to micrometers
@@ -43,7 +47,6 @@ def list_coms(animal):
     z_resolution = sqlController.scan_run.zresolution
 
     coms = {}
-    annotator_id = 1 # Hardcoded to edward
     com_dictionaries = sqlController.get_com_dictionary(prep_id=animal, annotator_id=annotator_id)
     for k, v in com_dictionaries.items():
         x = round(v[0] * M_UM_SCALE / xy_resolution, 2)
@@ -127,7 +130,7 @@ def compute_affine_transformation(source_points, target_points):
     
     return transformation_matrix
 
-def get_affine_transformation(animal='Atlas'):
+def get_affine_transformation(animal):
     """
     Get the affine transformation matrix between the Allen
     and animal brains.
@@ -145,7 +148,7 @@ def get_affine_transformation(animal='Atlas'):
     return transformation   
 
 
-def get_umeyama(animal='Atlas', scaling=False):
+def get_umeyama(animal, scaling=False):
     """
     Get the umeyama transformation matrix between the Allen
     and animal brains.
@@ -163,3 +166,5 @@ def get_umeyama(animal='Atlas', scaling=False):
     transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 
     return transformation_matrix
+
+##### imports from build foundation brain aligned data

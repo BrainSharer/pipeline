@@ -22,7 +22,6 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.controller.sql_controller import SqlController
 from settings import data_path as DATA_PATH, atlas as ATLAS
 
-DOWNSAMPLE_FACTOR = 32
 
 def save_volume_origin(animal, structure, volume, xyz_offsets):
     x, y, z = xyz_offsets
@@ -40,7 +39,7 @@ def save_volume_origin(animal, structure, volume, xyz_offsets):
     np.savetxt(origin_filepath, (x,y,z))
 
 
-def create_volumes(animal, debug):
+def create_volumes_and_origins(animal, debug):
     #sqlController = SqlController(animal)
     jsonpath = os.path.join(DATA_PATH, 'atlas_data', animal,  'aligned_padded_structures.json')
     if not os.path.exists(jsonpath):
@@ -53,23 +52,14 @@ def create_volumes(animal, debug):
         onestructure = aligned_dict[structure]
         mins = []
         maxs = []
-        avgs = []
 
         for section_num, points in onestructure.items():
-            lpoints = len(points)
             arr_tmp = np.array(points)
             min_tmp = np.min(arr_tmp, axis=0)
             max_tmp = np.max(arr_tmp, axis=0)
             mins.append(min_tmp)
             maxs.append(max_tmp)
-            ss = [int(section_num) for s in range(lpoints)]
-            avgarr = np.column_stack((arr_tmp, ss))
-            # TODO check this code
-            com = np.mean(avgarr, axis=0)
-            avgs.append(com)
 
-        avgarr = np.array(avgs)
-        com = np.mean(avgarr, axis=0)
         min_xy = np.min(mins, axis=0)
         max_xy = np.max(maxs, axis=0)
         max_x = max_xy[0]
@@ -80,8 +70,6 @@ def create_volumes(animal, debug):
         min_z = min(sections)
         xlength = max_x - min_x
         ylength = max_y - min_y
-        zlength = (max(sections) - min(sections))
-        padding = 1.0
         PADDED_SIZE = (int(ylength), int(xlength))
         volume = []
         for section, points in sorted(onestructure.items()):
@@ -97,19 +85,9 @@ def create_volumes(animal, debug):
         
         # should this be a boolean?
         volume = np.array(volume).astype(np.bool_)
-        to_um = 32 * 0.452
-        ndcom = center_of_mass(volume)
-        comx = (ndcom[0] + min_x) * to_um
-        comy = (ndcom[1] + min_y) * to_um
-        #x = com[0]
-        #y = com[1]
-        comz = (ndcom[2] + min_z) * 20
-        x_um  = min_x * to_um
-        y_um = min_y * to_um
-        z_um = min_z * 20
-        if debug:
-            print(animal, structure,'\tcom', '\tcom x y z', min_x, min_y, min_z, volume.shape)
-        else:
+        if 'SC' in structure:
+            print(f'{animal=} {structure=} {min_x=} {min_y=} {min_z=}')
+        if not debug:
             # we want the real center of mass in the DB
             #sqlController.add_layer_data(abbreviation=structure, animal=animal, 
             #                         layer='COM', x=comx, y=comy, section=comz, 
@@ -120,8 +98,7 @@ def create_volumes(animal, debug):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=False)
-    parser.add_argument('--debug', help='Enter debug True|False', required=False,
-                         default='true')
+    parser.add_argument('--debug', help='Enter debug True|False', required=False, default='true')
     args = parser.parse_args()
     animal = args.animal
     debug = bool({'true': True, 'false': False}[str(args.debug).lower()])

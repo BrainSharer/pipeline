@@ -33,7 +33,7 @@ from foundation_contour_aligner import parse_elastix, create_downsampled_transfo
 from settings import data_path as DATA_PATH
 from library.utilities.utilities_process import get_image_size
 
-DOWNSAMPLE_FACTOR = 32
+
 
 def transform_create_alignment(points, transform):
     a = np.hstack((points, np.ones((points.shape[0], 1))))
@@ -80,7 +80,7 @@ def interpolate(points, new_len):
     return list(map(tuple, arr_2d))
 
 
-def create_json(animal):
+def create_brain_json(animal, debug):
 
     section_offsets = create_clean_transform(animal)
     transforms = parse_elastix(animal)
@@ -104,7 +104,7 @@ def create_json(animal):
     structures = controller.get_structures()
     for structure in structures:
         abbreviation = structure.abbreviation
-        contour_annotations, first_sec, last_sec = get_contours_from_annotations(animal, abbreviation, hand_annotations, densify=6)
+        contour_annotations, first_sec, last_sec = get_contours_from_annotations(animal, abbreviation, hand_annotations, densify=0)
         for section in contour_annotations:
             section_structure_vertices[section][abbreviation] = contour_annotations[section]
 
@@ -157,12 +157,16 @@ def create_json(animal):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=False)
+    parser.add_argument('--debug', help='Enter debug True|False', required=False, default='true')
+
     args = parser.parse_args()
     animal = args.animal
+    debug = bool({'true': True, 'false': False}[str(args.debug).lower()])
+
     if animal is None:
         animals = ['MD585', 'MD589', 'MD594']
     else:
         animals = [animal]
 
     for animal in animals:
-        create_json(animal)
+        create_brain_json(animal, debug)

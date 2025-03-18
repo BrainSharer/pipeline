@@ -103,6 +103,8 @@ def parse_elastix(animal):
     INPUT = os.path.join(DIR, 'C1', 'thumbnail_cleaned')
 
     files = sorted(os.listdir(INPUT))
+    if len(files) == 0:
+        raise Exception(f'No files found in {INPUT}')
     midpoint = len(files) // 2
     transformation_to_previous_sec = {}
     midfilepath = os.path.join(INPUT, files[midpoint])
