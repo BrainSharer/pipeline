@@ -4,6 +4,7 @@ from glob import glob
 import pickle as pkl
 import pandas as pd
 import numpy as np
+from pathlib import Path
 from library.cell_labeling.cell_predictor import Predictor
 from library.cell_labeling.detector import Detector
 import concurrent.futures
@@ -402,15 +403,36 @@ class CellDetectorBase(Brain):
         except IOError as e:
             print(e)
 
-    def load_models(self):
-        print(f'loading models from {self.MODEL_PATH}')
+
+    def load_models(self, model: str = None, step: int = None) -> tuple[np.ndarray, Path]:
+        """
+            Load models from file.
+
+            Args:
+                model (str): Model name. Defaults to None.
+                step (int): Step number. Defaults to None.
+
+            Returns:
+                tuple[np.ndarray, Path]: Loaded models as a NumPy array and the model file path.
+        """
+        if model and step:
+            models_file = Path(self.MODELS, f'model_{model}_round_{step}_threshold_{self.segmentation_threshold}.pkl')
+        else:
+            models_file = Path(self.MODEL_PATH)
+
+        models_file.touch(exist_ok=True) #IF FIRST RUN
+        if models_file.stat().st_size == 0:
+            print(f"Warning: {models_file} is empty.")
+            return np.array([]), models_file
+
         try:
-            with open(self.MODEL_PATH,'rb') as pkl_file:
+            with open(models_file,'rb') as pkl_file:
                 models = pkl.load(pkl_file)
-            return models
-        except IOError as e:
-            print(e)
-            sys.exit()
+            return models, models_file
+        except (IOError, FileNotFoundError) as e:
+            print(f"Error loading model: {e}")
+            return np.array([]), models_file
+
 
 def get_sections_with_annotation_for_animali(animal):
     base = CellDetectorBase(animal)
