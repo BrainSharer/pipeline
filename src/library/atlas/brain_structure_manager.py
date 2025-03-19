@@ -1,4 +1,5 @@
 import ast
+import math
 import os
 from pathlib import Path
 import shutil
@@ -33,7 +34,8 @@ from library.utilities.utilities_contour import get_contours_from_annotations
 
 RESOLUTION = 0.452
 ALLEN_UM = 10
-SCALING_FACTOR = ALLEN_UM / RESOLUTION
+#SCALING_FACTOR = ALLEN_UM / RESOLUTION
+SCALING_FACTOR = 32
 
 class BrainStructureManager():
 
@@ -185,15 +187,12 @@ class BrainStructureManager():
             self.origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.origin = apply_affine_transform(self.origin, transformation_matrix)
             self.volume = np.load(os.path.join(volume_path, volume_file))
-            self.com = center_of_mass(self.volume)
+            #self.com = np.loadtxt(com_filepath)
 
             # merge data
             brainMerger.volumes_to_merge[structure].append(self.volume)
             brainMerger.origins_to_merge[structure].append(self.origin)
-            brainMerger.coms_to_merge[structure].append(self.com)
-            # debug info
-            if '10N_L' in structure:
-                print(f'{animal} {self.abbreviation} origin={np.round(self.origin)} com={np.round(self.com)}')
+            #brainMerger.coms_to_merge[structure].append(self.com)
 
 
     def create_volumes_from_polygons(self, animal, debug=False):
@@ -435,6 +434,10 @@ class BrainStructureManager():
             if '10N_R' in structure:
                 nids, ncounts = np.unique(volume, return_counts=True)
                 print(f"{structure} {origin=} {volume.shape=} {volume.dtype=} {nids=} {ncounts=}")
+            COM = center_of_mass(volume)
+            if math.isnan(COM[0]):
+                print(f"COM for {structure} is {COM}")
+                continue
             volume = np.rot90(volume, axes=(0, 1))
             volume = np.flip(volume, axis=0)
             # transform into the atlas box coordinates that neuroglancer assumes
@@ -444,10 +447,6 @@ class BrainStructureManager():
                 print(f"{structure} {origin=} {volume.shape=} {volume.dtype=}")
             # volume[volume > 0] = allen_color
             # volume = volume.astype(np.uint32)
-            COM = center_of_mass(volume)
-            if '10N_R' in structure:
-                print(f"{structure} COM={COM}")
-                sys.exit()
             center = origin + COM
             if self.animal == ORIGINAL_ATLAS:
                 center = (self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales)
@@ -585,7 +584,7 @@ class BrainStructureManager():
             neuroglancer.add_segmentation_mesh()
 
     #### Imported methods from old build_foundationbrain_volumes.py
-    def create_brain_volumes_and_origins(self, brainMerger, animal, debug):
+    def  create_brain_volumes_and_origins(self, brainMerger, animal, debug):
         jsonpath = os.path.join(self.data_path, animal,  'aligned_padded_structures.json')
         if not os.path.exists(jsonpath):
             print(f'{jsonpath} does not exist')
@@ -617,35 +616,54 @@ class BrainStructureManager():
             ylength = max_y - min_y
             PADDED_SIZE = (int(ylength), int(xlength))
             volume = []
+            # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
             for section, points in sorted(onestructure.items()):
-                #vertices = np.array(points) - np.array((min_x, min_y))
-                vertices = np.array(points) 
+                vertices = np.array(points) - np.array((min_x, min_y))
                 volume_slice = np.zeros(PADDED_SIZE, dtype=np.uint8)
                 points = (vertices).astype(np.int32)
                 volume_slice = cv2.polylines(volume_slice, [points], isClosed=True, color=1, thickness=1)
                 volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=1)
-
                 volume.append(volume_slice)
+
             origin = np.array([min_x, min_y, min_z])
-            # merge data
             volume = np.array(volume).astype(np.bool_)
-            if debug:
-                print(f'{animal=} {structure=} {origin=} {volume.shape=}')
-            brainMerger.volumes_to_merge[structure] = volume
-            brainMerger.origins_to_merge[structure] = origin
+            com = center_of_mass(volume)
+            if 'SC' in structure:
+                print(f'{animal=} {structure=} {origin=} com={com + origin}')
+            brainMerger.volumes[structure] = volume
+            brainMerger.origins[structure] = origin
+
+    @staticmethod
+    def save_volume_origin(animal, structure, volume, xyz_offsets):
+        x, y, z = xyz_offsets
+
+        volume = np.swapaxes(volume, 0, 2)
+        volume = np.rot90(volume, axes=(0,1))
+        volume = np.flip(volume, axis=0)
+
+        OUTPUT_DIR = os.path.join(data_path, 'atlas_data', animal)
+        volume_filepath = os.path.join(OUTPUT_DIR, 'structure', f'{structure}.npy')
+        print(f"Saving {animal=} {structure=} to {volume_filepath}")
+        os.makedirs(os.path.join(OUTPUT_DIR, 'structure'), exist_ok=True)
+        np.save(volume_filepath, volume)
+        origin_filepath = os.path.join(OUTPUT_DIR, 'origin', f'{structure}.txt')
+        os.makedirs(os.path.join(OUTPUT_DIR, 'origin'), exist_ok=True)
+        np.savetxt(origin_filepath, (x,y,z))
+
 
     def test_brain_volumes_and_origins(self, animal):
-        jsonpath = os.path.join(self.data_path, animal,  'unaligned_padded_structures.json')
+        jsonpath = os.path.join(self.data_path, animal,  'original_structures.json')
         if not os.path.exists(jsonpath):
             print(f'{jsonpath} does not exist')
             sys.exit()
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
         structures = list(aligned_dict.keys())
-        aligned_directory = self.fileLocationManager.get_directory(channel=1, downsample=True, inpath='cleaned')
-        files = sorted(os.listdir(aligned_directory))
-        if not os.path.exists(aligned_directory):
-            print(f'{aligned_directory} does not exist')
+        input_directory = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail')
+        files = sorted(os.listdir(input_directory))
+        print(f'Working with {len(files)} files')
+        if not os.path.exists(input_directory):
+            print(f'{input_directory} does not exist')
             sys.exit()
         drawn_directory = os.path.join(self.fileLocationManager.prep, 'C1', 'drawn')
         if os.path.exists(drawn_directory):
@@ -654,7 +672,7 @@ class BrainStructureManager():
         os.makedirs(drawn_directory, exist_ok=True)
 
         for tif in files:
-            infile = os.path.join(aligned_directory, tif)
+            infile = os.path.join(input_directory, tif)
             outfile = os.path.join(drawn_directory, tif)
             file_section = int(tif.split('.')[0])
             img = read_image(infile)
@@ -662,10 +680,11 @@ class BrainStructureManager():
                 onestructure = aligned_dict[structure]
                 for section, points in sorted(onestructure.items()):
                     if int(file_section) == int(section):
-                        vertices = np.array(points)
+                        vertices = np.array(points) / 32
                         points = (vertices).astype(np.int32)
                         cv2.polylines(img, [points], isClosed=True, color=1, thickness=5)
 
+            print(f'Writing {outfile}')
             write_image(outfile, img)
 
     ### Imported methods from old build_foundationbrain_aligned data

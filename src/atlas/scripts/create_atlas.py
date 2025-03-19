@@ -123,7 +123,7 @@ if __name__ == '__main__':
     pipeline = AtlasManager(animal, um, affine, debug)
 
     function_mapping = {'create_brain_json': pipeline.create_brain_json,
-                        'draw_brains': pipeline.test_brain_volumes_and_origins,
+                        'draw': pipeline.test_brain_volumes_and_origins,
                         'create_volumes': pipeline.create_brain_volumes_and_origins,
                         'merge_volumes': pipeline.merge_origin_creation,
                         'neuroglancer': pipeline.create_neuroglancer_volume,

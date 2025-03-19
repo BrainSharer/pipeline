@@ -35,7 +35,7 @@ from library.controller.sql_controller import SqlController
 from library.controller.structure_com_controller import StructureCOMController
 from library.image_manipulation.filelocation_manager import data_path as DATA_PATH
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.registration.brain_structure_manager import BrainStructureManager
+from library.atlas.brain_structure_manager import BrainStructureManager
 
 DOWNSAMPLE_FACTOR = 32
 

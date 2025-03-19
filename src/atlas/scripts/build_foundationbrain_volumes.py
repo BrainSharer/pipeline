@@ -26,7 +26,7 @@ from settings import data_path as DATA_PATH, atlas as ATLAS
 def save_volume_origin(animal, structure, volume, xyz_offsets):
     x, y, z = xyz_offsets
 
-    volume = np.swapaxes(volume, 0, 2)
+    #volume = np.swapaxes(volume, 0, 2)
     volume = np.rot90(volume, axes=(0,1))
     volume = np.flip(volume, axis=0)
 
@@ -108,4 +108,4 @@ if __name__ == '__main__':
         animals = [animal]
 
     for animal in animals:
-        create_volumes(animal, debug)
+        create_volumes_and_origins(animal, debug)
