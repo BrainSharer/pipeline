@@ -29,7 +29,8 @@ from library.cell_labeling.cell_utilities import (
     find_connected_segments,
     load_image,
     subtract_blurred_image,
-    features_using_center_connected_components
+    features_using_center_connected_components,
+    find_available_backup_filename
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
@@ -52,7 +53,7 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal, task, step=4, model="", channel=1, x=0, y=0, debug=False):
+    def __init__(self, animal, task, step=4, model="", channel=1, x=0, y=0, annotation_id="", debug=False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -74,11 +75,13 @@ class CellMaker(ParallelManager):
         # These channels need to be defined for the create features process
         self.dye_channel = 0
         self.virus_channel = 0
+        self.annotation_id = annotation_id
 
         #TODO: MOVE CONSTANTS TO SETTINGS?
         self.max_segment_size = 100000
         self.segmentation_threshold = 2000 
         self.cell_radius = 40
+        self.ground_truth_filename = 'ground_truth.csv'
 
 
     def report_status(self):
@@ -90,6 +93,7 @@ class CellMaker(ParallelManager):
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
         print("\tavg cell image:".ljust(20), f"{str(self.avg_cell_img_file)}".ljust(20))
+        print("\tavg cell annotation_id:".ljust(20), f"{str(self.annotation_id)}".ljust(20), "[OPTIONAL FOR TRAINING]")
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
@@ -258,6 +262,8 @@ class CellMaker(ParallelManager):
             print('No sections found; Exiting')
             self.fileLogger.logevent(f'no sections found; Exiting')
             sys.exit(1)
+
+        return (INPUT_dye, INPUT_virus_marker) #used for create_features
 
     def start_labels(self):
         '''1. Use dask to create virtual tiles of full-resolution images
@@ -1008,18 +1014,46 @@ class CellMaker(ParallelManager):
         # would also suggest putting the human validated 'ground truth' files in separate directory (for auditing purposes)
         # maybe cell_labels/human_validated_{date} alone with a json file with details of the training (annotators, evaluation dates, sample sizes, other)
 
-        if not Path(self.cell_label_path).is_dir() and self.debug:
-            print(f"CREATE TRAINING MODEL")
-            print(f"MISSING 'GROUND TRUTH' DIRECTORY; CREATING {self.cell_label_path}")
-            Path(self.cell_label_path).mkdir()
-            print(f"PLEASE ADD 'HUMAN_POSITIVE' DETECTION FILES TO {self.cell_label_path}")
-            print(f"For template see: https://webdev.dk.ucsd.edu/docs/brainsharer/pipeline/modules/cell_labeling.html")
-            sys.exit(1)
+        if not Path(self.cell_label_path).is_dir(): #MISSING cell_labels
+            if self.step: #TRAINING; CHECK IF 'GROUND TRUTH' DIRECTORY EXISTS
+                self.INPUT = self.cell_label_path + f'{self.step}'
+                if not Path(self.INPUT).is_dir():
+                    print(f"MISSING 'TRAINING' DIRECTORY: {self.INPUT}")
+                    print("RUN 'detect' TASK TO CREATE DIRECTORY AND AUTO-DETECT NEURONS")
+                    sys.exit(1)
+                else:
+                    print(f"'GROUND TRUTH' DIRECTORY FOUND @ {self.INPUT}")
+                    ground_truth_file = Path(self.INPUT, self.ground_truth_filename)
+                    if not ground_truth_file.is_file():
+                        print(f"MISSING 'GROUND TRUTH' FILE: {ground_truth_file}")
+                        print("PLEASE ADD 'GROUND TRUTH' FILE TO DIRECTORY")
+                        print("For template see: https://webdev.dk.ucsd.edu/docs/brainsharer/pipeline/modules/cell_labeling.html")
+                        sys.exit(1)
+        else:
+            if self.step: #TRAINING; CHECK IF 'GROUND TRUTH' DIRECTORY EXISTS
+                self.INPUT = self.cell_label_path + f'{self.step}'
+            else:
+                print('MISSING STEP NUMBER FOR TRAINING')
+                sys.exit(1)
+        
+        print("PROCEEDING WITH TRAINING MODEL WITH THE FOLLOWING PARAMETERS:")
+        print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
+        print("\tstep:".ljust(20), f"{self.step}".ljust(20))
+        print("\tground truth directory:".ljust(20), f"{self.INPUT}".ljust(20))
+        print("\tmodel:".ljust(20), f"{self.model}".ljust(20))
+        print()
+        
+        agg_detection_features = Path(self.INPUT, 'detection_features.csv')
+        
+        if agg_detection_features.exists():
+            backup_filename = find_available_backup_filename(agg_detection_features)
+            os.rename(agg_detection_features, backup_filename)
+            print(f'BACKUP STORED: {backup_filename}')
 
-        print(f"Reading csv files from {self.cell_label_path}")
-        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        print(f"Reading csv files from {self.INPUT}")
+        detection_files = sorted(glob.glob(os.path.join(self.INPUT, f'detections_*.csv') ))
         if len(detection_files) == 0:
-            print(f'Error: no csv files found in {self.cell_label_path}')
+            print(f'Error: no csv files found in {self.INPUT}')
             sys.exit(1)
         
         dfs = []
@@ -1028,13 +1062,14 @@ class CellMaker(ParallelManager):
             dfs.append(df)
 
         detection_features=pd.concat(dfs)
-        detection_features_path = os.path.join(self.cell_label_path, 'detection_features.csv')
-        # detection_features.to_csv(detection_features_path, index=False)
-        print(detection_features.info())
-
+        
+        detection_features.to_csv(agg_detection_features, index=False)
+        
         if self.debug:
-            print(f'Found {len(dfs)} csv files in {self.cell_label_path}')
+            print(f'Found {len(dfs)} csv files in {self.INPUT}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
+            print(detection_features.info())
+
         detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
         # mean_score, predictions, std_score are results, not features
 
@@ -1043,28 +1078,82 @@ class CellMaker(ParallelManager):
             if drop in detection_features.columns:
                 detection_features.drop(drop, axis=1, inplace=True)
 
-        print(f'Starting training on {self.animal} step={self.step} with {len(detection_features)} features')
+        if self.debug:
+            print(f'Starting training on {self.animal}, {self.model=}, step={self.step} with {len(detection_features)} features')
 
-        trainer = CellDetectorTrainer(self.animal, step=self.step) # Use Detector 4 as the basis
-        new_models = trainer.train_classifier(detection_features, 676, 3, models = trainer.load_models()) # pass Detector 4 for training
+        trainer = CellDetectorTrainer(self.animal, step=self.step) # Use Detector 4 as the basis (default)
+        np_model, model_filename = trainer.load_models(self.model, self.step)
+
+        if self.debug:
+            print(f'USING MODEL LOCATION: {model_filename}')
+
+        #TODO - MOVE CONSTANTS SOMEWHERE ELSE
+        if self.step == 1:
+            new_models = trainer.train_classifier(detection_features, 676, 3)
+        else:
+            new_models = trainer.train_classifier(detection_features, 676, 3, models = np_model) # pass Detector 4 for training
+
         trainer = CellDetectorTrainer(self.animal, step=self.step + 1) # Be careful when saving the model. The model path is only relevant to 'step'. 
+        
         # You need to use a new step to save the model, otherwise the previous models would be overwritten.
         trainer.save_models(new_models)
 
+
     def create_features(self):
+        '''
+        USED TO CREATE 'GROUND TRUTH' USER ANNOTATION SETS FOR MODEL TRAINING
+        1) IF step IS PROVIDED; GROUND TRUTH ANNOTATIONS WILL BE STORED IN cell_labels/{step} DIRECTORY
+        2) EXISTING ML-GENERATED DETECTIONS SHOULD HAVE BEEN RUN FIRST
+        3) GROUND TRUTH FILE BACKED UP IF EXISTS, NEW ONE STORED IN cell_labels/{step} DIRECTORY [AUDIT]
+        4) RE-PROCESS ML-DETECTION (FOR SECTIONS WITH GROUND TRUTH)
+        '''
+
         """This is not ready. I am testing on specific x,y,z coordinates to see if they match
         the results returned from the detection process. Once they match, we can pull
         coordinates from the database and run the detection process on them.
         Note, x and y are switched.
         """
-        print("Starting cell detections")
+
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} Start")
+        
         self.report_status()
         scratch_tmp = get_scratch_dir()
-        self.check_prerequisites(scratch_tmp)
-        
-        LABEL = 'HUMAN_POSITIVE'
-        label = self.sqlController.get_annotation_label(LABEL)
-        annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37, self.debug)
+        INPUT_dye, INPUT_virus_marker = self.check_prerequisites(scratch_tmp)
+
+        if self.debug:
+            print(f'Cell labels output dir: {self.OUTPUT}')
+        self.fileLogger.logevent(f'Cell labels output dir: {self.OUTPUT}')
+
+        if not os.path.exists(self.OUTPUT):
+            print(f'ML-GENERATED DETECTIONS DIRECTORY DOES NOT EXIST: {self.OUTPUT}')
+            print(f'PLEASE RUN detect TASK FIRST; EXITING')
+            sys.exit(1)
+        else:
+            print(f'ML-GENERATED DETECTIONS DIRECTORY FOUND: {self.OUTPUT}')
+            print(f'CHECK FOR EXISTING ML-GENERATED DETECTIONS IN {self.OUTPUT}')
+            detection_files = sorted(glob.glob( os.path.join(self.OUTPUT, f'detections_*.csv') ))
+            if len(detection_files) == 0:
+                print(f'Error: no csv files found in {self.cell_label_path}')
+                sys.exit(1)
+            else:
+                print(f'CHECK FOR EXISTING GROUND TRUTH FILE IN {self.OUTPUT}')
+                ground_truth_file = Path(self.OUTPUT, self.ground_truth_filename)
+                if ground_truth_file.exists():
+                    backup_filename = find_available_backup_filename(ground_truth_file)
+                    os.rename(ground_truth_file, backup_filename)
+                    print(f'BACKUP STORED: {backup_filename}')
+
+        #TODO: ASSUMES THERE IS ONLY 1 HUMAN_POSITIVE ANNOTATION LABEL PER PREP_ID (SHOULD BE CONFIRMED)
+        LABEL = 'HUMAN_POSITIVE' #DEFAULT LABEL
+        if not self.annotation_id:
+            label = self.sqlController.get_annotation_label(LABEL)
+            annotation_session = self.sqlController.get_annotation_session(self.animal, label.id, 37, self.debug)
+        else:
+            #TODO ALLOW FOR MANUAL LABELING
+            annotation_session = self.sqlController.get_annotation_by_id(self.annotation_id)     
+            LABEL = annotation_session.annotation["description"]
 
         if annotation_session is None:
             print(f'No annotations found for {LABEL}')
@@ -1087,17 +1176,24 @@ class CellMaker(ParallelManager):
             section_data[section].append((x,y))
 
         print(f'data length: {len(data)} length section data {len(section_data)}')
-        avg_cell_img = load(self.avg_cell_img_file) #Load average cell image once
+     
+        #WRITE ANNOTATIONS TO DISK FOR AUDIT TRAIL
+        with open(ground_truth_file, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['section', 'x', 'y', 'id'])
+        
+            for section, points in section_data.items():
+                for point in points:
+                    writer.writerow([section, point[0], point[1], LABEL])
 
-        if self.step:
-            #USED FOR TRAINING/RE-TRAINING MODELS
-            self.cell_label_path = self.cell_label_path + str(self.step)
-            os.makedirs(self.cell_label_path, exist_ok=True)
+        #RE-PROCESS ML-DETECTIONS [FOR SECTIONS WITH GROUND TRUTH]
+        avg_cell_img = load(self.avg_cell_img_file)
 
         idx = 0
         for section in section_data:
-            input_file_virus_path = os.path.join(self.fileLocationManager.get_directory(channel=self.virus_channel, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
-            input_file_dye_path = os.path.join(self.fileLocationManager.get_directory(channel=self.dye_channel, downsample=False, inpath=ALIGNED_DIR), f'{str(section).zfill(3)}.tif')  
+            input_file_virus_path = os.path.join(INPUT_virus_marker, f'{str(section).zfill(3)}.tif')  
+            input_file_dye_path = os.path.join(INPUT_dye, f'{str(section).zfill(3)}.tif')  
+            
             if os.path.exists(input_file_virus_path) and os.path.exists(input_file_dye_path):
                 spreadsheet = []
                 data_virus = load_image(input_file_virus_path)
@@ -1161,7 +1257,7 @@ class CellMaker(ParallelManager):
                     spreadsheet.append(spreadsheet_row)
 
                 df_features = pd.DataFrame(spreadsheet)
-                dfpath = os.path.join(self.cell_label_path, f'detections_{str(section).zfill(3)}.csv')
+                dfpath = os.path.join(self.OUTPUT, f'detections_{str(section).zfill(3)}.csv')
                 df_features.to_csv(dfpath, index=False)
                 print(f'Saved {len(df_features)} features to {dfpath}')
         print(f'Finished processing {idx} coordinates')

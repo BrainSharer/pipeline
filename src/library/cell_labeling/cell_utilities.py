@@ -227,3 +227,29 @@ def features_using_center_connected_components(cell_candidate_data: dict, debug:
     ch3_contrast = mask_mean(mask, image3)
     
     return ch1_contrast, ch3_contrast, moments_data
+
+
+def find_available_backup_filename(file_path):
+    """
+    Recursively search for available backup filename.
+    
+    Args:
+        file_path (str): Path to the original file.
+    
+    Returns:
+        str: Path to the available backup file.
+    """
+    # Initialize the backup extension counter
+    i = 1
+    
+    # Loop until we find an available filename
+    while True:
+        # Construct the backup filename
+        backup_filename = f"{file_path}.bak.{i}"
+        
+        # Check if the backup filename is available
+        if not os.path.exists(backup_filename):
+            return backup_filename
+        
+        # Increment the backup extension counter
+        i += 1
