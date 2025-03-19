@@ -33,7 +33,7 @@ from foundation_contour_aligner import parse_elastix, create_downsampled_transfo
 from settings import data_path as DATA_PATH
 from library.utilities.utilities_process import get_image_size
 
-
+DOWNSAMPLE_FACTOR = 32
 
 def transform_create_alignment(points, transform):
     a = np.hstack((points, np.ones((points.shape[0], 1))))

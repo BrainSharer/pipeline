@@ -4,7 +4,8 @@ import sys
 import numpy as np
 
 from pathlib import Path
-PIPELINE_ROOT = Path('./src/pipeline').absolute()
+
+PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 try:
@@ -13,10 +14,10 @@ except ImportError:
     print('Missing settings using defaults')
     data_path = "/net/birdstore/Active_Atlas_Data/data_root"
     host = "db.dk.ucsd.edu"
-    schema = "active_atlas_production"
+    schema = "brainsharer"
 
-from controller.sql_controller import SqlController
-from image_manipulation.filelocation_manager import FileLocationManager
+from library.controller.sql_controller import SqlController
+from library.image_manipulation.filelocation_manager import FileLocationManager
 
 
 def parameter_elastix_parameter_file_to_dict(filename):
@@ -70,7 +71,7 @@ def slurp(animal):
     fileLocationManager = FileLocationManager(animal)
 
 
-    INPUT = os.path.join(fileLocationManager.prep, 'CH1', 'thumbnail_cleaned')
+    INPUT = os.path.join(fileLocationManager.prep, 'C1', 'thumbnail_cleaned')
     if not os.path.exists(INPUT):
         print(f'{INPUT} does not exist')
         sys.exit()
@@ -85,14 +86,12 @@ def slurp(animal):
         filepath = os.path.join(output_subdir, 'TransformParameters.0.txt')
 
         if os.path.exists(filepath):
-            if moving_index == '100':
-                d = parameter_elastix_parameter_file_to_dict(filepath)
-                rotation, xshift, yshift = d['TransformParameters']
-                T = parse_elastix_parameter_file(filepath)
-                print(moving_index, T)
-                return
-            #print(f'{filepath} rotation={rotation} xshift={xshift}, yshift={yshift}')
-            #sqlController.add_elastix_row(animal, moving_index, rotation, xshift, yshift)
+            d = parameter_elastix_parameter_file_to_dict(filepath)
+            rotation, xshift, yshift = d['TransformParameters']
+            T = parse_elastix_parameter_file(filepath)
+            print(f'{filepath} rotation={rotation} xshift={xshift}, yshift={yshift} T={T.shape}')
+            #animal, section, rotation, xshift, yshift, metric, iteration
+            sqlController.add_elastix_row(animal, moving_index, rotation, xshift, yshift, 0, 0)
         else:
             print(f'{filepath} does not exist')
 

@@ -26,21 +26,23 @@ class BrainMerger():
         self.volumes = {}
         self.origins = {}
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
+        self.com_path = os.path.join(self.data_path, 'com')
         self.volume_path = os.path.join(self.data_path, 'structure')
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
         self.csv_path = os.path.join(self.data_path, 'csv')
-        #self.volumes = {}
-        #self.coms = {}
-        #self.origins = {}
+        self.volumes = {}
+        self.coms = {}
+        self.origins = {}
         self.margin = 50
         self.threshold = 0.5  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
-        os.makedirs(self.origin_path, exist_ok=True)
-        os.makedirs(self.volume_path, exist_ok=True)
-        os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.csv_path, exist_ok=True)
+        os.makedirs(self.com_path, exist_ok=True)
+        os.makedirs(self.origin_path, exist_ok=True)
+        os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.volume_path, exist_ok=True)
 
 
     def pad_volume(self, size, volume):
@@ -84,17 +86,17 @@ class BrainMerger():
 
     def save_brain_origins_and_volumes_and_meshes(self):
 
-        mesh_mean = np.mean(list(self.origins_to_merge.values()), axis=0)
+        mesh_mean = np.mean(list(self.origins.values()), axis=0)
 
-        for structure, volume in self.volumes_to_merge.items():
-            origin = self.origins_to_merge[structure]
+        for structure, volume in self.volumes.items():
+            origin = self.origins[structure]
             # mesh needs a center in the middle for all the STL files
-            mesh_origin = np.round(origin - mesh_mean)
-            print(f'{self.animal} {structure} origin={np.round(origin)} mesh_origin={np.round(mesh_origin)} {np.round(mesh_mean)}')
-            mesh = np.rot90(volume, axes=(0, 1))
-            mesh = np.flip(mesh, axis=0)
+            #mesh_origin = origin - mesh_mean
+            mesh_origin = origin - mesh_mean
+
+            volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for mesh!!!!!
             # correct orientation of mesh, the volume gets corrected in the create atlas process
-            aligned_structure = volume_to_polygon(volume=mesh, origin=mesh_origin, times_to_simplify=3)
+            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
             
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
@@ -107,17 +109,18 @@ class BrainMerger():
     def save_atlas_origins_and_volumes_and_meshes(self):
 
         origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        origins_array = np.array(list(origins.values()))
 
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
             origin = origins[structure]
             self.origins[structure] = origin
             # mesh needs a center in the middle for all the STL files
-            origins_array = np.array(list(origins.values()))
             mesh_origin = origin - origins_array.mean(0)
             mesh = np.rot90(volume, axes=(0, 1))
             mesh = np.flip(volume, axis=0)
             # correct orientation of mesh, the volume gets corrected in the create atlas process
+            print(f'{self.animal} {structure} origin={np.round(origin)} mesh_origin={np.round(mesh_origin)} {np.round(origins_array.mean(0))} {mesh.shape=}')
             aligned_structure = volume_to_polygon(volume=mesh, origin=mesh_origin, times_to_simplify=3)
             
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
