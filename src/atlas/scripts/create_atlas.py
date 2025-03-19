@@ -23,34 +23,42 @@ class AtlasManager():
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
 
-    # 1st step, this parses the original CSV files and creates the JSON files
     def create_brain_json(self):
+        """
+        # 1st step, this parses the original CSV files and creates the JSON files
+        """
         for animal in self.foundation_brains:
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.create_brain_json(animal, self.debug)
 
-    # 2nd step, this takes the JSON files and creates the brain volumes and origins
     def create_brain_volumes_and_origins(self):
+        """
+        # 2nd step, this takes the JSON files and creates the brain volumes and origins
+        """
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_brain_volumes_and_origins(brainMerger, animal, self.debug)
             brainMerger.save_brain_origins_and_volumes_and_meshes()
 
-    # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
     def test_brain_volumes_and_origins(self):
+        """
+        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes    
+        """
         for animal in self.foundation_brains:
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.test_brain_volumes_and_origins(animal)
 
     def merge_origin_creation(self):
+        """
+        # 3rd step, this merges the volumes and origins from the foundation brains into the new atlas
+        # The fixed brain is, well, fixed. 
+        # All foundation polygon brain data is under: Edward ID=1
+        # All foundation COM brain data is under: Beth ID=2"
+        """
         polygon_annotator_id = 1
         animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(animal_users):
-            #print(f'animal={animal} annotator={polygon_annotator_id}')
             self.brainManager.polygon_annotator_id = polygon_annotator_id
-            # The fixed brain is, well, fixed. 
-            # All foundation polygon brain data is under: Edward ID=1
-            # All foundation COM brain data is under: Beth ID=2
             self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
             self.brainManager.fixed_brain.com_annotator_id = 2
             self.brainManager.com_annotator_id = 2
@@ -65,9 +73,10 @@ class AtlasManager():
         if len(self.atlasMerger.origins_to_merge) > 0:
             print('Finished filling up volumes and origins')
             if self.animal == NEW_ATLAS:
+                self.brainManager.rm_existing_dir(self.brainManager.com_path)
                 self.brainManager.rm_existing_dir(self.brainManager.origin_path)
-                self.brainManager.rm_existing_dir(self.brainManager.volume_path)
                 self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
+                self.brainManager.rm_existing_dir(self.brainManager.volume_path)
             self.atlasMerger.save_atlas_origins_and_volumes_and_meshes()
             self.atlasMerger.evaluate(self.animal)
             print('Finished saving data to disk.')

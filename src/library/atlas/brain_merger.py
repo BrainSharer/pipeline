@@ -10,7 +10,7 @@ import numpy as np
 from collections import defaultdict
 from skimage.filters import gaussian
 
-from library.atlas.atlas_utilities import apply_affine_transform, compute_affine_transformation, list_coms
+from library.atlas.atlas_utilities import apply_affine_transform, compute_affine_transformation, list_coms, resample_image
 from library.image_manipulation.filelocation_manager import data_path
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
@@ -21,16 +21,18 @@ class BrainMerger():
     def __init__(self, animal):
         self.animal = animal
         self.symmetry_list = singular_structures
-        self.volumes_to_merge = defaultdict(list)
+        self.coms_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
+        self.volumes_to_merge = defaultdict(list)
         self.volumes = {}
         self.origins = {}
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
+        
         self.com_path = os.path.join(self.data_path, 'com')
-        self.volume_path = os.path.join(self.data_path, 'structure')
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
-        self.csv_path = os.path.join(self.data_path, 'csv')
+        self.volume_path = os.path.join(self.data_path, 'structure')
+
         self.volumes = {}
         self.coms = {}
         self.origins = {}
@@ -38,7 +40,6 @@ class BrainMerger():
         self.threshold = 0.5  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
-        os.makedirs(self.csv_path, exist_ok=True)
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -52,6 +53,8 @@ class BrainMerger():
         return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
 
     def merge_volumes(self, structure, volumes):
+        import SimpleITK as sitk
+
         lvolumes = len(volumes)
         if '10N_R' in structure:
             print(f'{structure} has {lvolumes} volumes')
@@ -62,6 +65,21 @@ class BrainMerger():
             #print(f'{structure} has only one volume {volumes[0].shape} {volumes[0].dtype}')
             return volumes[0]
         elif lvolumes > 1:
+            images = [sitk.GetImageFromArray(img.astype(np.uint8)) for img in volumes]
+            reference_image = images[0]
+
+            # Resample all images to the reference
+            resampled_images = [resample_image(img, reference_image) for img in images]
+
+            # Convert images to numpy arrays and compute the average
+            image_arrays = [sitk.GetArrayFromImage(img) for img in resampled_images]
+            avg_array = np.mean(image_arrays, axis=0)
+
+            # Convert back to SimpleITK image
+            merged_volume = sitk.GetImageFromArray(avg_array)
+            color = 1
+
+            """"
             sizes = np.array([vi.shape for vi in volumes])
             volume_size = sizes.max(0) + self.margin
             volumes = [self.pad_volume(volume_size, vi) for vi in volumes]
@@ -72,32 +90,32 @@ class BrainMerger():
             # increasing the STD makes the volume smoother
             # Smooth the probability
             average_volume = gaussian(merged_volume_prob, 1.0)
-            color = 1
             #average_volume[average_volume > 0] = color
+            """
+            average_volume = sitk.GetArrayFromImage(merged_volume)
+            average_volume = gaussian(average_volume, 1.0)
             average_volume[average_volume > self.threshold] = color
             average_volume[average_volume != color] = 0
-
-
             average_volume = average_volume.astype(np.uint32)
+
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
             return None
 
     def save_brain_origins_and_volumes_and_meshes(self):
+        """Origin is in downsampled by 1/32 and is in 0.452um/pixel space
+        """
 
         mesh_mean = np.mean(list(self.origins.values()), axis=0)
 
         for structure, volume in self.volumes.items():
             origin = self.origins[structure]
             # mesh needs a center in the middle for all the STL files
-            #mesh_origin = origin - mesh_mean
             mesh_origin = origin - mesh_mean
-
-            volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for mesh!!!!!
+            volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
             # correct orientation of mesh, the volume gets corrected in the create atlas process
             aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
-            
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
@@ -107,29 +125,39 @@ class BrainMerger():
             save_mesh(aligned_structure, mesh_filepath)
 
     def save_atlas_origins_and_volumes_and_meshes(self):
+        """For the Atlas STL files, we don't need to swap, rotate or flip
+        Add the origin to the COM which will then be used in the evaluation process later.
+        This will give you the middle of the structure from the 0,0 top left corner.
+        COMs are in 0.452um/pixel space and downsample by 1/32 and so we want to 
+        get it into um space.
+        """
+
+        def convert_com(com):
+            return np.mean(com, axis=0)
 
         origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
+        coms = {structure: convert_com(com) for structure, com in self.coms_to_merge.items()}
 
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
             origin = origins[structure]
             self.origins[structure] = origin
+            com = coms[structure]
+            self.coms[structure] = com
             # mesh needs a center in the middle for all the STL files
             mesh_origin = origin - origins_array.mean(0)
-            mesh = np.rot90(volume, axes=(0, 1))
-            mesh = np.flip(volume, axis=0)
-            # correct orientation of mesh, the volume gets corrected in the create atlas process
-            print(f'{self.animal} {structure} origin={np.round(origin)} mesh_origin={np.round(mesh_origin)} {np.round(origins_array.mean(0))} {mesh.shape=}')
-            aligned_structure = volume_to_polygon(volume=mesh, origin=mesh_origin, times_to_simplify=3)
+            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
             
+            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
 
+            np.savetxt(com_filepath, com)
             np.savetxt(origin_filepath, origin)
-            np.save(volume_filepath, volume)
             save_mesh(aligned_structure, mesh_filepath)
+            np.save(volume_filepath, volume)
 
 
     def evaluate(self, animal):
@@ -137,12 +165,17 @@ class BrainMerger():
         def sum_square_com(com):
             ss = np.sqrt(sum([s*s for s in com]))
             return ss
-
+        def convert_com(com):
+            scales = np.array([0.452*32, 0.452*32, 20])
+            return com * scales
+        
+        print(f'evaluating atlas data from {self.com_path}')
         atlas_all = {}
         for com in sorted(os.listdir(self.com_path)):
             structure = com.split('.')[0]
             com_path = os.path.join(self.com_path, com)
             com = np.loadtxt(com_path)
+            com = convert_com(com)
             atlas_all[structure] = com
 
         allen_all = list_coms('Allen')
@@ -161,7 +194,7 @@ class BrainMerger():
             difference = [a - b for a, b in zip(transformed, allen0)]
             ss = sum_square_com(difference)
             error.append(ss)
-            print(f'{structure} error={round(ss,4)} transformed={np.round( np.array(transformed) )} allen={np.round(np.array(allen0))}')
+            print(f'{structure} atlas={np.round(atlas0)} transformed={np.round( np.array(transformed) )} allen={np.round(allen0)}')
         print('RMS', sum(error)/len(common_keys))
 
 

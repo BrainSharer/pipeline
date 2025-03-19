@@ -1,4 +1,6 @@
 import numpy as np
+import SimpleITK as sitk
+
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE
@@ -39,23 +41,18 @@ def apply_affine_transform(point: list, matrix) -> np.ndarray:
 def list_coms(animal, annotator_id=1):
     """
     Lists the COMs from the annotation session table. The data
-    is stored in meters so you will want to convert it to micrometers
-    and then by the resolution of the scan run.
+    is stored in meters and is then converted to micrometers.
     """
     sqlController = SqlController(animal)
-    xy_resolution = sqlController.scan_run.resolution
-    z_resolution = sqlController.scan_run.zresolution
+
 
     coms = {}
     com_dictionaries = sqlController.get_com_dictionary(prep_id=animal, annotator_id=annotator_id)
     for k, v in com_dictionaries.items():
-        x = round(v[0] * M_UM_SCALE / xy_resolution, 2)
-        y = round(v[1] * M_UM_SCALE / xy_resolution, 2)
-        z = round(v[2] * M_UM_SCALE / z_resolution, 2)
-        #x = round(v[0] * M_UM_SCALE / 10, 2)
-        #y = round(v[1] * M_UM_SCALE / 10, 2)
-        #z = round(v[2] * M_UM_SCALE / 10, 2)
-        coms[k] = (x,y,z)
+
+        com = [i* M_UM_SCALE for i in v]
+
+        coms[k] = com
 
     return coms
 
@@ -167,4 +164,34 @@ def get_umeyama(animal, scaling=False):
 
     return transformation_matrix
 
-##### imports from build foundation brain aligned data
+def resample_image(image, reference_image):
+    """
+    Resamples an image to match the reference image in size, spacing, and direction.
+    """
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(reference_image)
+    resampler.SetInterpolator(sitk.sitkLinear)  # Linear interpolation for resampling
+    resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
+    return resampler.Execute(image)
+
+def average_images(image_paths):
+    """
+    Loads multiple 3D images, resamples them to a common reference, and averages them.
+    """
+    images = [sitk.ReadImage(path) for path in image_paths]
+    
+    # Choose the reference image (first image in the list)
+    reference_image = images[0]
+
+    # Resample all images to the reference
+    resampled_images = [resample_image(img, reference_image) for img in images]
+
+    # Convert images to numpy arrays and compute the average
+    image_arrays = [sitk.GetArrayFromImage(img) for img in resampled_images]
+    avg_array = np.mean(image_arrays, axis=0)
+
+    # Convert back to SimpleITK image
+    avg_image = sitk.GetImageFromArray(avg_array)
+    avg_image.CopyInformation(reference_image)  # Copy metadata
+
+    return avg_image
