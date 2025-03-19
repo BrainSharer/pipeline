@@ -9,7 +9,7 @@ from collections import defaultdict
 import cv2
 import json
 import pandas as pd
-from scipy.ndimage import center_of_mass
+from scipy.ndimage import center_of_mass, zoom
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from tqdm import tqdm
 
@@ -47,13 +47,12 @@ class BrainStructureManager():
         self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, "atlas_data")
         self.structure_path = os.path.join(data_path, "pipeline_data", "structures")
-        self.volume_path = os.path.join(self.data_path, self.animal, "structure")
+
+        self.com_path = os.path.join(self.data_path, self.animal, "com") # need this for the transforamtion matrix
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
-        self.point_path = os.path.join(self.fileLocationManager.prep, "points")
-        self.reg_path = (
-            "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-        )
+        self.volume_path = os.path.join(self.data_path, self.animal, "structure")
+
         self.aligned_contours = {}
         self.com_annotator_id = 2
         self.polygon_annotator_id = 0
@@ -85,35 +84,41 @@ class BrainStructureManager():
         self.atlas_raw_scale = 10
         self.atlas_box_scales = np.array(self.atlas_box_scales)
 
-        x_length = 1820
-        y_length = 1000
-        z_length = 1140
-        self.atlas_box_size = np.array((x_length, y_length, z_length))
+
+        allen_x_length = 1820
+        allen_y_length = 1000
+        allen_z_length = 1140
+        self.atlas_box_size = np.array((allen_x_length, allen_y_length, allen_z_length))
         self.atlas_box_center = self.atlas_box_size / 2
 
+        self.allen_resolution = np.array([10, 10 , 10])
+        self.atlas2allen = np.array((0.452*32, 0.452*32, 20)) / self.allen_resolution
+
+        os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
-        os.makedirs(self.point_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
-
 
 
     @staticmethod
     def get_transform_to_align_brain(moving_brain, fixed_brain, annotator_id=2):
-        """Used in aligning data to fixed brain"""
+        """Used in aligning data to fixed brain where the data has been downsampled
+        the function list_coms returns data in micrometers.
+        """
 
         if moving_brain == fixed_brain:
             return np.eye(4)
 
         moving_coms = list_coms(moving_brain, annotator_id=annotator_id)
         fixed_coms = list_coms(fixed_brain, annotator_id=annotator_id)
+        
         for structure, com in moving_coms.items():
             x,y,z = com
-            moving_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR, z]
+            moving_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR/0.452, z/20]
         for structure, com in fixed_coms.items():
             x,y,z = com
-            fixed_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR, z]
-
+            fixed_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR/0.452, z/20]
+        
 
         common_keys = sorted(list(fixed_coms.keys() & moving_coms.keys()))
         fixed_points = np.array([fixed_coms[s] for s in common_keys])
@@ -184,15 +189,15 @@ class BrainStructureManager():
                 sys.exit()
             structure = Path(origin_file).stem
             self.abbreviation = structure
-            self.origin = np.loadtxt(os.path.join(origin_path, origin_file))
-            self.origin = apply_affine_transform(self.origin, transformation_matrix)
+            origin = np.loadtxt(os.path.join(origin_path, origin_file))
+            self.origin = apply_affine_transform(origin, transformation_matrix)
             self.volume = np.load(os.path.join(volume_path, volume_file))
-            #self.com = np.loadtxt(com_filepath)
+            self.com = center_of_mass(self.volume) + origin
 
             # merge data
-            brainMerger.volumes_to_merge[structure].append(self.volume)
+            brainMerger.coms_to_merge[structure].append(self.com)
             brainMerger.origins_to_merge[structure].append(self.origin)
-            #brainMerger.coms_to_merge[structure].append(self.com)
+            brainMerger.volumes_to_merge[structure].append(self.volume)
 
 
     def create_volumes_from_polygons(self, animal, debug=False):
@@ -251,13 +256,15 @@ class BrainStructureManager():
             volume=self.volume, origin=self.origin, times_to_simplify=3
         )
 
+        com_filepath = os.path.join(self.com_path, f"{self.abbreviation}.txt")
         origin_filepath = os.path.join(self.origin_path, f"{self.abbreviation}.txt")
-        volume_filepath = os.path.join(self.volume_path, f"{self.abbreviation}.npy")
         mesh_filepath = os.path.join(self.mesh_path, f"{self.abbreviation}.stl")
+        volume_filepath = os.path.join(self.volume_path, f"{self.abbreviation}.npy")
 
+        np.savetxt(com_filepath, self.com)
         np.savetxt(origin_filepath, self.origin)
-        np.save(volume_filepath, self.volume)
         save_mesh(aligned_structure, mesh_filepath)
+        np.save(volume_filepath, self.volume)
 
 
     @staticmethod
@@ -383,14 +390,16 @@ class BrainStructureManager():
             - The volumes are transformed and scaled according to the atlas box coordinates and scales.
             - The method uses an affine transformation if `use_transformed` is set to True.
 
-            com * 32 * 0.452 = um
-            com * 32 * 0.452 / 10 = 10um
+            for the foundation brains:
+            scales = np.array([0.452*32, 0.452*32, 20])
+
         """
 
         # origin is in animal scan_run.resolution coordinates
         # volume is in 10um
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.volume_path)
+        
 
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
@@ -431,28 +440,24 @@ class BrainStructureManager():
             ids[structure] = allen_color
             origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
             volume = np.load(os.path.join(self.volume_path, volume_file))
-            if '10N_R' in structure:
-                nids, ncounts = np.unique(volume, return_counts=True)
-                print(f"{structure} {origin=} {volume.shape=} {volume.dtype=} {nids=} {ncounts=}")
+            #volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
+
+            #volume = np.rot90(volume, axes=(0, 1))
+            #volume = np.flip(volume, axis=0)
+            volume = zoom(volume, self.atlas2allen, order=1)
             COM = center_of_mass(volume)
             if math.isnan(COM[0]):
                 print(f"COM for {structure} is {COM}")
                 continue
-            volume = np.rot90(volume, axes=(0, 1))
-            volume = np.flip(volume, axis=0)
             # transform into the atlas box coordinates that neuroglancer assumes
             volume = volume * allen_color
             volume = volume.astype(np.uint32)
-            if '10N_R' in structure:
-                print(f"{structure} {origin=} {volume.shape=} {volume.dtype=}")
-            # volume[volume > 0] = allen_color
-            # volume = volume.astype(np.uint32)
-            center = origin + COM
+            structure_center = origin + COM
             if self.animal == ORIGINAL_ATLAS:
-                center = (self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales)
-            xs.append(center[0])
-            ys.append(center[1])
-            zs.append(center[2])
+                structure_center = (self.atlas_box_center + structure_center * self.atlas_raw_scale / self.atlas_box_scales)
+            xs.append(structure_center[0])
+            ys.append(structure_center[1])
+            zs.append(structure_center[2])
             if self.affine:
                 print(f"COM for {structure} is {np.round(center)}", end="\t")
                 center = apply_affine_transform(center, matrix)
@@ -462,23 +467,26 @@ class BrainStructureManager():
 
                 print(f"tranformed {np.round(center)}")
 
-            x_start = int(center[0] - COM[0])
-            y_start = int(center[1] - COM[1])
-            z_start = int(center[2] - COM[2])
+            x_start = int(origin[0])
+            y_start = int(origin[1])
+            z_start = int(origin[2])
 
-            atlas_centers[structure] = center
+            atlas_centers[structure] = structure_center
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
 
             # print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
+            if structure == 'SC':
+                print(f'Adding {structure} {origin=} to atlas at {x_start=} {y_start=} {z_start=}')
 
-            try:
-                atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
-            except ValueError as ve:
-                print(f"Error adding {structure} to atlas: {ve}")
-                continue
+            if not self.debug:
+                try:
+                    atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
+                except ValueError as ve:
+                    print(f"Error adding {structure} to atlas: {ve}")
+                    continue
         if self.affine:
             print(f"Range of untransformed x={max(xs) - min(xs)} y={max(ys) - min(ys)} z={max(zs) - min(zs)}")
             print(f"Range of transformed x={max(xsT) - min(xsT)} y={max(ysT) - min(ysT)} z={max(zsT) - min(zsT)}")
@@ -627,9 +635,6 @@ class BrainStructureManager():
 
             origin = np.array([min_x, min_y, min_z])
             volume = np.array(volume).astype(np.bool_)
-            com = center_of_mass(volume)
-            if 'SC' in structure:
-                print(f'{animal=} {structure=} {origin=} com={com + origin}')
             brainMerger.volumes[structure] = volume
             brainMerger.origins[structure] = origin
 
@@ -757,6 +762,7 @@ class BrainStructureManager():
         original_structures = defaultdict(dict)
         unaligned_padded_structures = defaultdict(dict)
         aligned_padded_structures = defaultdict(dict)
+        # Data in the vertices is in 0.452um/pixel and is downsampled by 1/32 to fit the smaller images
         for section in section_structure_vertices:
             section = int(section)
             for structure in section_structure_vertices[section]:
