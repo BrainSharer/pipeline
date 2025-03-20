@@ -420,8 +420,7 @@ class CellDetectorBase(Brain):
         else:
             models_file = Path(self.MODEL_PATH)
 
-        models_file.touch(exist_ok=True) #IF FIRST RUN
-        if models_file.stat().st_size == 0:
+        if models_file.exists() and models_file.stat().st_size == 0:
             print(f"Warning: {models_file} is empty.")
             return np.array([]), models_file
 
