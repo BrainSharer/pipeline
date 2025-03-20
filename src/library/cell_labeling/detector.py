@@ -1,7 +1,9 @@
 from library.cell_labeling.cell_predictor import GreedyPredictor
 import numpy as np
 import xgboost as xgb
+import polars as pl #replacement for pandas (multi-core)
 import matplotlib.pyplot as plt
+
 
 class Detector():
     def __init__(self,model=None,predictor:GreedyPredictor=GreedyPredictor()):
@@ -10,11 +12,18 @@ class Detector():
         self.depth = None
         self.niter = None
 
-    def createDM(self,df):
-        labels=df['label']
-        features=df.drop('label',axis=1)
-        return xgb.DMatrix(features, label=labels)
+
+    def createDM(self, df: pl.DataFrame) -> xgb.DMatrix:
+        if 'label' in df.columns:
+            labels = df.get_column('label') # Extract the label column and store it
+            features = df.drop('label') # Drop the label column to keep only features
+        else:
+            # Raise an error if 'label' is not found in the DataFrame
+            raise ValueError("Column 'label' not found in the DataFrame")
     
+        return xgb.DMatrix(features, label=labels)
+
+
     def calculate_scores(self,features):
         all=self.createDM(features)
         labels=all.get_label()

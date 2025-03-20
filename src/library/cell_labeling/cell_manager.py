@@ -1,5 +1,6 @@
 from collections import defaultdict
 import os, sys, glob, json, math
+import re
 import inspect
 import gzip
 import shutil
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 from compress_pickle import dump, load
 import pandas as pd
+import polars as pl #replacement for pandas (multi-core)
 from tqdm import tqdm
 import xgboost as xgb
 import psutil
@@ -64,6 +66,7 @@ class CellMaker(ParallelManager):
         self.test_x = x
         self.test_y = y
         self.hostname = get_hostname()
+        self.SCRATCH = get_scratch_dir()
         self.fileLocationManager = FileLocationManager(animal)
         self.sqlController = SqlController(animal)
         self.debug = debug
@@ -121,7 +124,7 @@ class CellMaker(ParallelManager):
             print(f'Cell labels output dir: {self.OUTPUT}')
         self.fileLogger.logevent(f'Cell labels output dir: {self.OUTPUT}')
 
-        self.SCRATCH = SCRATCH #TODO See if we can auto-detect nvme
+        # self.SCRATCH = SCRATCH #TODO See if we can auto-detect nvme
         if self.debug:
             print(f'Temp storage location: {SCRATCH}')
         self.fileLogger.logevent(f'Temp storage location: {SCRATCH}')
@@ -1043,7 +1046,9 @@ class CellMaker(ParallelManager):
         print("\tmodel:".ljust(20), f"{self.model}".ljust(20))
         print()
         
-        agg_detection_features = Path(self.INPUT, 'detection_features.csv')
+        agg_detection_features = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'detection_features.csv')
+        if self.debug:
+            print(f'Aggregated detection features tmp storage: {agg_detection_features}')
         
         if agg_detection_features.exists():
             backup_filename = find_available_backup_filename(agg_detection_features)
@@ -1051,32 +1056,76 @@ class CellMaker(ParallelManager):
             print(f'BACKUP STORED: {backup_filename}')
 
         print(f"Reading csv files from {self.INPUT}")
-        detection_files = sorted(glob.glob(os.path.join(self.INPUT, f'detections_*.csv') ))
+        detection_files = sorted(
+            f for f in glob.glob(os.path.join(self.INPUT, "detections_*.csv"))
+            if not re.search(r"detections_features\.csv$", f)
+        )
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.INPUT}')
             sys.exit(1)
         
+        # Read files and collect column names
+        column_order = None
         dfs = []
-        for csvfile in tqdm(detection_files, desc="Reading csv files"):
-            df = pd.read_csv(csvfile)
-            dfs.append(df)
+        schemas = {}
 
-        detection_features=pd.concat(dfs)
-        
-        detection_features.to_csv(agg_detection_features, index=False)
+        for csvfile in tqdm(detection_files, desc="Checking CSV schemas"):
+            try:
+                df = pl.read_csv(csvfile)
+
+                # Store column order from the first file
+                if column_order is None:
+                    column_order = df.columns
+                
+                # Ensure 'predictions' column exists, default to 0.0 if missing
+                if "predictions" not in df.columns:
+                    df = df.with_columns(pl.lit(0.0).alias("predictions"))
+
+                # Convert all numeric columns to Float64 to ensure compatibility
+                df = df.with_columns([
+                    df[col].cast(pl.Float64) for col in df.columns if df[col].dtype in [pl.Int64, pl.Float32, pl.Int32]
+                ])
+                dfs.append(df)
+                schemas[csvfile] = set(df.columns)  # Store column names as a set
+            except Exception as e:
+                print(f"Error reading {csvfile}: {e}")
+
+        if "predictions" not in column_order:
+            column_order.append("predictions")
+
+        # Find the common columns while keeping order from the first file
+        common_columns = [col for col in column_order if all(col in df.columns for df in dfs)]
+
+        # Keep only common columns
+        dfs = [df.select(common_columns) for df in dfs]
+
+        detection_features = pl.concat(dfs, how="vertical")
+        # detection_features.write_csv(agg_detection_features) #ONLY FOR AUDIT
         
         if self.debug:
             print(f'Found {len(dfs)} csv files in {self.INPUT}')
             print(f'Concatenated {len(detection_features)} rows from {len(dfs)} csv files')
-            print(detection_features.info())
+            print(detection_features.describe())
 
-        detection_features['label'] = np.where(detection_features['predictions'] > 0, 1, 0)
+        if "predictions" in detection_features.columns:
+            detection_features = detection_features.with_columns(
+                (pl.col("predictions") > 0).cast(pl.Int64).alias("label")
+            )
+        else:
+            print("Error: 'predictions' column not found in detection_features.")
+            print(detection_features.columns)
         # mean_score, predictions, std_score are results, not features
 
+        detection_features = detection_features.with_columns(
+            pl.when(detection_features['predictions'] > 0)
+            .then(1)
+            .otherwise(0)
+            .alias('label')
+        )
         drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
         for drop in drops:
             if drop in detection_features.columns:
-                detection_features.drop(drop, axis=1, inplace=True)
+                detection_features = detection_features.drop(drop)
 
         if self.debug:
             print(f'Starting training on {self.animal}, {self.model=}, step={self.step} with {len(detection_features)} features')
