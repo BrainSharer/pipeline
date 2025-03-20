@@ -11,14 +11,16 @@ import numpy as np
 import xgboost as xgb
 import pickle as pk
 from glob import glob
-# import pandas as pd
 import polars as pl #replacement for pandas (multi-core)
+import imageio
+from pathlib import Path
 from tqdm import tqdm
 
 from library.cell_labeling.cell_detector_base import CellDetectorBase
 from library.cell_labeling.cell_predictor import GreedyPredictor
 from library.cell_labeling.detector import Detector   
-
+from sklearn.metrics import roc_curve, auc, confusion_matrix
+import matplotlib.pyplot as plt
 
 print("XGBoost Version:", xgb.__version__)
 
@@ -80,9 +82,10 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
     #     df_in_section=df_in_section.drop(drops,axis=1)
     #     return df_in_section
 
+#POSSIBLE DEPRECATION (IF ROC CALC WORKS)
     def gen_scale(self,n,reverse=False):
         '''
-        Used for plot predictions
+        Used for plot predictions: appears to be true positive rate vs. false positive rate
         '''
         s=np.arange(0,1,1/n)
         while s.shape[0] !=n:
@@ -93,6 +96,44 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         if reverse:
             s=s[-1::-1]
         return s
+    
+
+    def evaluate_model(self, test_features: pl.DataFrame, true_labels: pl.Series, new_models: list[xgb.Booster]):
+        '''
+        Model evaluation using ROC curve
+        1) get predicted probabilities
+        2) get true labels (HUMAN_POSITIVE LABELS)
+        3) plot ROC curve
+        4) generate confusion matrix
+        '''
+        predicted_probabilities = new_models.predict_proba(test_features)
+        # Get the false positive rate and true positive rate
+        fpr, tpr, thresholds = roc_curve(true_labels, predicted_probabilities[:, 1])
+
+        # Calculate the AUC (Area Under the Curve)
+        auc_value = auc(fpr, tpr)
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (AUC = %0.2f)' % auc_value)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver operating characteristic')
+        plt.legend(loc="lower right")
+        fig = plt.gcf()
+        fig.canvas.draw()
+        img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+        # Calculate confusion matrix
+        predicted_labels = (predicted_probabilities[:, 1] >= 0.5).astype(int)
+        conf_mat = confusion_matrix(true_labels, predicted_labels)
+        #TODO: SAVE CONFUSION MATRIX TO FILE
+        print("Confusion Matrix:")
+        print(conf_mat)
+        
+        return img_data
+        plt.close()
 
 
     def get_train_and_test(self, df: pl.DataFrame, frac: float = 0.8) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
@@ -134,7 +175,7 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         print("xgboost Default Parameters:", self.default_param)
 
 
-    def train_classifier(self, features: pl.DataFrame, niter: int, depth: int = None, models: xgb.Booster = None, **kwrds) -> xgb.Booster:
+    def train_classifier(self, features: pl.DataFrame, local_scratch: Path, niter: int, depth: int = None, models: xgb.Booster = None, **kwrds) -> xgb.Booster:
         
         param = self.default_param
 
@@ -182,6 +223,16 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
 
             bst_list.append(bst)
 
+            #GENERATE METRICS FOR MODEL (ROC_CURVE, CONFUSION MATRIX)
+            #plt.plot(pos_preds, self.gen_scale(pos_preds.shape[0]))
+            #plt.plot(neg_preds, self.gen_scale(neg_preds.shape[0], reverse=True))
+
+            #ROC_CURVE CREATE & STORE ON SCRATCH UNTIL WE FIND BETTER PLACE
+            roc_img = self.evaluate_model(test, df['predictions'], bst_list)
+            
+            ROC_OUTPUT = Path(local_scratch, 'roc_curve_{self.MODEL_PATH.name}.tif')
+            imageio.imsave(ROC_OUTPUT, roc_img)
+            
         return bst_list
 
 #POSSIBLE DEPRECATION

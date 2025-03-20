@@ -238,6 +238,7 @@ class CellMaker(ParallelManager):
             self.fileLogger.logevent(f'Found cell training definitions file @ {self.avg_cell_img_file}')
 
         # Check for model file (models_round_{self.step}_threshold_2000.pkl) in the models dir
+        #TODO: consolidate model file location with cell_detector_base.py (DATA_PATH, MODELS)
         if self.model: #IF SPECIFIC MODEL SELECTED
             if self.debug:
                 print(f'SEARCHING FOR SPECIFIC MODEL FILE: {self.model}')
@@ -527,7 +528,7 @@ class CellMaker(ParallelManager):
         return cell_candidates
 
 
-    def calculate_features(self, file_keys: tuple, cell_candidate_data: list) -> pd.DataFrame:
+    def calculate_features(self, file_keys: tuple, cell_candidate_data: list) -> pl.DataFrame:
         '''Part of step 3. calculate cell features;
 
             This single method will be run in parallel for each section
@@ -625,8 +626,8 @@ class CellMaker(ParallelManager):
                     print(f'Found cell with mask shape {mask.shape} dtype {mask.dtype}')
                     print()
 
-        df_features = pd.DataFrame(output_spreadsheet)
-        df_features.to_csv(output_file, index=False)
+        df_features = pl.DataFrame(output_spreadsheet)
+        df_features.write_csv(output_file, sep=",")
 
         print(f'Saving {len(output_spreadsheet)} cell features to {output_file}')
         print('Completed calculate_features')
@@ -634,7 +635,7 @@ class CellMaker(ParallelManager):
         return df_features
 
 
-    def score_and_detect_cell(self, file_keys: tuple, cell_features: pd.DataFrame):
+    def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
         (
@@ -664,12 +665,12 @@ class CellMaker(ParallelManager):
         if debug:
             print(f'Starting function score_and_detect_cell on section {section}')
 
-        def calculate_scores(features: pd.DataFrame, model):
+        def calculate_scores(features: pl.DataFrame, model):
             """
                 Calculate scores, mean, and standard deviation for each feature.
 
                 Args:
-                features (pd.DataFrame): Input features.
+                features (pl.DataFrame): Input features.
                 model: XGBoost model.
 
                 Returns:
@@ -1136,16 +1137,18 @@ class CellMaker(ParallelManager):
         if self.debug:
             print(f'USING MODEL LOCATION: {model_filename}')
 
-        #TODO - MOVE CONSTANTS SOMEWHERE ELSE
+        local_scratch = Path(self.SCRATCH, 'pipeline_tmp', self.animal)
+
+        #TODO - MOVE CONSTANTS SOMEWHERE ELSE; REMOVE HARD-CODING
         if self.step == 1:
-            new_models = trainer.train_classifier(detection_features, 676, 3)
+            new_models = trainer.train_classifier(detection_features, local_scratch, 676, 3)
         else:
-            new_models = trainer.train_classifier(detection_features, 676, 3, models = np_model) # pass Detector 4 for training
+            new_models = trainer.train_classifier(detection_features, local_scratch, 676, 3, models = np_model) # pass Detector 4 for training
 
         trainer = CellDetectorTrainer(self.animal, step=self.step + 1) # Be careful when saving the model. The model path is only relevant to 'step'. 
         
         # You need to use a new step to save the model, otherwise the previous models would be overwritten.
-        trainer.save_models(new_models)
+        trainer.save_models(new_models, local_scratch)
 
 
     def create_features(self):
@@ -1305,9 +1308,9 @@ class CellMaker(ParallelManager):
                     spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast, 'predictions': 2})
                     spreadsheet.append(spreadsheet_row)
 
-                df_features = pd.DataFrame(spreadsheet)
+                df_features = pl.DataFrame(spreadsheet)
                 dfpath = os.path.join(self.OUTPUT, f'detections_{str(section).zfill(3)}.csv')
-                df_features.to_csv(dfpath, index=False)
+                df_features.write_csv(dfpath)
                 print(f'Saved {len(df_features)} features to {dfpath}')
         print(f'Finished processing {idx} coordinates')
 
