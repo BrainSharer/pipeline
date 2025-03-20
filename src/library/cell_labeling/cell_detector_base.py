@@ -50,6 +50,7 @@ class Brain:
 
 class CellDetectorBase(Brain):
 
+    #TODO: REMOVE HARD-CODED VARIABLES
     def __init__(
         self,
         animal="DK55",
@@ -395,8 +396,20 @@ class CellDetectorBase(Brain):
     def report_detection_status():
         ...
 
-    def save_models(self,models):
-        print(f'saving models to {self.MODEL_PATH}')
+    def save_models(self, models, local_scratch):
+        '''
+        SAVE LOCAL THEN MOVE
+        '''
+        local_filename = Path(local_scratch, self.MODEL_PATH.name)
+        print(f'SAVING MODEL TO: {self.MODEL_PATH}')
+        try:
+            with open(local_filename,'wb') as pkl_file:
+                pkl.dump(models, pkl_file)
+        except IOError as e:
+            print(e)
+
+        print(f'MOVING MODEL TO CENTRALIZED STORAGE: {self.MODEL_PATH}')
+        #eventaully move to centralized storage
         try:
             with open(self.MODEL_PATH,'wb') as pkl_file:
                 pkl.dump(models,pkl_file)
