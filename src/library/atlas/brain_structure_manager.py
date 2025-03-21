@@ -10,6 +10,8 @@ import cv2
 import json
 import pandas as pd
 from scipy.ndimage import center_of_mass, zoom
+from skimage.filters import gaussian
+
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from tqdm import tqdm
 
@@ -17,8 +19,10 @@ from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
     apply_affine_transform,
     compute_affine_transformation,
+    get_affine_transformation,
     list_coms,
-    ORIGINAL_ATLAS
+    ORIGINAL_ATLAS,
+    scale_coordinate
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
@@ -27,15 +31,10 @@ from library.image_manipulation.filelocation_manager import (
     FileLocationManager,
 )
 from library.utilities.atlas import volume_to_polygon, save_mesh, allen_structures
-from library.utilities.utilities_process import M_UM_SCALE, get_image_size, read_image, write_image
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_image_size, read_image, write_image
 from library.image_manipulation.pipeline_process import Pipeline
 from library.utilities.utilities_contour import get_contours_from_annotations
 
-
-RESOLUTION = 0.452
-ALLEN_UM = 10
-#SCALING_FACTOR = ALLEN_UM / RESOLUTION
-SCALING_FACTOR = 32
 
 class BrainStructureManager():
 
@@ -80,15 +79,15 @@ class BrainStructureManager():
         self.abbreviation = None
 
         self.affine = affine
-        self.atlas_box_scales = (self.allen_um, self.allen_um, self.allen_um)
+        self.atlas_box_scales = np.array((self.allen_um, self.allen_um, self.allen_um))
+        #self.atlas_box_scales = np.array((14.464, 14.464, 20))
         self.atlas_raw_scale = 10
-        self.atlas_box_scales = np.array(self.atlas_box_scales)
 
 
-        allen_x_length = 1820
-        allen_y_length = 1000
-        allen_z_length = 1140
-        self.atlas_box_size = np.array((allen_x_length, allen_y_length, allen_z_length))
+        self.allen_x_length = 1820
+        self.allen_y_length = 1000
+        self.allen_z_length = 1140
+        self.atlas_box_size = np.array((self.allen_x_length, self.allen_y_length, self.allen_z_length))
         self.atlas_box_center = self.atlas_box_size / 2
 
         self.allen_resolution = np.array([10, 10 , 10])
@@ -192,6 +191,8 @@ class BrainStructureManager():
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.origin = apply_affine_transform(origin, transformation_matrix)
             self.volume = np.load(os.path.join(volume_path, volume_file))
+            #self.volume = zoom(self.volume, (1.4464, 1.4464, 2.0)) #FIXME
+
             self.com = center_of_mass(self.volume) + origin
 
             # merge data
@@ -281,7 +282,10 @@ class BrainStructureManager():
 
     def list_coms_by_atlas(self):
         structures = list_coms(self.animal)
+        xy_resolution = self.sqlController.scan_run.resolution
+        zresolution = self.sqlController.scan_run.zresolution
         for structure, com in structures.items():
+            com = scale_coordinate(com, xy_resolution, zresolution, scaling_factor=1)
             print(f"{structure}={com}")
 
     def update_database_com(self, structure: str, com: np.ndarray) -> None:
@@ -400,7 +404,6 @@ class BrainStructureManager():
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.volume_path)
         
-
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.origin_path}")
@@ -409,88 +412,63 @@ class BrainStructureManager():
         print(f"Working with {len(origins)} origins and {len(volumes)} volumes.")
         ids = {}
         atlas_centers = {}
-        atlas_all = list_coms(self.animal)
-        allen_all = list_coms("Allen")
-        ckeys_single = ("LRt_L", "LRt_R", "SC", "SNC_R")
-        common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
-        atlas_src = np.array([atlas_all[s] for s in common_keys])
-        allen_src = np.array([allen_all[s] for s in common_keys])
-        if atlas_src.shape[0] < 3 or allen_src.shape[0] < 3:
-            print(f"Not enough points to align {self.animal} to Allen")
-            matrix = np.eye(4)
-        else:
-            matrix = compute_affine_transformation(atlas_src, allen_src)
-
-        # matrix = get_affine_transformation(self.animal)
-        xs = []
-        ys = []
-        zs = []
-        xsT = []
-        ysT = []
-        zsT = []
+        transformation_matrix = get_affine_transformation(self.animal)
+        translations = transformation_matrix[... , 3]
+        scaled_translations = translations  / np.hstack((self.atlas_box_scales, 1))
+        transformation_matrix[... , 3] = scaled_translations.T
 
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
-                print(
-                    f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match"
-                )
+                print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
             structure = Path(origin_file).stem
             allen_color = self.get_allen_id(structure)
             ids[structure] = allen_color
             origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
             volume = np.load(os.path.join(self.volume_path, volume_file))
-            #volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
+            if self.animal == ORIGINAL_ATLAS:
+                volume = np.rot90(volume, axes=(0, 1)) 
+                volume = np.flip(volume, axis=0)
 
-            #volume = np.rot90(volume, axes=(0, 1))
-            #volume = np.flip(volume, axis=0)
-            volume = zoom(volume, self.atlas2allen, order=1)
+            volume = gaussian(volume, 1)
+            volume[volume > 0.50] = allen_color
+            volume[volume != allen_color] = 0
+
+            volume = volume.astype(np.uint32)
             COM = center_of_mass(volume)
             if math.isnan(COM[0]):
-                print(f"COM for {structure} is {COM}")
-                continue
+                print(f'{structure} volume is invalid')
+                COM = (0,0,0)
             # transform into the atlas box coordinates that neuroglancer assumes
-            volume = volume * allen_color
-            volume = volume.astype(np.uint32)
-            structure_center = origin + COM
-            if self.animal == ORIGINAL_ATLAS:
-                structure_center = (self.atlas_box_center + structure_center * self.atlas_raw_scale / self.atlas_box_scales)
-            xs.append(structure_center[0])
-            ys.append(structure_center[1])
-            zs.append(structure_center[2])
+            center = (origin + COM )
+            center = self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales            
+            atlas_centers[structure] = center
             if self.affine:
-                print(f"COM for {structure} is {np.round(center)}", end="\t")
-                center = apply_affine_transform(center, matrix)
-                xsT.append(center[0])
-                ysT.append(center[1])
-                zsT.append(center[2])
+                center = apply_affine_transform(center, transformation_matrix)
 
-                print(f"tranformed {np.round(center)}")
-
-            x_start = int(origin[0])
-            y_start = int(origin[1])
-            z_start = int(origin[2])
-
-            atlas_centers[structure] = structure_center
+            x_start = int(center[0] - COM[0])
+            y_start = int(center[1] - COM[1])
+            z_start = int(center[2] - COM[2])
+            #x_start = int(x) + self.allen_x_length // 2
+            #y_start = int(y) + self.allen_y_length // 2
+            #z_start = int(z) + self.allen_z_length // 2
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
 
-            # print(f'Adding {structure} to atlas at {x_start}:{x_end} {y_start}:{y_end} {z_start}:{z_end}')
-            if structure == 'SC':
-                print(f'Adding {structure} {origin=} to atlas at {x_start=} {y_start=} {z_start=}')
-
-            if not self.debug:
+            if self.debug:
+                print(f'Adding {structure} center={np.round(center)}')
+            else:
                 try:
                     atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
                 except ValueError as ve:
                     print(f"Error adding {structure} to atlas: {ve}")
                     continue
+
         if self.affine:
-            print(f"Range of untransformed x={max(xs) - min(xs)} y={max(ys) - min(ys)} z={max(zs) - min(zs)}")
-            print(f"Range of transformed x={max(xsT) - min(xsT)} y={max(ysT) - min(ysT)} z={max(zsT) - min(zsT)}")
-            print(f"affine matrix=\n{matrix}")
+            print(f"Transformation matrix\n {transformation_matrix}")
+
         return atlas_volume, atlas_centers, ids
 
     def update_atlas_coms(self) -> None:
