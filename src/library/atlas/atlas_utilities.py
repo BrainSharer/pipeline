@@ -1,12 +1,15 @@
+import os
 import numpy as np
 import SimpleITK as sitk
 
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
-from library.utilities.utilities_process import M_UM_SCALE
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
 
 ORIGINAL_ATLAS = 'AtlasV7'
 NEW_ATLAS = 'AtlasV8'
+RESOLUTION = 0.452
+ALLEN_UM = 10
 
 
 def apply_affine_transform(point: list, matrix) -> np.ndarray:
@@ -127,22 +130,26 @@ def compute_affine_transformation(source_points, target_points):
     
     return transformation_matrix
 
+def scale_coordinate(coordinate, xy_resolution, zresolution, scaling_factor):
+    """Scales a x,y,z coordinate from micrometers to neuroglancer voxels.
+    """
+    scales = np.array([xy_resolution*scaling_factor, xy_resolution*scaling_factor, zresolution])
+    return coordinate / scales
+
 def get_affine_transformation(animal):
-    """
-    Get the affine transformation matrix between the Allen
-    and animal brains.
-    """
+        
+        atlas_all = list_coms(animal)
+        allen_all = list_coms('Allen')
+        bad_keys = ('RtTg', 'AP')
 
-    atlas_structures = list_coms(animal)
-    allen_structures = list_coms('Allen')
+        common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
+        good_keys = set(common_keys) - set(bad_keys)
 
-    common_keys = atlas_structures.keys() & allen_structures.keys()
-    atlas_src = np.array([atlas_structures[s] for s in common_keys])
-    allen_src = np.array([allen_structures[s] for s in common_keys])
+        atlas_src = np.array([atlas_all[s] for s in good_keys])
+        allen_src = np.array([allen_all[s] for s in good_keys])
 
-    A, t, transformation = compute_affine_transformation_centroid(atlas_src, allen_src)
+        return compute_affine_transformation(atlas_src, allen_src)
 
-    return transformation   
 
 
 def get_umeyama(animal, scaling=False):
@@ -174,14 +181,15 @@ def resample_image(image, reference_image):
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     return resampler.Execute(image)
 
-def average_images(image_paths):
+def average_images(images):
     """
     Loads multiple 3D images, resamples them to a common reference, and averages them.
     """
-    images = [sitk.ReadImage(path) for path in image_paths]
+    #images = [sitk.ReadImage(path) for path in image_paths]
     
     # Choose the reference image (first image in the list)
-    reference_image = images[0]
+    #reference_image = images[0]
+    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
 
     # Resample all images to the reference
     resampled_images = [resample_image(img, reference_image) for img in images]

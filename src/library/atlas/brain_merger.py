@@ -9,8 +9,10 @@ import os
 import numpy as np
 from collections import defaultdict
 from skimage.filters import gaussian
+from scipy.ndimage import zoom
+import SimpleITK as sitk
 
-from library.atlas.atlas_utilities import apply_affine_transform, compute_affine_transformation, list_coms, resample_image
+from library.atlas.atlas_utilities import apply_affine_transform, average_images, compute_affine_transformation, list_coms
 from library.image_manipulation.filelocation_manager import data_path
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
@@ -37,7 +39,7 @@ class BrainMerger():
         self.coms = {}
         self.origins = {}
         self.margin = 50
-        self.threshold = 0.5  # the closer to zero, the bigger the structures
+        self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
         os.makedirs(self.com_path, exist_ok=True)
@@ -53,51 +55,16 @@ class BrainMerger():
         return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
 
     def merge_volumes(self, structure, volumes):
-        import SimpleITK as sitk
 
         lvolumes = len(volumes)
-        if '10N_R' in structure:
-            print(f'{structure} has {lvolumes} volumes')
-            for volume in volumes:
-                ids, counts = np.unique(volume, return_counts=True)
-                print(volume.shape, volume.dtype, ids, counts)            
         if lvolumes == 1:
             #print(f'{structure} has only one volume {volumes[0].shape} {volumes[0].dtype}')
             return volumes[0]
         elif lvolumes > 1:
             images = [sitk.GetImageFromArray(img.astype(np.uint8)) for img in volumes]
-            reference_image = images[0]
-
-            # Resample all images to the reference
-            resampled_images = [resample_image(img, reference_image) for img in images]
-
-            # Convert images to numpy arrays and compute the average
-            image_arrays = [sitk.GetArrayFromImage(img) for img in resampled_images]
-            avg_array = np.mean(image_arrays, axis=0)
-
-            # Convert back to SimpleITK image
-            merged_volume = sitk.GetImageFromArray(avg_array)
-            color = 1
-
-            """"
-            sizes = np.array([vi.shape for vi in volumes])
-            volume_size = sizes.max(0) + self.margin
-            volumes = [self.pad_volume(volume_size, vi) for vi in volumes]
-            volumes = list([(v > 0).astype(np.uint32) for v in volumes])
-
-            merged_volume = np.sum(volumes, axis=0)
-            merged_volume_prob = merged_volume / float(np.max(merged_volume))
-            # increasing the STD makes the volume smoother
-            # Smooth the probability
-            average_volume = gaussian(merged_volume_prob, 1.0)
-            #average_volume[average_volume > 0] = color
-            """
-            average_volume = sitk.GetArrayFromImage(merged_volume)
+            average_volume = average_images(images)
+            average_volume = sitk.GetArrayFromImage(average_volume)
             average_volume = gaussian(average_volume, 1.0)
-            average_volume[average_volume > self.threshold] = color
-            average_volume[average_volume != color] = 0
-            average_volume = average_volume.astype(np.uint32)
-
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
@@ -155,7 +122,7 @@ class BrainMerger():
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, origin)
+            np.savetxt(origin_filepath, mesh_origin)
             save_mesh(aligned_structure, mesh_filepath)
             np.save(volume_filepath, volume)
 
