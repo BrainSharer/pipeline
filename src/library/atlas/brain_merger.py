@@ -9,8 +9,10 @@ import os
 import numpy as np
 from collections import defaultdict
 from skimage.filters import gaussian
-from scipy.ndimage import zoom
+from scipy.ndimage import center_of_mass, zoom
+
 import SimpleITK as sitk
+from tqdm import tqdm
 
 from library.atlas.atlas_utilities import apply_affine_transform, average_images, compute_affine_transformation, list_coms
 from library.image_manipulation.filelocation_manager import data_path
@@ -65,66 +67,56 @@ class BrainMerger():
             average_volume = average_images(images)
             average_volume = sitk.GetArrayFromImage(average_volume)
             average_volume = gaussian(average_volume, 1.0)
+            ids, counts = np.unique(average_volume, return_counts=True)
+            #print(f'{structure} has {lvolumes} volumes to merge, ids={len(ids)}')
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
             return None
 
+    @staticmethod
+    def get_mean_coordinates(xyz):
+        return np.mean(xyz, axis=0)
+
     def save_brain_origins_and_volumes_and_meshes(self):
-        """Origin is in downsampled by 1/32 and is in 0.452um/pixel space
-        """
-
-        mesh_mean = np.mean(list(self.origins.values()), axis=0)
-
-        for structure, volume in self.volumes.items():
-            origin = self.origins[structure]
-            # mesh needs a center in the middle for all the STL files
-            mesh_origin = origin - mesh_mean
+        origins_mean = self.get_mean_coordinates(list(self.origins.values()))
+        scales = (1.464, 1.464, 2)
+        for structure, volume in tqdm(self.volumes.items(), desc='Saving brain volumes/origins/meshes', disable=False):
             volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
-            # correct orientation of mesh, the volume gets corrected in the create atlas process
-            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
+            volume = zoom(volume, scales)
+            origin = self.origins[structure] * scales - origins_mean
+            aligned_structure = volume_to_polygon(volume=volume, origin=origin, times_to_simplify=3)
+
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
 
+            save_mesh(aligned_structure, mesh_filepath)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
-            save_mesh(aligned_structure, mesh_filepath)
 
     def save_atlas_origins_and_volumes_and_meshes(self):
-        """For the Atlas STL files, we don't need to swap, rotate or flip
-        Add the origin to the COM which will then be used in the evaluation process later.
-        This will give you the middle of the structure from the 0,0 top left corner.
-        COMs are in 0.452um/pixel space and downsample by 1/32 and so we want to 
-        get it into um space.
-        """
+        coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
 
-        def convert_com(com):
-            return np.mean(com, axis=0)
-
-        origins = {structure: np.mean(origin, axis=0) for structure, origin in self.origins_to_merge.items()}
+        origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
-        coms = {structure: convert_com(com) for structure, com in self.coms_to_merge.items()}
-
+        origins_mean = self.get_mean_coordinates(origins_array)
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
-            origin = origins[structure]
-            self.origins[structure] = origin
-            com = coms[structure]
-            self.coms[structure] = com
-            # mesh needs a center in the middle for all the STL files
-            mesh_origin = origin - origins_array.mean(0)
-            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
+            origin = origins[structure] - origins_mean
+            aligned_structure = volume_to_polygon(volume=volume, origin=origin, times_to_simplify=3)
             
-            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, mesh_origin)
             save_mesh(aligned_structure, mesh_filepath)
+            np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
+
+            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
+            np.savetxt(com_filepath, coms[structure])
+
 
 
     def evaluate(self, animal):
@@ -161,7 +153,7 @@ class BrainMerger():
             difference = [a - b for a, b in zip(transformed, allen0)]
             ss = sum_square_com(difference)
             error.append(ss)
-            print(f'{structure} atlas={np.round(atlas0)} transformed={np.round( np.array(transformed) )} allen={np.round(allen0)}')
+            print(f'{structure} atlas={np.round(atlas0)} allen={np.round(allen0)} transformed={np.round( np.array(transformed) )}')
         print('RMS', sum(error)/len(common_keys))
 
 

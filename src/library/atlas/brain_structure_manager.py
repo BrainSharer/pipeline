@@ -178,9 +178,7 @@ class BrainStructureManager():
         if transformation_matrix is None:
             print(f"matrix is empty with {self.animal} ID={polygon_annotator_id}")
             return
-        else:
-            print(transformation_matrix)
-
+        #transformation_matrix = np.eye(4)
         # loop through structure objects
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
@@ -191,8 +189,6 @@ class BrainStructureManager():
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.origin = apply_affine_transform(origin, transformation_matrix)
             self.volume = np.load(os.path.join(volume_path, volume_file))
-            #self.volume = zoom(self.volume, (1.4464, 1.4464, 2.0)) #FIXME
-
             self.com = center_of_mass(self.volume) + origin
 
             # merge data
@@ -433,15 +429,15 @@ class BrainStructureManager():
             volume = gaussian(volume, 1)
             volume[volume > 0.50] = allen_color
             volume[volume != allen_color] = 0
-
             volume = volume.astype(np.uint32)
+
             COM = center_of_mass(volume)
             if math.isnan(COM[0]):
                 print(f'{structure} volume is invalid')
                 COM = (0,0,0)
             # transform into the atlas box coordinates that neuroglancer assumes
-            center = (origin + COM )
-            center = self.atlas_box_center + center * self.atlas_raw_scale / self.atlas_box_scales            
+            origin_and_com = (origin + COM )
+            center = self.atlas_box_center + origin_and_com * self.atlas_raw_scale / self.atlas_box_scales            
             atlas_centers[structure] = center
             if self.affine:
                 center = apply_affine_transform(center, transformation_matrix)
@@ -578,7 +574,8 @@ class BrainStructureManager():
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
         structures = list(aligned_dict.keys())
-        for structure in structures:
+        desc = f"Creating volumes and origins for {animal}"
+        for structure in tqdm(structures, desc=desc):
             onestructure = aligned_dict[structure]
             mins = []
             maxs = []
@@ -611,8 +608,9 @@ class BrainStructureManager():
                 volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=1)
                 volume.append(volume_slice)
 
+            volume = np.array(volume).astype(np.uint8)
             origin = np.array([min_x, min_y, min_z])
-            volume = np.array(volume).astype(np.bool_)
+            
             brainMerger.volumes[structure] = volume
             brainMerger.origins[structure] = origin
 
@@ -759,21 +757,23 @@ class BrainStructureManager():
                 points = self.transform_create_alignment(points, section_transform[section])  # create_alignment transform
                 aligned_padded_structures[structure][section] = points.tolist()
 
-        OUTPUT_DIR = os.path.join(self.data_path, animal)
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        print(f'Saving data to {OUTPUT_DIR}')
+        if not debug:
 
-        jsonpath1 = os.path.join(OUTPUT_DIR,  'original_structures.json')
-        with open(jsonpath1, 'w') as f:
-            json.dump(original_structures, f, sort_keys=True)
-            
-        jsonpath2 = os.path.join(OUTPUT_DIR,  'unaligned_padded_structures.json')
-        with open(jsonpath2, 'w') as f:
-            json.dump(unaligned_padded_structures, f, sort_keys=True)
-            
-        jsonpath3 = os.path.join(OUTPUT_DIR,  'aligned_padded_structures.json')
-        with open(jsonpath3, 'w') as f:
-            json.dump(aligned_padded_structures, f, sort_keys=True)
+            OUTPUT_DIR = os.path.join(self.data_path, animal)
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
+            print(f'Saving data to {OUTPUT_DIR}')
+
+            jsonpath1 = os.path.join(OUTPUT_DIR,  'original_structures.json')
+            with open(jsonpath1, 'w') as f:
+                json.dump(original_structures, f, sort_keys=True)
+                
+            jsonpath2 = os.path.join(OUTPUT_DIR,  'unaligned_padded_structures.json')
+            with open(jsonpath2, 'w') as f:
+                json.dump(unaligned_padded_structures, f, sort_keys=True)
+                
+            jsonpath3 = os.path.join(OUTPUT_DIR,  'aligned_padded_structures.json')
+            with open(jsonpath3, 'w') as f:
+                json.dump(aligned_padded_structures, f, sort_keys=True)
 
     @staticmethod
     def transform_create_alignment(points, transform):
