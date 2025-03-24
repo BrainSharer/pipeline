@@ -84,8 +84,9 @@ class BrainMerger():
         for structure, volume in tqdm(self.volumes.items(), desc='Saving brain volumes/origins/meshes', disable=False):
             volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
             volume = zoom(volume, scales)
-            origin = self.origins[structure] * scales - origins_mean
-            aligned_structure = volume_to_polygon(volume=volume, origin=origin, times_to_simplify=3)
+            origin = self.origins[structure] * scales
+            mesh_origin = self.origins[structure] * scales - origins_mean
+            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
 
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')

@@ -130,11 +130,16 @@ def compute_affine_transformation(source_points, target_points):
     
     return transformation_matrix
 
-def scale_coordinate(coordinate, xy_resolution, zresolution, scaling_factor):
+def scale_coordinate(coordinates, animal):
     """Scales a x,y,z coordinate from micrometers to neuroglancer voxels.
     """
+
+    sqlController = SqlController(animal)
+    xy_resolution = sqlController.scan_run.resolution
+    zresolution = sqlController.scan_run.zresolution
+    scaling_factor = 1
     scales = np.array([xy_resolution*scaling_factor, xy_resolution*scaling_factor, zresolution])
-    return coordinate / scales
+    return coordinates / scales
 
 def get_affine_transformation(animal):
         
@@ -147,6 +152,9 @@ def get_affine_transformation(animal):
 
         atlas_src = np.array([atlas_all[s] for s in good_keys])
         allen_src = np.array([allen_all[s] for s in good_keys])
+
+        atlas_src = scale_coordinate(atlas_src, animal)
+        allen_src = scale_coordinate(allen_src, 'Allen')
 
         return compute_affine_transformation(atlas_src, allen_src)
 
