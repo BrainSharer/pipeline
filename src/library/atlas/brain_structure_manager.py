@@ -409,9 +409,9 @@ class BrainStructureManager():
         ids = {}
         atlas_centers = {}
         transformation_matrix = get_affine_transformation(self.animal)
-        translations = transformation_matrix[... , 3]
-        scaled_translations = translations  / np.hstack((self.atlas_box_scales, 1))
-        transformation_matrix[... , 3] = scaled_translations.T
+        #translations = transformation_matrix[... , 3]
+        #scaled_translations = translations  / np.hstack((self.atlas_box_scales, 1))
+        #transformation_matrix[... , 3] = scaled_translations.T
 
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
@@ -548,7 +548,8 @@ class BrainStructureManager():
         )
 
         if not self.debug:
-            atlas_name = f"DK.{self.animal}.{self.allen_um}um"
+            aligned = 'aligned' if self.affine else 'unaligned'
+            atlas_name = f"DK.{self.animal}.{aligned}.{self.allen_um}um"
             structure_path = os.path.join(self.structure_path, atlas_name)
             if os.path.exists(structure_path):
                 print(f"Path exists: {structure_path}")
