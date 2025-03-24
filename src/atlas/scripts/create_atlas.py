@@ -22,7 +22,7 @@ class AtlasManager():
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD589']
+        #self.foundation_brains = ['MD585']
 
     def create_brain_json(self):
         """
@@ -39,7 +39,8 @@ class AtlasManager():
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_brain_volumes_and_origins(brainMerger, animal, self.debug)
-            brainMerger.save_brain_origins_and_volumes_and_meshes()
+            if not self.debug:
+                brainMerger.save_brain_coms_meshes_origins_volumes()
 
     def test_brain_volumes_and_origins(self):
         """
@@ -78,7 +79,7 @@ class AtlasManager():
                 self.brainManager.rm_existing_dir(self.brainManager.origin_path)
                 self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
                 self.brainManager.rm_existing_dir(self.brainManager.volume_path)
-            self.atlasMerger.save_atlas_origins_and_volumes_and_meshes()
+            self.atlasMerger.save_atlas_coms_meshes_origins_volumes()
             self.atlasMerger.evaluate(self.animal)
             print('Finished saving data to disk.')
         else:
