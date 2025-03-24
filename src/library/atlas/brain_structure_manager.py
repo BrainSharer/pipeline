@@ -160,10 +160,13 @@ class BrainStructureManager():
         """
         self.animal = animal
 
+        com_path = os.path.join(self.data_path, self.animal, "com")
         origin_path = os.path.join(self.data_path, self.animal, "origin")
         volume_path = os.path.join(self.data_path, self.animal, "structure")
+        self.check_for_existing_dir(com_path)
         self.check_for_existing_dir(origin_path)
         self.check_for_existing_dir(volume_path)
+        coms = sorted(os.listdir(com_path))
         origins = sorted(os.listdir(origin_path))
         volumes = sorted(os.listdir(volume_path))
 
@@ -180,7 +183,7 @@ class BrainStructureManager():
             return
         #transformation_matrix = np.eye(4)
         # loop through structure objects
-        for origin_file, volume_file in zip(origins, volumes):
+        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
@@ -189,7 +192,8 @@ class BrainStructureManager():
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.origin = apply_affine_transform(origin, transformation_matrix)
             self.volume = np.load(os.path.join(volume_path, volume_file))
-            self.com = center_of_mass(self.volume) + origin
+            # we want the COM to be in um
+            self.com = np.loadtxt(os.path.join(com_path, com_file))
 
             # merge data
             brainMerger.coms_to_merge[structure].append(self.com)
@@ -291,8 +295,10 @@ class BrainStructureManager():
         annotator_id = 1
 
         com = com.tolist()
-        xy_resolution = self.sqlController.scan_run.resolution
-        zresolution = self.sqlController.scan_run.zresolution
+        #xy_resolution = self.sqlController.scan_run.resolution
+        #zresolution = self.sqlController.scan_run.zresolution
+        xy_resolution = 10
+        zresolution = 10
         x = com[0] * xy_resolution / M_UM_SCALE
         y = com[1] * xy_resolution / M_UM_SCALE
         z = com[2] * zresolution / M_UM_SCALE
@@ -426,9 +432,9 @@ class BrainStructureManager():
                 volume = np.rot90(volume, axes=(0, 1)) 
                 volume = np.flip(volume, axis=0)
 
-            volume = gaussian(volume, 1)
             volume[volume > 0.50] = allen_color
             volume[volume != allen_color] = 0
+            volume = gaussian(volume, 1)
             volume = volume.astype(np.uint32)
 
             COM = center_of_mass(volume)
@@ -481,7 +487,18 @@ class BrainStructureManager():
             None
         """
 
-        atlas_volume, atlas_centers, ids = self.create_atlas_volume()
+        #atlas_volume, atlas_centers, ids = self.create_atlas_volume()
+        print(f'evaluating atlas data from {self.com_path}')
+        atlas_centers = {}
+        for com in sorted(os.listdir(self.com_path)):
+            structure = com.split('.')[0]
+            com_path = os.path.join(self.com_path, com)
+            com = np.loadtxt(com_path)
+            #com = convert_com(com)
+            atlas_centers[structure] = com
+
+
+
         if self.debug:
             for k, v in atlas_centers.items():
                 print(f"{k}={v}")
@@ -568,6 +585,12 @@ class BrainStructureManager():
 
     #### Imported methods from old build_foundationbrain_volumes.py
     def  create_brain_volumes_and_origins(self, brainMerger, animal, debug):
+        """Data has been downsampled by 1/32 and is in Neuroglancer pixel coordinates
+        This would be OK if all the brains were at the same resolution, but the foundation brains
+        are at 0.452um and the neurotrace brains are at 0.325um. The data needs to be transformed. 
+        We want the atlas to be in 10um scale so we need to scale it from 0.452um to 10um
+        by 10/0.452 = 22.1238938053
+        """
         jsonpath = os.path.join(self.data_path, animal,  'aligned_padded_structures.json')
         if not os.path.exists(jsonpath):
             print(f'{jsonpath} does not exist')
@@ -575,8 +598,8 @@ class BrainStructureManager():
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
         structures = list(aligned_dict.keys())
-        desc = f"Creating volumes and origins for {animal}"
-        for structure in tqdm(structures, desc=desc):
+        desc = f"Creating {animal} coms/meshes/origins/volumes"
+        for structure in tqdm(structures, desc=desc, disable=debug):
             onestructure = aligned_dict[structure]
             mins = []
             maxs = []
@@ -598,7 +621,7 @@ class BrainStructureManager():
             min_z = min(sections)
             xlength = max_x - min_x
             ylength = max_y - min_y
-            PADDED_SIZE = (int(ylength), int(xlength))
+            PADDED_SIZE = (int(round(ylength)), int(round(xlength)))
             volume = []
             # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
             for section, points in sorted(onestructure.items()):
@@ -610,10 +633,16 @@ class BrainStructureManager():
                 volume.append(volume_slice)
 
             volume = np.array(volume).astype(np.uint8)
+            com = center_of_mass(volume)
             origin = np.array([min_x, min_y, min_z])
-            
-            brainMerger.volumes[structure] = volume
-            brainMerger.origins[structure] = origin
+            com += origin
+            com = np.array(com) * np.array([32, 32, 1])
+            if debug and structure == 'SC':
+                print(f"Adding {structure} to {animal} with {origin} and {com=}")
+            else:
+                brainMerger.volumes[structure] = volume
+                brainMerger.origins[structure] = origin
+                brainMerger.coms[structure] = com.tolist()
 
     @staticmethod
     def save_volume_origin(animal, structure, volume, xyz_offsets):
@@ -634,14 +663,14 @@ class BrainStructureManager():
 
 
     def test_brain_volumes_and_origins(self, animal):
-        jsonpath = os.path.join(self.data_path, animal,  'original_structures.json')
+        jsonpath = os.path.join(self.data_path, animal,  'aligned_padded_structures.json')
         if not os.path.exists(jsonpath):
             print(f'{jsonpath} does not exist')
             sys.exit()
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
         structures = list(aligned_dict.keys())
-        input_directory = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail')
+        input_directory = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         files = sorted(os.listdir(input_directory))
         print(f'Working with {len(files)} files')
         if not os.path.exists(input_directory):
@@ -653,7 +682,8 @@ class BrainStructureManager():
             shutil.rmtree(drawn_directory)
         os.makedirs(drawn_directory, exist_ok=True)
 
-        for tif in files:
+        desc = f"Drawing on {animal}"
+        for tif in tqdm(files, desc=desc):
             infile = os.path.join(input_directory, tif)
             outfile = os.path.join(drawn_directory, tif)
             file_section = int(tif.split('.')[0])
@@ -662,11 +692,10 @@ class BrainStructureManager():
                 onestructure = aligned_dict[structure]
                 for section, points in sorted(onestructure.items()):
                     if int(file_section) == int(section):
-                        vertices = np.array(points) / 32
+                        vertices = np.array(points)
                         points = (vertices).astype(np.int32)
                         cv2.polylines(img, [points], isClosed=True, color=1, thickness=5)
 
-            print(f'Writing {outfile}')
             write_image(outfile, img)
 
     ### Imported methods from old build_foundationbrain_aligned data
@@ -735,7 +764,7 @@ class BrainStructureManager():
             transform = np.linalg.inv(transform)
             section_transform[section_num] = transform
 
-        md585_fixes = {161: 100, 182: 60, 223: 60, 231: 80, 253: 60}
+        md585_fixes = {161: 100, 182: 60, 223: 60, 229:76, 231: 80, 253: 60}
         original_structures = defaultdict(dict)
         unaligned_padded_structures = defaultdict(dict)
         aligned_padded_structures = defaultdict(dict)

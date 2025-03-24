@@ -67,8 +67,6 @@ class BrainMerger():
             average_volume = average_images(images)
             average_volume = sitk.GetArrayFromImage(average_volume)
             average_volume = gaussian(average_volume, 1.0)
-            ids, counts = np.unique(average_volume, return_counts=True)
-            #print(f'{structure} has {lvolumes} volumes to merge, ids={len(ids)}')
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
@@ -78,34 +76,44 @@ class BrainMerger():
     def get_mean_coordinates(xyz):
         return np.mean(xyz, axis=0)
 
-    def save_brain_origins_and_volumes_and_meshes(self):
+    def save_brain_coms_meshes_origins_volumes(self):
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         scales = (1.464, 1.464, 2)
-        for structure, volume in tqdm(self.volumes.items(), desc='Saving brain volumes/origins/meshes', disable=False):
+        desc = f"Creating {self.animal} coms/meshes/origins/volumes"
+
+        for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
             volume = zoom(volume, scales)
             origin = self.origins[structure] * scales
             mesh_origin = self.origins[structure] * scales - origins_mean
             aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
 
+            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
+            np.savetxt(com_filepath, self.coms[structure])
             save_mesh(aligned_structure, mesh_filepath)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
 
-    def save_atlas_origins_and_volumes_and_meshes(self):
+    def save_atlas_coms_meshes_origins_volumes(self):
         coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
-
+        allen_color = 100
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         for structure in self.volumes.keys():
             volume = self.volumes[structure]
+            
+            mesh_volume = volume.copy()
+            mesh_volume[mesh_volume > 0.150] = allen_color
+            mesh_volume[mesh_volume != allen_color] = 0
+            mesh_volume = gaussian(mesh_volume, 1.0)
+
             origin = origins[structure] - origins_mean
-            aligned_structure = volume_to_polygon(volume=volume, origin=origin, times_to_simplify=3)
+            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=origin, times_to_simplify=3)
             
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
