@@ -14,7 +14,7 @@ from scipy.ndimage import center_of_mass, zoom
 import SimpleITK as sitk
 from tqdm import tqdm
 
-from library.atlas.atlas_utilities import apply_affine_transform, average_images, compute_affine_transformation, list_coms
+from library.atlas.atlas_utilities import apply_affine_transform, average_images, compute_affine_transformation, list_coms, register_volume
 from library.image_manipulation.filelocation_manager import data_path
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
@@ -60,13 +60,10 @@ class BrainMerger():
 
         lvolumes = len(volumes)
         if lvolumes == 1:
-            #print(f'{structure} has only one volume {volumes[0].shape} {volumes[0].dtype}')
             return volumes[0]
         elif lvolumes > 1:
-            images = [sitk.GetImageFromArray(img.astype(np.uint8)) for img in volumes]
-            average_volume = average_images(images)
-            average_volume = sitk.GetArrayFromImage(average_volume)
-            average_volume = gaussian(average_volume, 1.0)
+            average_volume = average_images(volumes, structure)
+            #average_volume = gaussian(average_volume, 1.0) # keeps it the same as original atlas
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
@@ -79,24 +76,27 @@ class BrainMerger():
     def save_brain_coms_meshes_origins_volumes(self):
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         scales = (1.464, 1.464, 2)
-        desc = f"Creating {self.animal} coms/meshes/origins/volumes"
+        desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
             volume = zoom(volume, scales)
             origin = self.origins[structure] * scales
-            mesh_origin = self.origins[structure] * scales - origins_mean
-            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             np.savetxt(com_filepath, self.coms[structure])
-            save_mesh(aligned_structure, mesh_filepath)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
+
+            #mesh STL file
+            mesh_origin = self.origins[structure] * scales - origins_mean
+            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+            save_mesh(aligned_structure, mesh_filepath)
+
 
     def save_atlas_coms_meshes_origins_volumes(self):
         coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}

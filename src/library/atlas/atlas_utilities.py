@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import SimpleITK as sitk
 
@@ -142,6 +143,9 @@ def scale_coordinate(coordinates, animal):
     return coordinates / scales
 
 def get_affine_transformation(animal):
+        """This fetches data from the DB and returns the data in micrometers
+        Adjust accordingly
+        """
         
         atlas_all = list_coms(animal)
         allen_all = list_coms('Allen')
@@ -152,9 +156,6 @@ def get_affine_transformation(animal):
 
         atlas_src = np.array([atlas_all[s] for s in good_keys])
         allen_src = np.array([allen_all[s] for s in good_keys])
-
-        atlas_src = scale_coordinate(atlas_src, animal)
-        allen_src = scale_coordinate(allen_src, 'Allen')
 
         return compute_affine_transformation(atlas_src, allen_src)
 
@@ -189,25 +190,82 @@ def resample_image(image, reference_image):
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     return resampler.Execute(image)
 
-def average_images(images):
-    """
-    Loads multiple 3D images, resamples them to a common reference, and averages them.
-    """
-    #images = [sitk.ReadImage(path) for path in image_paths]
-    
-    # Choose the reference image (first image in the list)
-    #reference_image = images[0]
-    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
 
+def average_images(volumes, structure):
+    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
+    #reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
+    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
+    #max_index = images.index(reference_image_index)
+    #del images[max_index]
     # Resample all images to the reference
     resampled_images = [resample_image(img, reference_image) for img in images]
-
+    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
     # Convert images to numpy arrays and compute the average
-    image_arrays = [sitk.GetArrayFromImage(img) for img in resampled_images]
-    avg_array = np.mean(image_arrays, axis=0)
-
+    #registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
+    #registered_images = [sitk.GetArrayFromImage(img) for img in registered_images]
+    avg_array = np.mean(registered_images, axis=0)
     # Convert back to SimpleITK image
-    avg_image = sitk.GetImageFromArray(avg_array)
-    avg_image.CopyInformation(reference_image)  # Copy metadata
+    #avg_image = sitk.GetImageFromArray(avg_array)
+    #avg_image.CopyInformation(reference_image)  # Copy metadata
+    return avg_array
+    #return sitk.GetArrayFromImage(avg_array)
 
-    return avg_image
+
+def register_volume(movingImage, fixedImage, structure):
+
+    elastixImageFilter = sitk.ElastixImageFilter()
+    elastixImageFilter.SetFixedImage(fixedImage)
+    elastixImageFilter.SetMovingImage(movingImage)
+
+    bspline_params = elastixImageFilter.GetDefaultParameterMap("bspline")
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
+    rigid_params["AutomaticTransformInitialization"] = ["true"]
+    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+    rigid_params["FixedInternalImagePixelType"] = ["float"]
+    rigid_params["MovingInternalImagePixelType"] = ["float"]
+    rigid_params["FixedImageDimension"] = ["3"]
+    rigid_params["MovingImageDimension"] = ["3"]
+    rigid_params["UseDirectionCosines"] = ["false"]
+    rigid_params["HowToCombineTransforms"] = ["Compose"]
+    rigid_params["DefaultPixelValue"] = ["0"]
+    rigid_params["WriteResultImage"] = ["false"]    
+    rigid_params["WriteIterationInfo"] = ["false"]
+    rigid_params["Resampler"] = ["DefaultResampler"]
+    rigid_params["MaximumNumberOfIterations"] = ["250"] # 250 works ok
+
+
+    elastixImageFilter.SetParameterMap(rigid_params)
+    elastixImageFilter.AddParameterMap(bspline_params)
+    #elastixImageFilter.SetParameter("Registration", ["MultiResolutionRegistration"])
+    #elastixImageFilter.SetParameter("Metric",  ["AdvancedImageToImageMetric", "CorrespondingPointsEuclideanDistanceMetric"])
+    elastixImageFilter.SetLogToFile(False)
+    elastixImageFilter.LogToConsoleOn()
+
+    elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
+    elastixImageFilter.SetOutputDirectory('/tmp')
+    try:
+        resultImage = elastixImageFilter.Execute() 
+    except Exception as e:
+        print(f'{structure} in registration')
+        print(e)
+        sys.exit()
+        return sitk.GetArrayFromImage(movingImage)
+
+    return sitk.GetArrayFromImage(resultImage)
+
+def get_min_max_mean(coords):
+
+    if isinstance(coords[0], list):
+        coords = [coord for sublist in coords for coord in sublist]
+
+    
+    x_vals, y_vals = zip(*coords)  # Unpacking x, y, z values separately
+    
+    min_vals = (min(x_vals), min(y_vals))
+    max_vals = (max(x_vals), max(y_vals))
+    mean_vals = (
+        sum(x_vals) / len(coords),
+        sum(y_vals) / len(coords),
+    )
+    
+    return min_vals, max_vals, mean_vals

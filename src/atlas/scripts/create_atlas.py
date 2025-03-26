@@ -22,7 +22,7 @@ class AtlasManager():
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD585']
+        #self.foundation_brains = ['MD589']
 
     def create_brain_json(self):
         """
@@ -50,7 +50,7 @@ class AtlasManager():
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.test_brain_volumes_and_origins(animal)
 
-    def merge_origin_creation(self):
+    def merge_foundation_origin_creation(self):
         """
         # 3rd step, this merges the volumes and origins from the foundation brains into the new atlas
         # The fixed brain is, well, fixed. 
@@ -64,8 +64,7 @@ class AtlasManager():
             self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
             self.brainManager.fixed_brain.com_annotator_id = 2
             self.brainManager.com_annotator_id = 2
-            self.brainManager.compute_origin_and_volume_for_brain_structures(self.brainManager, self.atlasMerger, 
-                                                                        animal, polygon_annotator_id)
+            self.brainManager.compute_brain_com_origin_mesh_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
 
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]
@@ -80,7 +79,7 @@ class AtlasManager():
                 self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
                 self.brainManager.rm_existing_dir(self.brainManager.volume_path)
             self.atlasMerger.save_atlas_coms_meshes_origins_volumes()
-            self.atlasMerger.evaluate(self.animal)
+            #self.atlasMerger.evaluate(self.animal)
             print('Finished saving data to disk.')
         else:
             print('No data to save')
@@ -97,6 +96,10 @@ class AtlasManager():
     def list_coms(self):
         self.brainManager.list_coms_by_atlas()
 
+    def create_volumes_from_polygons(self):
+        animal_structures = [['DK78', 'TG_L'], ['DK78', 'TG_R']]
+        for animal, structure in sorted(animal_structures):
+            self.brainManager.create_volumes_from_polygons(animal, structure, self.debug)
 
 
 
@@ -136,11 +139,12 @@ if __name__ == '__main__':
     function_mapping = {'create_brain_json': pipeline.create_brain_json,
                         'draw': pipeline.test_brain_volumes_and_origins,
                         'create_volumes': pipeline.create_brain_volumes_and_origins,
-                        'merge_volumes': pipeline.merge_origin_creation,
+                        'merge_volumes': pipeline.merge_foundation_origin_creation,
                         'neuroglancer': pipeline.create_neuroglancer_volume,
                         'save_atlas': pipeline.save_atlas_volume,
                         'update_coms': pipeline.update_atlas_coms,
                         'list_coms': pipeline.list_coms,
+                        'polygons': pipeline.create_volumes_from_polygons,
     }
 
     if task in function_mapping:

@@ -20,8 +20,10 @@ from library.atlas.atlas_utilities import (
     apply_affine_transform,
     compute_affine_transformation,
     get_affine_transformation,
+    get_min_max_mean,
     list_coms,
     ORIGINAL_ATLAS,
+    register_volume,
     scale_coordinate
 )
 from library.controller.sql_controller import SqlController
@@ -100,23 +102,17 @@ class BrainStructureManager():
 
 
     @staticmethod
-    def get_transform_to_align_brain(moving_brain, fixed_brain, annotator_id=2):
-        """Used in aligning data to fixed brain where the data has been downsampled
-        the function list_coms returns data in micrometers.
+    def get_transform_to_align_brain(moving_brain, annotator_id=2):
+        """Transform x,y,z points to Atlas space.
         """
 
-        if moving_brain == fixed_brain:
-            return np.eye(4)
-
+        fixed_brain = 'AtlasV8'
         moving_coms = list_coms(moving_brain, annotator_id=annotator_id)
         fixed_coms = list_coms(fixed_brain, annotator_id=annotator_id)
         
         for structure, com in moving_coms.items():
             x,y,z = com
-            moving_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR/0.452, z/20]
-        for structure, com in fixed_coms.items():
-            x,y,z = com
-            fixed_coms[structure] = [x/SCALING_FACTOR, y/SCALING_FACTOR/0.452, z/20]
+            moving_coms[structure] = [x, y, z]
         
 
         common_keys = sorted(list(fixed_coms.keys() & moving_coms.keys()))
@@ -154,12 +150,10 @@ class BrainStructureManager():
         section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
-    def compute_origin_and_volume_for_brain_structures(self, brainManager, brainMerger, animal, polygon_annotator_id):
+    def compute_brain_com_origin_mesh_volume(self, brainMerger, animal, fixed_brain):
         """
-        Note the resolutions
         """
         self.animal = animal
-
         com_path = os.path.join(self.data_path, self.animal, "com")
         origin_path = os.path.join(self.data_path, self.animal, "origin")
         volume_path = os.path.join(self.data_path, self.animal, "structure")
@@ -170,84 +164,98 @@ class BrainStructureManager():
         origins = sorted(os.listdir(origin_path))
         volumes = sorted(os.listdir(volume_path))
 
-        # files = sorted(os.listdir(self.origin_path))
-        # structures = [str(structure).split('.')[0] for structure in files]
-        # get transformation at um
-        transformation_matrix = self.get_transform_to_align_brain(
-            moving_brain=animal,
-            fixed_brain=brainManager.fixed_brain.animal,
-            annotator_id=2,
-        )
-        if transformation_matrix is None:
-            print(f"matrix is empty with {self.animal} ID={polygon_annotator_id}")
-            return
-        #transformation_matrix = np.eye(4)
         # loop through structure objects
         for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
             structure = Path(origin_file).stem
-            self.abbreviation = structure
-            origin = np.loadtxt(os.path.join(origin_path, origin_file))
-            self.origin = apply_affine_transform(origin, transformation_matrix)
+            #if structure not in ['10N_L']:
+            #    continue
+
+            self.origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.volume = np.load(os.path.join(volume_path, volume_file))
-            # we want the COM to be in um
             self.com = np.loadtxt(os.path.join(com_path, com_file))
 
-            # merge data
-            brainMerger.coms_to_merge[structure].append(self.com)
-            brainMerger.origins_to_merge[structure].append(self.origin)
-            brainMerger.volumes_to_merge[structure].append(self.volume)
+            if self.debug:
+                print(f'{animal} {structure} origin={np.round(self.origin)}')
+            else:
+                # merge data
+                brainMerger.coms_to_merge[structure].append(self.com)
+                brainMerger.origins_to_merge[structure].append(self.origin)
+                brainMerger.volumes_to_merge[structure].append(self.volume)
 
 
-    def create_volumes_from_polygons(self, animal, debug=False):
+    def create_volumes_from_polygons(self, animal, structure, debug=False):
             # if structure.abbreviation not in self.allen_structures_keys:
             #    continue
-            df = None
+        transformation_matrix = self.get_transform_to_align_brain(
+            moving_brain=animal,
+            annotator_id=2,
+        )
+        if transformation_matrix is None:
+            print(f"matrix is empty with {self.animal}")
+            transformation_matrix = np.eye(4)
 
-            #####TRANSFORMED point dictionary
-            # polygons were drawn at xy resolution of 0.452um for the MDXXX brains
-            # and 20um for the z axis
-            polygons = defaultdict(list)
+        print(f'{animal=} {structure=}')
+        print(transformation_matrix)
 
-            for _, row in df.iterrows():
-                x = row["coordinate"][0]
-                y = row["coordinate"][1]
-                z = row["coordinate"][2]
-                print(f"structure={structure} x={x} y={y} z={z}")
-                # transform points to fixed brain um with rigid transform
-                # x,y,z = brain_to_atlas_transform((x,y,z), R, t)
-                # scale transformed points to self.allen_um.
-                x = x / SCALING_FACTOR / self.sqlController.scan_run.resolution
-                y = y / SCALING_FACTOR / self.sqlController.scan_run.resolution
-                z /= 20
-                xy = (x, y)
-                print(structure, x, y, z)
-                section = int(np.round(z))
-                polygons[section].append(xy)
-            origin, section_size = self.get_origin_and_section_size(polygons)
-            volume = []
-            for _, contour_points in polygons.items():
-                # subtract origin so the array starts drawing in the upper top left
-                vertices = np.array(contour_points) - origin[:2]
-                contour_points = (vertices).astype(np.uint32)
-                volume_slice = np.zeros(section_size, dtype=np.uint8)
-                cv2.drawContours(
-                    volume_slice, [contour_points], -1, (1), thickness=-1
-                )
-                volume.append(volume_slice)
-            volume = np.swapaxes(volume, 0, 2)
-            # volume = gaussian(volume, 1)
-            # set structure object values
-            self.abbreviation = structure
-            self.origin = origin
-            self.volume = volume
-            # Add origin and com
-            self.com = np.array(self.get_center_of_mass()) + np.array(self.origin)
-            # save individual structure, mesh and origin
-            self.save_brain_origins_and_volumes_and_meshes()
-            del origin, volume
+        controller = SqlController(animal)
+        label = self.sqlController.get_annotation_label(structure)
+        if label is not None:
+            label_ids = [label.id]
+        else:
+            print(f"Could not find {structure} label in database")
+            return
+        annotator_id = 38
+        annotation_session = controller.get_annotation_session(prep_id=animal, label_ids=label_ids, annotator_id=annotator_id)
+        if annotation_session is None:
+            print(f"Could not find {structure=} {annotator_id=} {animal=}")
+            return
+        else:
+            print(f"Found {structure=} {annotator_id=} {animal=}")
+
+        
+
+
+        #####TRANSFORMED point dictionary
+        # polygons were drawn at xy resolution of 0.452um for the MDXXX brains
+        # and 20um for the z axis
+        polygons = controller.get_annotation_volume(annotation_session.id)
+        coords = list(polygons.values())
+
+  
+        min_vals, max_vals, mean_vals = get_min_max_mean(coords)
+        print(f"{structure} min={min_vals} max={max_vals} mean={mean_vals}")
+        min_x = min_vals[0]
+        min_y = min_vals[1]
+        ylength = max_vals[1] - min_vals[1]
+        xlength = max_vals[0] - min_vals[0]
+        slice_size = (int(round(ylength)), int(round(xlength)))
+        volume = []
+        # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
+        sections = []
+        for section, points in sorted(polygons.items()):
+            vertices = np.array(points) - np.array((min_x, min_y))
+            volume_slice = np.zeros(slice_size, dtype=np.uint8)
+            points = (vertices).astype(np.int32)
+            volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
+            volume.append(volume_slice)
+            sections.append(section)
+
+        volume = np.array(volume).astype(np.uint8) # Keep this at uint8!
+        com = center_of_mass(volume)
+        min_z = min(sections)
+        origin = np.array([min_x, min_y, min_z])
+        com += origin
+        com = np.array(com) * np.array([1, 1, 1])
+        if debug:
+            print(f"Adding {structure=} to {animal=} with {origin=} and {com=}")
+        else:
+            pass
+            #brainMerger.volumes[structure] = volume
+            #brainMerger.origins[structure] = origin
+            #brainMerger.coms[structure] = com.tolist()
 
 
     def save_brain_origins_and_volumes_and_meshes(self):
@@ -285,7 +293,7 @@ class BrainStructureManager():
         xy_resolution = self.sqlController.scan_run.resolution
         zresolution = self.sqlController.scan_run.zresolution
         for structure, com in structures.items():
-            com = scale_coordinate(com, xy_resolution, zresolution, scaling_factor=1)
+            #com = scale_coordinate(com, self.animal)
             print(f"{structure}={com}")
 
     def update_database_com(self, structure: str, com: np.ndarray) -> None:
@@ -415,9 +423,10 @@ class BrainStructureManager():
         ids = {}
         atlas_centers = {}
         transformation_matrix = get_affine_transformation(self.animal)
-        #translations = transformation_matrix[... , 3]
-        #scaled_translations = translations  / np.hstack((self.atlas_box_scales, 1))
-        #transformation_matrix[... , 3] = scaled_translations.T
+        translations = transformation_matrix[... , 3]
+        scaled_translations = translations  / np.hstack((self.atlas_box_scales, 1))
+        transformation_matrix[... , 3] = scaled_translations.T
+        upper = 150   
 
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
@@ -432,14 +441,15 @@ class BrainStructureManager():
                 volume = np.rot90(volume, axes=(0, 1)) 
                 volume = np.flip(volume, axis=0)
 
-            volume[volume > 0.50] = allen_color
-            volume[volume != allen_color] = 0
-            volume = gaussian(volume, 1)
+            volume = gaussian(volume, 4.0)            
+            volume[(volume > upper) ] = allen_color
+            volume[(volume < upper)] = 0
             volume = volume.astype(np.uint32)
 
             COM = center_of_mass(volume)
             if math.isnan(COM[0]):
-                print(f'{structure} volume is invalid')
+                ids, counts = np.unique(volume, return_counts=True)
+                print(f'{structure} volume is invalid {ids} {counts}')
                 COM = (0,0,0)
             # transform into the atlas box coordinates that neuroglancer assumes
             origin_and_com = (origin + COM )
@@ -460,7 +470,7 @@ class BrainStructureManager():
             z_end = z_start + volume.shape[2]
 
             if self.debug:
-                print(f'Adding {structure} center={np.round(center)}')
+                print(f'{structure} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}')
             else:
                 try:
                     atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
@@ -487,17 +497,8 @@ class BrainStructureManager():
             None
         """
 
-        #atlas_volume, atlas_centers, ids = self.create_atlas_volume()
         print(f'evaluating atlas data from {self.com_path}')
-        atlas_centers = {}
-        for com in sorted(os.listdir(self.com_path)):
-            structure = com.split('.')[0]
-            com_path = os.path.join(self.com_path, com)
-            com = np.loadtxt(com_path)
-            #com = convert_com(com)
-            atlas_centers[structure] = com
-
-
+        atlas_volume, atlas_centers, ids = self.create_atlas_volume()
 
         if self.debug:
             for k, v in atlas_centers.items():
@@ -598,7 +599,7 @@ class BrainStructureManager():
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
         structures = list(aligned_dict.keys())
-        desc = f"Creating {animal} coms/meshes/origins/volumes"
+        desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
             onestructure = aligned_dict[structure]
             mins = []
@@ -621,22 +622,21 @@ class BrainStructureManager():
             min_z = min(sections)
             xlength = max_x - min_x
             ylength = max_y - min_y
-            PADDED_SIZE = (int(round(ylength)), int(round(xlength)))
+            slice_size = (int(round(ylength)), int(round(xlength)))
             volume = []
             # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
             for section, points in sorted(onestructure.items()):
                 vertices = np.array(points) - np.array((min_x, min_y))
-                volume_slice = np.zeros(PADDED_SIZE, dtype=np.uint8)
+                volume_slice = np.zeros(slice_size, dtype=np.uint8)
                 points = (vertices).astype(np.int32)
-                volume_slice = cv2.polylines(volume_slice, [points], isClosed=True, color=1, thickness=1)
-                volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=1)
+                volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
                 volume.append(volume_slice)
 
-            volume = np.array(volume).astype(np.uint8)
+            volume = np.array(volume).astype(np.uint8) # Keep this at uint8!
             com = center_of_mass(volume)
             origin = np.array([min_x, min_y, min_z])
             com += origin
-            com = np.array(com) * np.array([32, 32, 1])
+            com = np.array(com) * np.array([1, 1, 1])
             if debug and structure == 'SC':
                 print(f"Adding {structure} to {animal} with {origin} and {com=}")
             else:
@@ -741,6 +741,8 @@ class BrainStructureManager():
         csvfile = os.path.join(self.data_path, 'foundation_brain_annotations',\
             f'{animal}_annotation.csv')
         hand_annotations = pd.read_csv(csvfile)
+        # below is the fix for section numbers. The original data started at 1, but we now start at 0
+        hand_annotations['section'] = hand_annotations['section'] - 1
         hand_annotations['vertices'] = hand_annotations['vertices'] \
             .apply(lambda x: x.replace(' ', ',')) \
             .apply(lambda x: x.replace('\n', ',')) \
@@ -764,7 +766,8 @@ class BrainStructureManager():
             transform = np.linalg.inv(transform)
             section_transform[section_num] = transform
 
-        md585_fixes = {161: 100, 182: 60, 223: 60, 229:76, 231: 80, 253: 60}
+        md585_fixes = {160: 100, 181: 60, 222: 60, 228:76, 230: 80, 252: 60}
+        md589_fixes = {294:0}
         original_structures = defaultdict(dict)
         unaligned_padded_structures = defaultdict(dict)
         aligned_padded_structures = defaultdict(dict)
@@ -778,8 +781,10 @@ class BrainStructureManager():
                 offset = section_offsets[section]
                 if animal == 'MD585' and section in md585_fixes.keys():
                     offset = offset - np.array([0, md585_fixes[section]])
-                if animal == 'MD589' and section == 297:
-                    offset = offset + np.array([0, 35])
+                if animal == 'MD589' and section == 294:
+                    offset = offset + np.array([23, 8])
+                if animal == 'MD589' and section == 296:
+                    offset = offset + np.array([8, 29])
 
                 points = np.array(points) +  offset
                 unaligned_padded_structures[structure][section] = points.tolist()

@@ -121,7 +121,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["750"]
+        rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["2500"]
 
@@ -228,7 +228,6 @@ def align_image_to_affine(file_key):
         print(f'Error={e}')
         sys.exit()
 
-    
     # If the image is sRGB 16bit, convert to 8bit
     if np.array(im0).ndim == 3 and np.array(im0).dtype == np.uint16:
         # PIL can't handle sRGB 16bit images
