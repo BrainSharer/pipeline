@@ -7,6 +7,7 @@
 # [Full description of options](https://xgboost.readthedocs.io/en/latest//parameter.html)
 
 import os
+os.environ['QT_QPA_PLATFORM'] = 'offscreen' # Prevents GUI error on HPC
 import numpy as np
 import xgboost as xgb
 import pickle as pk
@@ -15,12 +16,15 @@ import polars as pl #replacement for pandas (multi-core)
 import imageio
 from pathlib import Path
 from tqdm import tqdm
+from datetime import datetime
 
 from library.cell_labeling.cell_detector_base import CellDetectorBase
 from library.cell_labeling.cell_predictor import GreedyPredictor
 from library.cell_labeling.detector import Detector   
-from sklearn.metrics import roc_curve, auc, confusion_matrix
-import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
+from matplotlib import pyplot as plt
 
 print("XGBoost Version:", xgb.__version__)
 
@@ -83,57 +87,134 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
     #     return df_in_section
 
 #POSSIBLE DEPRECATION (IF ROC CALC WORKS)
-    def gen_scale(self,n,reverse=False):
-        '''
-        Used for plot predictions: appears to be true positive rate vs. false positive rate
-        '''
-        s=np.arange(0,1,1/n)
-        while s.shape[0] !=n:
-            if s.shape[0]>n:
-                s=s[:n]
-            if s.shape[0]<n:
-                s=np.arange(0,1,1/(n+0.1))
-        if reverse:
-            s=s[-1::-1]
-        return s
+    # def gen_scale(self,n,reverse=False):
+    #     '''
+    #     Used for plot predictions: appears to be true positive rate vs. false positive rate
+    #     '''
+    #     s=np.arange(0,1,1/n)
+    #     while s.shape[0] !=n:
+    #         if s.shape[0]>n:
+    #             s=s[:n]
+    #         if s.shape[0]<n:
+    #             s=np.arange(0,1,1/(n+0.1))
+    #     if reverse:
+    #         s=s[-1::-1]
+    #     return s
     
 
-    def evaluate_model(self, test_features: pl.DataFrame, true_labels: pl.Series, new_models: list[xgb.Booster]):
-        '''
-        Model evaluation using ROC curve
-        1) get predicted probabilities
-        2) get true labels (HUMAN_POSITIVE LABELS)
-        3) plot ROC curve
-        4) generate confusion matrix
-        '''
-        predicted_probabilities = new_models.predict_proba(test_features)
-        # Get the false positive rate and true positive rate
-        fpr, tpr, thresholds = roc_curve(true_labels, predicted_probabilities[:, 1])
+    def evaluate_model(self, test_features: xgb.DMatrix, true_labels: pl.Series, new_models: list[xgb.Booster], model_filename: str) -> np.ndarray:
+        """
+        Evaluates model performance with ROC curve and confusion matrix.
 
-        # Calculate the AUC (Area Under the Curve)
-        auc_value = auc(fpr, tpr)
-        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (AUC = %0.2f)' % auc_value)
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver operating characteristic')
-        plt.legend(loc="lower right")
-        fig = plt.gcf()
+        Args:
+            test_features: Test data features
+            true_labels: Ground truth labels
+            new_models: List of trained XGBoost models
+            model_filename: Name of the model for the title
+        Returns:
+            np.ndarray: RGB image of ROC plot
+        """
+        # Ensure we're working with matching chunks
+        batch_size = test_features.num_row()  # Get DMatrix row count
+        true_labels = true_labels[:batch_size]  # Slice to match
+        y_true = true_labels.to_numpy()
+
+        # Get predictions
+        all_preds = [model.predict(test_features, output_margin=False) for model in new_models]
+        predicted_probs = np.mean(all_preds, axis=0)
+        
+        # Check if lengths match
+        if len(y_true) != len(predicted_probs):
+            print(f"Warning: Length mismatch - predictions: {len(predicted_probs)}, labels: {len(y_true)}")
+            
+            # If labels are longer, truncate to match predictions
+            if len(y_true) > len(predicted_probs):
+                y_true = y_true[:len(predicted_probs)]
+            else:
+                # If predictions are longer (unlikely), truncate them
+                predicted_probs = predicted_probs[:len(y_true)]
+        
+        # Filter for definite labels (-2 or 2)
+        is_definite = (y_true == -2) | (y_true == 2)
+        y_true_binary = (y_true[is_definite] == 2).astype(int)
+        
+        # Handle 1D (binary) vs 2D (multiclass) probabilities
+        if predicted_probs.ndim == 1:
+            y_prob = predicted_probs[is_definite]
+        else:
+            y_prob = predicted_probs[is_definite, 1]  # Assuming class 1 is neuron
+
+        # Filter for definite labels (-2 or 2)
+        is_definite = (y_true == -2) | (y_true == 2)
+        y_true_binary = (y_true[is_definite] == 2).astype(int)
+        y_prob = predicted_probs[is_definite] if predicted_probs.ndim == 1 else predicted_probs[is_definite, 1]
+        y_pred = (y_prob > 0.5).astype(int)  # Binary predictions for confusion matrix
+
+        # --- Plot Setup ---
+        fig = plt.figure(figsize=(16, 6))
+        fig.suptitle(model_filename, fontsize=12, y=0.98)  # Main title at top
+        
+        # Create subplots
+        ax1 = plt.subplot(1, 2, 1)  # ROC curve
+        ax2 = plt.subplot(1, 2, 2)  # Confusion matrix
+
+        # GENERATE ROC CURVE
+        if len(np.unique(y_true_binary)) >= 2:
+            fpr, tpr, _ = roc_curve(y_true_binary, y_prob)
+            auc_score = roc_auc_score(y_true_binary, y_prob)
+            ax1.plot(fpr, tpr, label=f'AUC={auc_score:.2f}')
+            ax1.set_title('ROC Curve')
+        else:
+            ax1.text(0.5, 0.5, 'Insufficient class data', ha='center')
+        ax1.plot([0, 1], [0, 1], 'k--')
+        ax1.set_title('ROC Curve')
+        ax1.set_xlabel('False Positive Rate')
+        ax1.set_ylabel('True Positive Rate')
+        ax1.legend(loc='lower right')
+
+        # GENERATE CONFUSION MATRIX
+        try:
+            cm = confusion_matrix(y_true_binary, y_pred)
+            disp = ConfusionMatrixDisplay(cm, display_labels=['Non-Neuron', 'Neuron'])
+            disp.plot(ax=ax2, cmap='Blues', values_format='d')
+            ax2.set_title('Confusion Matrix')
+        except ValueError as e:
+            ax2.text(0.5, 0.5, f'Error: {str(e)}', ha='center')
+
+        # Add generation date in lower right corner
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        fig.text(
+            0.98,  # Right edge
+            0.02,  # Bottom edge
+            f"Generated: {current_date}",
+            ha='right',
+            va='bottom',
+            fontsize=10,
+            color='gray'
+        )
+
+        # Convert to RGB image
+        fig.tight_layout()
         fig.canvas.draw()
         img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-
-        # Calculate confusion matrix
-        predicted_labels = (predicted_probabilities[:, 1] >= 0.5).astype(int)
-        conf_mat = confusion_matrix(true_labels, predicted_labels)
-        #TODO: SAVE CONFUSION MATRIX TO FILE
-        print("Confusion Matrix:")
-        print(conf_mat)
+        plt.close(fig)
         
         return img_data
-        plt.close()
+        
+
+    def createDM(self, df: pl.DataFrame) -> xgb.DMatrix:
+        '''
+        MOVED FROM class Detector() [detector.py]
+        '''
+        if 'label' in df.columns:
+            labels = df.get_column('label') # Extract the label column and store it
+            features = df.drop('label') # Drop the label column to keep only features
+        else:
+            # Raise an error if 'label' is not found in the DataFrame
+            raise ValueError("Column 'label' not found in the DataFrame")
+    
+        return xgb.DMatrix(features, label=labels)
 
 
     def get_train_and_test(self, df: pl.DataFrame, frac: float = 0.8) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
@@ -165,7 +246,11 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
             'eta': 0.3,  # Learning rate
             'max_depth': 3,  # Default depth limit
             'nthread': os.cpu_count() -1,  # Dynamic core allocation
-            'eval_metric': 'logloss'  # Metric to monitor
+            'eval_metric': 'logloss',  # Metric to monitor
+            "n_jobs": -1,  # Use all available CPU cores (if run on CPU)
+
+            'device': 'cuda', # Use GPU (replaces 'tree_method': 'gpu_hist')
+            'predictor': 'gpu_predictor',  # Use GPU for prediction
         }
 
         # shrinkage_parameter = 0.3
@@ -175,13 +260,14 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         print("xgboost Default Parameters:", self.default_param)
 
 
-    def train_classifier(self, features: pl.DataFrame, local_scratch: Path, niter: int, depth: int = None, models: xgb.Booster = None, **kwrds) -> xgb.Booster:
+    def train_classifier(self, features: pl.DataFrame, local_scratch: Path, model_filename: str, niter: int, depth: int = None, debug: bool = False, models: xgb.Booster = None, **kwrds) -> xgb.Booster:
         
         param = self.default_param
 
         if depth is not None:
             param["max_depth"] = depth
-
+        
+        # print(xgb.build_info())
         df = features
         train, test, _ = self.get_train_and_test(df)  # Split data
         evallist = [(train, "train"), (test, "eval")]  # Evaluation list
@@ -190,14 +276,18 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
         for i in tqdm(range(30), desc="Training on models"):
             if models is None:
                 bst = xgb.train(
-                    param,  # Parameter dictionary
-                    train,  # Training data
-                    num_boost_round=niter,  # Maximum boosting rounds
-                    evals=evallist,  # Validation set for early stopping
-                    verbose_eval=False,  # Disable verbose output
-                    early_stopping_rounds=50,  # Stop if no improvement for 50 rounds
-                    **kwrds
+                    param, train, num_boost_round=niter, evals=evallist, verbose_eval=False, **kwrds
                 )
+                #test remove early stopping rounds
+                # bst = xgb.train(
+                #     param,  # Parameter dictionary
+                #     train,  # Training data
+                #     num_boost_round=niter,  # Maximum boosting rounds
+                #     evals=evallist,  # Validation set for early stopping
+                #     verbose_eval=False,  # Disable verbose output
+                #     early_stopping_rounds=50,  # Stop if no improvement for 50 rounds
+                #     **kwrds
+                # )
             else:
                 bst = xgb.train(
                     param,
@@ -205,14 +295,17 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
                     num_boost_round=niter,
                     evals=evallist,
                     verbose_eval=False,
-                    early_stopping_rounds=50,
+                    # early_stopping_rounds=50,
                     xgb_model=models[i],  # Use existing model if provided
                     **kwrds
                 )
 
             # Use best_iteration for predictions (rather than 'best_ntree_limit')
-            best_iteration = bst.best_iteration
-            y_pred = bst.predict(test, iteration_range=(0, best_iteration + 1))
+            # best_iteration = bst.best_iteration [only if early stopping is used]
+            #best_ntree_limit = 676 [prev. Kui hard-coded value]
+            #y_pred = bst.predict(test, iteration_range=[1, best_ntree_limit], output_margin=True)
+            best_iteration = niter
+            y_pred = bst.predict(test, iteration_range=(1, best_iteration))
             y_test = test.get_label()
 
             # Process predictions
@@ -223,15 +316,14 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
 
             bst_list.append(bst)
 
-            #GENERATE METRICS FOR MODEL (ROC_CURVE, CONFUSION MATRIX)
-            #plt.plot(pos_preds, self.gen_scale(pos_preds.shape[0]))
-            #plt.plot(neg_preds, self.gen_scale(neg_preds.shape[0], reverse=True))
+        #ROC_CURVE CREATE ON SCRATCH THEN MOVE TO CENTRALIZED REPOSITORY
+        roc_img = self.evaluate_model(test, df['predictions'], bst_list, model_filename)
 
-            #ROC_CURVE CREATE & STORE ON SCRATCH UNTIL WE FIND BETTER PLACE
-            roc_img = self.evaluate_model(test, df['predictions'], bst_list)
-            
-            ROC_OUTPUT = Path(local_scratch, 'roc_curve_{self.MODEL_PATH.name}.tif')
-            imageio.imsave(ROC_OUTPUT, roc_img)
+        roc_filename = f"roc_curve_{model_filename.stem}.tif"
+        ROC_OUTPUT = Path(local_scratch, roc_filename)
+        if debug:
+            print(f"Saving model metrics: [ROC curve to {ROC_OUTPUT}], [Confusion Matrix to {local_scratch}]")
+        imageio.imsave(ROC_OUTPUT, roc_img)
             
         return bst_list
 
@@ -279,12 +371,13 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
     #         pointi = pointi*np.array([0.325,0.325,20])
     #         trainer.sqlController.add_layer_data_row(trainer.animal,34,1,pointi,52,f'detected_soma_round_{self.step}')
 
+#POSSIBLE DEPRECATION
+    # def save_detector(self):
+    #     detector = Detector(self.model,self.predictor)
+    #     return super().save_detector(detector)
 
-    def save_detector(self):
-        detector = Detector(self.model,self.predictor)
-        return super().save_detector(detector)
-
-    def load_detector(self):
-        detector = super().load_detector()
-        self.model = detector.model
-        self.predictor = detector.predictor
+#POSSIBLE DEPRECATION
+    # def load_detector(self):
+    #     detector = super().load_detector()
+    #     self.model = detector.model
+    #     self.predictor = detector.predictor

@@ -22,6 +22,7 @@ from tqdm import tqdm
 import xgboost as xgb
 import psutil
 import warnings
+import cupy as cp
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_utilities import (
@@ -55,7 +56,7 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal, task, step=4, model="", channel=1, x=0, y=0, annotation_id="", debug=False):
+    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -237,14 +238,42 @@ class CellMaker(ParallelManager):
                 print(f'Found cell training definitions file @ {self.avg_cell_img_file}')
             self.fileLogger.logevent(f'Found cell training definitions file @ {self.avg_cell_img_file}')
 
-        # Check for model file (models_round_{self.step}_threshold_2000.pkl) in the models dir
+        # Check for specific model, if elected
         #TODO: consolidate model file location with cell_detector_base.py (DATA_PATH, MODELS)
+        model_dir = Path('/net/birdstore/Active_Atlas_Data/cell_segmentation/models')
         if self.model: #IF SPECIFIC MODEL SELECTED
             if self.debug:
                 print(f'SEARCHING FOR SPECIFIC MODEL FILE: {self.model}')
-            self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_{self.model}_round_{self.step}_threshold_2000.pkl')
+
+            if self.step:
+                print(f'DEBUG: {self.step=}')
+                self.model_file = Path(model_dir, f'models_{self.model}_step_{self.step}.pkl')
+            else:
+                # Find all matching model files and extract steps
+                pattern = re.compile(rf'models_{re.escape(self.model)}_step_(\d+)\.pkl')
+                
+                # Get all matching files with their step numbers
+                matching_files = []
+                for f in model_dir.glob(f'models_{self.model}_step_*.pkl'):
+                    match = pattern.match(f.name)
+                    if match:
+                        step = int(match.group(1))
+                        matching_files.append((step, f))
+                
+                if matching_files:
+                    # Sort by step number and pick the latest
+                    matching_files.sort(reverse=True)
+                    latest_step, latest_file = matching_files[0]
+                    self.model_file = str(latest_file)
+                    if self.debug:
+                        print(f'Using latest step {latest_step} for model {self.model}')
+                else:
+                    raise FileNotFoundError(
+                        f"No model files found for {self.model} in {model_dir}"
+                    )
+                
         else:
-            self.model_file = os.path.join('/net/birdstore/Active_Atlas_Data/cell_segmentation/models', f'models_round_{self.step}_threshold_2000.pkl')
+            self.model_file = Path(model_dir, 'models_round_4_threshold_2000.pkl')
 
         if os.path.exists(self.model_file):
             if self.debug:
@@ -386,8 +415,7 @@ class CellMaker(ParallelManager):
             cell_radius,
             max_segment_size,
             SCRATCH,
-            OUTPUT,
-            avg_cell_img,
+            OUTPUT, _,
             model_filename,
             input_format,
             input_path_dye,
@@ -479,6 +507,8 @@ class CellMaker(ParallelManager):
         if debug:
             print(f'dask array created with following parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
+        cuda_available = cp.is_available()
+
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
                 x_start = row*x_window
@@ -490,16 +520,16 @@ class CellMaker(ParallelManager):
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
 
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
-                difference_ch3 = subtract_blurred_image(image_roi_virus) #calculate img difference for virus channel (e.g. fluorescence)
+                difference_ch3 = subtract_blurred_image(image_roi_virus, cuda_available) #calculate img difference for virus channel (e.g. fluorescence)
 
-                connected_segments = find_connected_segments(difference_ch3, segmentation_threshold)
+                connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
                 if connected_segments[0] > 2:
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
 
                     # found cell candidate (first element of tuple is count)
-                    difference_ch1 = subtract_blurred_image(image_roi_dye)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    difference_ch1 = subtract_blurred_image(image_roi_dye, cuda_available)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
                         animal,
@@ -552,25 +582,11 @@ class CellMaker(ParallelManager):
 
         '''
 
-        (
-            animal,
-            section,
-            str_section_number,
-            segmentation_threshold,
-            cell_radius,
-            max_segment_size,
-            SCRATCH,
-            OUTPUT,
-            avg_cell_img,
-            model_filename,
-            input_format,
-            input_path_dye,
-            input_path_virus,
-            step,
-            debug,
-        ) = file_keys
+        animal, section, str_section_number, _, _, _, SCRATCH, _, avg_cell_img, _, _, _, _, _, debug = file_keys
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
+
+        cuda_available = cp.is_available()
 
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_features')
         output_path.mkdir(parents=True, exist_ok=True)
@@ -581,11 +597,39 @@ class CellMaker(ParallelManager):
         for idx, cell in enumerate(cell_candidate_data):
             
             # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
-            ch1_corr, ch1_energy = calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
-            ch3_corr, ch3_energy = calculate_correlation_and_energy(avg_cell_img['CH3'], cell['image_CH3'])
+            # Initialize GPU data containers
+            ch1_img_gpu = ch3_img_gpu = None
+            results = {}
+            if cuda_available:
+                # Load all images to GPU once
+                ch1_img_gpu = cp.asarray(cell['image_CH1'])
+                ch3_img_gpu = cp.asarray(cell['image_CH3'])
+                avg_ch1_gpu = cp.asarray(avg_cell_img["CH1"])
+                avg_ch3_gpu = cp.asarray(avg_cell_img["CH3"])
 
-            # STEP 3-D) features_using_center_connected_components
-            ch1_contrast, ch3_constrast, moments_data = features_using_center_connected_components(cell, debug)
+                # Process correlation/energy on GPU
+                results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(
+                    avg_ch1_gpu, ch1_img_gpu, cuda_available)
+                
+                results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(
+                    avg_ch3_gpu, ch3_img_gpu, cuda_available)
+                
+                # Process contrast/moments on GPU
+                results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = \
+                    features_using_center_connected_components(
+                        {'image_CH1': ch1_img_gpu, 
+                        'image_CH3': ch3_img_gpu,
+                        'mask': cp.asarray(cell['mask'])},
+                        cuda_available=cuda_available, debug=debug)
+            else:
+                results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(
+                    avg_cell_img["CH1"], cell['image_CH1'], cuda_available)
+                
+                results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(
+                    avg_cell_img["CH3"], cell['image_CH3'], cuda_available)
+
+                results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = \
+                    features_using_center_connected_components(cell, cuda_available=cuda_available, debug=debug)
 
             # Build features dictionary
             spreadsheet_row = {
@@ -597,17 +641,19 @@ class CellMaker(ParallelManager):
                 "area": cell["area"],
                 "height": cell["cell_shape_XY"][1],
                 "width": cell["cell_shape_XY"][0],
-                "corr_CH1": ch1_corr,
-                "energy_CH1": ch1_energy,
-                "corr_CH3": ch3_corr,
-                "energy_CH3": ch3_energy,
+                "corr_CH1": results['ch1_corr'],
+                "energy_CH1": results['ch1_energy'],
+                "corr_CH3": results['ch3_corr'],
+                "energy_CH3": results['ch3_energy'],
+                "contrast1": results['ch1_contrast'],
+                "contrast3": results['ch3_contrast']
             }
-            spreadsheet_row.update(moments_data[0])
-            spreadsheet_row.update(moments_data[1]) #e.g. 'h1_mask' (6 items)
-            spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast})
+            spreadsheet_row.update(results['moments_data'][0])  # Regular moments
+            spreadsheet_row.update(results['moments_data'][1])  # Hu moments
+            spreadsheet_row.update({'contrast1': results['ch1_contrast'], 'contrast3': results['ch1_contrast']})
             output_spreadsheet.append(spreadsheet_row)
 
-
+            #TODO: EXPLORE IF HARD-CODED VARIABLES MAKE ANY DIFFERENCE HERE
             fx = 26346
             fy = 5718
             #col = 5908
@@ -627,7 +673,7 @@ class CellMaker(ParallelManager):
                     print()
 
         df_features = pl.DataFrame(output_spreadsheet)
-        df_features.write_csv(output_file, sep=",")
+        df_features.write_csv(output_file, separator=",")
 
         print(f'Saving {len(output_spreadsheet)} cell features to {output_file}')
         print('Completed calculate_features')
@@ -638,31 +684,17 @@ class CellMaker(ParallelManager):
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        (
-            animal,
-            section,
-            str_section_number,
-            segmentation_threshold,
-            cell_radius,
-            max_segment_size,
-            SCRATCH,
-            OUTPUT,
-            avg_cell_img,
-            model_filename,
-            input_format,
-            input_path_dye,
-            input_path_virus,
-            step,
-            debug,
-        ) = file_keys
+        _, section, str_section_number, _, _, _, SCRATCH, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
 
-        if debug and step == 1:
-            print('Training model creation mode; no scoring')
-
-        if  step > 1:
+        #TODO: test if retraining or init model creating
+        if model_filename:
             model_file = load(model_filename)
-
+            model_msg = f'Training model: {model_filename}'
+        else:
+            model_msg = 'Training model creation mode; no scoring'
+            
         if debug:
+            print(model_msg)
             print(f'Starting function score_and_detect_cell on section {section}')
 
         def calculate_scores(features: pl.DataFrame, model):
@@ -676,19 +708,39 @@ class CellMaker(ParallelManager):
                 Returns:
                 tuple: Mean scores and standard deviation scores.
             """
-            all_data = xgb.DMatrix(features)
-            scores=np.zeros([features.shape[0], len(model)])
+            # Convert Polars DataFrame to pandas (XGBoost DMatrix prefers pandas)
+            features_pd = features.to_pandas()
 
-            for i, bst in enumerate(model):
-                attributes = bst.attributes()
-                try:
-                    best_ntree_limit = int(attributes["best_ntree_limit"])
-                except KeyError:
-                    best_ntree_limit = 676
-                scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
+            # Ensure model is a list (for consistent processing)
+            models = [model] if not isinstance(model, list) else model
+
+            # Initialize scores array
+            scores = np.zeros((features.shape[0], len(models)))
+
+            for i, bst in enumerate(models):
+                 # Get the model's expected features (excluding 'predictions' and 'idx')
+                expected_features = [f for f in bst.feature_names if f not in ['predictions', 'idx']]
+
+                # Select only the features the model should use
+                data = features_pd[expected_features]
+
+                # Create DMatrix (optimized for XGBoost)
+                dmat = xgb.DMatrix(data)
+
+                # Get best_ntree_limit (fallback to default if missing)
+                best_ntree_limit = int(bst.attributes().get("best_ntree_limit", 676))
+
+                # Predict
+                scores[:, i] = bst.predict(
+                    dmat,
+                    iteration_range=[1, best_ntree_limit],
+                    output_margin=True,
+                    validate_features=False  # Safe because we filtered features
+                )
 
             mean_scores = np.mean(scores, axis=1)
             std_scores = np.std(scores, axis=1)
+            
             return mean_scores, std_scores
 
         def get_prediction_and_label(mean_scores: np.ndarray) -> list:
@@ -718,20 +770,22 @@ class CellMaker(ParallelManager):
             return predictions
 
         drops = ['animal', 'section', 'index', 'row', 'col']        
-        cell_features_selected_columns = cell_features.drop(drops,axis=1)
+        cell_features_selected_columns = cell_features.drop(drops)
 
         # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
-        if step > 1:
+        if model_filename: #IF MODEL FILE EXISTS, USE TO SCORE
             mean_scores, std_scores = calculate_scores(cell_features_selected_columns, model_file)
-            cell_features['mean_score'] = mean_scores
-            cell_features['std_score'] = std_scores
-            cell_features['predictions'] = np.array(get_prediction_and_label(mean_scores))
+            cell_features = cell_features.with_columns([
+                pl.Series("mean_score", mean_scores),
+                pl.Series("std_score", std_scores),
+                pl.Series("predictions", get_prediction_and_label(mean_scores))
+            ])
 
         # STEP 4-2-2) Stores dataframe as csv file
         if debug:
             print(f'Cell labels output dir: {OUTPUT}')
         Path(OUTPUT).mkdir(parents=True, exist_ok=True)
-        cell_features.to_csv(Path(OUTPUT, f'detections_{str_section_number}.csv'), index=False)
+        cell_features.write_csv(Path(OUTPUT, f'detections_{str_section_number}.csv'), separator=",")
         if debug:
             print('Completed detect_cell')
 
@@ -924,6 +978,7 @@ class CellMaker(ParallelManager):
         print(f'Annotations saved to {annotations_file}')
         ###############################################
 
+        #TODO: See if converting to polars is faster
         df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
         print(f'Found {len(df)} total neurons and writing to {dfpath}')
 
@@ -1117,16 +1172,23 @@ class CellMaker(ParallelManager):
             print(detection_features.columns)
         # mean_score, predictions, std_score are results, not features
 
+        # Add predictions column with default value -2 if it doesn't exist
+        if 'predictions' not in detection_features.columns:
+            detection_features = detection_features.with_columns(
+                pl.lit(-2).alias('predictions')
+            )
+
         detection_features = detection_features.with_columns(
-            pl.when(detection_features['predictions'] > 0)
+            pl.when(pl.col('predictions') > 0)  # Replace with actual logic
             .then(1)
             .otherwise(0)
-            .alias('label')
+            .alias("label")
         )
-        drops = ['animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'] 
-        for drop in drops:
-            if drop in detection_features.columns:
-                detection_features = detection_features.drop(drop)
+
+        non_feature_columns = {'animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score'}
+        detection_features = detection_features.drop(
+            [col for col in non_feature_columns if col in detection_features.columns]
+        )
 
         if self.debug:
             print(f'Starting training on {self.animal}, {self.model=}, step={self.step} with {len(detection_features)} features')
@@ -1141,14 +1203,13 @@ class CellMaker(ParallelManager):
 
         #TODO - MOVE CONSTANTS SOMEWHERE ELSE; REMOVE HARD-CODING
         if self.step == 1:
-            new_models = trainer.train_classifier(detection_features, local_scratch, 676, 3)
+            new_models = trainer.train_classifier(features = detection_features, local_scratch = local_scratch, model_filename = model_filename, niter = 676, depth = 3, debug = self.debug)
         else:
-            new_models = trainer.train_classifier(detection_features, local_scratch, 676, 3, models = np_model) # pass Detector 4 for training
+            new_models = trainer.train_classifier(features = detection_features, local_scratch = local_scratch, model_filename = model_filename, niter = 676, depth = 3, debug = self.debug, models = np_model) # pass Detector 4 for training
 
         trainer = CellDetectorTrainer(self.animal, step=self.step + 1) # Be careful when saving the model. The model path is only relevant to 'step'. 
-        
         # You need to use a new step to save the model, otherwise the previous models would be overwritten.
-        trainer.save_models(new_models, local_scratch)
+        trainer.save_models(new_models, model_filename, local_scratch)
 
 
     def create_features(self):
@@ -1250,6 +1311,7 @@ class CellMaker(ParallelManager):
                 spreadsheet = []
                 data_virus = load_image(input_file_virus_path)
                 data_dye = load_image(input_file_dye_path)
+                #TODO: Where did Kui get his area, height, width?
                 for x, y in section_data[section]:
                     print(f'processing coordinates {y=}, {x=}, {section=}')
                     idx += 1
@@ -1305,13 +1367,25 @@ class CellMaker(ParallelManager):
                     }
                     spreadsheet_row.update(moments_data[0])
                     spreadsheet_row.update(moments_data[1]) #e.g. 'h1_mask' (6 items)
-                    spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast, 'predictions': 2})
+                    spreadsheet_row.update({'contrast1': ch1_contrast, 'contrast3': ch3_constrast, 'mean_score': 0,	'std_score': 0, 'predictions': 2})#added missing columns (mean, std)
                     spreadsheet.append(spreadsheet_row)
 
                 df_features = pl.DataFrame(spreadsheet)
+                df_features = df_features.with_columns([
+                    pl.col("mean_score").cast(pl.Float64),
+                    pl.col("std_score").cast(pl.Float64)
+                ])
+                            
                 dfpath = os.path.join(self.OUTPUT, f'detections_{str(section).zfill(3)}.csv')
+
+                # DO NOT REMOVE EXISTING DETECTIONS AS GROUND TRUTH FILE WILL LIKELY NOT INCLUDE ALL CELLS, JUST SAMPLING
+                if os.path.exists(dfpath):
+                    existing_df = pl.read_csv(dfpath)
+                    df_features = pl.concat([existing_df, df_features])
+
                 df_features.write_csv(dfpath)
                 print(f'Saved {len(df_features)} features to {dfpath}')
+
         print(f'Finished processing {idx} coordinates')
 
 
@@ -1357,8 +1431,6 @@ class CellMaker(ParallelManager):
             if file_keys[-1]: #DEBUG
                 print(f"DEBUG: create cell features with identified cell candidates (auto_cell_labels - step 3)")
             cell_features = cellmaker.calculate_features(file_keys, cell_candidates) #Step 3. calculate cell features
-            #print(f'type cell features {type(cell_features)}')
-            #print(cell_features.head())
             if file_keys[-1]: #DEBUG
                 print(f'DEBUG: start_labels - STEP 4 (Detect cells [based on features])')
                 print(f'Cell features: {len(cell_features)}')

@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", help="Enter the model", required=False, type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--annotation", help="Create features with specific annotation id", required=False, default="", type=str)
-    parser.add_argument("--step", help="Enter step", required=False, default=4, type=int)
+    parser.add_argument("--step", help="Enter step", required=False, type=int)
     parser.add_argument("--x", help="Enter x", required=False, default=0, type=int)
     parser.add_argument("--y", help="Enter y", required=False, default=0, type=int)
 

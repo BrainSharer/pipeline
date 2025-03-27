@@ -4,6 +4,11 @@ import cv2
 import imageio
 import numpy as np
 
+import cupy as cp
+import cupyx.scipy.signal  # Required for GPU-accelerated 2D convolution
+from cupyx.scipy.ndimage import gaussian_filter
+from numba import cuda
+
 
 def load_image(file: str):
     if os.path.exists(file):
@@ -13,27 +18,186 @@ def load_image(file: str):
         sys.exit(1)
 
 
-def subtract_blurred_image(image, make_smaller=True):
+def subtract_blurred_image(image, cuda_available: bool = False, make_smaller: bool = True):
     '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean'''
-    image = np.float32(image)
-    if make_smaller:
-        small = cv2.resize(image, (0, 0), fx=0.05, fy=0.05, interpolation=cv2.INTER_AREA)
+    if cuda_available:
+        image_gpu = cp.asarray(image, dtype=cp.float32)
+        if make_smaller:
+            small = cp.array(cv2.resize(cp.asnumpy(image_gpu), (0, 0), fx=0.05, fy=0.05, interpolation=cv2.INTER_AREA))
+        else:
+            small = image_gpu.copy()
+        blurred = gaussian_filter(small, sigma=10, mode='reflect')
+        relarge = cp.array(cv2.resize(cp.asnumpy(blurred), image_gpu.T.shape, interpolation=cv2.INTER_AREA))
+        difference = cp.asnumpy(image_gpu - relarge)
     else:
-        small = image.copy()
-    blurred = cv2.GaussianBlur(small, ksize=(21, 21), sigmaX=10) # Blur the resized image
-    relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
-    difference = image - relarge # Calculate the difference between the original and resized-blurred images
+        image = np.float32(image)
+        if make_smaller:
+            small = cv2.resize(image, (0, 0), fx=0.05, fy=0.05, interpolation=cv2.INTER_AREA)
+        else:
+            small = image.copy()
+        blurred = cv2.GaussianBlur(small, ksize=(21, 21), sigmaX=10) # Blur the resized image
+        relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
+        difference = image - relarge # Calculate the difference between the original and resized-blurred images
     return difference
 
 
-def find_connected_segments(image, segmentation_threshold) -> tuple:
+def find_connected_segments(image, segmentation_threshold, cuda_available: bool = False) -> tuple:
     '''PART OF STEP 2. Identify cell candidates'''
-    n_segments, segment_masks, segment_stats, segment_location = cv2.connectedComponentsWithStats(np.int8(image > segmentation_threshold))
-    segment_location = np.int32(segment_location)
-    segment_location = np.flip(segment_location, 1) 
+
+    if cuda_available:
+        # Transfer data to GPU and threshold
+        image_gpu = cp.asarray(image)
+        binary_gpu = (image_gpu > segmentation_threshold).astype(cp.int8)
+        n_segments, segment_masks, segment_stats, segment_location = cp.connectedComponentsWithStats(binary_gpu)
+
+        if segment_location.size > 0:
+            segment_location = cp.nan_to_num(segment_location, nan=0, posinf=0, neginf=0)
+            segment_location = cp.clip(segment_location, 
+                                    cp.iinfo(cp.int32).min, 
+                                    cp.iinfo(cp.int32).max)
+            segment_location = segment_location.astype(cp.int32)
+            segment_location = cp.flip(segment_location, 1)  # Flip coordinates
+
+        n_segments, segment_masks, segment_stats, segment_location = (int(n_segments), cp.asnumpy(segment_masks), cp.asnumpy(segment_stats), cp.asnumpy(segment_location))
+    else:
+        n_segments, segment_masks, segment_stats, segment_location = cv2.connectedComponentsWithStats(np.int8(image > segmentation_threshold))
+    
+        if segment_location.size > 0:
+            # Replace NaN/inf with 0 and ensure finite values
+            segment_location = np.nan_to_num(segment_location, nan=0, posinf=0, neginf=0)
+            
+            # Clip to integer range to prevent overflow
+            segment_location = np.clip(segment_location, 
+                                    np.iinfo(np.int32).min, 
+                                    np.iinfo(np.int32).max)
+            
+            # Convert to int32 safely
+            segment_location = segment_location.astype(np.int32)
+        
+        # Flip coordinates (y,x) -> (x,y) if array is not empty
+        if segment_location.size > 0:
+            segment_location = np.flip(segment_location, 1)
+    
     return (n_segments, segment_masks, segment_stats, segment_location)
 
 
+#NOTE USED FOR GPU-ACCELERATION OF filter_cell_candidate_gpu
+@cuda.jit
+def filter_segments_kernel(
+    segment_stats,
+    segment_location,
+    segment_masks,
+    difference_ch1,
+    difference_ch3,
+    max_segment_size,
+    cell_radius,
+    x_window,
+    y_window,
+    output_mask
+):
+    segmenti = cuda.grid(1)
+    if segmenti >= segment_stats.shape[0]:
+        return
+    
+    _, _, width, height, object_area = segment_stats[segmenti]
+    if object_area > max_segment_size:
+        return
+    
+    segment_row, segment_col = segment_location[segmenti]
+    
+    # Bounds checking
+    row_start = int(segment_row - cell_radius)
+    col_start = int(segment_col - cell_radius)
+    if row_start < 0 or col_start < 0:
+        return
+        
+    row_end = int(segment_row + cell_radius)
+    col_end = int(segment_col + cell_radius)
+    if row_end > x_window or col_end > y_window:
+        return
+    
+    # Mark valid segments
+    output_mask[segmenti] = 1
+
+
+def filter_cell_candidates_gpu(
+    animal,
+    section_number,
+    connected_segments,
+    max_segment_size,
+    cell_radius,
+    x_window,
+    y_window,
+    absolute_coordinates,
+    difference_ch1,
+    difference_ch3,
+):
+    """GPU-accelerated cell candidate filtering"""
+    n_segments, segment_masks, segment_stats, segment_location = connected_segments
+    
+    # Transfer data to GPU
+    d_segment_stats = cp.asarray(segment_stats)
+    d_segment_location = cp.asarray(segment_location)
+    d_segment_masks = cp.asarray(segment_masks)
+    d_diff_ch1 = cp.asarray(difference_ch1)
+    d_diff_ch3 = cp.asarray(difference_ch3)
+    
+    # Create output mask on GPU
+    d_output_mask = cp.zeros(n_segments, dtype=cp.uint8)
+    
+    # Launch CUDA kernel
+    threadsperblock = 256
+    blockspergrid = (n_segments + (threadsperblock - 1)) // threadsperblock
+    filter_segments_kernel[blockspergrid, threadsperblock](
+        d_segment_stats,
+        d_segment_location,
+        d_segment_masks,
+        d_diff_ch1,
+        d_diff_ch3,
+        max_segment_size,
+        cell_radius,
+        x_window,
+        y_window,
+        d_output_mask
+    )
+    
+    # Get valid segment indices
+    valid_segments = cp.where(d_output_mask == 1)[0]
+    cell_candidates = []
+    
+    # Process only valid segments on CPU
+    for segmenti in valid_segments.get():  # Bring only indices back to CPU
+        segment_row, segment_col = segment_location[segmenti]
+        row_start = int(segment_row - cell_radius)
+        col_start = int(segment_col - cell_radius)
+        row_end = int(segment_row + cell_radius)
+        col_end = int(segment_col + cell_radius)
+        
+        # Get ROI slices (still on GPU)
+        roi_mask = (d_segment_masks[row_start:row_end, col_start:col_end] == segmenti)
+        roi_ch1 = d_diff_ch1[row_start:row_end, col_start:col_end].T
+        roi_ch3 = d_diff_ch3[row_start:row_end, col_start:col_end].T
+        
+        # Transfer only needed ROIs to CPU
+        cell = {
+            "animal": animal,
+            "section": section_number,
+            "area": segment_stats[segmenti, 4],
+            "absolute_coordinates_YX": (
+                absolute_coordinates[2] + segment_col,
+                absolute_coordinates[0] + segment_row,
+            ),
+            "cell_shape_XY": (segment_stats[segmenti, 3], segment_stats[segmenti, 2]),
+            "image_CH3": roi_ch3.get(),
+            "image_CH1": roi_ch1.get(),
+            "mask": roi_mask.T.get(),
+        }
+        cell_candidates.append(cell)
+    
+    return cell_candidates
+
+
+#POSSIBLE DEPRECATION, IF GPU VERSION (filter_cell_candidates_gpu) WORKS
 def filter_cell_candidates(
     animal,
     section_number,
@@ -95,41 +259,74 @@ def filter_cell_candidates(
     return cell_candidates
 
 
-def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
-    '''part of step 3. 
-    calculate cell features; calculate correlation [between cell_candidate_img 
-    and avg_cell_img] and and energy for cell canididate
-    NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
-    '''
+# def calculate_correlation_and_energy_gpu(avg_cell_img, cell_candidate_img):
+#     '''
+#     -MODIFIED TO RUN ON GPU-
+#     part of step 3. 
+#     calculate cell features; calculate correlation [between cell_candidate_img 
+#     and avg_cell_img] and and energy for cell canididate
+#     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
+#     '''
+#     print('using GPU - calculate_correlation_and_energy_gpu')
+#     # Transfer data to GPU
+#     avg_cell_img_gpu = cp.asarray(avg_cell_img)
+#     cell_candidate_img_gpu = cp.asarray(cell_candidate_img)
+
+#     # Ensure image arrays are the same size
+#     cell_candidate_img_gpu, avg_cell_img_gpu = equalize_array_size_by_trimming(cell_candidate_img_gpu, avg_cell_img_gpu)
+
+#     # Compute normalized Sobel edge magnitudes
+#     avg_cell_img_x, avg_cell_img_y = sobel_operator(avg_cell_img)
+#     cell_candidate_img_x, cell_candidate_img_y = sobel_operator(cell_candidate_img)
+
+#     # corr = the mean correlation between the dot products at each pixel location
+#     dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
+#     corr = np.mean(dot_prod.flatten())    
+
+#     # energy: the mean of the norm of the image gradients at each pixel location
+#     mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
+#     energy = np.mean((mag * avg_cell_img).flatten())  
+#     return corr, energy
+
+
+#POSSIBLE DEPRECATION, IF GPU VERSION (calculate_correlation_and_energy_gpu) WORKS
+# def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
+#     '''part of step 3. 
+#     calculate cell features; calculate correlation [between cell_candidate_img 
+#     and avg_cell_img] and and energy for cell canididate
+#     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
+#     '''
     
-    if avg_cell_img is None or avg_cell_img.size == 0:
-        print(f'DEBUG: avg_cell_img={avg_cell_img.size}, cell_candidate_img={cell_candidate_img.size}')
-        raise ValueError(f"Error: 'avg_cell_img' is empty or not loaded properly.")
+#     if avg_cell_img is None or avg_cell_img.size == 0:
+#         print(f'DEBUG: avg_cell_img={avg_cell_img.size}, cell_candidate_img={cell_candidate_img.size}')
+#         raise ValueError(f"Error: 'avg_cell_img' is empty or not loaded properly.")
     
-    # Ensure image arrays to same size
-    cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
-    # print(f'DEBUG2: {avg_cell_img.size}')
-    # print(f'DEBUGA2: {cell_candidate_img.size}')
-    # print('*'*40)
-    if avg_cell_img is None or avg_cell_img.size == 0:
-        raise ValueError(f"Error2: 'avg_cell_img' is empty or not loaded properly.")
+#     # Ensure image arrays to same size
+#     cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
+#     # print(f'DEBUG2: {avg_cell_img.size}')
+#     # print(f'DEBUGA2: {cell_candidate_img.size}')
+#     # print('*'*40)
+#     if avg_cell_img is None or avg_cell_img.size == 0:
+#         raise ValueError(f"Error2: 'avg_cell_img' is empty or not loaded properly.")
 
-    # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
-    avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
-    cell_candidate_img_x, cell_candidate_img_y = sobel(cell_candidate_img)
+#     # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
+#     avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
+#     cell_candidate_img_x, cell_candidate_img_y = sobel(cell_candidate_img)
 
-    # corr = the mean correlation between the dot products at each pixel location
-    dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
-    corr = np.mean(dot_prod.flatten())      
+#     # corr = the mean correlation between the dot products at each pixel location
+#     dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
+#     corr = np.mean(dot_prod.flatten())      
 
-    # energy: the mean of the norm of the image gradients at each pixel location
-    mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
-    energy = np.mean((mag * avg_cell_img).flatten())  
-    return corr, energy
+#     # energy: the mean of the norm of the image gradients at each pixel location
+#     mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
+#     energy = np.mean((mag * avg_cell_img).flatten())  
+#     return corr, energy
 
 
 def equalize_array_size_by_trimming(array1, array2):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES; array1 and array 2 the same size'''
+    '''PART OF STEP 3. CALCULATE CELL FEATURES; array1 and array 2 the same size
+    Note: CPU
+    '''
     size0 = min(array1.shape[0], array2.shape[0])
     size1 = min(array1.shape[1], array2.shape[1])
     array1 = trim_array_to_size(array1, size0, size1)
@@ -138,7 +335,9 @@ def equalize_array_size_by_trimming(array1, array2):
 
 
 def trim_array_to_size(arr, size0, size2):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES'''
+    '''PART OF STEP 3. CALCULATE CELL FEATURES
+    Note: CPU
+    '''
     if(arr.shape[0] > size0):
         size_difference = int((arr.shape[0]-size0)/2)
         arr = arr[size_difference:size_difference+size0, :]
@@ -146,24 +345,6 @@ def trim_array_to_size(arr, size0, size2):
         size_difference = int((arr.shape[1]-size2)/2)
         arr = arr[:, size_difference:size_difference+size2]
     return arr
-
-
-def sobel(img):
-    '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
-
-    if img is None or img.size == 0:
-        raise ValueError("Error: The input image is empty or not loaded properly.")
-
-    sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
-    sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
-    _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
-    _std = np.sqrt((np.var(sobel_x) + np.var(sobel_y))/2)
-
-    eps = 1e-8 #If _std is zero or contains NaN/Inf values, the normalization step will fail. 
-    sobel_x = (sobel_x - _mean) / (_std + eps)
-    sobel_y = (sobel_y - _mean) / (_std + eps)
-    return sobel_x, sobel_y
-
 
 def calc_moments_of_mask(mask):   
     '''
@@ -193,7 +374,7 @@ def calc_moments_of_mask(mask):
     return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
 
 
-def features_using_center_connected_components(cell_candidate_data: dict, debug: bool = False):
+def features_using_center_connected_components(cell_candidate_data: dict, cuda_available: bool = False, debug: bool = False):
     '''Part of step 3. calculate cell features'''
     def mask_mean(mask, image): #ORG CODE FROM Kui github (FeatureFinder)
         mean_in = np.mean(image[mask == 1])
@@ -217,6 +398,12 @@ def features_using_center_connected_components(cell_candidate_data: dict, debug:
             print(f"image_CH1 shape: {cell_candidate_data['image_CH1'].shape}")
             print(f"image_CH3 shape: {cell_candidate_data['image_CH3'].shape}")
             sys.exit(1)
+
+    # GPU data detected - convert to CPU if needed
+    if isinstance(image1, cp.ndarray):
+        image1 = cp.asnumpy(image1)
+        image3 = cp.asnumpy(image3)
+        mask = cp.asnumpy(mask)
 
     # Add input validation
     if mask.max() == 0:
@@ -253,3 +440,105 @@ def find_available_backup_filename(file_path):
         
         # Increment the backup extension counter
         i += 1
+
+
+def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img, cuda_available: bool = False):
+    '''
+    Calculates correlation and energy features between cell images
+
+    part of step 3. 
+    calculate cell features; calculate correlation [between cell_candidate_img 
+    and avg_cell_img] and and energy for cell canididate
+    NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
+    '''
+    
+    if cuda_available:
+        try:
+            # Transfer data to GPU
+            if not isinstance(avg_cell_img, cp.ndarray):
+                avg_cell_img_gpu = cp.asarray(avg_cell_img)
+            else:
+                avg_cell_img_gpu = avg_cell_img
+            if not isinstance(cell_candidate_img, cp.ndarray):
+                cell_candidate_img_gpu = cp.asarray(cell_candidate_img)
+            else:
+                cell_candidate_img_gpu = cell_candidate_img
+            
+            cell_candidate_img_gpu, avg_cell_img_gpu = equalize_array_size_by_trimming(
+                cell_candidate_img_gpu, 
+                avg_cell_img_gpu
+            )
+
+            avg_x, avg_y = sobel_gpu(avg_cell_img_gpu)
+            candidate_x, candidate_y = sobel_gpu(cell_candidate_img_gpu)
+            dot_prod = (avg_x * candidate_x) + (avg_y * candidate_y)
+            corr = cp.mean(dot_prod)
+            mag = cp.sqrt(candidate_x**2 + candidate_y**2)
+            energy = cp.mean(mag * avg_cell_img_gpu)
+
+            return float(corr), float(energy)
+            
+        except Exception as e:
+            print(f'GPU failed, falling back to CPU: {str(e)}')
+            cuda_available = False
+
+    if not cuda_available:
+        cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(
+            cell_candidate_img, 
+            avg_cell_img
+        )
+
+        avg_x, avg_y = sobel_cpu(avg_cell_img)
+        candidate_x, candidate_y = sobel_cpu(cell_candidate_img)
+        dot_prod = (avg_x * candidate_x) + (avg_y * candidate_y)
+        corr = np.mean(dot_prod)
+        mag = np.sqrt(candidate_x**2 + candidate_y**2)
+        energy = np.mean(mag * avg_cell_img)
+        
+        return corr, energy
+
+
+def sobel_cpu(img):
+    '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
+
+    if img is None or img.size == 0:
+        raise ValueError("Error: The input image is empty or not loaded properly.")
+
+    #DEFINE SOBEL KERNELS
+    sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
+    sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
+    
+    #NORMALIZATION
+    _mean = (np.mean(sobel_x) + np.mean(sobel_y))/2.
+    _std = np.sqrt((np.var(sobel_x) + np.var(sobel_y))/2)
+
+    eps = 1e-8 #If _std is zero or contains NaN/Inf values, the normalization step will fail. 
+    sobel_x = (sobel_x - _mean) / (_std + eps)
+    sobel_y = (sobel_y - _mean) / (_std + eps)
+    return sobel_x, sobel_y
+
+
+def sobel_gpu(img):
+    '''
+    GPU VERSION
+    PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
+    if img is None or img.size == 0:
+        raise ValueError("Error: The input image is empty or not loaded properly.")
+    
+    #DEFINE SOBEL KERNELS [DIRECTLY ON GPU]
+    kernel_x = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=cp.float64)
+    kernel_y = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=cp.float64)
+
+    # Compute gradients (2D convolution)
+    sobel_x = cupyx.scipy.signal.convolve2d(img, kernel_x, mode='same')
+    sobel_y = cupyx.scipy.signal.convolve2d(img, kernel_y, mode='same')
+
+    #NORMALIZATION [DIRECTLY ON GPU]
+    _mean = (cp.mean(sobel_x) + cp.mean(sobel_y)) / 2.
+    _std = cp.sqrt((cp.var(sobel_x) + cp.var(sobel_y)) / 2)
+    
+    eps = 1e-8
+    sobel_x = (sobel_x - _mean) / (_std + eps)
+    sobel_y = (sobel_y - _mean) / (_std + eps)
+    
+    return sobel_x, sobel_y
