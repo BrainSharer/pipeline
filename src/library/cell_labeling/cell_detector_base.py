@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 from glob import glob
 import pickle as pkl
 import pandas as pd
@@ -7,7 +8,8 @@ import numpy as np
 from pathlib import Path
 from library.cell_labeling.cell_predictor import Predictor
 from library.cell_labeling.detector import Detector
-import concurrent.futures
+import xgboost as xgb
+import shutil
 
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -70,10 +72,10 @@ class CellDetectorBase(Brain):
         self.nrow = 5
         self.section = section
         self.set_folder_paths()
-        self.check_path_exists()
+        # self.check_path_exists()
         self.get_tile_and_image_dimensions()
         self.get_tile_origins()
-        self.check_tile_information()
+        self.check_tile_information() #TODO: remove since we do virtual tiling in dask
 
     def set_folder_paths(self):
         self.DATA_PATH = f"{self.disk}/cell_segmentation"
@@ -114,10 +116,11 @@ class CellDetectorBase(Brain):
             f"models_round_{self.step}_threshold_{self.segmentation_threshold}.pkl",
         )
 
-    def check_path_exists(self):
-        check_paths = [self.ANIMAL_PATH,self.FEATURE_PATH,self.DETECTION,self.DETECTOR,self.MODELS]
-        for path in check_paths:
-            os.makedirs(path,exist_ok = True)
+#POSSIBLE DEPRECATION
+    # def check_path_exists(self):
+    #     check_paths = [self.ANIMAL_PATH,self.FEATURE_PATH,self.DETECTION,self.DETECTOR,self.MODELS]
+    #     for path in check_paths:
+    #         os.makedirs(path,exist_ok = True)
 
     def get_tile_information(self):
         self.get_tile_origins()
@@ -230,15 +233,16 @@ class CellDetectorBase(Brain):
         except IOError as e:
             print(e)
 
-    def load_all_examples_in_brain(self,label = 1):
-        sections = self.get_sections_with_csv()
-        examples = []
-        for sectioni in sections:
-            base = CellDetectorBase(self.animal,sectioni)
-            base.load_examples()
-            examplei = [i for tilei in base.Examples for i in tilei if i['label'] == label]
-            examples += examplei
-        return examples
+#POSSIBLE DEPRECATION
+    # def load_all_examples_in_brain(self,label = 1):
+    #     sections = self.get_sections_with_csv()
+    #     examples = []
+    #     for sectioni in sections:
+    #         base = CellDetectorBase(self.animal,sectioni)
+    #         base.load_examples()
+    #         examplei = [i for tilei in base.Examples for i in tilei if i['label'] == label]
+    #         examples += examplei
+    #     return examples
 
     # This was originally named load_features,
     # but there is another function with the same name
@@ -289,26 +293,28 @@ class CellDetectorBase(Brain):
             n_manual_label = len(manual_labels_in_tile) 
         return manual_labels_in_tile,n_manual_label
 
-    def get_combined_features_of_train_sections(self):
-        dirs=glob(self.CH3 + f'/*/{self.animal}*.csv')
-        dirs=['/'.join(d.split('/')[:-1]) for d in dirs]
-        df_list=[]
-        for dir in dirs:
-            filename=glob(dir + '/puntas*{self.segmentation_threshold}*.csv')[0]
-            df=pd.read_csv(filename)
-            print(filename,df.shape)
-            df_list.append(df)
-        full_df=pd.concat(df_list)
-        full_df.index=list(range(full_df.shape[0]))
-        drops = ['animal', 'section', 'index', 'row', 'col'] 
-        full_df=full_df.drop(drops,axis=1)
-        return full_df
+#POSSIBLE DEPRECATION
+    # def get_combined_features_of_train_sections(self):
+    #     dirs=glob(self.CH3 + f'/*/{self.animal}*.csv')
+    #     dirs=['/'.join(d.split('/')[:-1]) for d in dirs]
+    #     df_list=[]
+    #     for dir in dirs:
+    #         filename=glob(dir + '/puntas*{self.segmentation_threshold}*.csv')[0]
+    #         df=pd.read_csv(filename)
+    #         print(filename,df.shape)
+    #         df_list.append(df)
+    #     full_df=pd.concat(df_list)
+    #     full_df.index=list(range(full_df.shape[0]))
+    #     drops = ['animal', 'section', 'index', 'row', 'col'] 
+    #     full_df=full_df.drop(drops,axis=1)
+    #     return full_df
 
-    def get_combined_features(self):
-        if not os.path.exists(self.ALL_FEATURES):
-            self.create_combined_features()
-        print(f'loading combined features from {self.ALL_FEATURES}')
-        return pd.read_csv(self.ALL_FEATURES,index_col=False)
+#POSSIBLE DEPRECATION
+    # def get_combined_features(self):
+    #     if not os.path.exists(self.ALL_FEATURES):
+    #         self.create_combined_features()
+    #     print(f'loading combined features from {self.ALL_FEATURES}')
+    #     return pd.read_csv(self.ALL_FEATURES,index_col=False)
 
     def get_combined_features_for_detection(self):
         all_features = self.get_combined_features()
@@ -318,33 +324,37 @@ class CellDetectorBase(Brain):
         print(all_features.head())
         return all_features
 
-    def create_combined_features(self):
-        print('creating combined features')
-        files=glob(self.CH3+f'/*/punta*{self.segmentation_threshold}.csv')
-        if len(files) == 0:
-            print(f"no files found at {self.CH3+f'/*/punta*{self.segmentation_threshold}.csv'}")
-            sys.exit()
+#POSSIBLE DEPRECATION
+    # def create_combined_features(self):
+    #     print('creating combined features')
+    #     files=glob(self.CH3+f'/*/punta*{self.segmentation_threshold}.csv')
+    #     if len(files) == 0:
+    #         print(f"no files found at {self.CH3+f'/*/punta*{self.segmentation_threshold}.csv'}")
+    #         sys.exit()
 
-        df_list=[]
-        for filei in files:
-            if os.path.getsize(filei) == 1:
-                continue
-            df=pd.read_csv(filei)
-            df_list.append(df)
-        full_df=pd.concat(df_list)
-        full_df.index=list(range(full_df.shape[0]))
-        full_df.to_csv(self.ALL_FEATURES,index=False)
+    #     df_list=[]
+    #     for filei in files:
+    #         if os.path.getsize(filei) == 1:
+    #             continue
+    #         df=pd.read_csv(filei)
+    #         df_list.append(df)
+    #     full_df=pd.concat(df_list)
+    #     full_df.index=list(range(full_df.shape[0]))
+    #     full_df.to_csv(self.ALL_FEATURES,index=False)
 
-    def get_qualifications(self):
-        return pkl.load(open(self.QUALIFICATIONS,'rb'))
+#POSSIBLE DEPRECATION
+    # def get_qualifications(self):
+    #     return pkl.load(open(self.QUALIFICATIONS,'rb'))
 
-    def save_detector(self,detector):
-        pkl.dump(detector,open(self.DETECTOR_PATH,'wb'))
+#POSSIBLE DEPRECATION
+    # def save_detector(self,detector):
+    #     pkl.dump(detector,open(self.DETECTOR_PATH,'wb'))
 
-    def load_detector(self):
-        models = self.load_models()
-        detector = Detector(models,Predictor())
-        return detector
+#POSSIBLE DEPRECATION
+    # def load_detector(self):
+    #     models = self.load_models()
+    #     detector = Detector(models,Predictor())
+    #     return detector
 
     def save_custom_features(self,features,file_name):
         path = os.path.join(self.FEATURE_PATH,f'{file_name}.pkl')
@@ -361,60 +371,78 @@ class CellDetectorBase(Brain):
             print(file_name + ' do not exist')
         return features
 
-    def load_average_cell_image(self):
-        if os.path.exists(self.AVERAGE_CELL_IMAGE_DIR):
-            try:
-                average_image = pkl.load(open(self.AVERAGE_CELL_IMAGE_DIR,'rb'))
-            except IOError as e:
-                print(e)
-            self.average_image_ch1 = average_image['CH1']
-            self.average_image_ch3 = average_image['CH3']
+#POSSIBLE DEPRECATION
+    # def load_average_cell_image(self):
+    #     if os.path.exists(self.AVERAGE_CELL_IMAGE_DIR):
+    #         try:
+    #             average_image = pkl.load(open(self.AVERAGE_CELL_IMAGE_DIR,'rb'))
+    #         except IOError as e:
+    #             print(e)
+    #         self.average_image_ch1 = average_image['CH1']
+    #         self.average_image_ch3 = average_image['CH3']
 
     def load_detections(self):
         return pd.read_csv(self.DETECTION_RESULT_DIR)
 
-    def has_detection(self):
-        return os.path.exists(self.DETECTION_RESULT_DIR)
+#POSSIBLE DEPRECATION
+    # def has_detection(self):
+    #     return os.path.exists(self.DETECTION_RESULT_DIR)
 
-    def get_available_animals(self):
-        path = self.DATA_PATH
-        dirs = os.listdir(path)
-        dirs = [i for i in dirs if os.path.isdir(path+i)]
-        dirs.remove('detectors')
-        dirs.remove('models')
-        return dirs
+#POSSIBLE DEPRECATION
+    # def get_available_animals(self):
+    #     path = self.DATA_PATH
+    #     dirs = os.listdir(path)
+    #     dirs = [i for i in dirs if os.path.isdir(path+i)]
+    #     dirs.remove('detectors')
+    #     dirs.remove('models')
+    #     return dirs
 
-    def get_animals_with_examples():
-        ...
+#POSSIBLE DEPRECATION
+    # def get_animals_with_examples():
+    #     ...
 
-    def get_animals_with_features():
-        ...
+    # def get_animals_with_features():
+    #     ...
 
-    def get_animals_with_detections():
-        ...
+    # def get_animals_with_detections():
+    #     ...
 
-    def report_detection_status():
-        ...
+    # def report_detection_status():
+    #     ...
 
-    def save_models(self, models, local_scratch):
+    def save_models(self, models: list[xgb.Booster], model_filepath: Path, local_scratch: Path) -> None:
         '''
         SAVE LOCAL THEN MOVE
         '''
-        local_filename = Path(local_scratch, self.MODEL_PATH.name)
-        print(f'SAVING MODEL TO: {self.MODEL_PATH}')
+        permanent_model_file_location = Path(self.MODELS, model_filepath)
+        tmp_model_file_location = Path(local_scratch, model_filepath.name)
+        print(f'SAVING MODEL, ROC METRIC TO STAGING FOLDER: {local_scratch}')
         try:
-            with open(local_filename,'wb') as pkl_file:
+            with open(tmp_model_file_location,'wb') as pkl_file:
                 pkl.dump(models, pkl_file)
         except IOError as e:
             print(e)
-
-        print(f'MOVING MODEL TO CENTRALIZED STORAGE: {self.MODEL_PATH}')
-        #eventaully move to centralized storage
+        print(f'DEBUG: {permanent_model_file_location=}, {tmp_model_file_location=}')
+        
+        print(f'MOVING MODEL, ROC METRIC TO CENTRALIZED STORAGE: {permanent_model_file_location.parent}')
         try:
-            with open(self.MODEL_PATH,'wb') as pkl_file:
+            with open(permanent_model_file_location,'wb') as pkl_file:
                 pkl.dump(models,pkl_file)
         except IOError as e:
             print(e)
+
+        pattern = re.compile(r"^roc_curve_.*\.tif$")
+        matching_files = [
+            file for file in local_scratch.glob("*.tif") 
+            if pattern.match(file.name)
+        ]
+        if not matching_files:
+            print(f"No matching ROC curve files found in {local_scratch}")
+            return
+        else:
+            file_to_move = matching_files[0]
+            destination_dir = permanent_model_file_location.parent
+            shutil.move(str(file_to_move), str(destination_dir / file_to_move.name))
 
 
     def load_models(self, model: str = None, step: int = None) -> tuple[np.ndarray, Path]:
@@ -429,7 +457,7 @@ class CellDetectorBase(Brain):
                 tuple[np.ndarray, Path]: Loaded models as a NumPy array and the model file path.
         """
         if model and step:
-            models_file = Path(self.MODELS, f'model_{model}_round_{step}_threshold_{self.segmentation_threshold}.pkl')
+            models_file = Path(self.MODELS, f'models_{model}_step_{step}.pkl')
         else:
             models_file = Path(self.MODEL_PATH)
 
@@ -445,46 +473,50 @@ class CellDetectorBase(Brain):
             print(f"Error loading model: {e}")
             return np.array([]), models_file
 
+#POSSIBLE DEPRECATION
+# def get_sections_with_annotation_for_animali(animal):
+#     base = CellDetectorBase(animal)
+#     return base.get_sections_with_csv()
 
-def get_sections_with_annotation_for_animali(animal):
-    base = CellDetectorBase(animal)
-    return base.get_sections_with_csv()
+#POSSIBLE DEPRECATION
+# def get_sections_without_annotation_for_animali(animal):
+#     base = CellDetectorBase(animal)
+#     return base.get_sections_without_csv()
 
-def get_sections_without_annotation_for_animali(animal):
-    base = CellDetectorBase(animal)
-    return base.get_sections_without_csv()
+#POSSIBLE DEPRECATION
+# def get_all_sections_for_animali(animal):
+#     base = CellDetectorBase(animal)
+#     return base.get_all_sections()
 
-def get_all_sections_for_animali(animal):
-    base = CellDetectorBase(animal)
-    return base.get_all_sections()
+#POSSIBLE DEPRECATION
+# def list_available_animals(disk = '/net/birdstore/Active_Atlas_Data/',has_example = True,has_feature = True):
+#     base = CellDetectorBase(disk = disk)
+#     animals = os.listdir(base.DATA_PATH)
+#     animals = [os.path.isdir(i) for i in animals]
+#     animals.remove('detectors')
+#     animals.remove('models')
+#     for animali in animals:
+#         base = CellDetectorBase(disk = disk,animal = animali)
+#         nsections = len(base.get_all_sections())
+#         remove = False
+#         if has_example:
+#             nexamples = len(base.get_sections_with_example())
+#             if not nexamples == nsections:
+#                 remove = True
+#         if has_feature:
+#             nfeatures = len(base.get_sections_with_features())
+#             if not nfeatures == nsections:
+#                 remove = True
+#         if remove:
+#             animals.remove(animali)
+#     return animals
 
-def list_available_animals(disk = '/net/birdstore/Active_Atlas_Data/',has_example = True,has_feature = True):
-    base = CellDetectorBase(disk = disk)
-    animals = os.listdir(base.DATA_PATH)
-    animals = [os.path.isdir(i) for i in animals]
-    animals.remove('detectors')
-    animals.remove('models')
-    for animali in animals:
-        base = CellDetectorBase(disk = disk,animal = animali)
-        nsections = len(base.get_all_sections())
-        remove = False
-        if has_example:
-            nexamples = len(base.get_sections_with_example())
-            if not nexamples == nsections:
-                remove = True
-        if has_feature:
-            nfeatures = len(base.get_sections_with_features())
-            if not nfeatures == nsections:
-                remove = True
-        if remove:
-            animals.remove(animali)
-    return animals
-
-def parallel_process_all_sections(animal,processing_function,*args,njobs = 10,sections=None,**kwargs):
-    if sections is None:
-        sections = get_all_sections_for_animali(animal)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=njobs) as executor:
-        results = []
-        for sectioni in sections:
-            results.append(executor.submit(processing_function,animal,int(sectioni),*args,**kwargs))
-        print('done')
+#POSSIBLE DEPRECATION
+# def parallel_process_all_sections(animal,processing_function,*args,njobs = 10,sections=None,**kwargs):
+#     if sections is None:
+#         sections = get_all_sections_for_animali(animal)
+#     with concurrent.futures.ProcessPoolExecutor(max_workers=njobs) as executor:
+#         results = []
+#         for sectioni in sections:
+#             results.append(executor.submit(processing_function,animal,int(sectioni),*args,**kwargs))
+#         print('done')

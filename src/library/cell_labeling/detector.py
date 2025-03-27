@@ -12,18 +12,19 @@ class Detector():
         self.depth = None
         self.niter = None
 
-
-    def createDM(self, df: pl.DataFrame) -> xgb.DMatrix:
-        if 'label' in df.columns:
-            labels = df.get_column('label') # Extract the label column and store it
-            features = df.drop('label') # Drop the label column to keep only features
-        else:
-            # Raise an error if 'label' is not found in the DataFrame
-            raise ValueError("Column 'label' not found in the DataFrame")
+#POSSIBLE DEPRECATION
+    # def createDM(self, df: pl.DataFrame) -> xgb.DMatrix:
+    #     if 'label' in df.columns:
+    #         labels = df.get_column('label') # Extract the label column and store it
+    #         features = df.drop('label') # Drop the label column to keep only features
+    #     else:
+    #         # Raise an error if 'label' is not found in the DataFrame
+    #         raise ValueError("Column 'label' not found in the DataFrame")
     
-        return xgb.DMatrix(features, label=labels)
+    #     return xgb.DMatrix(features, label=labels)
 
 
+#POSSIBLE DEPRECATION (prev. used for publication and testing)
     def calculate_scores(self,features):
         all=self.createDM(features)
         labels=all.get_label()
@@ -37,21 +38,25 @@ class Detector():
         std=np.std(scores,axis=1)
         return scores,labels,mean,std
 
-    def get_prediction(self,mean,std):
-        predictions=[]
-        for mean,std in zip(mean,std):
-            p=self.predictor.decision(float(mean),float(std))
-            predictions.append(p)
-        return np.array(predictions)
-    
-    def calculate_and_set_scores(self,df):
-        if not hasattr(self,'mean') or not hasattr(self,'std') or not hasattr(self,'labels'):
-            _,self.labels,self.mean,self.std = self.calculate_scores(df)
+#POSSIBLE DEPRECATION
+    # def get_prediction(self,mean,std):
+    #     predictions=[]
+    #     for mean,std in zip(mean,std):
+    #         p=self.predictor.decision(float(mean),float(std))
+    #         predictions.append(p)
+    #     return np.array(predictions)
 
+#POSSIBLE DEPRECATION
+    # def calculate_and_set_scores(self,df):
+    #     if not hasattr(self,'mean') or not hasattr(self,'std') or not hasattr(self,'labels'):
+    #         _,self.labels,self.mean,self.std = self.calculate_scores(df)
+
+#TODO: used for model metrics or publication?
     def set_plot_limits(self,lower,higher):
         if lower is not None and higher is not None:
             plt.ylim([lower,higher])
 
+#TODO: used for model metrics or publication?
     def plot_score_scatter(self,df,lower_lim = None,upper_lim = None,alpha1 = 0.5,alpha2 = 0.5,color1='teal',color2 = 'orangered',size1=3,size2=3,title = None):
         self.calculate_and_set_scores(df)
         plt.figure(figsize=[15,10])
@@ -69,7 +74,7 @@ class Detector():
             plt.title(title)
         self.set_plot_limits(lower_lim,upper_lim)
 
-
+#TODO: used for model metrics or publication?
     def plot_decision_scatter(self,features,lower_lim = None,upper_lim = None,title = None):
         self.calculate_and_set_scores(features)
         if not hasattr(self,'predictions'):
