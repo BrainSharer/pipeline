@@ -109,6 +109,7 @@ class Pipeline(
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
         self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
+        self.section_count = self.get_section_count()
 
         #self.mips = 7 
         #if self.downsample:
@@ -118,7 +119,6 @@ class Pipeline(
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         self.report_status()
         self.check_settings()
-
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -134,6 +134,22 @@ class Pipeline(
         print("\ttask:".ljust(20), f"{str(self.task)}".ljust(20))
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
+
+
+    def get_section_count(self):
+        """
+        Retrieves the count of sections for the specified animal. If the section count
+        from the database is zero, it calculates the count based on the number of 
+        thumbnail files in the specified directory.
+        I put this back in as test_dir requires it.
+        Returns:
+            int: The total count of sections.
+        """
+        section_count = self.sqlController.get_section_count(self.animal)
+        if section_count  == 0:
+            section_count = len(os.listdir(self.fileLocationManager.get_thumbnail()))
+                                           
+        return section_count
 
 
     def extract(self):
