@@ -19,15 +19,12 @@ from scipy.ndimage import affine_transform
 from tqdm import tqdm
 from pathlib import Path
 
-from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, CLEANED_DIR, REALIGNED, FileLocationManager
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
-    apply_rigid_transform_opencv,
-    apply_rigid_transform_skimage,
     create_affine_parameters,
     create_rigid_parameters,
-    create_rigid_transformation,
     parameters_to_rigid_transform,
     rescale_transformations,
     tif_to_png,
