@@ -263,7 +263,10 @@ def register_volume(movingImage, fixedImage, structure):
 
 def get_min_max_mean(coords):
 
-    if isinstance(coords[0], list):
+    if not isinstance(coords, list) or len(coords) == 0:
+        return None, None, None
+
+    if len(coords) > 0 and isinstance(coords[0], list):
         coords = [coord for sublist in coords for coord in sublist]
 
     

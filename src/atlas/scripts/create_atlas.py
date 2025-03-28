@@ -40,7 +40,7 @@ class AtlasManager():
         start_time = timer()
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
-            self.brainManager.create_brain_volumes_and_origins(brainMerger, animal, self.debug)
+            self.brainManager.create_brain_volumes_origins(brainMerger, animal, self.debug)
             if not self.debug:
                 brainMerger.save_brain_coms_meshes_origins_volumes()
 
@@ -67,7 +67,7 @@ class AtlasManager():
 
         structures = ['TG_L', 'TG_R']
         for structure in structures:
-            self.brainManager.create_brain_volumes_from_polygons(self.atlasMerger, structure, self.debug)
+            self.brainManager.create_brain_volumes_origins_from_polygons(self.atlasMerger, structure, self.debug)
         
 
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas coms/meshes/origins/volumes', disable=False):
