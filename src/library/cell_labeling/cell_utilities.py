@@ -4,9 +4,22 @@ import cv2
 import imageio
 import numpy as np
 
-import cupy as cp
-import cupyx.scipy.signal  # Required for GPU-accelerated 2D convolution
-from cupyx.scipy.ndimage import gaussian_filter
+try:
+    import cupy as cp
+except ImportError as ie:
+    print(f"Could not import cupy: {ie}")
+    cp = None
+try:
+    import cupyx.scipy.signal  # Required for GPU-accelerated 2D convolution
+except ImportError as ie:
+    print(f"Could not import cupyx.scipy.signal: {ie}")
+    cupyx = None
+try:
+    from cupyx.scipy.ndimage import gaussian_filter
+except ImportError as ie:
+    print(f"Could not import cupyx.scipy.ndimage: {ie}")
+    gaussian_filter = None
+    
 from numba import cuda
 
 

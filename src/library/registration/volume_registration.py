@@ -50,8 +50,8 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
-from library.registration.brain_structure_manager import BrainStructureManager
-from library.registration.brain_merger import BrainMerger
+from library.atlas.brain_structure_manager import BrainStructureManager
+from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_registration import create_rigid_parameters
 

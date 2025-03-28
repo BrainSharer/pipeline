@@ -99,11 +99,11 @@ class BrainMerger():
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 
-    def save_atlas_coms_meshes_origins_volumes(self):
+    def save_atlas_meshes_origins_volumes(self):
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
-        desc = "Saving atlas coms/meshes/origins/volumes"
+        desc = "Saving atlas meshes/origins/volumes"
         for structure in tqdm(self.volumes.keys(), desc=desc):
             volume = self.volumes[structure]
             mesh_volume = adjust_volume(volume, 100)

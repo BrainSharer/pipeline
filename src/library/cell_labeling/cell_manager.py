@@ -22,7 +22,11 @@ from tqdm import tqdm
 import xgboost as xgb
 import psutil
 import warnings
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError as ie:
+    print(f"Could not import cupy: {ie}")
+    cp = None
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_utilities import (

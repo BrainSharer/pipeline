@@ -226,8 +226,8 @@ class AnnotationSessionController:
                 return
             for child in points['childJsons']:
                 x,y,z = child['pointA']
-                x = int(np.round(x * M_UM_SCALE / xy_resolution / SCALING_FACTOR) - x_offset)
-                y = int(np.round(y * M_UM_SCALE / xy_resolution / SCALING_FACTOR) - y_offset)
+                x = int(np.round(x * M_UM_SCALE / xy_resolution / 1) - x_offset)
+                y = int(np.round(y * M_UM_SCALE / xy_resolution / 1) - y_offset)
                 section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
                 #print(x, y, section)
                 polygons[section].append((x,y))
