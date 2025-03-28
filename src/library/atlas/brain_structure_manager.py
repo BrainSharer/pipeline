@@ -38,7 +38,6 @@ from library.utilities.utilities_process import (
     read_image,
     write_image,
 )
-from library.image_manipulation.pipeline_process import Pipeline
 from library.utilities.utilities_contour import get_contours_from_annotations
 
 
@@ -174,7 +173,8 @@ class BrainStructureManager:
                 brainMerger.origins_to_merge[structure].append(self.origin)
                 brainMerger.volumes_to_merge[structure].append(self.volume)
 
-    def create_brain_volumes_from_polygons(self, brainMerger, structure, debug=False):
+
+    def create_brain_volumes_origins_from_polygons(self, brainMerger, structure, debug=False):
 
         label = self.sqlController.get_annotation_label(structure)
         if label is not None:
@@ -203,40 +203,14 @@ class BrainStructureManager:
             # polygons were drawn at xy resolution of 0.452um for the MDXXX brains
             # and 20um for the z axis
             polygons = self.sqlController.get_annotation_volume(annotation_session.id)
-            coords = list(polygons.values())
-            if len(coords) < 50:
-                continue
+            com, origin, volume = self.create_volume_for_one_structure(polygons)
 
-            min_vals, max_vals, mean_vals = get_min_max_mean(coords)
-            min_x = min_vals[0]
-            min_y = min_vals[1]
-            ylength = max_vals[1] - min_vals[1]
-            xlength = max_vals[0] - min_vals[0]
-            slice_size = (int(round(ylength)), int(round(xlength)))
-            volume = []
-            # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
-            sections = []
-            for section, points in sorted(polygons.items()):
-                vertices = np.array(points) - np.array((min_x, min_y))
-                volume_slice = np.zeros(slice_size, dtype=np.uint8)
-                points = (vertices).astype(np.int32)
-                volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
-                volume.append(volume_slice)
-                sections.append(section)
+            if com is None or origin is None or volume is None:
+                print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
+                return None
 
-            volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
-            pad_z = 40 # pad the volume in the z axis
-            volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
-
-            com = center_of_mass(volume)
-            min_z = min(sections)
-            origin = np.array([min_x, min_y, min_z])
-            com += origin
-            com = np.array(com) * np.array([1, 1, 1])
             if debug:
-                print(
-                    f"Adding {structure=} to {animal=} with {origin=} and com={np.round(com)} and {volume.shape=} len coords={len(coords)}"
-                )
+                print(f"Adding {structure=} to {animal=} with {origin=} and com={np.round(com)} and {volume.shape=} len polygons={len(polygons)}")
             else:
                 brainMerger.coms_to_merge[structure].append(com)
                 brainMerger.origins_to_merge[structure].append(origin)
@@ -586,7 +560,7 @@ class BrainStructureManager:
             neuroglancer.add_segmentation_mesh()
 
     #### Imported methods from old build_foundationbrain_volumes.py
-    def create_brain_volumes_and_origins(self, brainMerger, animal, debug):
+    def create_brain_volumes_origins(self, brainMerger, animal, debug):
         """Data has been downsampled by 1/32 and is in Neuroglancer pixel coordinates
         This would be OK if all the brains were at the same resolution, but the foundation brains
         are at 0.452um and the neurotrace brains are at 0.325um. The data needs to be transformed.
@@ -604,44 +578,10 @@ class BrainStructureManager:
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
-            onestructure = aligned_dict[structure]
-            # if structure not in ['IC', 'VLL_L']:
-            #    continue
-
-            coords = list(onestructure.values())
-            min_vals, max_vals, mean_vals = get_min_max_mean(coords)
-            min_x = min_vals[0]
-            min_y = min_vals[1]
-            max_x = max_vals[0]
-            max_y = max_vals[1]
-
-            sections = sorted([int(i) for i in onestructure.keys()])
-            min_z = min(sections)
-            xlength = max_x - min_x
-            ylength = max_y - min_y
-            slice_size = (int(round(ylength)), int(round(xlength)))
-            volume = []
-            # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
-            for section in sections:
-                points = onestructure[str(section)]
-                vertices = np.array(points) - np.array((min_x, min_y))
-                volume_slice = np.zeros(slice_size, dtype=np.uint8)
-                points = (vertices).astype(np.int32)
-                volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
-                volume.append(volume_slice)
-
-            volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
-            pad_z = 40 # pad the volume in the z axis
-            volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
-
-            com = center_of_mass(volume)
-            origin = np.array([min_x, min_y, min_z])
-            com += origin
-            com = np.array(com) * np.array([1, 1, 1])
+            polygons = aligned_dict[structure]
+            com, origin, volume = self.create_volume_for_one_structure(polygons)
             if debug:
-                print(
-                    f"Adding {structure} to {animal} with {np.round(origin)} and com={np.round(com)} and {volume.shape=} len sections={len(sections)}"
-                )
+                print(f"Adding {structure} to {animal} with {np.round(origin)} and com={np.round(com)} and {volume.shape=} len polygons={len(polygons)}")
             else:
                 brainMerger.volumes[structure] = volume
                 brainMerger.origins[structure] = origin
@@ -732,6 +672,7 @@ class BrainStructureManager:
         return section_offsets
 
     def create_brain_json(self, animal, debug):
+        from library.image_manipulation.pipeline_process import Pipeline
 
         pipeline = Pipeline(
             animal,
@@ -902,3 +843,38 @@ class BrainStructureManager:
         b = transform.T[:, 0:2]
         c = np.matmul(a, b)
         return c
+
+    @staticmethod
+    def create_volume_for_one_structure(polygons):
+        """Creates a volume from a dictionary of polygons
+        The polygons are in the form of {section: [x,y]}
+        """
+        coords = list(polygons.values())
+        min_vals, max_vals, mean_vals = get_min_max_mean(coords)
+        if min_vals is None:
+            return None, None, None
+        min_x = min_vals[0]
+        min_y = min_vals[1]
+        ylength = max_vals[1] - min_vals[1]
+        xlength = max_vals[0] - min_vals[0]
+        slice_size = (int(round(ylength)), int(round(xlength)))
+        volume = []
+        # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
+        sections = []
+        for section, points in sorted(polygons.items()):
+            vertices = np.array(points) - np.array((min_x, min_y))
+            volume_slice = np.zeros(slice_size, dtype=np.uint8)
+            points = (vertices).astype(np.int32)
+            volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
+            volume.append(volume_slice)
+            sections.append(section)
+
+        volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
+        pad_z = 40 # pad the volume in the z axis
+        volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
+
+        com = np.array(center_of_mass(volume))
+        min_z = min(sections)
+        origin = np.array([min_x, min_y, min_z]).astype(np.float64)
+        com += origin
+        return com, origin, volume
