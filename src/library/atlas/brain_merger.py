@@ -14,7 +14,7 @@ from scipy.ndimage import center_of_mass, zoom
 import SimpleITK as sitk
 from tqdm import tqdm
 
-from library.atlas.atlas_utilities import apply_affine_transform, average_images, compute_affine_transformation, list_coms, register_volume
+from library.atlas.atlas_utilities import adjust_volume, apply_affine_transform, average_images, compute_affine_transformation, list_coms, register_volume
 from library.image_manipulation.filelocation_manager import data_path
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures
@@ -63,7 +63,6 @@ class BrainMerger():
             return volumes[0]
         elif lvolumes > 1:
             average_volume = average_images(volumes, structure)
-            #average_volume = gaussian(average_volume, 1.0) # keeps it the same as original atlas
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')
@@ -76,95 +75,50 @@ class BrainMerger():
     def save_brain_coms_meshes_origins_volumes(self):
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         scales = (1.464, 1.464, 2)
+        origins_mean = origins_mean * scales
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
-            volume = np.swapaxes(volume, 0, 2) # need this for the mesh, no rotation or flip for brain mesh!!!!!
+            volume = np.swapaxes(volume, 0, 2)
             volume = zoom(volume, scales)
+            com = center_of_mass(volume)
             origin = self.origins[structure] * scales
+            com += origin
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            np.savetxt(com_filepath, self.coms[structure])
+            np.savetxt(com_filepath, com)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
 
             #mesh STL file
-            mesh_origin = self.origins[structure] * scales - origins_mean
+            mesh_origin = origin - origins_mean
             aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 
-
     def save_atlas_coms_meshes_origins_volumes(self):
-        coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
-        allen_color = 100
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
-        for structure in self.volumes.keys():
+        desc = "Saving atlas coms/meshes/origins/volumes"
+        for structure in tqdm(self.volumes.keys(), desc=desc):
             volume = self.volumes[structure]
-            
-            mesh_volume = volume.copy()
-            mesh_volume[mesh_volume > 0.150] = allen_color
-            mesh_volume[mesh_volume != allen_color] = 0
-            mesh_volume = gaussian(mesh_volume, 1.0)
-
+            mesh_volume = adjust_volume(volume, 100)
             origin = origins[structure] - origins_mean
-            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=origin, times_to_simplify=3)
             
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            save_mesh(aligned_structure, mesh_filepath)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
 
-            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
-            np.savetxt(com_filepath, coms[structure])
-
-
-
-    def evaluate(self, animal):
-        annotator_id = 1 # Edward created all the COMs for the DK atlas and the Allen
-        def sum_square_com(com):
-            ss = np.sqrt(sum([s*s for s in com]))
-            return ss
-        def convert_com(com):
-            scales = np.array([0.452*32, 0.452*32, 20])
-            return com * scales
-        
-        print(f'evaluating atlas data from {self.com_path}')
-        atlas_all = {}
-        for com in sorted(os.listdir(self.com_path)):
-            structure = com.split('.')[0]
-            com_path = os.path.join(self.com_path, com)
-            com = np.loadtxt(com_path)
-            com = convert_com(com)
-            atlas_all[structure] = com
-
-        allen_all = list_coms('Allen')
-        common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
-
-        atlas_src = np.array([atlas_all[s] for s in common_keys])
-        allen_src = np.array([allen_all[s] for s in common_keys])
-        matrix = compute_affine_transformation(atlas_src, allen_src)
-
-        error = []
-        for structure in common_keys:
-            atlas0 = np.array(atlas_all[structure])
-            allen0 = np.array(allen_all[structure]) 
-            transformed = apply_affine_transform(atlas0, matrix)
-            transformed = [x for x in transformed]
-            difference = [a - b for a, b in zip(transformed, allen0)]
-            ss = sum_square_com(difference)
-            error.append(ss)
-            print(f'{structure} atlas={np.round(atlas0)} allen={np.round(allen0)} transformed={np.round( np.array(transformed) )}')
-        print('RMS', sum(error)/len(common_keys))
-
+            #mesh
+            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=origin, times_to_simplify=3)
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
+            save_mesh(aligned_structure, mesh_filepath)
 
             
     def fetch_allen_origins(self):
