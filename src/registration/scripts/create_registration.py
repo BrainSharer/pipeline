@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
     parser.add_argument("--bspline", help="Enter true or false", required=False, default="false")
-    parser.add_argument("--task", help="Enter the task you want to perform", required=False, default="status", type=str)
+    parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
     
     args = parser.parse_args()
     moving = args.moving

@@ -63,21 +63,20 @@ class AtlasManager():
             self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
             self.brainManager.fixed_brain.com_annotator_id = 2
             self.brainManager.com_annotator_id = 2
-            self.brainManager.compute_brain_com_origin_mesh_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
+            self.brainManager.create_brains_origin_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
 
         structures = ['TG_L', 'TG_R']
         for structure in structures:
-            self.brainManager.create_brain_volumes_origins_from_polygons(self.atlasMerger, structure, self.debug)
+            self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         
 
-        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas coms/meshes/origins/volumes', disable=False):
+        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:
-            self.atlasMerger.save_atlas_coms_meshes_origins_volumes()
-            print('Finished saving data to disk.')
+            self.atlasMerger.save_atlas_meshes_origins_volumes()
         else:
             print('No data to save')
 

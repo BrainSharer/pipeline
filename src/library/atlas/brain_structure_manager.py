@@ -14,6 +14,7 @@ from scipy.ndimage import center_of_mass
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from tqdm import tqdm
 
+from library.image_manipulation.pipeline_process import Pipeline
 from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
     adjust_volume,
@@ -142,7 +143,7 @@ class BrainStructureManager:
         section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
-    def compute_brain_com_origin_mesh_volume(self, brainMerger, animal, fixed_brain):
+    def create_brains_origin_volume(self, brainMerger, animal, fixed_brain):
         """ """
         self.animal = animal
         origin_path = os.path.join(self.data_path, self.animal, "origin")
@@ -174,7 +175,7 @@ class BrainStructureManager:
                 brainMerger.volumes_to_merge[structure].append(self.volume)
 
 
-    def create_brain_volumes_origins_from_polygons(self, brainMerger, structure, debug=False):
+    def create_brains_origin_volume_from_polygons(self, brainMerger, structure, debug=False):
 
         label = self.sqlController.get_annotation_label(structure)
         if label is not None:
@@ -199,20 +200,22 @@ class BrainStructureManager:
                 annotator_id=2,
             )
             """
-            #####TRANSFORMED point dictionary
-            # polygons were drawn at xy resolution of 0.452um for the MDXXX brains
-            # and 20um for the z axis
-            polygons = self.sqlController.get_annotation_volume(annotation_session.id)
-            com, origin, volume = self.create_volume_for_one_structure(polygons)
 
-            if com is None or origin is None or volume is None:
+            polygons = self.sqlController.get_annotation_volume(annotation_session.id)
+            if len(polygons) < 50:
+                continue
+            origin, volume = self.create_volume_for_one_structure(polygons)
+
+
+            if origin is None or volume is None:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
                 return None
+            
+            volume = np.swapaxes(volume, 0, 2)
 
             if debug:
-                print(f"Adding {structure=} to {animal=} with {origin=} and com={np.round(com)} and {volume.shape=} len polygons={len(polygons)}")
+                print(f"Adding {structure=} to {animal=} with {origin=} and {volume.shape=} len polygons={len(polygons)}")
             else:
-                brainMerger.coms_to_merge[structure].append(com)
                 brainMerger.origins_to_merge[structure].append(origin)
                 brainMerger.volumes_to_merge[structure].append(volume)
 
@@ -559,14 +562,9 @@ class BrainStructureManager:
             neuroglancer.add_downsampled_volumes()
             neuroglancer.add_segmentation_mesh()
 
-    #### Imported methods from old build_foundationbrain_volumes.py
     def create_brain_volumes_origins(self, brainMerger, animal, debug):
-        """Data has been downsampled by 1/32 and is in Neuroglancer pixel coordinates
-        This would be OK if all the brains were at the same resolution, but the foundation brains
-        are at 0.452um and the neurotrace brains are at 0.325um. The data needs to be transformed.
-        We want the atlas to be in 10um scale so we need to scale it from 0.452um to 10um
-        by 10/0.452 = 22.1238938053
-        """
+        """Step 2"""
+
         jsonpath = os.path.join(
             self.data_path, animal, "aligned_padded_structures.json"
         )
@@ -579,13 +577,12 @@ class BrainStructureManager:
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
             polygons = aligned_dict[structure]
-            com, origin, volume = self.create_volume_for_one_structure(polygons)
+            origin, volume = self.create_volume_for_one_structure(polygons)
             if debug:
-                print(f"Adding {structure} to {animal} with {np.round(origin)} and com={np.round(com)} and {volume.shape=} len polygons={len(polygons)}")
+                print(f"Adding {structure} to {animal} with {np.round(origin)} and {volume.shape=} len polygons={len(polygons)}")
             else:
                 brainMerger.volumes[structure] = volume
                 brainMerger.origins[structure] = origin
-                brainMerger.coms[structure] = com.tolist()
 
     @staticmethod
     def save_volume_origin(animal, structure, volume, xyz_offsets):
@@ -672,7 +669,6 @@ class BrainStructureManager:
         return section_offsets
 
     def create_brain_json(self, animal, debug):
-        from library.image_manipulation.pipeline_process import Pipeline
 
         pipeline = Pipeline(
             animal,
@@ -852,7 +848,7 @@ class BrainStructureManager:
         coords = list(polygons.values())
         min_vals, max_vals, mean_vals = get_min_max_mean(coords)
         if min_vals is None:
-            return None, None, None
+            return None, None
         min_x = min_vals[0]
         min_y = min_vals[1]
         ylength = max_vals[1] - min_vals[1]
@@ -873,8 +869,9 @@ class BrainStructureManager:
         pad_z = 40 # pad the volume in the z axis
         volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
 
-        com = np.array(center_of_mass(volume))
         min_z = min(sections)
+        # fix x and y so they get the correct origin
+        min_x += xlength
+        min_y += ylength
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
-        com += origin
-        return com, origin, volume
+        return origin, volume
