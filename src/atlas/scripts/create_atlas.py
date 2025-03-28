@@ -1,7 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
-
+from timeit import default_timer as timer
 from tqdm import tqdm
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -14,15 +14,16 @@ from library.atlas.brain_merger import BrainMerger
 
 class AtlasManager():
 
-    def __init__(self, animal, um=10, affine=False, debug=False):
+    def __init__(self, animal, task, um=10, affine=False, debug=False):
 
         self.animal = animal
         self.brainManager = BrainStructureManager(animal, um, affine, debug)
         self.atlasMerger = BrainMerger(animal)
+        self.task = task
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD589']
+        #self.foundation_brains = ['MD594']
 
     def create_brain_json(self):
         """
@@ -36,19 +37,16 @@ class AtlasManager():
         """
         # 2nd step, this takes the JSON files and creates the brain volumes and origins
         """
+        start_time = timer()
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_brain_volumes_and_origins(brainMerger, animal, self.debug)
             if not self.debug:
                 brainMerger.save_brain_coms_meshes_origins_volumes()
 
-    def test_brain_volumes_and_origins(self):
-        """
-        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes    
-        """
-        for animal in self.foundation_brains:
-            brainManager = BrainStructureManager(animal, self.um, self.debug)
-            brainManager.test_brain_volumes_and_origins(animal)
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f"{self.task} took {total_elapsed_time} seconds")
 
     def merge_foundation_origin_creation(self):
         """
@@ -57,32 +55,43 @@ class AtlasManager():
         # All foundation polygon brain data is under: Edward ID=1
         # All foundation COM brain data is under: Beth ID=2"
         """
+        start_time = timer()
         polygon_annotator_id = 1
-        animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
-        for animal, polygon_annotator_id in sorted(animal_users):
+        foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
+        for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
             self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
             self.brainManager.fixed_brain.com_annotator_id = 2
             self.brainManager.com_annotator_id = 2
             self.brainManager.compute_brain_com_origin_mesh_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
 
-        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging volumes', disable=False):
+        structures = ['TG_L', 'TG_R']
+        for structure in structures:
+            self.brainManager.create_brain_volumes_from_polygons(self.atlasMerger, structure, self.debug)
+        
+
+        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas coms/meshes/origins/volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:
-            print('Finished filling up volumes and origins')
-            if self.animal == NEW_ATLAS:
-                self.brainManager.rm_existing_dir(self.brainManager.com_path)
-                self.brainManager.rm_existing_dir(self.brainManager.origin_path)
-                self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
-                self.brainManager.rm_existing_dir(self.brainManager.volume_path)
             self.atlasMerger.save_atlas_coms_meshes_origins_volumes()
-            #self.atlasMerger.evaluate(self.animal)
             print('Finished saving data to disk.')
         else:
             print('No data to save')
+
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f"{self.task} took {total_elapsed_time} seconds")
+
+    def test_brain_volumes_and_origins(self):
+        """
+        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes    
+        """
+        for animal in self.foundation_brains:
+            brainManager = BrainStructureManager(animal, self.um, self.debug)
+            brainManager.test_brain_volumes_and_origins(animal)
 
     def create_neuroglancer_volume(self):
         self.brainManager.create_neuroglancer_volume()
@@ -96,10 +105,11 @@ class AtlasManager():
     def list_coms(self):
         self.brainManager.list_coms_by_atlas()
 
-    def create_volumes_from_polygons(self):
-        animal_structures = [['DK78', 'TG_L'], ['DK78', 'TG_R']]
-        for animal, structure in sorted(animal_structures):
-            self.brainManager.create_volumes_from_polygons(animal, structure, self.debug)
+    def validate(self):
+        self.brainManager.validate_volumes()
+
+    def evaluate(self):
+        self.brainManager.evaluate()
 
 
 
@@ -134,7 +144,7 @@ if __name__ == '__main__':
         print(f'\t{ORIGINAL_ATLAS}')
         sys.exit()
 
-    pipeline = AtlasManager(animal, um, affine, debug)
+    pipeline = AtlasManager(animal, task, um, affine, debug)
 
     function_mapping = {'create_brain_json': pipeline.create_brain_json,
                         'draw': pipeline.test_brain_volumes_and_origins,
@@ -144,13 +154,14 @@ if __name__ == '__main__':
                         'save_atlas': pipeline.save_atlas_volume,
                         'update_coms': pipeline.update_atlas_coms,
                         'list_coms': pipeline.list_coms,
-                        'polygons': pipeline.create_volumes_from_polygons,
+                        'validate': pipeline.validate,
+                        'evaluate': pipeline.evaluate,
     }
 
     if task in function_mapping:
         function_mapping[task]()
     else:
-        print(f'{task} is not a correct task. Choose one of these:')
+        print(f'{task} is not a correct task! Choose one of these:')
         for key in function_mapping.keys():
             print(f'\t{key}')
 

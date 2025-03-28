@@ -6,6 +6,8 @@ import SimpleITK as sitk
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
+from skimage.filters import gaussian
+
 
 ORIGINAL_ATLAS = 'AtlasV7'
 NEW_ATLAS = 'AtlasV8'
@@ -191,10 +193,9 @@ def resample_image(image, reference_image):
     return resampler.Execute(image)
 
 
-def average_images(volumes, structure):
+def average_imagesV1(volumes, structure):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
-    #reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
-    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
+    reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
     #max_index = images.index(reference_image_index)
     #del images[max_index]
     # Resample all images to the reference
@@ -209,6 +210,14 @@ def average_images(volumes, structure):
     #avg_image.CopyInformation(reference_image)  # Copy metadata
     return avg_array
     #return sitk.GetArrayFromImage(avg_array)
+
+def average_images(volumes, structure):
+    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
+    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
+    resampled_images = [resample_image(img, reference_image) for img in images]
+    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
+    avg_array = np.mean(registered_images, axis=0)
+    return avg_array
 
 
 def register_volume(movingImage, fixedImage, structure):
@@ -231,15 +240,14 @@ def register_volume(movingImage, fixedImage, structure):
     rigid_params["WriteResultImage"] = ["false"]    
     rigid_params["WriteIterationInfo"] = ["false"]
     rigid_params["Resampler"] = ["DefaultResampler"]
-    rigid_params["MaximumNumberOfIterations"] = ["250"] # 250 works ok
-
+    rigid_params["MaximumNumberOfIterations"] = ["150"] # 250 works ok
 
     elastixImageFilter.SetParameterMap(rigid_params)
-    elastixImageFilter.AddParameterMap(bspline_params)
+    #elastixImageFilter.AddParameterMap(bspline_params)
     #elastixImageFilter.SetParameter("Registration", ["MultiResolutionRegistration"])
     #elastixImageFilter.SetParameter("Metric",  ["AdvancedImageToImageMetric", "CorrespondingPointsEuclideanDistanceMetric"])
     elastixImageFilter.SetLogToFile(False)
-    elastixImageFilter.LogToConsoleOn()
+    elastixImageFilter.LogToConsoleOff()
 
     elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
     elastixImageFilter.SetOutputDirectory('/tmp')
@@ -249,7 +257,7 @@ def register_volume(movingImage, fixedImage, structure):
         print(f'{structure} in registration')
         print(e)
         sys.exit()
-        return sitk.GetArrayFromImage(movingImage)
+        #return sitk.GetArrayFromImage(movingImage)
 
     return sitk.GetArrayFromImage(resultImage)
 
@@ -269,3 +277,11 @@ def get_min_max_mean(coords):
     )
     
     return min_vals, max_vals, mean_vals
+
+def adjust_volume(volume, allen_id):
+    upper = 100
+    volume = gaussian(volume, 4.0)            
+    volume[(volume > upper) ] = allen_id
+    volume[(volume < upper)] = 0
+    volume = volume.astype(np.uint32)
+    return volume

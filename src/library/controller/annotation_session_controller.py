@@ -35,23 +35,6 @@ class AnnotationSessionController:
         except Exception as e:
             print(f"No merge for  {e}")
             self.session.rollback()
-
-    def get_brain_regionDEPRECATED(self, abbreviation):
-        brain_region = (
-            self.session.query(BrainRegion)
-            .filter(BrainRegion.abbreviation == abbreviation)
-            .filter(BrainRegion.active == True)
-            .one_or_none()
-        )
-        return brain_region
-    
-    def get_brain_regionsDEPRECATED(self):
-        brain_regions = (
-            self.session.query(BrainRegion)
-            .filter(BrainRegion.active == True)
-            .all()
-        )
-        return brain_regions
     
     def get_labels(self, labels):
         annotation_labels = (
@@ -218,7 +201,7 @@ class AnnotationSessionController:
 
         if not annotation_session:
             print("No data for this animal was found.")
-            return
+            return polygons
         
         annotation = annotation_session.annotation
 
@@ -229,9 +212,8 @@ class AnnotationSessionController:
         try:
             data = annotation["childJsons"]
         except KeyError as ke:
-            print("No childJsons key in data")
-            print(f"Error: {ke}")
-            return
+            print(f"No childJsons key in data for {session_id=} animal={annotation_session.FK_prep_id} structure={annotation_session.labels[0].label}")
+            return polygons
         
         x_offset = 2200 // 32
         y_offset = 5070 // 32
