@@ -23,7 +23,7 @@ class AtlasManager():
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD594']
+        #self.foundation_brains = ['MD589']
 
     def create_brain_json(self):
         """
@@ -40,7 +40,7 @@ class AtlasManager():
         start_time = timer()
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
-            self.brainManager.create_brain_volumes_origins(brainMerger, animal, self.debug)
+            self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
             if not self.debug:
                 brainMerger.save_brain_coms_meshes_origins_volumes()
 
@@ -135,6 +135,7 @@ if __name__ == '__main__':
         print('Cannot update COMs with affine set to True')
         sys.exit()
 
+    
     if animal == NEW_ATLAS or animal == ORIGINAL_ATLAS:
         print(f'Working on {animal}')
     else:
@@ -142,7 +143,7 @@ if __name__ == '__main__':
         print(f'\t{NEW_ATLAS}')
         print(f'\t{ORIGINAL_ATLAS}')
         sys.exit()
-
+    
     pipeline = AtlasManager(animal, task, um, affine, debug)
 
     function_mapping = {'create_brain_json': pipeline.create_brain_json,
