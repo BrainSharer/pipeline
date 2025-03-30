@@ -28,8 +28,9 @@ class BrainMerger():
         self.coms_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
         self.volumes_to_merge = defaultdict(list)
-        self.volumes = {}
+        self.coms = {}
         self.origins = {}
+        self.volumes = {}
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
         
         self.com_path = os.path.join(self.data_path, 'com')
@@ -59,9 +60,11 @@ class BrainMerger():
     def merge_volumes(self, structure, volumes):
 
         lvolumes = len(volumes)
-        if lvolumes == 1:
-            return volumes[0]
-        elif lvolumes > 1:
+        if lvolumes == 0:
+            print(f'{structure} has no volumes to merge')
+            return None
+            #return volumes[0]
+        elif lvolumes > 0:
             average_volume = average_images(volumes, structure)
             return average_volume
         else:
@@ -80,10 +83,9 @@ class BrainMerger():
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             volume = np.swapaxes(volume, 0, 2)
+            com = self.coms[structure]
             volume = zoom(volume, scales)
-            com = center_of_mass(volume)
             origin = self.origins[structure] * scales
-            com += origin
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
@@ -100,18 +102,22 @@ class BrainMerger():
             save_mesh(aligned_structure, mesh_filepath)
 
     def save_atlas_meshes_origins_volumes(self):
+        coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         desc = "Saving atlas meshes/origins/volumes"
         for structure in tqdm(self.volumes.keys(), desc=desc):
+            com = coms[structure]
             volume = self.volumes[structure]
             mesh_volume = adjust_volume(volume, 100)
             origin = origins[structure] - origins_mean
             
+            com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
+            np.savetxt(com_filepath, com)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
 

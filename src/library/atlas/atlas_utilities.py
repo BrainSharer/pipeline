@@ -63,7 +63,7 @@ def list_coms(animal, annotator_id=1):
     return coms
 
 
-def compute_affine_transformation_centroid(set1, set2):
+def compute_affine_transformation_centroid(source_points, target_points):
     """
     Computes the affine transformation (scale, shear, rotation, translation) between two sets of 3D points.
     
@@ -75,8 +75,12 @@ def compute_affine_transformation_centroid(set1, set2):
         A: np.ndarray of shape (3, 3) - Linear transformation matrix
         t: np.ndarray of shape (3,)   - Translation vector
     """
-    set1 = np.array(set1)
-    set2 = np.array(set2)
+    if source_points.shape != target_points.shape or source_points.shape[1] != 3:
+        raise ValueError("Input point sets must have the same shape (Nx3).")
+
+
+    set1 = np.array(source_points)
+    set2 = np.array(target_points)
     
     assert set1.shape == set2.shape, "Input point sets must have the same shape"
     assert set1.shape[1] == 3, "Point sets must have 3D coordinates"
@@ -102,7 +106,6 @@ def compute_affine_transformation_centroid(set1, set2):
     transformation_matrix = np.hstack( [transformation_matrix, t ])
     transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 
-    
     return A, t, transformation_matrix
 
 def compute_affine_transformation(source_points, target_points):
@@ -163,20 +166,17 @@ def get_affine_transformation(animal):
 
 
 
-def get_umeyama(animal, scaling=False):
+def get_umeyama(source_points, target_points, scaling=False):
     """
     Get the umeyama transformation matrix between the Allen
     and animal brains.
     """
 
-    atlas_structures = list_coms(animal)
-    allen_structures = list_coms('Allen')
+    if source_points.shape != target_points.shape or source_points.shape[1] != 3:
+        raise ValueError("Input point sets must have the same shape (Nx3).")
 
-    common_keys = atlas_structures.keys() & allen_structures.keys()
-    atlas_src = np.array([atlas_structures[s] for s in common_keys])
-    allen_src = np.array([allen_structures[s] for s in common_keys])
 
-    A, t = umeyama(atlas_src.T, allen_src.T, with_scaling=scaling)
+    A, t = umeyama(source_points.T, target_points.T, with_scaling=scaling)
     transformation_matrix = np.hstack( [A, t ])
     transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 
@@ -267,10 +267,14 @@ def get_min_max_mean(coords):
         return None, None, None
 
     if len(coords) > 0 and isinstance(coords[0], list):
-        coords = [coord for sublist in coords for coord in sublist]
+        new_coords = [coord for sublist in coords for coord in sublist]
 
+    try:
+        coords = [tuple(map(float, coord)) for coord in new_coords]
+    except:
+        coords = [tuple(coord) for coord in coords]
     
-    x_vals, y_vals = zip(*coords)  # Unpacking x, y, z values separately
+    x_vals, y_vals = zip(*coords)
     
     min_vals = (min(x_vals), min(y_vals))
     max_vals = (max(x_vals), max(y_vals))
@@ -282,9 +286,18 @@ def get_min_max_mean(coords):
     return min_vals, max_vals, mean_vals
 
 def adjust_volume(volume, allen_id):
-    upper = 100
+    """
+    The commands below produce really nice STLs
+    upper = 150
     volume = gaussian(volume, 4.0)            
     volume[(volume > upper) ] = allen_id
-    volume[(volume < upper)] = 0
+    volume[(volume != allen_id)] = 0
+    volume = volume.astype(np.uint32)
+
+    """
+    upper = 150
+    volume = gaussian(volume, 4.0)            
+    volume[(volume > upper) ] = allen_id
+    volume[(volume != allen_id)] = 0
     volume = volume.astype(np.uint32)
     return volume

@@ -25,7 +25,6 @@ import warnings
 try:
     import cupy as cp
 except ImportError as ie:
-    print(f"Could not import cupy: {ie}")
     cp = None
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
