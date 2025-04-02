@@ -8,13 +8,11 @@ into the database if given a layer name.
 import os
 import numpy as np
 from collections import defaultdict
-from skimage.filters import gaussian
-from scipy.ndimage import center_of_mass, zoom
+from scipy.ndimage import zoom
 
-import SimpleITK as sitk
 from tqdm import tqdm
 
-from library.atlas.atlas_utilities import adjust_volume, apply_affine_transform, average_images, compute_affine_transformation, list_coms, register_volume
+from library.atlas.atlas_utilities import adjust_volume, average_images
 from library.image_manipulation.filelocation_manager import data_path
 from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.atlas import singular_structures

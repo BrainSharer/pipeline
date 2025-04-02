@@ -1,3 +1,25 @@
+"""This program will create an atlas from the original anatomist's annotations and create a new Atlas named AtlasV8. \
+      The tasks are run in sequence. Data is saved to disk on birdstore, so you only need to rerun the tasks if you change the data.
+
+- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task create_brain_json --debug false
+- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task create_brain_volumes --debug false
+- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task merge_volumes --debug false
+- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task neuroglancer --debug false --affine true
+
+Explanation for the tasks:
+
+- create_brain_json - This parses the original anatomist's annotations and creates JSON data. This makes it easier \
+    for the later steps.
+- create_brain_volumes - This take the JSON data and creates the origins and volumes of each of the 3 foundation brains. \
+    The origin is the upper left corner of the volume box. Origins at 0,0,0 start on the very first section in the upper left corner.
+- merge_volumes - This takes each of the 3 foundation brains ands merges them into one volume. It initially uses elastix \
+    to align the volumes with a affine transformation. The mean of these aligned images is then used to create the volume. \
+    The volume will contain only zeros or the Allen color. This process will also take any polygons stored in the database, \
+    e.g., the TG_L and TG_R, and merge them into a volume. 
+- neuroglancer - This takes the merged volume and moves the origins into Allen space. A neuroglancer view is then created from \
+    all these merged volumes.
+"""
+
 import argparse
 import sys
 from pathlib import Path
@@ -65,6 +87,7 @@ class AtlasManager():
             self.brainManager.com_annotator_id = 2
             self.brainManager.create_brains_origin_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
 
+        # Left seems to align OK on its own
         structures = ['TG_L', 'TG_R']
         for structure in structures:
             self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
@@ -86,28 +109,80 @@ class AtlasManager():
 
     def test_brain_volumes_and_origins(self):
         """
-        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes    
+        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
+        # The output is in /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MDXXX/preps/C1/drawn    
         """
         for animal in self.foundation_brains:
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.test_brain_volumes_and_origins(animal)
 
     def create_neuroglancer_volume(self):
+        """
+        Creates a Neuroglancer-compatible volume for visualization.
+
+        This method utilizes the brainManager to generate a volume
+        that can be used with Neuroglancer, a web-based tool for
+        visualizing volumetric data.
+
+        Returns:
+            None
+        """
         self.brainManager.create_neuroglancer_volume()
 
     def save_atlas_volume(self):
+        """
+        Saves the atlas volume using the brain manager.
+
+        This method delegates the task of saving the atlas volume to the
+        `brainManager` instance, ensuring that the current state of the atlas
+        volume is persisted.
+
+        Returns:
+            None
+        """
         self.brainManager.save_atlas_volume()
 
     def update_atlas_coms(self):
+        """
+        Updates the atlas center of mass (COM) information by delegating the task
+        to the brainManager instance. This ensures that the atlas COMs are kept
+        up-to-date with any changes in the underlying data.
+
+        Returns:
+            None
+        """
         self.brainManager.update_atlas_coms()
 
     def list_coms(self):
+        """
+        Lists the center of mass (COM) coordinates for all regions in the atlas.
+
+        This method utilizes the `brainManager` to retrieve and display the 
+        COMs for each region defined in the atlas. It is useful for inspecting 
+        or debugging the spatial organization of the atlas regions.
+
+        Returns:
+            None
+        """
         self.brainManager.list_coms_by_atlas()
 
     def validate(self):
+        """
+        Validates the volumes managed by the brainManager.
+
+        This method ensures that the volumes associated with the brainManager
+        meet the required criteria or constraints. This ensures the volumes
+        only have two values and are of the correct shape.
+        """
         self.brainManager.validate_volumes()
 
     def evaluate(self):
+        """
+        Evaluates the current state of the alignment of the atlas to the Allen atlas.
+
+        Returns:
+            None
+        """
         self.brainManager.evaluate()
 
 

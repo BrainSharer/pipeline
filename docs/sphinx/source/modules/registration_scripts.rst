@@ -1,7 +1,7 @@
 Registration scripts
 --------------------
 
-.. automodule:: registration.scripts.stack2volume2atlas
+.. automodule:: registration.scripts.create_registration
    :members:
    :undoc-members:
    :show-inheritance:
