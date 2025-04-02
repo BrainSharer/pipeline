@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sys
 import numpy as np
 import SimpleITK as sitk
@@ -7,6 +8,8 @@ from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
 from skimage.filters import gaussian
+from scipy.ndimage import affine_transform
+
 
 
 ORIGINAL_ATLAS = 'AtlasV7'
@@ -43,25 +46,57 @@ def apply_affine_transform(point: list, matrix) -> np.ndarray:
     # Return the transformed x, y, z coordinates (ignoring the homogeneous coordinate)
     return transformed_point[:3]
 
+def affine_transform_volume(volume, matrix):
+    """Apply an affine transformation to a 3D volume."""
+    if matrix.shape != (4, 4):
+        raise ValueError("Matrix must be a 4x4 numpy array")
+    translation = (matrix[..., 3][0:3])
+    translation = 0
+    matrix = matrix[:3, :3]
+    transformed_volume = affine_transform(volume, matrix, offset=translation, order=1)
+    return transformed_volume
 
-def list_coms(animal, annotator_id=1):
+
+
+def list_coms(animal, scaling_factor=1):
     """
     Lists the COMs from the annotation session table. The data
     is stored in meters and is then converted to micrometers.
     """
     sqlController = SqlController(animal)
 
-
     coms = {}
-    com_dictionaries = sqlController.get_com_dictionary(prep_id=animal, annotator_id=annotator_id)
+    com_dictionaries = sqlController.get_com_dictionary(prep_id=animal)
+    if len(com_dictionaries.keys()) == 0:
+        return coms
     for k, v in com_dictionaries.items():
 
-        com = [i* M_UM_SCALE for i in v]
-
+        com = [i* M_UM_SCALE/scaling_factor for i in v]
         coms[k] = com
+
+    if len(coms.keys()) == 0:
+        coms = fetch_coms(animal, scaling_factor=scaling_factor)
 
     return coms
 
+
+def fetch_coms(animal, scaling_factor=1):
+    """
+    Fetches the COMs from disk. The data is stored in micrometers.
+    """
+    
+    coms = {}
+    dirpath = f'/net/birdstore/Active_Atlas_Data/data_root/atlas_data/{animal}/com'
+    if not os.path.exists(dirpath):
+        return coms
+    files = sorted(os.listdir(dirpath))
+    for file in files:
+        structure = Path(file).stem
+        filepath = os.path.join(dirpath, file)
+        com = np.loadtxt(filepath)
+        com /= scaling_factor 
+        coms[structure] = com
+    return coms
 
 def compute_affine_transformation_centroid(source_points, target_points):
     """
@@ -108,7 +143,7 @@ def compute_affine_transformation_centroid(source_points, target_points):
 
     return A, t, transformation_matrix
 
-def compute_affine_transformation(source_points, target_points):
+def compute_affine_transformation(source_points: np.ndarray, target_points: np.ndarray) -> np.ndarray:
     """
     Computes the affine transformation matrix that maps source_points to target_points in 3D.
     
@@ -119,9 +154,12 @@ def compute_affine_transformation(source_points, target_points):
     Returns:
     numpy.ndarray: 4x4 affine transformation matrix.
     """
+    if isinstance(source_points, np.ndarray) and source_points.shape[0] == 0:
+        return  None
 
     if source_points.shape != target_points.shape or source_points.shape[1] != 3:
-        raise ValueError("Input point sets must have the same shape (Nx3).")
+        print("Input point sets must have the same shape (Nx3).")
+        return None
     
     # Append a column of ones to the source points (homogeneous coordinates)
     ones = np.ones((source_points.shape[0], 1))
@@ -136,34 +174,25 @@ def compute_affine_transformation(source_points, target_points):
     
     return transformation_matrix
 
-def scale_coordinate(coordinates, animal):
-    """Scales a x,y,z coordinate from micrometers to neuroglancer voxels.
-    """
 
-    sqlController = SqlController(animal)
-    xy_resolution = sqlController.scan_run.resolution
-    zresolution = sqlController.scan_run.zresolution
-    scaling_factor = 1
-    scales = np.array([xy_resolution*scaling_factor, xy_resolution*scaling_factor, zresolution])
-    return coordinates / scales
-
-def get_affine_transformation(animal):
+def get_affine_transformation(moving_name, fixed_name='Allen', scaling_factor=1):
         """This fetches data from the DB and returns the data in micrometers
         Adjust accordingly
         """
-        
-        atlas_all = list_coms(animal)
-        allen_all = list_coms('Allen')
+
+        moving_all = list_coms(moving_name, scaling_factor=scaling_factor)
+        fixed_all = list_coms(fixed_name, scaling_factor=scaling_factor)
+
         bad_keys = ('RtTg', 'AP')
 
-        common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
+        common_keys = list(moving_all.keys() & fixed_all.keys())
         good_keys = set(common_keys) - set(bad_keys)
 
-        atlas_src = np.array([atlas_all[s] for s in good_keys])
-        allen_src = np.array([allen_all[s] for s in good_keys])
+        moving_src = np.array([moving_all[s] for s in good_keys])
+        fixed_src = np.array([fixed_all[s] for s in good_keys])
 
-        return compute_affine_transformation(atlas_src, allen_src)
 
+        return compute_affine_transformation(moving_src, fixed_src)
 
 
 def get_umeyama(source_points, target_points, scaling=False):
@@ -191,25 +220,6 @@ def resample_image(image, reference_image):
     resampler.SetInterpolator(sitk.sitkLinear)  # Linear interpolation for resampling
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     return resampler.Execute(image)
-
-
-def average_imagesV1(volumes, structure):
-    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
-    reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
-    #max_index = images.index(reference_image_index)
-    #del images[max_index]
-    # Resample all images to the reference
-    resampled_images = [resample_image(img, reference_image) for img in images]
-    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
-    # Convert images to numpy arrays and compute the average
-    #registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
-    #registered_images = [sitk.GetArrayFromImage(img) for img in registered_images]
-    avg_array = np.mean(registered_images, axis=0)
-    # Convert back to SimpleITK image
-    #avg_image = sitk.GetImageFromArray(avg_array)
-    #avg_image.CopyInformation(reference_image)  # Copy metadata
-    return avg_array
-    #return sitk.GetArrayFromImage(avg_array)
 
 def average_images(volumes, structure):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
@@ -301,3 +311,22 @@ def adjust_volume(volume, allen_id):
     volume[(volume != allen_id)] = 0
     volume = volume.astype(np.uint32)
     return volume
+
+
+def average_imagesV1(volumes, structure):
+    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
+    reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
+    #max_index = images.index(reference_image_index)
+    #del images[max_index]
+    # Resample all images to the reference
+    resampled_images = [resample_image(img, reference_image) for img in images]
+    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
+    # Convert images to numpy arrays and compute the average
+    #registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
+    #registered_images = [sitk.GetArrayFromImage(img) for img in registered_images]
+    avg_array = np.mean(registered_images, axis=0)
+    # Convert back to SimpleITK image
+    #avg_image = sitk.GetImageFromArray(avg_array)
+    #avg_image.CopyInformation(reference_image)  # Copy metadata
+    return avg_array
+    #return sitk.GetArrayFromImage(avg_array)

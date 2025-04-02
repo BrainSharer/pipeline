@@ -19,8 +19,10 @@ from library.image_manipulation.pipeline_process import Pipeline
 from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
     adjust_volume,
+    affine_transform_volume,
     apply_affine_transform,
     compute_affine_transformation,
+    fetch_coms,
     get_affine_transformation,
     get_min_max_mean,
     list_coms,
@@ -36,6 +38,7 @@ from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.utilities_process import (
     M_UM_SCALE,
     SCALING_FACTOR,
+    get_hostname,
     get_image_size,
     read_image,
     write_image,
@@ -217,34 +220,49 @@ class BrainStructureManager:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
                 return None
             
-            #transformation_matrix = self.get_transform_to_align_brain(
-            #    moving_brain=animal,
-            #    annotator_id=2,
-            #)
+            #if animal != 'DK79':
+            #    continue
+            
+            moving_all = list_coms(animal, scaling_factor=10)
+            fixed_all = list_coms('MD589', scaling_factor=10)
+            common_keys = list(moving_all.keys() & fixed_all.keys())
+            moving_src = np.array([moving_all[s] for s in common_keys])
+            fixed_src = np.array([fixed_all[s] for s in common_keys])
+            transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
+            if transformation_matrix is None:
+                transformation_matrix = np.eye(4)
+            print(transformation_matrix)
+            
+            print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)}', end=" ")
 
-            #print(repr(transformation_matrix))
-
-            scales = np.array([1.0, 1.0, 2])
+            #scales = np.array([1, 1, 2])
             volume = np.swapaxes(volume, 0, 2)
-            print(f"ID={annotation_session.id} Adding {structure=} from {animal=}")
-            print(f"  pre origin={np.round(origin)} pre zoom={volume.shape=}")
 
 
-            volume = zoom(volume, scales)
-            origin *=  scales
-            print(f"  scaled origin={np.round(origin)} pre zoom={volume.shape=}")
-
-            preorigin = origin
-            scaling_factor = np.array([0.325*32, 0.325*32, 20])
-            #origin = apply_affine_transform(preorigin*scaling_factor, transformation_matrix)
-            #volume = affine_transform(volume, transformation_matrix, offset=0, order=1)
-            #origin = origin / scaling_factor
-
+            # volume needs to be put in 10,10,10, the neurotrace volumes are on 0.325/0.325/20
+            #volume = zoom(volume, scales)
+            volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+            #volume = affine_transform_volume(volume, transformation_matrix)
+            #origin *=  scales
+            #print(f"scaled origin={np.round(origin)}", end=" ")
+            origin = apply_affine_transform(origin, transformation_matrix)
+            print(f"scaled+trans origin={np.round(origin)} {volume.shape=}")
 
             if not debug:
                 brainMerger.coms_to_merge[structure].append(com)
                 brainMerger.origins_to_merge[structure].append(origin)
                 brainMerger.volumes_to_merge[structure].append(volume)
+
+                structure_name = f"{structure}_{annotation_session.id}"
+                brain_com_path = os.path.join(self.data_path, animal, "com")
+                brain_origin_path = os.path.join(self.data_path, animal, "origin")
+                brain_structure_path = os.path.join(self.data_path, animal, "structure")
+                os.makedirs(brain_com_path, exist_ok=True)
+                os.makedirs(brain_origin_path, exist_ok=True)
+                os.makedirs(brain_structure_path, exist_ok=True)
+                np.savetxt(os.path.join(brain_com_path, f"{structure_name}.txt"), com)
+                np.savetxt(os.path.join(brain_origin_path, f"{structure_name}.txt"), origin)
+                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), volume)
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, no calculations, only saving!"""
@@ -290,10 +308,10 @@ class BrainStructureManager:
             print(f"{structure}={com}")
 
     def update_database_com(self, structure: str, com: np.ndarray) -> None:
-        """Annotator ID is hardcoded to 1
+        """Annotator ID is hardcoded to 2 for Beth
         Data coming in is in pixels, so we need to convert to um and then to meters
         """
-        annotator_id = 1
+        annotator_id = 2
 
         com = com.tolist()
         # xy_resolution = self.sqlController.scan_run.resolution
@@ -415,13 +433,18 @@ class BrainStructureManager:
         print(f"Using data from {self.origin_path}")
         origins = sorted(os.listdir(self.origin_path))
         volumes = sorted(os.listdir(self.volume_path))
-        print(f"Working with {len(origins)} origins and {len(volumes)} volumes.")
+        if len(origins) != len(volumes):
+            print(f'The number of origins: {len(origins)} does not match the number of volumes: {len(volumes)}')
+            sys.exit()
+
+        print(f"Working with {len(origins)} origins and volumes.")
         ids = {}
         atlas_centers = {}
-        transformation_matrix = get_affine_transformation(self.animal)
-        translations = transformation_matrix[..., 3]
-        scaled_translations = translations / np.hstack((self.atlas_box_scales, 1))
-        transformation_matrix[..., 3] = scaled_translations.T
+        transformation_matrix = get_affine_transformation(moving_name=self.animal, fixed_name='Allen', scaling_factor=self.allen_um)
+        if transformation_matrix is None:
+            print(f"Could not find transformation matrix for {self.animal} to Allen")
+            transformation_matrix = np.eye(4)
+
 
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
@@ -574,9 +597,12 @@ class BrainStructureManager:
             atlas_name = f"DK.{self.animal}.{aligned}.{self.allen_um}um"
             structure_path = os.path.join(self.structure_path, atlas_name)
             if os.path.exists(structure_path):
-                print(f"Path exists: {structure_path}")
-                print("Please remove before running this script")
-                sys.exit(1)
+                if 'tobor' in get_hostname():
+                    print(f"Removing {structure_path}")
+                    shutil.rmtree(structure_path)
+                else:
+                   print(f"Path exists, please remove first: {structure_path}")
+                   sys.exit(1)
             else:
                 print(f"Creating data in {structure_path}")
             os.makedirs(structure_path, exist_ok=True)
@@ -599,6 +625,8 @@ class BrainStructureManager:
             sys.exit()
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
+
+
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
@@ -895,7 +923,7 @@ class BrainStructureManager:
             vertices = np.array(points) - np.array((min_x, min_y))
             volume_slice = np.zeros(slice_size, dtype=np.uint8)
             points = (vertices).astype(np.int32)
-            volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=255)
+            cv2.fillPoly(volume_slice, pts=[points], color=255)
             volume.append(volume_slice)
             sections.append(section)
 

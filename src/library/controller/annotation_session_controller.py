@@ -155,7 +155,7 @@ class AnnotationSessionController:
         return fiducials
 
 
-    def get_com_dictionary(self, prep_id, annotator_id):
+    def get_com_dictionary(self, prep_id):
         """This returns data in meters, not pixels or micrometers.
         This is the way neuroglancer uses data. If you need
         to convert to pixels, you will need to use the resolution
@@ -163,7 +163,9 @@ class AnnotationSessionController:
         just multiply by M_UM_SCALE.
         The data is also not sorted by key. If you need it sorted,
         use an ordered dictionary.
+        annotator ID is being hard coded to 2 for Beth
         """
+        annotator_id = 2
 
         coms = {}
         annotation_sessions = (
@@ -176,7 +178,7 @@ class AnnotationSessionController:
         )
 
         if not annotation_sessions:
-            print("No data for this animal was found.")
+            print('No annotation session for this animal was found.')
             return coms
 
         # first test data to make sure it has the right keys
@@ -184,10 +186,14 @@ class AnnotationSessionController:
             try:
                 data = annotation_session.annotation["point"]
             except KeyError:
-                print("No childJsons key in data")
-                return coms
-
-            label = annotation_session.labels[0].label
+                print(f'No data for {annotation_session.FK_prep_id} was found.')
+                continue
+            
+            try:
+                label = annotation_session.labels[0].label
+            except IndexError:
+                continue
+            
             x, y, z = data
             coms[label] = [x,y,z]
 
@@ -205,14 +211,15 @@ class AnnotationSessionController:
         
         annotation = annotation_session.annotation
 
-        xy_resolution = self.scan_run.resolution
-        z_resolution = self.scan_run.zresolution
+        #xy_resolution = self.scan_run.resolution
+        #z_resolution = self.scan_run.zresolution
+        xy_resolution = 10
+        z_resolution = 10
 
         # first test data to make sure it has the right keys
         try:
             data = annotation["childJsons"]
         except KeyError as ke:
-            print(f"No childJsons key in data for {session_id=} animal={annotation_session.FK_prep_id} structure={annotation_session.labels[0].label}")
             return polygons
         
         x_offset = 2200 // 32
@@ -222,7 +229,6 @@ class AnnotationSessionController:
 
         for points in data:
             if 'childJsons' not in points:
-                print('No childJsons in points')
                 return
             for child in points['childJsons']:
                 x,y,z = child['pointA']
@@ -261,7 +267,6 @@ class AnnotationSessionController:
         try:
             data = annotation_session.annotation["childJsons"]
         except KeyError:
-            print("No childJsons key in data")
             return features
 
 

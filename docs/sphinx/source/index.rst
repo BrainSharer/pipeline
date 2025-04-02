@@ -35,6 +35,7 @@ Use the side navigation panel to view different documentation topics within this
    modules/controllers.rst
    modules/image_manipulation.rst
    modules/cell_labeling.rst
+   modules/atlas.rst
 
 
    

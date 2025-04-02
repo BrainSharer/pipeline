@@ -142,8 +142,7 @@ class Pipeline(
         from the database is zero, it calculates the count based on the number of 
         thumbnail files in the specified directory.
         I put this back in as test_dir requires it.
-        Returns:
-            int: The total count of sections.
+        :returns: int: The total count of sections.
         """
         section_count = self.sqlController.get_section_count(self.animal)
         if section_count  == 0:

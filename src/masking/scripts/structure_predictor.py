@@ -9,13 +9,8 @@ from datetime import datetime
 
 import cv2
 from PIL import Image
-
-
 Image.MAX_IMAGE_PIXELS = None
 from matplotlib import pyplot as plt
-
-import pymysql
-from sqlalchemy import exc
 
 import torch
 import torchvision
@@ -25,11 +20,8 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.utilities.utilities_mask import combine_dims
 from library.utilities.utilities_process import SCALING_FACTOR
 from library.controller.sql_controller import SqlController
-from library.controller.annotation_session_controller import AnnotationSessionController
-from library.registration.brain_structure_manager import BrainStructureManager
 from library.mask_utilities.mask_class import (
     MaskDataset,
     StructureDataset,
