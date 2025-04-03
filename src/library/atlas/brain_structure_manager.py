@@ -181,20 +181,23 @@ class BrainStructureManager:
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
             
-            polygons = self.sqlController.get_annotation_volume(annotation_session.id)
+            # polygons are in micrometers
+            polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.allen_um)
             if len(polygons) < 10:
                 continue
 
-            moving_all = list_coms(animal, scaling_factor=10)
-            fixed_all = fetch_coms('MD589', scaling_factor=10)
+            
+            moving_all = list_coms(animal, scaling_factor=self.allen_um)
+            fixed_all = fetch_coms('MD589', scaling_factor=self.allen_um)
             common_keys = list(moving_all.keys() & fixed_all.keys())
             moving_src = np.array([moving_all[s] for s in common_keys])
             fixed_src = np.array([fixed_all[s] for s in common_keys])
             transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
             if transformation_matrix is None:
                 continue
+            print(f"Transformation matrix\n {transformation_matrix}")
 
-            com, origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+            origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
             if origin is None or volume is None:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
@@ -208,12 +211,12 @@ class BrainStructureManager:
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
-            com = center_of_mass(volume) + origin
             #volume = affine_transform_volume(volume, transformation_matrix)
             #origin *=  scales
             #print(f"scaled origin={np.round(origin)}", end=" ")
             origin = apply_affine_transform(origin, transformation_matrix)
-            print(f"scaled+trans origin={np.round(origin)} {volume.shape=}")
+            com = center_of_mass(volume) + origin
+            print(f"scaled+trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
 
             if not debug:
                 brainMerger.coms_to_merge[structure].append(com)
@@ -593,30 +596,32 @@ class BrainStructureManager:
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
 
+        xy_resolution = self.fixed_brain.sqlController.scan_run.resolution
+        zresolution = self.fixed_brain.sqlController.scan_run.zresolution
 
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
-            #if structure not in 'SC':
+            #if structure not in '3N_L':
             #    continue
             polygons = aligned_dict[structure]
-            com, origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+            origin0, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
             # Now convert com to micrometers
-            scale = np.array([0.452*32, 0.452*32, 20])
-            com *= scale
+            scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
+            origin_um = origin0 * scale0
             # we want the origin scaled to 10um, so adjust the above scale
-            scale = np.array([0.452*32, 0.452*32, 20]) / self.allen_um
-            origin *= scale
+            scale1 = scale0 / self.allen_um
+            origin0 *= scale1
 
             volume = np.swapaxes(volume, 0, 2)
-            volume = zoom(volume, scale)
-            com = center_of_mass(volume) + origin
+            com = center_of_mass(volume) + origin_um
+            volume = zoom(volume, scale1)
 
             if debug:
-                print(f"ID={animal} Adding {structure} with {np.round(origin)} and com-pad+origin ={np.round(com)}um")
+                print(f"ID={animal} Adding {structure} with {np.round(origin0)} and com+origin ={np.round(com)}um {volume.shape=}")
             else:
                 brainMerger.coms[structure] = com
-                brainMerger.origins[structure] = origin
+                brainMerger.origins[structure] = origin0
                 brainMerger.volumes[structure] = volume
 
     @staticmethod
@@ -905,8 +910,8 @@ class BrainStructureManager:
         volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
          # pad the volume in the z axis
         volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
-        pads = np.array([0, 0, pad_z])
+        #####pads = np.array([0, 0, pad_z])
         min_z = min(sections)
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
-        com = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin
-        return com, origin, volume
+        #####com = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin
+        return origin, volume

@@ -1,18 +1,18 @@
 """This program will create an atlas from the original anatomist's annotations and create a new Atlas named AtlasV8. \
       The tasks are run in sequence. Data is saved to disk on birdstore, so you only need to rerun the tasks if you change the data.
 
-- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task create_brain_json --debug false
-- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task create_brain_volumes --debug false
-- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task merge_volumes --debug false
-- python src/atlas/scripts/create_atlas.py --animal AtlasV8 --task neuroglancer --debug false --affine true
+- python src/atlas/scripts/create_atlas.py --task json --debug false
+- python src/atlas/scripts/create_atlas.py --task create --debug false
+- python src/atlas/scripts/create_atlas.py --task merge --debug false
+- python src/atlas/scripts/create_atlas.py --task neuroglancer --debug false --affine true
 
 Explanation for the tasks:
 
-- create_brain_json - This parses the original anatomist's annotations and creates JSON data. This makes it easier \
+- json - This parses the original anatomist's annotations and creates JSON data. This makes it easier \
     for the later steps.
-- create_brain_volumes - This take the JSON data and creates the origins and volumes of each of the 3 foundation brains. \
+- create - This take the JSON data and creates the origins and volumes of each of the 3 foundation brains. \
     The origin is the upper left corner of the volume box. Origins at 0,0,0 start on the very first section in the upper left corner.
-- merge_volumes - This takes each of the 3 foundation brains ands merges them into one volume. It initially uses elastix \
+- merge - This takes each of the 3 foundation brains ands merges them into one volume. It initially uses elastix \
     to align the volumes with a affine transformation. The mean of these aligned images is then used to create the volume. \
     The volume will contain only zeros or the Allen color. This process will also take any polygons stored in the database, \
     e.g., the TG_L and TG_R, and merge them into a volume. 
@@ -60,6 +60,7 @@ class AtlasManager():
         # 2nd step, this takes the JSON files and creates the brain volumes and origins
         """
         start_time = timer()
+        self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
@@ -70,7 +71,7 @@ class AtlasManager():
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"{self.task} took {total_elapsed_time} seconds")
 
-    def merge_foundation_origin_creation(self):
+    def merge_all(self):
         """
         # 3rd step, this merges the volumes and origins from the foundation brains into the new atlas
         # The fixed brain is, well, fixed. 
@@ -86,8 +87,8 @@ class AtlasManager():
 
         # Note, for DK78 TG_L, The C1 source is C1.v1
         structures = ['TG_L', 'TG_R']
-        #for structure in structures:
-        #    self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
+        for structure in structures:
+            self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]
@@ -217,10 +218,10 @@ if __name__ == '__main__':
     
     pipeline = AtlasManager(animal, task, um, affine, debug)
 
-    function_mapping = {'create_brain_json': pipeline.create_brain_json,
+    function_mapping = {'json': pipeline.create_brain_json,
                         'draw': pipeline.test_brain_volumes_and_origins,
-                        'create_volumes': pipeline.create_brain_volumes_and_origins,
-                        'merge_volumes': pipeline.merge_foundation_origin_creation,
+                        'create': pipeline.create_brain_volumes_and_origins,
+                        'merge': pipeline.merge_all,
                         'neuroglancer': pipeline.create_neuroglancer_volume,
                         'save_atlas': pipeline.save_atlas_volume,
                         'update_coms': pipeline.update_atlas_coms,

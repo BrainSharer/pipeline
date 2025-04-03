@@ -178,7 +178,6 @@ class AnnotationSessionController:
         )
 
         if not annotation_sessions:
-            print('No annotation session for this animal was found.')
             return coms
 
         # first test data to make sure it has the right keys
@@ -200,21 +199,20 @@ class AnnotationSessionController:
         return coms
 
 
-    def get_annotation_volume(self, session_id):
+    def get_annotation_volume(self, session_id, scaling_factor=1):
+        """
+        This returns data in micrometers divided by the scaling_factor provided.
+        If you need x,y offsets, you'll need to convert to scale a
+        and then do an offset. (e.g., fixing DK78)
+        """
 
         annotation_session = self.session.query(AnnotationSession).get(session_id)
         polygons = defaultdict(list)
 
         if not annotation_session:
-            print("No data for this animal was found.")
             return polygons
         
         annotation = annotation_session.annotation
-
-        #xy_resolution = self.scan_run.resolution
-        #z_resolution = self.scan_run.zresolution
-        xy_resolution = 10
-        z_resolution = 10
 
         # first test data to make sure it has the right keys
         try:
@@ -222,20 +220,14 @@ class AnnotationSessionController:
         except KeyError as ke:
             return polygons
         
-        x_offset = 2200 // 32
-        y_offset = 5070 // 32
-        x_offset = 0
-        y_offset = 0
-
         for points in data:
             if 'childJsons' not in points:
-                return
+                return polygons
             for child in points['childJsons']:
                 x,y,z = child['pointA']
-                x = int(np.round(x * M_UM_SCALE / xy_resolution / 1) - x_offset)
-                y = int(np.round(y * M_UM_SCALE / xy_resolution / 1) - y_offset)
-                section = int(np.round((z * M_UM_SCALE / z_resolution), 2))
-                #print(x, y, section)
+                x = int(np.round(x * M_UM_SCALE / scaling_factor))
+                y = int(np.round(y * M_UM_SCALE / scaling_factor))
+                section = int(np.round(z * M_UM_SCALE / scaling_factor))
                 polygons[section].append((x,y))
 
         return polygons
