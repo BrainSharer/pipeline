@@ -101,31 +101,6 @@ class BrainStructureManager:
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
 
-    @staticmethod
-    def get_transform_to_align_brain(moving_brain, annotator_id=2):
-        """Transform x,y,z points to Atlas space."""
-
-        fixed_brain = "MD589"
-        moving_coms = list_coms(moving_brain, annotator_id=annotator_id)
-        fixed_coms = list_coms(fixed_brain, annotator_id=annotator_id)
-
-        for structure, com in moving_coms.items():
-            x, y, z = com
-            moving_coms[structure] = [x, y, z]
-
-        common_keys = sorted(list(fixed_coms.keys() & moving_coms.keys()))
-        fixed_points = np.array([fixed_coms[s] for s in common_keys])
-        moving_points = np.array([moving_coms[s] for s in common_keys])
-
-        if len(fixed_points) < 3 or len(moving_points) < 3:
-            print(f"Not enough points to align {moving_brain} to {fixed_brain}")
-            return np.eye(4)
-
-        transformation_matrix = compute_affine_transformation(
-            moving_points, fixed_points
-        )
-
-        return transformation_matrix
 
     def get_origin_and_section_size(self, structure_contours):
         """Gets the origin and section size
@@ -148,7 +123,7 @@ class BrainStructureManager:
         section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
-    def create_brains_origin_volume(self, brainMerger, animal, fixed_brain):
+    def create_foundation_brains_origin_volume(self, brainMerger, animal):
         """ """
         self.animal = animal
         com_path = os.path.join(self.data_path, self.animal, "com")
@@ -169,9 +144,6 @@ class BrainStructureManager:
                 )
                 sys.exit()
             structure = Path(origin_file).stem
-            # if structure not in ['IC', 'VLL_L', 'VLL_R']:
-            #    continue
-
             self.com = np.loadtxt(os.path.join(com_path, com_file))
             self.origin = np.loadtxt(os.path.join(origin_path, origin_file))
             self.volume = np.load(os.path.join(volume_path, volume_file))
@@ -208,40 +180,35 @@ class BrainStructureManager:
 
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
-
             
             polygons = self.sqlController.get_annotation_volume(annotation_session.id)
             if len(polygons) < 10:
                 continue
-            com, origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
-
-            if origin is None or volume is None:
-                print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
-                return None
-            
-            #if animal != 'DK79':
-            #    continue
-            
             moving_all = list_coms(animal, scaling_factor=10)
-            fixed_all = list_coms('MD589', scaling_factor=10)
+            fixed_all = fetch_coms('MD589', scaling_factor=10)
             common_keys = list(moving_all.keys() & fixed_all.keys())
             moving_src = np.array([moving_all[s] for s in common_keys])
             fixed_src = np.array([fixed_all[s] for s in common_keys])
             transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
             if transformation_matrix is None:
-                transformation_matrix = np.eye(4)
-            print(transformation_matrix)
+                continue
+
+            com, origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+
+            if origin is None or volume is None:
+                print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
+                return None
             
             print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)}', end=" ")
 
-            #scales = np.array([1, 1, 2])
+            scales = np.array([1, 1, 2]) # check this!
             volume = np.swapaxes(volume, 0, 2)
 
-
-            # volume needs to be put in 10,10,10, the neurotrace volumes are on 0.325/0.325/20
-            #volume = zoom(volume, scales)
+            ##### need to take care of zooming, scaling and transforming here!
+            volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+            com = center_of_mass(volume) + origin
             #volume = affine_transform_volume(volume, transformation_matrix)
             #origin *=  scales
             #print(f"scaled origin={np.round(origin)}", end=" ")
@@ -636,7 +603,15 @@ class BrainStructureManager:
             com, origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
             # Now convert com to micrometers
             scale = np.array([0.452*32, 0.452*32, 20])
-            com = com * scale
+            com *= scale
+            # we want the origin scaled to 10um, so adjust the above scale
+            scale = np.array([0.452*32, 0.452*32, 20]) / self.allen_um
+            origin *= scale
+
+            volume = np.swapaxes(volume, 0, 2)
+            volume = zoom(volume, scale)
+            com = center_of_mass(volume) + origin
+
             if debug:
                 print(f"ID={animal} Adding {structure} with {np.round(origin)} and com-pad+origin ={np.round(com)}um")
             else:
@@ -901,7 +876,7 @@ class BrainStructureManager:
         return c
 
     @staticmethod
-    def create_volume_for_one_structure(polygons, pad_z):
+    def  create_volume_for_one_structure(polygons, pad_z):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
