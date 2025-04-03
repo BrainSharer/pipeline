@@ -64,7 +64,7 @@ class AtlasManager():
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
             if not self.debug:
-                brainMerger.save_brain_coms_meshes_origins_volumes()
+                brainMerger.save_foundation_brain_coms_meshes_origins_volumes()
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
@@ -82,17 +82,13 @@ class AtlasManager():
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
-            self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
-            self.brainManager.fixed_brain.com_annotator_id = 2
-            self.brainManager.com_annotator_id = 2
-            self.brainManager.create_brains_origin_volume(self.atlasMerger, animal, self.brainManager.fixed_brain)
+            self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
 
-        # Left seems to align OK on its own
+        # Note, for DK78 TG_L, The C1 source is C1.v1
         structures = ['TG_L', 'TG_R']
-        for structure in structures:
-            self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
+        #for structure in structures:
+        #    self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         
-
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
@@ -191,7 +187,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Atlas')
 
 
-    parser.add_argument('--animal', required=True, type=str)
+    parser.add_argument('--animal', required=False, default='AtlasV8', type=str)
     parser.add_argument('--debug', required=False, default='false', type=str)
     parser.add_argument('--affine', required=False, default='false', type=str)
     parser.add_argument('--um', required=False, default=10, type=int)

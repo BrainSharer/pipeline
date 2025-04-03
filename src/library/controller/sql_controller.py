@@ -65,7 +65,7 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
 
         try:
             self.scan_run = self.session.query(ScanRun)\
-                .filter(ScanRun.FK_prep_id == animal).one()
+                .filter(ScanRun.FK_prep_id == animal).first()
         except NoResultFound as nrf:
             print(f'No scan run for {animal}')
             sys.exit()

@@ -73,17 +73,13 @@ class BrainMerger():
     def get_mean_coordinates(xyz):
         return np.mean(xyz, axis=0)
 
-    def save_brain_coms_meshes_origins_volumes(self):
+    def save_foundation_brain_coms_meshes_origins_volumes(self):
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
-        scales = (1.464, 1.464, 2)
-        origins_mean = origins_mean * scales
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
-            volume = np.swapaxes(volume, 0, 2)
+            origin = self.origins[structure]
             com = self.coms[structure]
-            volume = zoom(volume, scales)
-            origin = self.origins[structure] * scales
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
