@@ -621,15 +621,11 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
-        xy_resolution = self.sqlController.scan_run.resolution
-        z_resolution = self.sqlController.scan_run.zresolution
+        xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
+        z_resolution = self.sqlController.scan_run.zresolution / self.um
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
-        scaling_factor = 1
-        if self.um == 25:
-            scaling_factor = 2
-        image_stack_resolution = [z_resolution, xy_resolution*scaling_factor, xy_resolution*scaling_factor] # for neurotrace brains at 1/32 downsampling
         image_manager = ImageManager(self.thumbnail_aligned)
 
 
@@ -641,9 +637,9 @@ class VolumeRegistration:
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
         
-        change_z = image_stack_resolution[0] / self.um
-        change_y = image_stack_resolution[1] / self.um
-        change_x = image_stack_resolution[2] / self.um
+        change_z = z_resolution
+        change_y = xy_resolution
+        change_x = xy_resolution
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
