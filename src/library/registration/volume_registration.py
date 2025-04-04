@@ -125,7 +125,7 @@ class VolumeRegistration:
         
     """
 
-    def __init__(self, moving, channel=1, um=25, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
+    def __init__(self, moving, channel=1, um=25, fixed=None, orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.data_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.data_path, exist_ok=True)
@@ -170,7 +170,7 @@ class VolumeRegistration:
             self.affineIterations = "2500"
             self.bsplineIterations = "15000"
 
-        if not os.path.exists(self.fixed_volume_path):
+        if self.fixed is not None and not os.path.exists(self.fixed_volume_path):
             print(f'{self.fixed_volume_path} does not exist, exiting.')
             sys.exit()        
         self.report_status()
@@ -621,13 +621,15 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
 
         """
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
         scaling_factor = 1
         if self.um == 25:
             scaling_factor = 2
-        image_stack_resolution = [20, 10.4*scaling_factor, 10.4*scaling_factor] # for neurotrace brains at 1/32 downsampling
+        image_stack_resolution = [z_resolution, xy_resolution*scaling_factor, xy_resolution*scaling_factor] # for neurotrace brains at 1/32 downsampling
         image_manager = ImageManager(self.thumbnail_aligned)
 
 

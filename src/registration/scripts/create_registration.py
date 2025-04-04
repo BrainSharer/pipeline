@@ -42,13 +42,13 @@ from library.registration.volume_registration import VolumeRegistration
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--moving', help='Enter the animal (moving)', required=True)
+    parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument('--um', help="size of atlas in micrometers", required=False, default=25, type=int)
-    parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, default='Allen')
-    parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal')
-    parser.add_argument("--debug", help="Enter true or false", required=False, default="false")
-    parser.add_argument("--bspline", help="Enter true or false", required=False, default="false")
+    parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
+    parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
+    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
+    parser.add_argument("--bspline", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
     
     args = parser.parse_args()
