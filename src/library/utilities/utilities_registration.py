@@ -21,12 +21,11 @@ import sys
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
-from tifffile import imwrite, imread
+from tifffile import imwrite
 from skimage import io
 from skimage.transform import EuclideanTransform, warp
 import numpy as np
 import cv2
-import math
 # from pystackreg import StackReg
 from tqdm import tqdm
 
@@ -131,7 +130,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
 
     return rigid_params
 
-def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False):
+def create_affine_parameters(elastixImageFilter):
     """
     Create and return a dictionary of rigid registration parameters for elastixImageFilter.
     The iterations have been reduced as we are doing two alignment processes.
@@ -144,41 +143,32 @@ def create_affine_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=
     - rigid_params: A dictionary of rigid registration parameters.
     """
 
-    rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
-    rigid_params["AutomaticTransformInitialization"] = ["true"]
-    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
-    rigid_params["FixedInternalImagePixelType"] = ["float"]
-    rigid_params["MovingInternalImagePixelType"] = ["float"]
-    rigid_params["FixedImageDimension"] = ["2"]
-    rigid_params["MovingImageDimension"] = ["2"]
-    rigid_params["UseDirectionCosines"] = ["false"]
-    rigid_params["HowToCombineTransforms"] = ["Compose"]
-    rigid_params["DefaultPixelValue"] = [defaultPixelValue]
-    rigid_params["WriteResultImage"] = ["true"]
-    rigid_params["(ResultImageFormat"] = ["tif"]    
-    rigid_params["WriteIterationInfo"] = ["true"]
-    rigid_params["Resampler"] = ["DefaultResampler"]
-    rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
-    rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
-    rigid_params["NumberOfResolutions"] = ["5"]
-    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-    rigid_params["Transform"] = ["AffineTransform"]
-    rigid_params["AutomaticScalesEstimation"] = ["true"]
-    # the AdvancedMattesMutualInformation metric really helps with the alignment
-    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
-    rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
-    rigid_params["UseRandomSampleRegion"] = ["true"]
-    rigid_params["SampleRegionSize"] = ["50"]
-    if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["500   "]
-    else:
-        rigid_params["MaximumNumberOfIterations"] = [NUM_ITERATIONS]
+    params = elastixImageFilter.GetDefaultParameterMap("rigid")
+    params["AutomaticTransformInitialization"] = ["true"]
+    params["FixedInternalImagePixelType"] = ["float"]
+    params["MovingInternalImagePixelType"] = ["float"]
+    params["FixedImageDimension"] = ["3"]
+    params["MovingImageDimension"] = ["3"]
+    params["UseDirectionCosines"] = ["false"]
+    params["HowToCombineTransforms"] = ["Compose"]
+    params["DefaultPixelValue"] = ["0"]
+    params["WriteResultImage"] = ["true"]
+    params["ResultImageFormat"] = ["tif"]    
+    params["WriteIterationInfo"] = ["true"]
+    params["Resampler"] = ["DefaultResampler"]
+    params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    params["Transform"] = ["EulerTransform"]
+    params["AutomaticScalesEstimation"] = ["true"]
+    params["UseRandomSampleRegion"] = ["true"]
+    params["Interpolator"] = ["NearestNeighborInterpolator"]
+    params["ImageSampler"] = ["Random"]
+    params["Metric"] =  ["AdvancedMattesMutualInformation"]
+    params["Optimizer"] =  ["AdaptiveStochasticGradientDescent"]
+    params["ResampleInterpolator"] = ["FinalBSplineInterpolator"]        
 
-    rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
-    rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
-    rigid_params["ImageSampler"] = ["Random"]
-
-    return rigid_params
+    return params
 
 
 def rescale_transformations(transforms: dict, scaling_factor: float) -> dict:

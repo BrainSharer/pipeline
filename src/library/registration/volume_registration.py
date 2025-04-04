@@ -53,7 +53,7 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir,
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_registration import create_rigid_parameters
+from library.utilities.utilities_registration import create_affine_parameters, create_rigid_parameters
 
 # constants
 MOVING_CROP = 50
@@ -186,7 +186,7 @@ class VolumeRegistration:
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
-        print("\trigid iterations:".ljust(20), f"{str(self.rigidIterations)}".ljust(20))
+        print("\trigid iterations:".ljust(20), f"{str(self.affineIterations)}".ljust(20))
         print()
 
 
@@ -711,6 +711,9 @@ class VolumeRegistration:
         """This will perform the elastix registration of the volume to the atlas.
         It first does an affine registration, then a bspline registration.
         """
+        if os.path.exists(self.elastix_output):
+            print(f'Removing {self.elastix_output}')
+            shutil.rmtree(self.elastix_output)
 
         os.makedirs(self.elastix_output, exist_ok=True)
         fixed_path = self.fixed_path
@@ -720,7 +723,8 @@ class VolumeRegistration:
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
         if self.debug:
-            elastixImageFilter.PrintParameterMap()
+            pass
+        elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()         
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
@@ -746,8 +750,6 @@ class VolumeRegistration:
 
     def setup_registration(self, fixed_path, moving_path, fixed_basename, moving_basename):
         
-        #fixed_path = os.path.join(self.allen_path, f'{fixed}_{self.um}um_{self.orientation}.tif' )
-        #moving_path = os.path.join(self.data_path, f'{moving}_{self.um}um_{self.orientation}.tif' )
         fixed_path = os.path.join(fixed_path, f'{fixed_basename}.tif' )
         moving_path = os.path.join(moving_path, f'{moving_basename}.tif') 
 
@@ -770,15 +772,8 @@ class VolumeRegistration:
         elastixImageFilter.SetFixedImage(fixedImage)
         elastixImageFilter.SetMovingImage(movingImage)
 
-        transParameterMap = sitk.GetDefaultParameterMap('translation')
-        rigidParameterMap = create_rigid_parameters(elastixImageFilter=elastixImageFilter, debug=self.debug)
-
-        affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        affineParameterMap["UseDirectionCosines"] = ["false"]
-        affineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations] # 250 works ok
-        #affineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-        affineParameterMap["NumberOfResolutions"]= [self.number_of_resolutions] # Takes lots of RAM
-        affineParameterMap["WriteResultImage"] = ["true"]
+        genericMap = sitk.GetDefaultParameterMap('affine')
+        genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
 
         if self.bspline:
             bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
@@ -792,9 +787,7 @@ class VolumeRegistration:
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
                 del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
 
-        #elastixImageFilter.SetParameterMap(transParameterMap)
-        elastixImageFilter.SetParameterMap(rigidParameterMap)
-        elastixImageFilter.AddParameterMap(affineParameterMap)
+        elastixImageFilter.SetParameterMap(genericMap)
         if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
             with open(fixed_point_path, 'r') as fp:
                 fixed_count = len(fp.readlines())
@@ -815,14 +808,13 @@ class VolumeRegistration:
 
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
-        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", "16000")
-        #elastixImageFilter.SetParameter("UseRandomSampleRegion", "true")
-        #elastixImageFilter.SetParameter("SampleRegionSize", "150")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
+        elastixImageFilter.SetParameter("NumberOfResolutions", "6") #### Very important, less than 6 gives lousy results.
+
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
 
-        elastixImageFilter.SetParameter("WriteIterationInfo",["true"])
         elastixImageFilter.SetLogFileName('elastix.log')
 
         return elastixImageFilter
@@ -952,9 +944,13 @@ class VolumeRegistration:
         
         if os.path.exists(self.fixed_volume_path):
             status.append(f'\tFixed volume at {self.fixed_volume_path}')
+            arr = read_image(self.fixed_volume_path)
+            status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
 
         if os.path.exists(self.moving_volume_path):
             status.append(f'\tMoving volume at {self.moving_volume_path}')
+            arr = read_image(self.moving_volume_path)
+            status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
 
         result_path = os.path.join(self.registration_output, self.registered_volume)
         if os.path.exists(result_path):
