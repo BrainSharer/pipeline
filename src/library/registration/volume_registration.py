@@ -127,8 +127,13 @@ class VolumeRegistration:
 
     def __init__(self, moving, channel=1, um=25, fixed=None, orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
-        self.data_path = os.path.join(self.registration_path, moving)
-        os.makedirs(self.data_path, exist_ok=True)
+        self.moving_path = os.path.join(self.registration_path, moving)
+        os.makedirs(self.moving_path, exist_ok=True)
+        if fixed is not None:
+            self.fixed = fixed
+            self.fixed_path = os.path.join(self.registration_path, fixed)
+            self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{um}um_{orientation}.tif' )
+            os.makedirs(self.fixed_path, exist_ok=True)
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
         self.allen_path = os.path.join(self.registration_path, 'Allen')
         self.tmp_dir = get_scratch_dir()
@@ -146,22 +151,21 @@ class VolumeRegistration:
         self.fileLocationManager = FileLocationManager(self.moving)
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
-        self.moving_volume_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}.tif' )
-        self.fixed_volume_path = os.path.join(self.data_path, f'{self.fixed}_{um}um_{orientation}.tif' )
-        self.registered_volume = os.path.join(self.data_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
-        self.changes_path = os.path.join(self.data_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
+        self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{um}um_{orientation}.tif' )
+        self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
+        self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
         
-        self.registration_output = os.path.join(self.data_path, self.output_dir)
+        self.registration_output = os.path.join(self.moving_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
         self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
         
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
-        self.unregistered_point_file = os.path.join(self.data_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
+        self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
         self.number_of_resolutions = "4"
         if self.debug:
-            iterations = "250"
+            iterations = "50"
             self.rigidIterations = iterations
             self.affineIterations = iterations
             self.bsplineIterations = iterations
@@ -709,8 +713,8 @@ class VolumeRegistration:
         """
 
         os.makedirs(self.elastix_output, exist_ok=True)
-        fixed_path = self.allen_path
-        moving_path = self.data_path
+        fixed_path = self.fixed_path
+        moving_path = self.moving_path
         fixed_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
         moving_basename = f'{self.moving}_{self.um}um_{self.orientation}'
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
