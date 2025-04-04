@@ -188,14 +188,13 @@ class BrainStructureManager:
 
             
             moving_all = list_coms(animal, scaling_factor=self.allen_um)
-            fixed_all = fetch_coms('MD589', scaling_factor=self.allen_um)
+            fixed_all = list_coms('MD589', scaling_factor=self.allen_um)
             common_keys = list(moving_all.keys() & fixed_all.keys())
             moving_src = np.array([moving_all[s] for s in common_keys])
             fixed_src = np.array([fixed_all[s] for s in common_keys])
             transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
             if transformation_matrix is None:
                 continue
-            print(f"Transformation matrix\n {transformation_matrix}")
 
             origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
@@ -216,7 +215,10 @@ class BrainStructureManager:
             #print(f"scaled origin={np.round(origin)}", end=" ")
             origin = apply_affine_transform(origin, transformation_matrix)
             com = center_of_mass(volume) + origin
+            #####volume = affine_transform_volume(volume, transformation_matrix)
             print(f"scaled+trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
+            if debug:
+                print(f"Transformation matrix\n {transformation_matrix}\n")
 
             if not debug:
                 brainMerger.coms_to_merge[structure].append(com)
@@ -277,20 +279,16 @@ class BrainStructureManager:
             # com = scale_coordinate(com, self.animal)
             print(f"{structure}={com}")
 
-    def update_database_com(self, structure: str, com: np.ndarray) -> None:
+    def update_database_com(self, animal: str, structure: str, com: np.ndarray, um=1) -> None:
         """Annotator ID is hardcoded to 2 for Beth
         Data coming in is in pixels, so we need to convert to um and then to meters
         """
         annotator_id = 2
 
         com = com.tolist()
-        # xy_resolution = self.sqlController.scan_run.resolution
-        # zresolution = self.sqlController.scan_run.zresolution
-        xy_resolution = 10
-        zresolution = 10
-        x = com[0] * xy_resolution / M_UM_SCALE
-        y = com[1] * xy_resolution / M_UM_SCALE
-        z = com[2] * zresolution / M_UM_SCALE
+        x = com[0] * um / M_UM_SCALE
+        y = com[1] * um / M_UM_SCALE
+        z = com[2] * um / M_UM_SCALE
         com = [x, y, z]
         json_entry = {
             "type": "point",
@@ -306,20 +304,12 @@ class BrainStructureManager:
             print(f"Could not find {structure} label in database")
             return
         # update label with allen ID
-        if False:
-            allen_id = self.get_allen_id(structure=structure)
-            label.allen_id = allen_id
-
-            update_dict = {"allen_id": allen_id}
-            self.sqlController.update_row(
-                AnnotationLabel, label, update_dict=update_dict
-            )
 
         try:
             annotation_session = (
                 self.sqlController.session.query(AnnotationSession)
                 .filter(AnnotationSession.active == True)
-                .filter(AnnotationSession.FK_prep_id == self.animal)
+                .filter(AnnotationSession.FK_prep_id == animal)
                 .filter(AnnotationSession.FK_user_id == annotator_id)
                 .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
                 .filter(AnnotationSession.annotation["type"] == "point")
@@ -329,7 +319,7 @@ class BrainStructureManager:
             print(f"Inserting {structure} with {com}")
             self.sqlController.insert_annotation_with_labels(
                 FK_user_id=annotator_id,
-                FK_prep_id=self.animal,
+                FK_prep_id=animal,
                 annotation=json_entry,
                 labels=[structure],
             )
@@ -466,7 +456,7 @@ class BrainStructureManager:
 
             if self.debug:
                 print(
-                    f"{structure} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}"
+                    f"{structure} origin={np.round(origin)} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}"
                 )
             else:
                 try:
@@ -496,13 +486,31 @@ class BrainStructureManager:
 
         print(f"evaluating atlas data from {self.com_path}")
         atlas_volume, atlas_centers, ids = self.create_atlas_volume()
+        foundation_brains = ['MD585', 'MD589', 'MD594']
 
         if self.debug:
-            for k, v in atlas_centers.items():
-                print(f"{k}={v}")
+            for structure, com in atlas_centers.items():
+                print(f"{structure}={com}")
+
+            for animal in foundation_brains:
+                com_path = os.path.join(self.data_path, animal, "com")
+                files = sorted(os.listdir(com_path))
+                for file in files:
+                    comfile_path = os.path.join(com_path, file)
+                    com = np.loadtxt(comfile_path)
+                    structure = file.replace(".txt", "")
+                    print(f"{animal} {structure}={np.round(com)}")
         else:
             for structure, com in atlas_centers.items():
-                self.update_database_com(structure, com)
+                self.update_database_com(self.animal, structure, com, 10)
+            for animal in foundation_brains:
+                com_path = os.path.join(self.data_path, animal, "com")
+                files = sorted(os.listdir(com_path))
+                for file in files:
+                    comfile_path = os.path.join(com_path, file)
+                    com = np.loadtxt(comfile_path)
+                    structure = file.replace(".txt", "")
+                    self.update_database_com(animal, structure, com, 1)
 
     def save_atlas_volume(self) -> None:
         """
