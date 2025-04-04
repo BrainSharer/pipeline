@@ -725,7 +725,8 @@ class VolumeRegistration:
         if self.debug:
             pass
         elastixImageFilter.PrintParameterMap()
-        resultImage = elastixImageFilter.Execute()         
+        resultImage = elastixImageFilter.Execute()
+                
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
         sitk.WriteImage(resultImage, self.registered_volume)
