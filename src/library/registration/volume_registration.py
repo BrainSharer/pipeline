@@ -740,8 +740,8 @@ class VolumeRegistration:
        
         os.makedirs(self.reverse_elastix_output, exist_ok=True)
         # switch fixed and moving
-        fixed_path = self.data_path
-        moving_path = self.allen_path
+        fixed_path = self.moving_path
+        moving_path = self.fixed_path
         fixed_basename = f'{self.moving}_{self.um}um_{self.orientation}'
         moving_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)

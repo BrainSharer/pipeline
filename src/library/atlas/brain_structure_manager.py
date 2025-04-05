@@ -234,8 +234,8 @@ class BrainStructureManager:
             volume = np.rot90(volume, axes=(0, 1))
             volume = np.flip(volume, 0)
             # perfom transform
-            #volume = affine_transform(volume, rotatio, offset=0, order=1)
-            volume = apply_affine_transform(volume, transformation_matrix)
+            volume = affine_transform(volume, transformation_matrix[:3, :3], offset=0, order=1)
+            #volume = apply_affine_transform(volume, transformation_matrix)
             volume = np.rot90(volume, axes=(0, 1), k=3)
             volume = np.flip(volume, 1)
             
@@ -244,7 +244,7 @@ class BrainStructureManager:
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
             #origin *=  scales
             #print(f"scaled origin={np.round(origin)}", end=" ")
-            origin = apply_affine_transform(origin, transformation_matrix)
+            #origin = apply_affine_transform(origin, transformation_matrix)
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
             print(f"trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
