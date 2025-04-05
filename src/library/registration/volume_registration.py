@@ -194,6 +194,8 @@ class VolumeRegistration:
     def setup_transformix(self, outputpath):
         """Method used to transform volumes and points
         """
+
+        number_of_transforms = 1
         
         os.makedirs(self.registration_output, exist_ok=True)
 
@@ -203,17 +205,19 @@ class VolumeRegistration:
         if not os.path.exists(transform_parameter0_path):
             print(f'{transform_parameter0_path} does not exist, exiting.')
             sys.exit()
-        if not os.path.exists(transform_parameter1_path):
-            print(f'{transform_parameter1_path} does not exist, exiting.')
-            sys.exit()
-            
 
+        if os.path.exists(transform_parameter1_path):
+            print(f'{transform_parameter1_path} exists, using two transformations.')
+            number_of_transforms = 2
+            
 
         transformixImageFilter = sitk.TransformixImageFilter()
         parameterMap0 = sitk.ReadParameterFile(transform_parameter0_path)
-        parameterMap1 = sitk.ReadParameterFile(transform_parameter1_path)
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
-        transformixImageFilter.AddTransformParameterMap(parameterMap1)
+        if number_of_transforms == 2:
+            # Read the second transform parameter map
+            parameterMap1 = sitk.ReadParameterFile(transform_parameter1_path)
+            transformixImageFilter.AddTransformParameterMap(parameterMap1)
         transformixImageFilter.LogToFileOn()
         transformixImageFilter.LogToConsoleOff()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
@@ -296,7 +300,7 @@ class VolumeRegistration:
             print(f'{self.unregistered_point_file} does not exist, exiting.')
             sys.exit()
 
-        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.1.txt')
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
         if not os.path.exists(reverse_transformation_pfile):
             print(f'{reverse_transformation_pfile} does not exist, exiting.')
             sys.exit()
