@@ -154,7 +154,7 @@ def create_affine_parameters(elastixImageFilter):
     params["DefaultPixelValue"] = ["0"]
     params["WriteResultImage"] = ["true"]
     params["ResultImageFormat"] = ["tif"]    
-    params["WriteIterationInfo"] = ["true"]
+    params["WriteIterationInfo"] = ["false"]
     params["Resampler"] = ["DefaultResampler"]
     params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]

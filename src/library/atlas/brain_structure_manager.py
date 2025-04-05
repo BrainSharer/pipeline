@@ -180,6 +180,9 @@ class BrainStructureManager:
 
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
+
+            if animal != 'DK78':
+                continue
             
             # polygons are in micrometers
             polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.allen_um)
@@ -192,9 +195,17 @@ class BrainStructureManager:
             common_keys = list(moving_all.keys() & fixed_all.keys())
             moving_src = np.array([moving_all[s] for s in common_keys])
             fixed_src = np.array([fixed_all[s] for s in common_keys])
-            transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
-            if transformation_matrix is None:
-                continue
+            #transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
+
+           
+            transform_parameters = [0.948285, 0.329121, 0.083999, -0.462397, 0.920178, 0.035022, 0.006259, -0.019572, 
+                                    1.017119, 117.392129, 46.481383, -16.161213]
+            rotation = transform_parameters[:9]
+            rotation = np.array(rotation).reshape(3,3)
+            translation = np.array(transform_parameters[-3:])
+            translation = translation[..., np.newaxis]
+            transformation_matrix = np.hstack( [rotation, translation ])
+            transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 
             origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
@@ -206,11 +217,18 @@ class BrainStructureManager:
 
             scales = np.array([1, 1, 2]) # check this!
             volume = np.swapaxes(volume, 0, 2)
+            save_volume = volume.copy()
+            
+            #volume = np.rot90(volume, axes=(0, 1))
+            #volume = np.flip(volume, axis=0)
+            # perfom transform
+            volume = affine_transform(volume, rotation, offset=0, order=1)
+            #volume = np.rot90(volume, axes=(0, 1), k=3)
+            #volume = np.flip(volume, axis=0)
 
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
-            #volume = affine_transform_volume(volume, transformation_matrix)
             #origin *=  scales
             #print(f"scaled origin={np.round(origin)}", end=" ")
             origin = apply_affine_transform(origin, transformation_matrix)
@@ -234,7 +252,7 @@ class BrainStructureManager:
                 os.makedirs(brain_structure_path, exist_ok=True)
                 np.savetxt(os.path.join(brain_com_path, f"{structure_name}.txt"), com)
                 np.savetxt(os.path.join(brain_origin_path, f"{structure_name}.txt"), origin)
-                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), volume)
+                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), save_volume)
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, no calculations, only saving!"""
