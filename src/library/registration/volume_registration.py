@@ -773,7 +773,7 @@ class VolumeRegistration:
         elastixImageFilter.SetFixedImage(fixedImage)
         elastixImageFilter.SetMovingImage(movingImage)
 
-        genericMap = sitk.GetDefaultParameterMap('affine')
+        genericMap = sitk.GetDefaultParameterMap('rigid')
         genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
 
         if self.bspline:
