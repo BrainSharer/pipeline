@@ -238,6 +238,7 @@ class BrainStructureManager:
             #volume = apply_affine_transform(volume, transformation_matrix)
             volume = np.rot90(volume, axes=(0, 1), k=3)
             volume = np.flip(volume, 1)
+            origin = np.array([383, 205, 554])
             
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
