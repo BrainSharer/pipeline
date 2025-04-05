@@ -181,7 +181,7 @@ class BrainStructureManager:
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
 
-            if animal != 'DK78':
+            if annotation_session.id != 8113:
                 continue
             
             # polygons are in micrometers
@@ -189,7 +189,7 @@ class BrainStructureManager:
             if len(polygons) < 10:
                 continue
 
-            
+            """
             moving_all = list_coms(animal, scaling_factor=self.allen_um)
             fixed_all = list_coms('MD589', scaling_factor=self.allen_um)
             common_keys = list(moving_all.keys() & fixed_all.keys())
@@ -198,14 +198,26 @@ class BrainStructureManager:
             #transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
 
            
-            transform_parameters = [0.948285, 0.329121, 0.083999, -0.462397, 0.920178, 0.035022, 0.006259, -0.019572, 
-                                    1.017119, 117.392129, 46.481383, -16.161213]
+            transform_parameters = [0.955146, 0.333175, 0.110121, -0.462277, 0.956330, 
+                                    0.056532, 0.003245, -0.017109, 0.969857, 307.262939, 123.364020, -40.399677]
+            transform_parameters = [0.955146, 0.333175, 0.110121, -0.462277, 0.956330, 
+                                    0.056532, 0.003245, -0.017109, 0.969857, 0, 0, 0]
             rotation = transform_parameters[:9]
             rotation = np.array(rotation).reshape(3,3)
+            transformation_matrix = rotation.copy()
             translation = np.array(transform_parameters[-3:])
-            translation = translation[..., np.newaxis]
-            transformation_matrix = np.hstack( [rotation, translation ])
+            t = translation.reshape(3,1)
+            transformation_matrix = np.hstack( [rotation, t ])
             transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
+            """
+            transformation_matrix = np.array([[ 8.81733161e-01,  4.71536304e-01,  1.41473275e-02,
+                    1.26889695e+02],
+                [-4.71256684e-01,  8.79048775e-01,  7.20443488e-02,
+                    4.46024200e+01],
+                [ 2.15353351e-02, -7.01909140e-02,  9.97301090e-01,
+                    -1.89718540e+01],
+                [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+                    1.00000000e+00]])
 
             origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
@@ -215,17 +227,18 @@ class BrainStructureManager:
             
             print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)}', end=" ")
 
-            scales = np.array([1, 1, 2]) # check this!
+            scales = np.array([1, 1, 2]) # scales are at 10um in x and y, z needs the zoom
             volume = np.swapaxes(volume, 0, 2)
-            save_volume = volume.copy()
-            
-            #volume = np.rot90(volume, axes=(0, 1))
-            #volume = np.flip(volume, axis=0)
-            # perfom transform
-            volume = affine_transform(volume, rotation, offset=0, order=1)
-            #volume = np.rot90(volume, axes=(0, 1), k=3)
-            #volume = np.flip(volume, axis=0)
 
+            
+            volume = np.rot90(volume, axes=(0, 1))
+            volume = np.flip(volume, 0)
+            # perfom transform
+            #volume = affine_transform(volume, rotatio, offset=0, order=1)
+            volume = apply_affine_transform(volume, transformation_matrix)
+            volume = np.rot90(volume, axes=(0, 1), k=3)
+            volume = np.flip(volume, 1)
+            
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
@@ -234,9 +247,9 @@ class BrainStructureManager:
             origin = apply_affine_transform(origin, transformation_matrix)
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
-            print(f"scaled+trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
-            if debug:
-                print(f"Transformation matrix\n {transformation_matrix}\n")
+            print(f"trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
+            #if debug:
+            #    print(f"Transformation matrix\n {transformation_matrix}\n")
 
             if not debug:
                 brainMerger.coms_to_merge[structure].append(com)
@@ -252,7 +265,7 @@ class BrainStructureManager:
                 os.makedirs(brain_structure_path, exist_ok=True)
                 np.savetxt(os.path.join(brain_com_path, f"{structure_name}.txt"), com)
                 np.savetxt(os.path.join(brain_origin_path, f"{structure_name}.txt"), origin)
-                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), save_volume)
+                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), volume)
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, no calculations, only saving!"""
@@ -625,6 +638,15 @@ class BrainStructureManager:
         xy_resolution = self.fixed_brain.sqlController.scan_run.resolution
         zresolution = self.fixed_brain.sqlController.scan_run.zresolution
 
+        moving_all = list_coms(animal, scaling_factor=self.allen_um)
+        fixed_all = list_coms('MD589', scaling_factor=self.allen_um)
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        moving_src = np.array([moving_all[s] for s in common_keys])
+        fixed_src = np.array([fixed_all[s] for s in common_keys])
+        transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
+
+
+
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
@@ -635,6 +657,7 @@ class BrainStructureManager:
             # Now convert com to micrometers
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
             origin_um = origin0 * scale0
+            origin_um = apply_affine_transform(origin_um, transformation_matrix)
             # we want the origin scaled to 10um, so adjust the above scale
             scale1 = scale0 / self.allen_um
             origin0 *= scale1

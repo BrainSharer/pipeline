@@ -159,7 +159,7 @@ def create_affine_parameters(elastixImageFilter):
     params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
     params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-    params["Transform"] = ["AffineTransform"]
+    params["Transform"] = ["EulerTransform"]
     params["AutomaticScalesEstimation"] = ["true"]
     params["UseRandomSampleRegion"] = ["true"]
     params["Interpolator"] = ["NearestNeighborInterpolator"]
