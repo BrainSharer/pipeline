@@ -3,12 +3,13 @@ from pathlib import Path
 import sys
 import numpy as np
 import SimpleITK as sitk
+from scipy.spatial.transform import Rotation as R
+from skimage.filters import gaussian
+from scipy.ndimage import affine_transform
 
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
-from skimage.filters import gaussian
-from scipy.ndimage import affine_transform
 
 
 
@@ -330,3 +331,34 @@ def average_imagesV1(volumes, structure):
     #avg_image.CopyInformation(reference_image)  # Copy metadata
     return avg_array
     #return sitk.GetArrayFromImage(avg_array)
+
+
+def euler_to_rigid_transform(euler_transform, rotation_order='xyz', degrees=False):
+    """
+    Converts a 6-variable Euler transform to a 4x4 rigid transformation matrix.
+    
+    Parameters:
+        euler_transform (list or np.ndarray): A list or array of 6 values.
+                                              The first 3 are rotation (rx, ry, rz),
+                                              the last 3 are translation (tx, ty, tz).
+        rotation_order (str): Order of Euler rotations (default 'xyz').
+        degrees (bool): Whether the input rotation angles are in degrees. Default is radians.
+
+    Returns:
+        np.ndarray: A 4x4 rigid transformation matrix.
+    """
+    assert len(euler_transform) == 6, "Euler transform must have 6 elements"
+
+    rot_angles = euler_transform[:3]
+    translation = euler_transform[3:]
+
+    # Create rotation matrix
+    rotation = R.from_euler(rotation_order, rot_angles, degrees=degrees)
+    rot_matrix = rotation.as_matrix()
+
+    # Construct 4x4 transformation matrix
+    transform = np.eye(4)
+    transform[:3, :3] = rot_matrix
+    transform[:3, 3] = translation
+
+    return transform

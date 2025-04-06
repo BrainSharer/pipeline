@@ -86,7 +86,7 @@ class AtlasManager():
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
 
         # Note, for DK78 TG_L, The C1 source is C1.v1
-        structures = ['TG_L', 'TG_R']
+        structures = ['Sagittal1']
         for structure in structures:
             self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         

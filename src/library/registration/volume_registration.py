@@ -719,6 +719,10 @@ class VolumeRegistration:
             print(f'Removing {self.elastix_output}')
             shutil.rmtree(self.elastix_output)
 
+        if self.fixed_path is None or self.moving_path is None:
+            print('Fixed or moving path is None, exiting')
+            sys.exit()
+
         os.makedirs(self.elastix_output, exist_ok=True)
         fixed_path = self.fixed_path
         moving_path = self.moving_path
