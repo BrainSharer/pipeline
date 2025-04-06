@@ -816,6 +816,7 @@ class VolumeRegistration:
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
         elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
+        elastixImageFilter.SetParameter("ComputeZYX", "true")
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
