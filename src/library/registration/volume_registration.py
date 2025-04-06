@@ -654,7 +654,8 @@ class VolumeRegistration:
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
-        zoomed = zoom(image_stack, change)
+        #zoomed = zoom(image_stack, change)
+        zoomed = image_stack.copy()
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
