@@ -630,7 +630,7 @@ class VolumeRegistration:
 
         """
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution / 1
+        z_resolution = self.sqlController.scan_run.zresolution / 20
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
