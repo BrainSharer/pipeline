@@ -181,13 +181,13 @@ class BrainStructureManager:
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
 
-            if annotation_session.id != 8113:
+            if annotation_session.id != 8284:
                 continue
             
             # polygons are in micrometers
             polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.allen_um)
-            if len(polygons) < 10:
-                continue
+            #if len(polygons) < 10:
+            #    continue
 
             """
             moving_all = list_coms(animal, scaling_factor=self.allen_um)
@@ -210,12 +210,12 @@ class BrainStructureManager:
             transformation_matrix = np.hstack( [rotation, t ])
             transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
             """
-            transformation_matrix = np.array([[ 8.81733161e-01,  4.71536304e-01,  1.41473275e-02,
-                    1.26889695e+02],
-                [-4.71256684e-01,  8.79048775e-01,  7.20443488e-02,
-                    4.46024200e+01],
-                [ 2.15353351e-02, -7.01909140e-02,  9.97301090e-01,
-                    -1.89718540e+01],
+            transformation_matrix = np.array([[ 9.96760537e-01,  7.16044788e-02, -3.66228085e-02,
+                    3.26744936e+02],
+                [-4.69306871e-02,  8.87626321e-01,  4.58167026e-01,
+                    1.15845161e+02],
+                [ 6.53141799e-02, -4.54964078e-01,  8.88111336e-01,
+                    -4.78383870e+01],
                 [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
                     1.00000000e+00]])
 
@@ -225,13 +225,13 @@ class BrainStructureManager:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
                 return None
             
-            print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)}', end=" ")
+            print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)} orig {volume.shape=}', end=" ")
 
             scales = np.array([1, 1, 2]) # scales are at 10um in x and y, z needs the zoom
             volume = np.swapaxes(volume, 0, 2)
 
             
-            
+            """
             volume = np.rot90(volume, axes=(0, 1))
             volume = np.flip(volume, 0)
             # perfom transform
@@ -239,7 +239,7 @@ class BrainStructureManager:
             #volume = apply_affine_transform(volume, transformation_matrix)
             volume = np.rot90(volume, axes=(0, 1), k=3)
             volume = np.flip(volume, 1)
-            
+            """
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
@@ -247,7 +247,8 @@ class BrainStructureManager:
             #print(f"scaled origin={np.round(origin)}", end=" ")
             
             #origin = apply_affine_transform(origin, transformation_matrix)
-            origin = np.array([383, 666, 554])
+            #origin = np.array([845, 710, 221 ]) # from transformix, this works 
+            origin = np.array([891, 827,  66.]) # from notebook, NO GOOD
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
             print(f"trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
