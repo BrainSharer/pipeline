@@ -3,8 +3,7 @@ import datetime
 import numpy as np
 from collections import defaultdict
 
-from library.database_model.brain_region import BrainRegion
-from library.database_model.annotation_points import AnnotationLabel, StructureCOM
+from library.database_model.annotation_points import AnnotationLabel
 from library.database_model.annotation_points import AnnotationSession
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
 
@@ -200,6 +199,7 @@ class AnnotationSessionController:
 
 
     def get_annotation_volume(self, session_id, scaling_factor=1):
+
         """
         This returns data in micrometers divided by the scaling_factor provided.
         If you need x,y offsets, you'll need to convert to scale a

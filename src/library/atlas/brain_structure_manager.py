@@ -231,6 +231,7 @@ class BrainStructureManager:
             volume = np.swapaxes(volume, 0, 2)
 
             
+            
             volume = np.rot90(volume, axes=(0, 1))
             volume = np.flip(volume, 0)
             # perfom transform
@@ -238,14 +239,15 @@ class BrainStructureManager:
             #volume = apply_affine_transform(volume, transformation_matrix)
             volume = np.rot90(volume, axes=(0, 1), k=3)
             volume = np.flip(volume, 1)
-            origin = np.array([383, 205, 554])
             
             ##### need to take care of zooming, scaling and transforming here!
             volume = zoom(volume, scales)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
             #origin *=  scales
             #print(f"scaled origin={np.round(origin)}", end=" ")
+            
             #origin = apply_affine_transform(origin, transformation_matrix)
+            origin = np.array([383, 666, 554])
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
             print(f"trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
@@ -931,7 +933,7 @@ class BrainStructureManager:
         return c
 
     @staticmethod
-    def  create_volume_for_one_structure(polygons, pad_z):
+    def create_volume_for_one_structure(polygons, pad_z):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
@@ -965,3 +967,4 @@ class BrainStructureManager:
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
         #####com = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin
         return origin, volume
+

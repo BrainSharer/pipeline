@@ -207,7 +207,7 @@ class VolumeRegistration:
             sys.exit()
 
         if os.path.exists(transform_parameter1_path):
-            print(f'{transform_parameter1_path} exists, using two transformations.')
+            print(f'{transform_parameter1_path} exists, using two transformation.')
             number_of_transforms = 2
             
 
@@ -630,7 +630,7 @@ class VolumeRegistration:
 
         """
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution / self.um
+        z_resolution = self.sqlController.scan_run.zresolution / 1
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
