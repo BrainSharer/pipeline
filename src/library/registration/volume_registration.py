@@ -630,7 +630,7 @@ class VolumeRegistration:
 
         """
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution / 20
+        z_resolution = self.sqlController.scan_run.zresolution / self.um
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
@@ -654,8 +654,7 @@ class VolumeRegistration:
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
-        #zoomed = zoom(image_stack, change)
-        zoomed = image_stack.copy()
+        zoomed = zoom(image_stack, change)
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
@@ -948,7 +947,7 @@ class VolumeRegistration:
         """
         status = []
         
-        if os.path.exists(self.fixed_volume_path):
+        if self.fixed is not None and os.path.exists(self.fixed_volume_path):
             status.append(f'\tFixed volume at {self.fixed_volume_path}')
             arr = read_image(self.fixed_volume_path)
             status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
