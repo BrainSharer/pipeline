@@ -2,6 +2,7 @@ from collections import defaultdict
 import datetime
 import numpy as np
 from collections import defaultdict
+import SimpleITK as sitk
 
 from library.database_model.annotation_points import AnnotationLabel
 from library.database_model.annotation_points import AnnotationSession
@@ -200,6 +201,22 @@ class AnnotationSessionController:
 
     def get_annotation_volume(self, session_id, scaling_factor=1):
 
+        def convert_euler(x, y, z):
+            reuler = [0.066036, 0.006184, 0.476529, -235.788051, -169.603207, 36.877408]
+            theta_x = reuler[0]
+            theta_y = reuler[1]
+            theta_z = reuler[2]
+            translation = np.array(reuler[3:6])
+            rotation_center = np.array([1166.5000000000, 689.5000000000, 436.5000000000])
+            rigid_euler = sitk.Euler3DTransform(rotation_center, theta_x, theta_y, theta_z, translation)
+            A1 = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
+            t1 = np.asarray(rigid_euler.GetTranslation())
+
+            p = np.array([x, y, z])
+            truec = rotation_center
+            x1,y1,z1 = np.dot(A1, p - truec) + t1 + truec
+            return int(x1), int(y1), int(z1)
+
         """
         This returns data in micrometers divided by the scaling_factor provided.
         If you need x,y offsets, you'll need to convert to scale a
@@ -228,7 +245,10 @@ class AnnotationSessionController:
                 x = int(np.round(x * M_UM_SCALE / scaling_factor))
                 y = int(np.round(y * M_UM_SCALE / scaling_factor))
                 section = int(np.round(z * M_UM_SCALE / scaling_factor))
-                polygons[section].append((x,y))
+                x1, y1, z1 = convert_euler(x, y, section)
+
+                #polygons[section].append((x,y))
+                polygons[z1].append((x1,y1))
 
         return polygons
     
