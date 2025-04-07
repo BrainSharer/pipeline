@@ -137,8 +137,6 @@ def compute_affine_transformation_centroid(source_points, target_points):
     t = t.reshape(3,1)
     # Convert to 4x4 matrix
     transformation_matrix = A.copy()
-    #transformation_matrix[:3, :] = A
-    #transformation_matrix[... , 4] = t
     transformation_matrix = np.hstack( [transformation_matrix, t ])
     transformation_matrix = np.vstack([transformation_matrix, np.array([0, 0, 0, 1])])
 

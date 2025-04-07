@@ -734,8 +734,6 @@ class VolumeRegistration:
             pass
         elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()
-        transform_parameters = elastixImageFilter.GetTransformParameters()
-        print(transform_parameters)
                 
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
