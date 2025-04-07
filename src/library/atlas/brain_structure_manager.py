@@ -181,7 +181,7 @@ class BrainStructureManager:
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
 
-            if annotation_session.id != 8284:
+            if annotation_session.id != 7387:
                 continue
             
             # polygons are in micrometers
@@ -225,7 +225,7 @@ class BrainStructureManager:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
                 return None
             
-            print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)} orig {volume.shape=}', end=" ")
+            print(f'ID={annotation_session.id} animal={animal} {structure} original origin={np.round(origin)} {volume.shape=}', end=" ")
 
             scales = np.array([1, 1, 2]) # scales are at 10um in x and y, z needs the zoom
             volume = np.swapaxes(volume, 0, 2)
@@ -247,8 +247,9 @@ class BrainStructureManager:
             #print(f"scaled origin={np.round(origin)}", end=" ")
             
             #origin = apply_affine_transform(origin, transformation_matrix)
-            #origin = np.array([845, 710, 221 ]) # from transformix, this works 
-            origin = np.array([891, 827,  66.]) # from notebook, NO GOOD
+            #origin = np.array([845, 710, 221 ]) # from transformix, this works for the sagittal thing
+            origin = np.array([356, 461, 224])
+            #origin = np.array([891, 827,  66.]) # from notebook, NO GOOD
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
             print(f"trans origin={np.round(origin)} {volume.shape=} com={np.round(com)}")
