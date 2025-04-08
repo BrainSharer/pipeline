@@ -317,7 +317,9 @@ class CellDetectorTrainer(Detector, CellDetectorBase):
             bst_list.append(bst)
 
         #ROC_CURVE CREATE ON SCRATCH THEN MOVE TO CENTRALIZED REPOSITORY
-        roc_img = self.evaluate_model(test, df['predictions'], bst_list, model_filename)
+        true_labels = pl.Series(test.get_label())
+
+        roc_img = self.evaluate_model(test, true_labels, bst_list, model_filename)
 
         roc_filename = f"roc_curve_{model_filename.stem}.tif"
         ROC_OUTPUT = Path(local_scratch, roc_filename)

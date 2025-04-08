@@ -364,7 +364,7 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            # if section < 239:
+            # if section < 58:
             #     continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
@@ -589,7 +589,7 @@ class CellMaker(ParallelManager):
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
 
-        cuda_available = cp.is_available()
+        # cuda_available = cp.is_available()
 
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_features')
         output_path.mkdir(parents=True, exist_ok=True)
@@ -600,39 +600,10 @@ class CellMaker(ParallelManager):
         for idx, cell in enumerate(cell_candidate_data):
             
             # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
-            # Initialize GPU data containers
-            ch1_img_gpu = ch3_img_gpu = None
             results = {}
-            if cuda_available:
-                # Load all images to GPU once
-                ch1_img_gpu = cp.asarray(cell['image_CH1'])
-                ch3_img_gpu = cp.asarray(cell['image_CH3'])
-                avg_ch1_gpu = cp.asarray(avg_cell_img["CH1"])
-                avg_ch3_gpu = cp.asarray(avg_cell_img["CH3"])
-
-                # Process correlation/energy on GPU
-                results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(
-                    avg_ch1_gpu, ch1_img_gpu, cuda_available)
-                
-                results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(
-                    avg_ch3_gpu, ch3_img_gpu, cuda_available)
-                
-                # Process contrast/moments on GPU
-                results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = \
-                    features_using_center_connected_components(
-                        {'image_CH1': ch1_img_gpu, 
-                        'image_CH3': ch3_img_gpu,
-                        'mask': cp.asarray(cell['mask'])},
-                        cuda_available=cuda_available, debug=debug)
-            else:
-                results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(
-                    avg_cell_img["CH1"], cell['image_CH1'], cuda_available)
-                
-                results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(
-                    avg_cell_img["CH3"], cell['image_CH3'], cuda_available)
-
-                results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = \
-                    features_using_center_connected_components(cell, cuda_available=cuda_available, debug=debug)
+            results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
+            results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(avg_cell_img["CH3"], cell['image_CH3'])
+            results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = features_using_center_connected_components(cell, debug=debug)
 
             # Build features dictionary
             spreadsheet_row = {
@@ -653,7 +624,6 @@ class CellMaker(ParallelManager):
             }
             spreadsheet_row.update(results['moments_data'][0])  # Regular moments
             spreadsheet_row.update(results['moments_data'][1])  # Hu moments
-            spreadsheet_row.update({'contrast1': results['ch1_contrast'], 'contrast3': results['ch1_contrast']})
             output_spreadsheet.append(spreadsheet_row)
 
             #TODO: EXPLORE IF HARD-CODED VARIABLES MAKE ANY DIFFERENCE HERE
@@ -687,7 +657,7 @@ class CellMaker(ParallelManager):
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        _, section, str_section_number, _, _, _, SCRATCH, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
 
         #TODO: test if retraining or init model creating
         if model_filename:
@@ -700,7 +670,78 @@ class CellMaker(ParallelManager):
             print(model_msg)
             print(f'Starting function score_and_detect_cell on section {section}')
 
+        def calculate_scores_old(features: pd.DataFrame, model):
+            """
+                Calculate scores, mean, and standard deviation for each feature.
+
+                Args:
+                features (pd.DataFrame): Input features.
+                model: XGBoost model.
+
+                Returns:
+                tuple: Mean scores and standard deviation scores.
+            """
+            all_data = xgb.DMatrix(features)
+            scores=np.zeros([features.shape[0], len(model)])
+
+            for i, bst in enumerate(model):
+                attributes = bst.attributes()
+                try:
+                    best_ntree_limit = int(attributes["best_ntree_limit"])
+                except KeyError:
+                    best_ntree_limit = 676
+                scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
+
+            mean_scores = np.mean(scores, axis=1)
+            std_scores = np.std(scores, axis=1)
+            return mean_scores, std_scores
+
         def calculate_scores(features: pl.DataFrame, model):
+            """
+                Calculate scores, mean, and standard deviation for each feature.
+
+                Args:
+                features (pl.DataFrame): Input features.
+                model: XGBoost model.
+
+                Returns:
+                tuple: Mean scores and standard deviation scores.
+            """
+            if 'idx' not in features.columns: #temp 'dummy' column; remove before model training
+                features = features.with_columns(
+                    pl.lit(-1).alias('idx')  # Dummy value, or replace with meaningful default
+                )
+            # Convert Polars DataFrame to pandas (XGBoost DMatrix prefers pandas)
+            features_pd = features.to_pandas()
+            model_features = model[0].feature_names
+            missing = set(model_features) - set(features_pd.columns)
+            if missing:
+                    raise ValueError(f"Missing features in input: {missing}")
+
+            # Reorder and filter to match model
+            features_pd = features_pd[model_features]
+
+            all_data = xgb.DMatrix(features_pd)
+            scores=np.zeros([features_pd.shape[0], len(model)])
+
+            for i, bst in enumerate(model):
+                best_ntree_limit = int(bst.attributes().get("best_ntree_limit", 676))
+                scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
+
+            mean_scores = np.mean(scores, axis=1)
+            std_scores = np.std(scores, axis=1)
+
+            # for i, bst in enumerate(model):
+            #     attributes = bst.attributes()
+            #     try:
+            #         best_ntree_limit = int(attributes["best_ntree_limit"])
+            #     except KeyError:
+            #         best_ntree_limit = 676
+            #     scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
+
+            return mean_scores, std_scores
+
+        def calculate_scores2(features: pl.DataFrame, model):
             """
                 Calculate scores, mean, and standard deviation for each feature.
 
@@ -1188,7 +1229,7 @@ class CellMaker(ParallelManager):
             .alias("label")
         )
 
-        non_feature_columns = {'animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score'}
+        non_feature_columns = {'animal', 'section', 'index', 'row', 'col', 'mean_score', 'std_score', 'predictions'}
         detection_features = detection_features.drop(
             [col for col in non_feature_columns if col in detection_features.columns]
         )
@@ -1200,7 +1241,7 @@ class CellMaker(ParallelManager):
         np_model, model_filename = trainer.load_models(self.model, self.step)
 
         if self.debug:
-            print(f'USING MODEL LOCATION: {model_filename}')
+            print(f'USING MODEL LOCATION [WILL CREATE IF NOT EXIST]: {model_filename}')
 
         local_scratch = Path(self.SCRATCH, 'pipeline_tmp', self.animal)
 
