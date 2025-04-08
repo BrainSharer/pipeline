@@ -269,36 +269,6 @@ def filter_cell_candidates(
     return cell_candidates
 
 
-# def calculate_correlation_and_energy_gpu(avg_cell_img, cell_candidate_img):
-#     '''
-#     -MODIFIED TO RUN ON GPU-
-#     part of step 3. 
-#     calculate cell features; calculate correlation [between cell_candidate_img 
-#     and avg_cell_img] and and energy for cell canididate
-#     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
-#     '''
-#     print('using GPU - calculate_correlation_and_energy_gpu')
-#     # Transfer data to GPU
-#     avg_cell_img_gpu = cp.asarray(avg_cell_img)
-#     cell_candidate_img_gpu = cp.asarray(cell_candidate_img)
-
-#     # Ensure image arrays are the same size
-#     cell_candidate_img_gpu, avg_cell_img_gpu = equalize_array_size_by_trimming(cell_candidate_img_gpu, avg_cell_img_gpu)
-
-#     # Compute normalized Sobel edge magnitudes
-#     avg_cell_img_x, avg_cell_img_y = sobel_operator(avg_cell_img)
-#     cell_candidate_img_x, cell_candidate_img_y = sobel_operator(cell_candidate_img)
-
-#     # corr = the mean correlation between the dot products at each pixel location
-#     dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
-#     corr = np.mean(dot_prod.flatten())    
-
-#     # energy: the mean of the norm of the image gradients at each pixel location
-#     mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
-#     energy = np.mean((mag * avg_cell_img).flatten())  
-#     return corr, energy
-
-
 #POSSIBLE DEPRECATION, IF GPU VERSION (calculate_correlation_and_energy_gpu) WORKS
 # def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
 #     '''part of step 3. 
@@ -384,7 +354,7 @@ def calc_moments_of_mask(mask):
     return (moments, {'h%d'%i+f'_mask':huMoments[i,0]  for i in range(7)}) #return first 7 Hu moments e.g. h1_mask
 
 
-def features_using_center_connected_components(cell_candidate_data: dict, cuda_available: bool = False, debug: bool = False):
+def features_using_center_connected_components(cell_candidate_data: dict, debug: bool = False):
     '''Part of step 3. calculate cell features'''
     def mask_mean(mask, image): #ORG CODE FROM Kui github (FeatureFinder)
         mean_in = np.mean(image[mask == 1])
@@ -408,12 +378,6 @@ def features_using_center_connected_components(cell_candidate_data: dict, cuda_a
             print(f"image_CH1 shape: {cell_candidate_data['image_CH1'].shape}")
             print(f"image_CH3 shape: {cell_candidate_data['image_CH3'].shape}")
             sys.exit(1)
-
-    # GPU data detected - convert to CPU if needed
-    if isinstance(image1, cp.ndarray):
-        image1 = cp.asnumpy(image1)
-        image3 = cp.asnumpy(image3)
-        mask = cp.asnumpy(mask)
 
     # Add input validation
     if mask.max() == 0:
@@ -452,7 +416,7 @@ def find_available_backup_filename(file_path):
         i += 1
 
 
-def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img, cuda_available: bool = False):
+def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):
     '''
     Calculates correlation and energy features between cell images
 
@@ -461,54 +425,23 @@ def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img, cuda_avai
     and avg_cell_img] and and energy for cell canididate
     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
     '''
+
+    cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(
+        cell_candidate_img, 
+        avg_cell_img
+    )
+
+    avg_x, avg_y = sobel(avg_cell_img)
+    candidate_x, candidate_y = sobel(cell_candidate_img)
+    dot_prod = (avg_x * candidate_x) + (avg_y * candidate_y)
+    corr = np.mean(dot_prod)
+    mag = np.sqrt(candidate_x**2 + candidate_y**2)
+    energy = np.mean(mag * avg_cell_img)
     
-    if cuda_available:
-        try:
-            # Transfer data to GPU
-            if not isinstance(avg_cell_img, cp.ndarray):
-                avg_cell_img_gpu = cp.asarray(avg_cell_img)
-            else:
-                avg_cell_img_gpu = avg_cell_img
-            if not isinstance(cell_candidate_img, cp.ndarray):
-                cell_candidate_img_gpu = cp.asarray(cell_candidate_img)
-            else:
-                cell_candidate_img_gpu = cell_candidate_img
-            
-            cell_candidate_img_gpu, avg_cell_img_gpu = equalize_array_size_by_trimming(
-                cell_candidate_img_gpu, 
-                avg_cell_img_gpu
-            )
-
-            avg_x, avg_y = sobel_gpu(avg_cell_img_gpu)
-            candidate_x, candidate_y = sobel_gpu(cell_candidate_img_gpu)
-            dot_prod = (avg_x * candidate_x) + (avg_y * candidate_y)
-            corr = cp.mean(dot_prod)
-            mag = cp.sqrt(candidate_x**2 + candidate_y**2)
-            energy = cp.mean(mag * avg_cell_img_gpu)
-
-            return float(corr), float(energy)
-            
-        except Exception as e:
-            print(f'GPU failed, falling back to CPU: {str(e)}')
-            cuda_available = False
-
-    if not cuda_available:
-        cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(
-            cell_candidate_img, 
-            avg_cell_img
-        )
-
-        avg_x, avg_y = sobel_cpu(avg_cell_img)
-        candidate_x, candidate_y = sobel_cpu(cell_candidate_img)
-        dot_prod = (avg_x * candidate_x) + (avg_y * candidate_y)
-        corr = np.mean(dot_prod)
-        mag = np.sqrt(candidate_x**2 + candidate_y**2)
-        energy = np.mean(mag * avg_cell_img)
-        
-        return corr, energy
+    return corr, energy
 
 
-def sobel_cpu(img):
+def sobel(img):
     '''PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
 
     if img is None or img.size == 0:
@@ -525,30 +458,4 @@ def sobel_cpu(img):
     eps = 1e-8 #If _std is zero or contains NaN/Inf values, the normalization step will fail. 
     sobel_x = (sobel_x - _mean) / (_std + eps)
     sobel_y = (sobel_y - _mean) / (_std + eps)
-    return sobel_x, sobel_y
-
-
-def sobel_gpu(img):
-    '''
-    GPU VERSION
-    PART OF STEP 3. CALCULATE CELL FEATURES; Compute the normalized sobel edge magnitudes'''
-    if img is None or img.size == 0:
-        raise ValueError("Error: The input image is empty or not loaded properly.")
-    
-    #DEFINE SOBEL KERNELS [DIRECTLY ON GPU]
-    kernel_x = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=cp.float64)
-    kernel_y = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=cp.float64)
-
-    # Compute gradients (2D convolution)
-    sobel_x = cupyx.scipy.signal.convolve2d(img, kernel_x, mode='same')
-    sobel_y = cupyx.scipy.signal.convolve2d(img, kernel_y, mode='same')
-
-    #NORMALIZATION [DIRECTLY ON GPU]
-    _mean = (cp.mean(sobel_x) + cp.mean(sobel_y)) / 2.
-    _std = cp.sqrt((cp.var(sobel_x) + cp.var(sobel_y)) / 2)
-    
-    eps = 1e-8
-    sobel_x = (sobel_x - _mean) / (_std + eps)
-    sobel_y = (sobel_y - _mean) / (_std + eps)
-    
     return sobel_x, sobel_y
