@@ -58,7 +58,7 @@ class AnnotationHelper:
                 continue
             write_image(outpath, volume_slice)
 
-    def shift_annotations(self):
+    def shift_cloud_annotations(self):
         """
         Shifts the annotations based on the x and y shift values and updates the annotation session.
         This method updates the points so they are red and a bit bigger (size 10 instead of 5). It calculates the new 
@@ -78,7 +78,7 @@ class AnnotationHelper:
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR
         z_resolution = self.sqlController.scan_run.zresolution
         default_props = ["#ff0000", 1, 1, 10, 3, 1]
-        cloud_points = {}
+        annotation_points = {}
         points = []
         childJsons = []
         parent_id = f"{random_string()}"
@@ -94,7 +94,11 @@ class AnnotationHelper:
         xshift = self.xshift / M_UM_SCALE * xy_resolution
         yshift = self.yshift * M_UM_SCALE
         for row in data:
-            x, y, section = row["point"]
+            try:
+                x, y, section = row["point"]
+            except KeyError as ke:
+                print(f'No point key in row={row}')
+                return
             if self.debug:
                 pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
                 pixel_point = [round(x) for x in pixel_point]
@@ -115,24 +119,122 @@ class AnnotationHelper:
             childJsons.append(childJson)
             points.append(point)
 
-        cloud_points["source"] = points[0]
-        cloud_points["centroid"] = np.mean(points, axis=0).tolist()
-        cloud_points["childrenVisible"] = True
-        cloud_points["type"] = "cloud"
-        cloud_points["description"] = f"{description}"
-        cloud_points["sessionID"] = f"{parent_id}"
-        cloud_points["props"] = default_props
-        cloud_points["childJsons"] = childJsons
+        annotation_points["source"] = points[0]
+        annotation_points["centroid"] = np.mean(points, axis=0).tolist()
+        annotation_points["childrenVisible"] = True
+        annotation_points["type"] = "cloud"
+        annotation_points["description"] = f"{description}"
+        annotation_points["sessionID"] = f"{parent_id}"
+        annotation_points["props"] = default_props
+        annotation_points["childJsons"] = childJsons
 
         if self.debug:
-            x,y,section = cloud_points["centroid"]
+            x,y,section = annotation_points["centroid"]
             pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
             pixel_point = [round(x) for x in pixel_point]
             print(f"Shifted centroid={pixel_point}")
         else:
-            update_dict = {'annotation': cloud_points}
+            update_dict = {'annotation': annotation_points}
             print(f'Updating session {self.session_id} with length {len(childJsons)}')
             self.sqlController.update_session(session_id, update_dict=update_dict)
+
+
+    def shift_volume_annotations(self):
+        """
+        {
+            'pointA': [0.010121309198439121, 0.008618032559752464, 0.005150000099092722], 
+            'pointB': [0.009859367273747921, 0.008647968992590904, 0.005150000099092722], 
+            'type': 'line', 
+            'parentAnnotationId': 'fdb486526ebb517fd6b7d19f0da63b96fe0acc1b', 
+            'props': ['#00ff59', 1, 1, 10, 3, 1]}
+        
+        """
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        default_props = ["#ff0000", 1, 1, 10, 3, 1]
+        points = []
+        childJsons = []
+        parent_id = f"{random_string()}"
+        annotation_session = self.sqlController.get_annotation_by_id(self.session_id)
+        volume = annotation_session.annotation
+        description = volume["description"]
+        try:
+            polygons = volume["childJsons"]
+        except KeyError as ke:
+            print("No childJsons key in volume")
+            print(f"Error: {ke}")
+
+        xshift = self.xshift / M_UM_SCALE * xy_resolution
+        yshift = self.yshift / M_UM_SCALE * xy_resolution
+
+        reformatted_polygons = []
+        for polygon in polygons:
+            if 'childJsons' not in polygon:
+                print('No childJsons key in row')
+                return
+            new_lines = []
+            new_polygon = {}
+            for line in polygon['childJsons']:
+                xa,ya,za = line['pointA']
+                xb,yb,zb = line['pointB']
+                if self.debug:
+                    pixel_point = [xa * M_UM_SCALE / xy_resolution, ya * M_UM_SCALE / xy_resolution, za * M_UM_SCALE / z_resolution]
+                    pixel_point = [round(x) for x in pixel_point]
+                    print(f"Original = {pixel_point}", end="\t")
+                xa += xshift
+                ya += yshift
+                xb += xshift
+                yb += yshift
+                pointA = [xa, ya, za]
+                pointB = [xb, yb, zb]
+                new_line = {
+                    "pointA": pointA,
+                    "pointB": pointB,
+                    "type": "line",
+                    "parentAnnotationId": line["parentAnnotationId"],
+                    "props": default_props
+                }
+                if self.debug:
+                    pixel_point = [xa * M_UM_SCALE / xy_resolution, ya * M_UM_SCALE / xy_resolution, za * M_UM_SCALE / z_resolution]
+                    pixel_point = [round(x) for x in pixel_point]
+                    print(f"shifted point = {pixel_point}")
+                new_lines.append(new_line)
+                points.append(pointA)
+
+            # polygon keys
+            new_polygon["source"] = points[0]
+            new_polygon["centroid"] = np.mean(points, axis=0).tolist()
+            new_polygon["childrenVisible"] = True
+            new_polygon["type"] = "polygon"
+            new_polygon["parentAnnotationId"] = polygon["parentAnnotationId"]
+            new_polygon["description"] = f"{description}"
+            new_polygon["props"] = default_props
+            new_polygon["childJsons"] = new_lines
+
+            reformatted_polygons.append(new_polygon)
+
+        # Create the annotation dictionary
+        # volume keys=['type', 'props', 'source', 'centroid', 'childJsons', 'description']
+        # create the childJsons dictionary
+        new_annotation = {}
+        new_annotation["type"] = "volume"
+        new_annotation["props"] = default_props
+        new_annotation["source"] = points[0]
+        new_annotation["centroid"] = np.mean(points, axis=0).tolist()
+        new_annotation["childJsons"] = reformatted_polygons
+        new_annotation["description"] = f"{description}"   
+
+        if self.debug:
+            x,y,section = annotation_points["centroid"]
+            pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
+            pixel_point = [round(x) for x in pixel_point]
+            print(f"Shifted centroid={pixel_point}")
+        else:
+            update_dict = {'annotation': new_annotation}
+            print(f'Updating session {self.session_id} with length {len(childJsons)}')
+            self.sqlController.update_session(session_id, update_dict=update_dict)
+
+
 
     def convert_to_allen(self, com):
         affine_transformation = np.array(
@@ -192,7 +294,8 @@ if __name__ == "__main__":
 
     function_mapping = {
         "write_polygons": pipeline.write_polygons,
-        "shift_annotations": pipeline.shift_annotations,
+        "shift_cloud": pipeline.shift_cloud_annotations,
+        "shift_volume": pipeline.shift_volume_annotations,
         "list_coms": pipeline.list_coms,
     }
 

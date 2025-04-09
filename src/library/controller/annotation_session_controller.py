@@ -207,14 +207,14 @@ class AnnotationSessionController:
             theta_y = reuler[1]
             theta_z = reuler[2]
             translation = np.array(reuler[3:6])
-            rotation_center = np.array([1166.5000000000, 689.5000000000, 436.5000000000])
+            rotation_center = np.array([1166.5, 689.5, 436.5])
             rigid_euler = sitk.Euler3DTransform(rotation_center, theta_x, theta_y, theta_z, translation)
-            A1 = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
-            t1 = np.asarray(rigid_euler.GetTranslation())
+            R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
+            t = np.asarray(rigid_euler.GetTranslation())
 
             p = np.array([x, y, z])
             truec = rotation_center
-            x1,y1,z1 = np.dot(A1, p - truec) + t1 + truec
+            x1,y1,z1 = np.dot(R, p - truec) + t + truec
             return int(x1), int(y1), int(z1)
 
         """
@@ -230,25 +230,27 @@ class AnnotationSessionController:
             return polygons
         
         annotation = annotation_session.annotation
-
         # first test data to make sure it has the right keys
         try:
             data = annotation["childJsons"]
         except KeyError as ke:
+            print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
             return polygons
         
-        for points in data:
-            if 'childJsons' not in points:
+
+        for row in data:
+            if 'childJsons' not in row:
                 return polygons
-            for child in points['childJsons']:
+            for child in row['childJsons']:
                 x,y,z = child['pointA']
                 x = int(np.round(x * M_UM_SCALE / scaling_factor))
                 y = int(np.round(y * M_UM_SCALE / scaling_factor))
                 section = int(np.round(z * M_UM_SCALE / scaling_factor))
-                x1, y1, z1 = convert_euler(x, y, section)
+                if annotation_session.FK_prep_id == 'DK78':
+                    x, y, section = convert_euler(x, y, section)
 
                 #polygons[section].append((x,y))
-                polygons[z1].append((x1,y1))
+                polygons[section].append((x,y))
 
         return polygons
     

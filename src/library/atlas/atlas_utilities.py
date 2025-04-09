@@ -297,12 +297,6 @@ def get_min_max_mean(coords):
 def adjust_volume(volume, allen_id):
     """
     The commands below produce really nice STLs
-    upper = 150
-    volume = gaussian(volume, 4.0)            
-    volume[(volume > upper) ] = allen_id
-    volume[(volume != allen_id)] = 0
-    volume = volume.astype(np.uint32)
-
     """
     upper = 150
     volume = gaussian(volume, 4.0)            

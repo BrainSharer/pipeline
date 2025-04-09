@@ -627,6 +627,7 @@ class VolumeRegistration:
         Create a 3D volume
             image stack = 10.4um x 10.4um x 20um
             atlas stack = 10um x 10um x 10um
+            MD589 z is 20um * 447 sections so 894um
 
         """
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
@@ -649,6 +650,7 @@ class VolumeRegistration:
         change_y = xy_resolution
         change_x = xy_resolution
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+        
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         with open(self.changes_path, 'w') as f:
