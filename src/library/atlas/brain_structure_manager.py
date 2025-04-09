@@ -9,7 +9,8 @@ from collections import defaultdict
 import cv2
 import json
 import pandas as pd
-from scipy.ndimage import center_of_mass, zoom, affine_transform
+from scipy.ndimage import center_of_mass, zoom
+from skimage.filters import gaussian
 
 
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
@@ -181,14 +182,15 @@ class BrainStructureManager:
         for annotation_session in annotation_sessions:
             animal = annotation_session.FK_prep_id
 
+            #if annotation_session.id not in [8113, 7387]:
+            #    continue
             if animal != 'DK78':
                 continue
-            
+
             # polygons are in micrometers
             polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.allen_um)
-            #if len(polygons) < 10:
-            #    continue
-
+            if len(polygons) < 10:
+                continue
 
             origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
 
@@ -196,18 +198,22 @@ class BrainStructureManager:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
                 return None
             
-            print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)}', end=' ')
+            print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} len {len(polygons)}', end=' ')
 
             scales = np.array([1, 1, 2]) # scales are at 10um in x and y, z needs the zoom
             volume = np.swapaxes(volume, 0, 2)
-            
+            volume = gaussian(volume, 1.0)
+            volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+            volume = volume.astype(np.uint8)
             ##### need to take care of zooming, scaling and transforming here!
             #volume = zoom(volume, scales)
-            volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+            ids, counts = np.unique(volume, return_counts=True)
             #origin *=  scales
             com = center_of_mass(volume) + origin
             #####volume = affine_transform_volume(volume, transformation_matrix)
-            print(f"{volume.shape=} {volume.dtype=} com={np.round(com)}")
+            print(f"{ids=} {counts=} shape={volume.shape} dtype={volume.dtype} com={np.round(com)}")
+            print(ids)
+            print(counts)
             #if debug:
             #    print(f"Transformation matrix\n {transformation_matrix}\n")
 
@@ -437,13 +443,13 @@ class BrainStructureManager:
             x_start = int(center[0] - COM[0])
             y_start = int(center[1] - COM[1])
             z_start = int(center[2] - COM[2])
-            # x_start = int(x) + self.allen_x_length // 2
-            # y_start = int(y) + self.allen_y_length // 2
-            # z_start = int(z) + self.allen_z_length // 2
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
+            print(
+                f"{structure} origin={np.round(origin)} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}"
+            )
 
             if self.debug:
                 print(
