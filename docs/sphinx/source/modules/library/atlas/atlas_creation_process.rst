@@ -27,7 +27,7 @@ Each brain has it's own CSV file and the process parses each CSV file. The first
 
 Looking at the data above, we can see that for each section of each structure, multiple anatomists may have drawn polygons.
 These polygons are averaged together on each section and then these sections are concatenated to form a volume.  
-For each structure, the minimum x,y, and z values are found.  These values are used to create a bounding box with the uppper left corner
+For each structure, the minimum x,y, and z values are found.  These values are used to create a bounding box with the upper left corner
 of the box being the origin. The origin is saved and the mean of all the origins is subtracted from each origin. This is 
 where the bounding box is placed within the atlas.
 For each brain section, the set of points is drawn on this bounding box. All the sections are then appended to form the box and
@@ -40,7 +40,7 @@ stored on the filesystem and the centers of mass are also stored in the database
 In the following example, the SC structure has 3 drawn volumes that now need to be merged. They are first aligned
 to the largest of the 3 volumes using a rigid transformation. 
 
-Here is a preview of what the structure superior colliculs (SC) looks like at the mid z value:
+Here is a preview of what the structure superior colliculus (SC) looks like at the mid z value:
 
 .. image:: /_static/SC.unmerged.png
 
@@ -60,13 +60,13 @@ The same process is repeated for the remaining 50 structures.
 
 Structures not in the foundation brains can also be merged into the atlas. These are created from polygons drawn in neuroglancer
 by the anatomists. The polygons are stored in the database, retreived and the same process as the foundation brain structures is repeated.
-One problems is getting a rigid transformation between the neurotrace brains and the foundation brains. An Elastix rigid transformation
+One problem is getting a rigid transformation between the neurotrace brains and the foundation brains. An Elastix rigid transformation
 is calculated using the full 3D volume of a 10um isotropic MD589 brain and the neurotrace brain. This transformation is then applied to the neurotrace
 data points which puts them into the same coordinate system as MD589.
 
 We now have all the merged brain structures in MD589 10um isotropic space. The next step is to register this atlas with the Allen reference atlas.
 We use the Allen SDK (https://allensdk.readthedocs.io/en/latest/) to get the centers of mass of common structures between the DK atlas and the Allen reference atlas.
-The Allen SDK is used to get the Allen reference atlas in 10um isotropic space. One problem with this approach is structures have 
+One problem with this approach is structures have 
 different names in the Allen SDK and the DK atlas. Another problem is the Allen atlas breaks some structures into sub structures (e.g. the SC structure).
 Another issue is the DK atlas differentiates between left and right structures while the Allen does not.
 

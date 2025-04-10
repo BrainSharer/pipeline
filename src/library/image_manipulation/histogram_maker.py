@@ -91,86 +91,89 @@ class HistogramMaker:
         :return: nothing
         """
 
-        if self.downsample:
-            self.input = self.fileLocationManager.get_thumbnail(self.channel)
-            if not os.path.exists(self.input):
-                print(f"Input path does not exist {self.input}")
-                return
-            self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
-            if not os.path.exists(self.masks):
-                print(f"Mask path does not exist {self.masks}")
-                return
+        if not self.downsample:
+            print('No histograms for full resolution images')
+            return
 
-            self.output = self.fileLocationManager.get_histogram(self.channel)
-            image_manager = ImageManager(self.input)
-            files = image_manager.files
-            dtype = image_manager.dtype
-            lfiles = len(files)
-            os.makedirs(self.output, exist_ok=True)
-            hist_dict = Counter({})
-            outfile = f"{self.animal}.png"
-            outpath = os.path.join(self.output, outfile)
-            if os.path.exists(outpath):
-                return
-            for file in files:
-                file = os.path.basename(file)
-                input_path = os.path.join(self.input, file)
-                mask_path = os.path.join(self.masks, file)
-                try:
-                    img = io.imread(input_path)
-                except:
-                    print(f"Could not read {input_path}")
-                    lfiles -= 1
-                    continue
-                try:
-                    mask = io.imread(mask_path)
-                except Exception as e:
-                    print(f"ERROR WITH {e}")
-                    break
-                #img = img[img > 0]                
-                img = cv2.bitwise_and(img, img, mask=mask)
+        self.input = self.fileLocationManager.get_thumbnail(self.channel)
+        if not os.path.exists(self.input):
+            print(f"Input path does not exist {self.input}")
+            return
+        self.masks = self.fileLocationManager.get_thumbnail_masked(channel=1) #hard code this to channel 1
+        if not os.path.exists(self.masks):
+            print(f"Mask path does not exist {self.masks}")
+            return
 
-                try:
-                    flat = img.flatten()
-                    del img
-                except:
-                    print(f"Could not flatten file {input_path}")
-                    lfiles -= 1
-                    continue
-                try:
-                    img_counts = np.bincount(flat)
-                except:
-                    print(f"Could not create counts {input_path}")
-                    lfiles -= 1
-                    continue
-                try:
-                    img_dict = Counter(dict(zip(np.unique(flat), img_counts[img_counts.nonzero()])))
-                except:
-                    print(f"Could not create counter {input_path}")
-                    lfiles -= 1
-                    continue
-                try:
-                    hist_dict = hist_dict + img_dict
-                except:
-                    print(f"Could not add files {input_path}")
-                    lfiles -= 1
-                    continue
-            
-            if lfiles < 10:
-                return
-            hist_dict = dict(hist_dict)
-            hist_values = [i / lfiles for i in hist_dict.values()]
-            fig = plt.figure()
-            plt.rcParams["figure.figsize"] = [10, 6]
-            plt.bar(list(hist_dict.keys()), hist_values, color=COLORS[self.channel])
-            plt.yscale("log")
-            plt.grid(axis="y", alpha=0.75)
-            plt.xlabel("Value")
-            plt.xlim(0, 40000)
-            #plt.ylim(0, 4000)
-            plt.ylabel("Frequency")
-            plt.title(f"{self.animal} channel {self.channel} @{dtype}bit with {lfiles} tif files", fontsize=8)
-            fig.savefig(outpath, bbox_inches="tight")
+        self.output = self.fileLocationManager.get_histogram(self.channel)
+        image_manager = ImageManager(self.input)
+        files = image_manager.files
+        dtype = image_manager.dtype
+        lfiles = len(files)
+        os.makedirs(self.output, exist_ok=True)
+        hist_dict = Counter({})
+        outfile = f"{self.animal}.png"
+        outpath = os.path.join(self.output, outfile)
+        if os.path.exists(outpath):
+            return
+        for file in files:
+            file = os.path.basename(file)
+            input_path = os.path.join(self.input, file)
+            mask_path = os.path.join(self.masks, file)
+            try:
+                img = io.imread(input_path)
+            except:
+                print(f"Could not read {input_path}")
+                lfiles -= 1
+                continue
+            try:
+                mask = io.imread(mask_path)
+            except Exception as e:
+                print(f"ERROR WITH {e}")
+                break
+            #img = img[img > 0]                
+            img = cv2.bitwise_and(img, img, mask=mask)
+
+            try:
+                flat = img.flatten()
+                del img
+            except:
+                print(f"Could not flatten file {input_path}")
+                lfiles -= 1
+                continue
+            try:
+                img_counts = np.bincount(flat)
+            except:
+                print(f"Could not create counts {input_path}")
+                lfiles -= 1
+                continue
+            try:
+                img_dict = Counter(dict(zip(np.unique(flat), img_counts[img_counts.nonzero()])))
+            except:
+                print(f"Could not create counter {input_path}")
+                lfiles -= 1
+                continue
+            try:
+                hist_dict = hist_dict + img_dict
+            except:
+                print(f"Could not add files {input_path}")
+                lfiles -= 1
+                continue
+        
+        if lfiles < 10:
+            return
+        hist_dict = dict(hist_dict)
+        hist_values = [i / lfiles for i in hist_dict.values()]
+        fig = plt.figure()
+        plt.rcParams["figure.figsize"] = [10, 6]
+        plt.bar(list(hist_dict.keys()), hist_values, color=COLORS[self.channel])
+        plt.yscale("log")
+        plt.grid(axis="y", alpha=0.75)
+        plt.xlabel("Value")
+        plt.xlim(0, 40000)
+        #plt.ylim(0, 4000)
+        plt.ylabel("Frequency")
+        plt.title(f"{self.animal} channel {self.channel} @{dtype}bit with {lfiles} tif files", fontsize=8)
+        fig.savefig(outpath, bbox_inches="tight")
 
 def make_single_histogram(file_key: tuple[str, str, str, str, str]) -> None:
     """Makes a histogram for a single image file
