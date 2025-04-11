@@ -220,22 +220,21 @@ def resample_image(image, reference_image):
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     return resampler.Execute(image)
 
-def average_images(volumes, structure):
+def average_images(volumes, iterations="250"):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
     reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
     resampled_images = [resample_image(img, reference_image) for img in images]
-    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
+    registered_images = [register_volume(img, reference_image, iterations) for img in resampled_images if img != reference_image]
     avg_array = np.mean(registered_images, axis=0)
     return avg_array
 
 
-def register_volume(movingImage, fixedImage, structure):
+def register_volume(movingImage, fixedImage, iterations="250"):
 
     elastixImageFilter = sitk.ElastixImageFilter()
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
 
-    bspline_params = elastixImageFilter.GetDefaultParameterMap("bspline")
     rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
     rigid_params["AutomaticTransformInitialization"] = ["true"]
     rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
@@ -249,12 +248,9 @@ def register_volume(movingImage, fixedImage, structure):
     rigid_params["WriteResultImage"] = ["false"]    
     rigid_params["WriteIterationInfo"] = ["false"]
     rigid_params["Resampler"] = ["DefaultResampler"]
-    rigid_params["MaximumNumberOfIterations"] = ["150"] # 250 works ok
+    rigid_params["MaximumNumberOfIterations"] = [iterations] # 250 works ok
 
     elastixImageFilter.SetParameterMap(rigid_params)
-    #elastixImageFilter.AddParameterMap(bspline_params)
-    #elastixImageFilter.SetParameter("Registration", ["MultiResolutionRegistration"])
-    #elastixImageFilter.SetParameter("Metric",  ["AdvancedImageToImageMetric", "CorrespondingPointsEuclideanDistanceMetric"])
     elastixImageFilter.SetLogToFile(False)
     elastixImageFilter.LogToConsoleOff()
 
@@ -263,7 +259,7 @@ def register_volume(movingImage, fixedImage, structure):
     try:
         resultImage = elastixImageFilter.Execute() 
     except Exception as e:
-        print(f'{structure} in registration')
+        print('Exception in registration')
         print(e)
         sys.exit()
         #return sitk.GetArrayFromImage(movingImage)

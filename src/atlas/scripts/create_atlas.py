@@ -45,7 +45,7 @@ class AtlasManager():
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD589']
+        #self.foundation_brains = ['MD585']
 
     def create_brain_json(self):
         """
