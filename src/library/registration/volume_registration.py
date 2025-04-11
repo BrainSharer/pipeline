@@ -879,6 +879,15 @@ class VolumeRegistration:
         reference_image = volumes[fixed_brain]
         registered_images = []
         fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
+        genericMap = sitk.GetDefaultParameterMap('affine')
+        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+        if self.um < 30:
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+        else:
+            bsplineParameterMap["NumberOfResolutions"]= ["5"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
+
         for brain, image in tqdm(volumes.items(), desc="Registering brain"):
             if brain == fixed_brain:
                 continue
@@ -886,26 +895,16 @@ class VolumeRegistration:
             elastixImageFilter.SetFixedImage(reference_image)
             elastixImageFilter.SetMovingImage(image)
 
-            genericMap = sitk.GetDefaultParameterMap('affine')
-            bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-            #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
-            #bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-            #bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
-            #bsplineParameterMap["NumberOfResolutions"]= ["5"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
-            #del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
-
-
             elastixImageFilter.SetParameterMap(genericMap)
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
-            elastixImageFilter.SetParameter("NumberOfResolutions", "5") #### Very important, less than 6 gives lousy results.
+            #elastixImageFilter.SetParameter("NumberOfResolutions", "5") #### Very important, less than 6 gives lousy results.
             elastixImageFilter.SetParameter("ComputeZYX", "true")
             elastixImageFilter.SetParameter("DefaultPixelValue", "222")
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetLogToFile(False)
-            elastixImageFilter.LogToConsoleOn()
+            elastixImageFilter.LogToConsoleOff()
             moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
                 with open(fixed_point_path, 'r') as fp:
@@ -930,14 +929,13 @@ class VolumeRegistration:
                 return
 
 
-
-
             elastixImageFilter.PrintParameterMap()
 
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
             registered_images.append(sitk.GetArrayFromImage(resultImage))
 
+        reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
         registered_images.append(sitk.GetArrayFromImage(reference_image))
         avg_array = np.mean(registered_images, axis=0)
 
