@@ -887,7 +887,7 @@ class VolumeRegistration:
             elastixImageFilter.SetMovingImage(image)
 
             genericMap = sitk.GetDefaultParameterMap('affine')
-            genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
+            #genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
             elastixImageFilter.SetParameterMap(genericMap)
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
@@ -906,8 +906,8 @@ class VolumeRegistration:
 
                 elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
                 elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-                elastixImageFilter.SetParameter("Metric0Weight", ["0.05"]) # the weight of 1st metric
-                elastixImageFilter.SetParameter("Metric1Weight",  ["0.95"]) # the weight of 2nd metric
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.75"]) # the weight of 1st metric
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.25"]) # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
@@ -919,6 +919,7 @@ class VolumeRegistration:
                 print(f'fixed point path={fixed_point_path}')
                 return
 
+            elastixImageFilter.PrintParameterMap()
 
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
