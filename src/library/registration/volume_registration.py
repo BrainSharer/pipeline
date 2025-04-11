@@ -887,15 +887,25 @@ class VolumeRegistration:
             elastixImageFilter.SetMovingImage(image)
 
             genericMap = sitk.GetDefaultParameterMap('affine')
-            #genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
+            bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+            #bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+            #bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+            #bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
+            #bsplineParameterMap["NumberOfResolutions"]= ["5"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
+            #del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
+
+
             elastixImageFilter.SetParameterMap(genericMap)
+            elastixImageFilter.AddParameterMap(bsplineParameterMap)
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
             elastixImageFilter.SetParameter("NumberOfResolutions", "5") #### Very important, less than 6 gives lousy results.
             elastixImageFilter.SetParameter("ComputeZYX", "true")
             elastixImageFilter.SetParameter("DefaultPixelValue", "222")
+            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetLogToFile(False)
-            elastixImageFilter.LogToConsoleOff()
+            elastixImageFilter.LogToConsoleOn()
             moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
                 with open(fixed_point_path, 'r') as fp:
@@ -919,12 +929,16 @@ class VolumeRegistration:
                 print(f'fixed point path={fixed_point_path}')
                 return
 
+
+
+
             elastixImageFilter.PrintParameterMap()
 
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
             registered_images.append(sitk.GetArrayFromImage(resultImage))
 
+        registered_images.append(sitk.GetArrayFromImage(reference_image))
         avg_array = np.mean(registered_images, axis=0)
 
         savepath = os.path.join(self.registration_path, f'averaged_{self.um}um_{self.orientation}.tif')
