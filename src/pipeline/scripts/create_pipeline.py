@@ -125,6 +125,7 @@ if __name__ == "__main__":
         "shell": pipeline.shell,
         "align_masks": pipeline.align_masks,
         "status": pipeline.check_status,
+        "ng_preview": pipeline.ng_preview,
     }
 
     if task in function_mapping:
