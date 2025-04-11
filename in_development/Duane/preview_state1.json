@@ -1,0 +1,46 @@
+{
+    "dimensions": {
+      "x": [
+        3.25e-07,
+        "m"
+      ],
+      "y": [
+        3.25e-07,
+        "m"
+      ],
+      "z": [
+        20,
+        "m"
+      ]
+    },
+    "position": [
+      22106.951171875,
+      35799.94921875,
+      25
+    ],
+    "crossSectionScale": 121.51041751873494,
+    "crossSectionDepth": 46.15384615384615,
+    "projectionScale": 131072,
+    "layers": [
+      {
+        "type": "image",
+        "source": "precomputed://https://imageserv.dk.ucsd.edu/data/CTB006/neuroglancer_data/C1",
+        "tab": "rendering",
+        "name": "C1"
+      }
+    ],
+    "layout": "4panel",
+    "helpPanel": {
+      "row": 2
+    },
+    "settingsPanel": {
+      "row": 3
+    },
+    "userSidePanel": {
+      "tab": "User",
+      "location": {
+        "row": 1
+      }
+    }
+  }
+  

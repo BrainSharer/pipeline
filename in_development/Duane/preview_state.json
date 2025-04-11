@@ -1,0 +1,125 @@
+{
+    "dimensions": {
+      "x": [
+        3.25e-7,
+        "m"
+      ],
+      "y": [
+        3.25e-7,
+        "m"
+      ],
+      "z": [
+        0.00002,
+        "m"
+      ]
+    },
+    "position": [
+      17662.0234375,
+      29575.09765625,
+      60.5
+    ],
+    "crossSectionScale": 20.431143230652093,
+    "crossSectionDepth": 30.76923076923077,
+    "projectionOrientation": [
+      -0.7672110795974731,
+      0.044891200959682465,
+      -0.06574847549200058,
+      0.6364346146583557
+    ],
+    "projectionScale": 65536,
+    "layers": [
+      {
+        "type": "image",
+        "source": "precomputed://https://imageserv.dk.ucsd.edu/data/CTB004/neuroglancer_data/C1",
+        "tab": "rendering",
+        "opacity": 0.42,
+        "name": "Neurotrace"
+      },
+      {
+        "type": "annotation",
+        "source": {
+          "url": "local://annotations",
+          "transform": {
+            "outputDimensions": {
+              "x": [
+                3.25e-7,
+                "m"
+              ],
+              "y": [
+                3.25e-7,
+                "m"
+              ],
+              "z": [
+                0.00002,
+                "m"
+              ]
+            },
+            "inputDimensions": {
+              "0": [
+                0.0000104,
+                "m"
+              ],
+              "1": [
+                0.0000104,
+                "m"
+              ],
+              "2": [
+                0.00002,
+                "m"
+              ]
+            }
+          }
+        },
+        "tab": "source",
+        "annotations": [],
+        "annotationProperties": [
+          {
+            "id": "color",
+            "type": "rgb",
+            "default": "#ffff00"
+          },
+          {
+            "id": "visibility",
+            "type": "float32",
+            "default": 1
+          }
+        ],
+        "name": "annotation",
+        "archived": true
+      },
+      {
+        "type": "image",
+        "source": "precomputed://https://imageserv.dk.ucsd.edu/data/CTB004/neuroglancer_data/C2",
+        "tab": "rendering",
+        "shader": "#uicontrol invlerp normalized  (range=[0,15000])\n#uicontrol float gamma slider(min=0.05, max=2.5, default=1.0, step=0.05)\n#uicontrol bool colour checkbox(default=true)\n\n  void main() {\n    float pix =  normalized();\n    pix = pow(pix,gamma);\n\n    if (colour){\n       emitRGB(vec3(0, (pix),0));\n    } else {\n      emitGrayscale(pix) ;\n    }\n  }",
+        "shaderControls": {
+          "normalized": {
+            "range": [
+              0,
+              12849
+            ]
+          }
+        },
+        "name": "AF647"
+      }
+    ],
+    "selectedLayer": {
+      "flex": 1.66
+    },
+    "layout": "xy",
+    "helpPanel": {
+      "row": 2
+    },
+    "settingsPanel": {
+      "row": 3
+    },
+    "selection": {
+      "flex": 0.34
+    },
+    "userSidePanel": {
+      "tab": "User",
+      "location": {
+        "row": 1
+      }
+    }
+  }

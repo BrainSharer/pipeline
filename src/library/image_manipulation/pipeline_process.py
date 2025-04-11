@@ -69,6 +69,7 @@ class Pipeline(
     TASK_NEUROGLANCER = "Creating Neuroglancer data"
     TASK_CELL_LABELS = "Creating centroids for cells"
     TASK_OMEZARR = "Creating multiscaled ome zarr"
+    TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
     def __init__(self, animal, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
@@ -395,6 +396,16 @@ class Pipeline(
                 print(f'Non-existent dir={display_directory}')
         url_status = self.check_url(self.animal)
         print(url_status)
+
+    def ng_preview(self):
+        '''
+        USED TO GENERATE NG STATE WITH DEFAULT SETTINGS (AVAILABLE CHANNELS, ANNOTATIONS)
+        As this is used to do QC on image stacks, it made sense to include with PrepCreater
+        '''
+        print(self.TASK_NG_PREVIEW)
+        self.gen_ng_preview()
+        print(f'Finished {self.TASK_NG_PREVIEW}.')
+        
 
     def check_settings(self):
         """
