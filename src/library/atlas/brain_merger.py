@@ -63,7 +63,7 @@ class BrainMerger():
             return None
             #return volumes[0]
         elif lvolumes > 0:
-            average_volume = average_images(volumes, structure)
+            average_volume = average_images(volumes)
             return average_volume
         else:
             print(f'{structure} has no volumes to merge')

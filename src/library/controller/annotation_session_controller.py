@@ -202,20 +202,25 @@ class AnnotationSessionController:
     def get_annotation_volume(self, session_id, scaling_factor=1):
 
         def convert_euler(x, y, z):
+            """""
             reuler = [0.066036, 0.006184, 0.476529, -235.788051, -169.603207, 36.877408]
             theta_x = reuler[0]
             theta_y = reuler[1]
             theta_z = reuler[2]
             translation = np.array(reuler[3:6])
-            rotation_center = np.array([1166.5, 689.5, 436.5])
-            rigid_euler = sitk.Euler3DTransform(rotation_center, theta_x, theta_y, theta_z, translation)
+            rigid_euler = sitk.Euler3DTransform(center, theta_x, theta_y, theta_z, translation)
             R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
             t = np.asarray(rigid_euler.GetTranslation())
+            """
+            params = [0.808140, -0.439742, -0.064120, 0.393423, 0.666833, -0.104813, 0.011812, 
+                                    0.046400, 0.993291, -240.865225, -173.912066, 34.285577]
+            center = np.array([1166.5, 689.5, 436.5])
+            t = np.array(params[9:])
+            R = np.array(params[:9]).reshape(3,3)
 
             p = np.array([x, y, z])
-            truec = rotation_center
-            x1,y1,z1 = np.dot(R, p - truec) + t + truec
-            return int(x1), int(y1), int(z1)
+            x1,y1,z1 = np.dot(R, p - center) + t + center
+            return int(round(x1)), int(round(y1)), int(round(z1))
 
         """
         This returns data in micrometers divided by the scaling_factor provided.

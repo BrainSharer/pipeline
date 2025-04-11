@@ -44,6 +44,7 @@ import pandas as pd
 import cv2
 import json
 
+from library.atlas.atlas_utilities import average_images, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -830,7 +831,8 @@ class VolumeRegistration:
         elastixImageFilter.SetLogFileName('elastix.log')
 
         return elastixImageFilter
-    
+
+
     def crop_volume(self):
 
         moving_volume = io.imread(self.moving_volume_path)
@@ -840,53 +842,106 @@ class VolumeRegistration:
         io.imsave(savepath, moving_volume)
 
 
-
-
     def create_average_volume(self):
-        """Steps:
-            1. Create smoothed volumes of the 3 MDXXX brains
-            2. Create point sets for each MDXXX brain
-            3. Register MD585 and MD594 (moving brains) to MD589. You now have 3 brains to average
-            4. Use this method to get the average brain: Atlas_25um_sagittal.tif
-            5. Crop that volume to better match the Allen atlas
-            6. Pad the Allen atlas to better match the atlas you created here
-            7. Substract the  MOVING_CROP amount from the x,y pts points to match the upper left crop
-            8. Register the DK atlas to the Allen atlas
-            9. Update the DK Atlas COMs to reflect the crop you did above
-            10. Create a new atlas with the modified COMs
-        A. To create an average brain registered to the Allen atlas, run:
-            1. python src/registration/scripts/stack2volume2atlas.py --moving MD585 --fixed MD589 --task register_volume
-            2. python src/registration/scripts/stack2volume2atlas.py --moving MD594 --fixed MD589 --task register_volume
-            3. python src/registration/scripts/stack2volume2atlas.py --moving MD589 --task create_average_volume
-            4. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task crop
-            5. update points to match crop
-            6. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task register_volume
-            7. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task reverse_register_volume
-            8. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task transformix_points
-            9. python src/registration/scripts/stack2volume2atlas.py --moving Atlas --fixed Allen --task insert_points
-            
-        """
-        moving_brains = ['MD585', 'MD594']
-        brains = ['MD589_25um_sagittal.tif']
-        for moving_brain in moving_brains:
-            brains.append(f'{moving_brain}_{self.fixed}_{self.um}um_{self.orientation}.tif')
 
-        volumes = []
-        for brain in brains:
-            brainpath = os.path.join(self.registration_path, brain)
+        moving_brains = ['MD585', 'MD594']
+        fixed_brain = 'MD589'
+        all_brains = [fixed_brain] + moving_brains
+        base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
+        for brain in all_brains:
+            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            brain_com_path = os.path.join(base_com_path, brain, 'com')
+            comfiles = sorted(os.listdir(brain_com_path))
+            with open(brain_point_path, 'w') as f:
+                f.write('point\n')
+                f.write(f'{len(comfiles)}\n')
+                for comfile in comfiles:
+                    compath = os.path.join(brain_com_path, comfile)
+                    x,y,z = np.loadtxt(compath)
+                    f.write(f'{x/self.um} {y/self.um} {z/self.um}')
+                    if 'SC' in compath:
+                        print(f'{brain=} {x/self.um} {y/self.um} {z/self.um}')
+                    f.write('\n')
+
+        volumes = {}
+        for brain in moving_brains:
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 sys.exit()
             brainimg = read_image(brainpath)
-            if brainimg.dtype == np.uint8:
-                brainimg = brainimg.astype(np.float32)
-            volumes.append(brainimg)
+            volumes[brain] = sitk.GetImageFromArray(brainimg.astype(np.float32))
 
-        merged_volume = np.sum(volumes, axis=0)
-        average_volume = merged_volume
-        savepath = os.path.join(self.registration_path, f'Atlas_{self.um}um_{self.orientation}.tif')
+        fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
+        fixed_img = read_image(fixed_path)
+        volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
+        print(f'Len volumes={len(volumes)}')
+        reference_image = volumes[fixed_brain]
+        registered_images = []
+        fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
+        genericMap = sitk.GetDefaultParameterMap('affine')
+        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+        if self.um < 30:
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+        else:
+            bsplineParameterMap["NumberOfResolutions"]= ["5"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
+
+        for brain, image in tqdm(volumes.items(), desc="Registering brain"):
+            if brain == fixed_brain:
+                continue
+            elastixImageFilter = sitk.ElastixImageFilter()
+            elastixImageFilter.SetFixedImage(reference_image)
+            elastixImageFilter.SetMovingImage(image)
+
+            elastixImageFilter.SetParameterMap(genericMap)
+            elastixImageFilter.AddParameterMap(bsplineParameterMap)
+            elastixImageFilter.SetParameter("ResultImageFormat", "tif")
+            elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
+            #elastixImageFilter.SetParameter("NumberOfResolutions", "5") #### Very important, less than 6 gives lousy results.
+            elastixImageFilter.SetParameter("ComputeZYX", "true")
+            elastixImageFilter.SetParameter("DefaultPixelValue", "222")
+            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
+            elastixImageFilter.SetLogToFile(False)
+            elastixImageFilter.LogToConsoleOff()
+            moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
+                with open(fixed_point_path, 'r') as fp:
+                    fixed_count = len(fp.readlines())
+                with open(moving_point_path, 'r') as fp:
+                    moving_count = len(fp.readlines())
+                assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
+
+                elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
+                elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.75"]) # the weight of 1st metric
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.25"]) # the weight of 2nd metric
+
+                elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
+                elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
+                print(f'moving point path={moving_point_path}')
+                print(f'fixed point path={fixed_point_path}')
+            else:
+                print('No point files found, skipping registration')
+                print(f'moving point path={moving_point_path}')
+                print(f'fixed point path={fixed_point_path}')
+                return
+
+
+            elastixImageFilter.PrintParameterMap()
+
+            resultImage = elastixImageFilter.Execute()
+            resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
+            registered_images.append(sitk.GetArrayFromImage(resultImage))
+
+        reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
+        registered_images.append(sitk.GetArrayFromImage(reference_image))
+        avg_array = np.mean(registered_images, axis=0)
+
+        savepath = os.path.join(self.registration_path, f'averaged_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
-        io.imsave(savepath, average_volume)
+        write_image(savepath, avg_array.astype(np.uint8))
 
 
     def volume_origin_creation(self):
@@ -968,15 +1023,12 @@ class VolumeRegistration:
         if os.path.exists(result_path):
             status.append(f'\tRegistered volume at {result_path}')
 
-        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.3.txt')
+        reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
         if os.path.exists(reverse_transformation_pfile):
             status.append(f'\tTransformParameters file to register points at: {reverse_transformation_pfile}')
 
         if os.path.exists(self.neuroglancer_data_path):
             status.append(f'\tPrecomputed data at: {self.neuroglancer_data_path}')
-
-        if os.path.exists(self.unregistered_point_file):
-            status.append(f'\tUnnregisted points at: {self.unregistered_point_file}')
 
 
         fixed_point_path = os.path.join(self.registration_path, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
@@ -998,4 +1050,4 @@ class VolumeRegistration:
             print("These are the processes that have run:")
             print("\n".join(status))
         else:
-            print(f'Nothing has been run to register {self.moving} to {self.fixed} with channel {self.channel}.')
+            print(f'Nothing has been run to register {self.moving} at {self.um}um.')
