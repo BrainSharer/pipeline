@@ -826,16 +826,17 @@ class VolumeRegistration:
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
 
         bsplineParameterMap["Optimizer"] = ["StandardGradientDescent"]
-        #bsplineParameterMap["ASGDParameterEstimationMethod"] = ["DisplacementDistribution"]
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
-        bsplineParameterMap["NumberOfResolutions"]= ["5"]
-        bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "6.0", "4.0", "2.0", "1.0"]
         if self.um > 20:
+            bsplineParameterMap["NumberOfResolutions"]= ["5"]
             affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
+            bsplineParameterMap["GridSpacingSchedule"] = ["5.0", "4.0", "3.0", "2.0", "1.0"]
         else:
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-        
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "5.0", "4.0", "3.0", "2.0", "1.0"]
+
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
 
@@ -870,7 +871,7 @@ class VolumeRegistration:
 
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("ComputeZYX", "true")
-            elastixImageFilter.SetParameter("DefaultPixelValue", "222")
+            elastixImageFilter.SetParameter("DefaultPixelValue", "232")
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("WriteResultImage", "false")
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
