@@ -888,11 +888,11 @@ class VolumeRegistration:
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
         if self.um > 20:
             bsplineParameterMap["NumberOfResolutions"]= ["5"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["4.0", "4.0", "4.0", "2.0", "1.0"]
             affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
         else:
             bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["4.0", "4.0", "4.0", "4.0", "2.0", "1.0"]
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
@@ -933,8 +933,10 @@ class VolumeRegistration:
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("WriteResultImage", "false")
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
+            elastixImageFilter.SetParameter("FixedImageDimension", "3")
+            elastixImageFilter.SetParameter("MovingImageDimension", "3")
             elastixImageFilter.SetLogToFile(False)
-            elastixImageFilter.LogToConsoleOff()
+            elastixImageFilter.LogToConsoleOn()
 
 
             elastixImageFilter.PrintParameterMap()
