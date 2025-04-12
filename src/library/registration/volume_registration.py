@@ -838,6 +838,7 @@ class VolumeRegistration:
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
 
         registered_images = []
+        savepath = os.path.join(self.registration_path, 'AtlasV8')
         for brain, image in tqdm(volumes.items(), desc="Registering brain"):
             if brain == fixed_brain:
                 continue
@@ -872,9 +873,10 @@ class VolumeRegistration:
             elastixImageFilter.SetParameter("WriteResultImage", "false")
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
             elastixImageFilter.SetParameter("MovingImageDimension", "3")
-            elastixImageFilter.SetLogToFile(False)
+            elastixImageFilter.SetLogToFile(True)
             elastixImageFilter.LogToConsoleOff()
-
+            elastixImageFilter.SetLogFileName('elastix.log')
+            elastixImageFilter.SetOutputDirectory(savepath)
 
             elastixImageFilter.PrintParameterMap()
 
@@ -888,7 +890,6 @@ class VolumeRegistration:
         avg_array = np.mean(registered_images, axis=0)
         #avg_array = gaussian(avg_array, sigma=1)
 
-        savepath = os.path.join(self.registration_path, 'AtlasV8')
         os.makedirs(savepath, exist_ok=True)
         save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
