@@ -828,7 +828,7 @@ class VolumeRegistration:
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
 
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
+        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["6"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
         bsplineParameterMap["NumberOfResolutions"]= ["4"]
         bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "4.0", "2.0", "1.0"]
@@ -838,7 +838,7 @@ class VolumeRegistration:
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
+        affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["6"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
 
 
@@ -878,7 +878,7 @@ class VolumeRegistration:
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
             elastixImageFilter.SetParameter("MovingImageDimension", "3")
             elastixImageFilter.SetLogToFile(False)
-            elastixImageFilter.LogToConsoleOn()
+            elastixImageFilter.LogToConsoleOff()
 
 
             elastixImageFilter.PrintParameterMap()
