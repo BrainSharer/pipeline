@@ -825,10 +825,12 @@ class VolumeRegistration:
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
 
+        bsplineParameterMap["Optimizer"] = ["StandardGradientDescent"]
+        #bsplineParameterMap["ASGDParameterEstimationMethod"] = ["DisplacementDistribution"]
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
-        bsplineParameterMap["NumberOfResolutions"]= ["4"]
-        bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "4.0", "2.0", "1.0"]
+        bsplineParameterMap["NumberOfResolutions"]= ["5"]
+        bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "6.0", "4.0", "2.0", "1.0"]
         if self.um > 20:
             affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
         else:
