@@ -819,16 +819,13 @@ class VolumeRegistration:
         fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
         fixed_img = read_image(fixed_path)
         volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
-        print(f'Len volumes={len(volumes)}')
         reference_image = volumes[fixed_brain]
-        registered_images = []
         fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
-        #genericMap = sitk.GetDefaultParameterMap('affine')
-        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
+
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
+        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
 
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["6"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
         bsplineParameterMap["NumberOfResolutions"]= ["4"]
         bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "4.0", "2.0", "1.0"]
@@ -838,10 +835,9 @@ class VolumeRegistration:
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
-        affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["6"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
 
-
+        registered_images = []
         for brain, image in tqdm(volumes.items(), desc="Registering brain"):
             if brain == fixed_brain:
                 continue
@@ -874,7 +870,6 @@ class VolumeRegistration:
             elastixImageFilter.SetParameter("DefaultPixelValue", "222")
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("WriteResultImage", "false")
-            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
             elastixImageFilter.SetParameter("MovingImageDimension", "3")
             elastixImageFilter.SetLogToFile(False)
@@ -886,6 +881,7 @@ class VolumeRegistration:
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
             registered_images.append(sitk.GetArrayFromImage(resultImage))
+            del resultImage
 
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
         registered_images.append(sitk.GetArrayFromImage(reference_image))
@@ -897,6 +893,35 @@ class VolumeRegistration:
         save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, avg_array.astype(np.uint8))
+
+
+    def group_volume(self):
+
+        population = ['MD585', 'MD594', 'MD589']
+        vectorOfImages = sitk.VectorOfImage()
+        for brain in population:
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.tif')
+            if not os.path.exists(brainpath):
+                print(f'{brainpath} does not exist, exiting.')
+                sys.exit()
+            vectorOfImages.push_back(sitk.ReadImage(brainpath))
+
+        image = sitk.JoinSeries(vectorOfImages)
+
+        # Register
+        elastixImageFilter = sitk.ElastixImageFilter()
+        elastixImageFilter.SetFixedImage(image)
+        elastixImageFilter.SetMovingImage(image)
+        elastixImageFilter.SetParameterMap(sitk.GetDefaultParameterMap('groupwise'))
+        resultImage = elastixImageFilter.Execute()        
+        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
+
+        savepath = os.path.join(self.registration_path, 'AtlasV8')
+        os.makedirs(savepath, exist_ok=True)
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_grouped_{self.um}um_{self.orientation}.tif')
+        print(f'Saving img to {save_atlas_path}')
+        write_image(save_atlas_path, resultImage.astype(np.uint8))
+
 
 
     def volume_origin_creation(self):

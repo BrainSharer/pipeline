@@ -79,6 +79,7 @@ if __name__ == '__main__':
                         'origins': volumeRegistration.volume_origin_creation,
                         'transformix_origins': volumeRegistration.transformix_origins,
                         'pad_volume': volumeRegistration.pad_volume,
+                        'group_volume': volumeRegistration.group_volume,
     }
 
     if task in function_mapping:
