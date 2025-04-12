@@ -44,76 +44,20 @@ import pandas as pd
 import cv2
 import json
 
-from library.atlas.atlas_utilities import average_images, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_mask import normalize16, normalize8, smooth_image
+from library.utilities.utilities_mask import normalize16
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_registration import create_affine_parameters, create_rigid_parameters
+from library.utilities.utilities_registration import create_affine_parameters
 
 # constants
 MOVING_CROP = 50
 M_UM_SCALE = 1000000
-
-
-
-def sort_from_center(polygon:list) -> list:
-    """Get the center of the unique points in a polygon and then use math.atan2 to get
-    the angle from the x-axis to the x,y point. Use that to sort.
-    This only works with convex shaped polygons.
-    
-    :param polygon:
-    """
-
-    coords = np.array(polygon)
-    coords = np.unique(coords, axis=0)
-    center = coords.mean(axis=0)
-    centered = coords - center
-    angles = -np.arctan2(centered[:, 1], centered[:, 0])
-    sorted_coords = coords[np.argsort(angles)]
-    return list(map(tuple, sorted_coords))
-
-
-def dice(im1, im2):
-    """
-    Computes the Dice coefficient, a measure of set similarity.
-    Parameters
-    ----------
-    im1 : array-like, bool
-        Any array of arbitrary size. If not boolean, will be converted.
-    im2 : array-like, bool
-        Any other array of identical size. If not boolean, will be converted.
-    Returns
-    -------
-    dice : float
-        Dice coefficient as a float on range [0,1].
-        Maximum similarity = 1
-        No similarity = 0
-        
-    Notes
-    -----
-    The order of inputs for `dice` is irrelevant. The result will be
-    identical if `im1` and `im2` are switched.
-    """
-    im1 = np.asarray(im1).astype(bool)
-    im2 = np.asarray(im2).astype(bool)
-
-    if im1.shape != im2.shape:
-        raise ValueError("Shape mismatch: im1 and im2 must have the same shape.")
-
-    # Compute Dice coefficient
-    intersection = np.logical_and(im1, im2)
-    return 2. * intersection.sum() / (im1.sum() + im2.sum())
-
-def pad_volume(volume, padto):
-    re = (padto[2] - volume.shape[2]) // 1
-    ce = (padto[1] - volume.shape[1]) // 1
-    return np.pad(volume, [[0, 0], [0, ce], [0, re]], constant_values=(0))
 
 
 class VolumeRegistration:
@@ -886,13 +830,11 @@ class VolumeRegistration:
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
         bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
+        bsplineParameterMap["NumberOfResolutions"]= ["4"]
+        bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "4.0", "2.0", "1.0"]
         if self.um > 20:
-            bsplineParameterMap["NumberOfResolutions"]= ["5"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["4.0", "4.0", "4.0", "2.0", "1.0"]
             affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
         else:
-            bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["4.0", "4.0", "4.0", "4.0", "2.0", "1.0"]
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
         
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
@@ -1064,3 +1006,57 @@ class VolumeRegistration:
             print("\n".join(status))
         else:
             print(f'Nothing has been run to register {self.moving} at {self.um}um.')
+
+
+def sort_from_center(polygon:list) -> list:
+    """Get the center of the unique points in a polygon and then use math.atan2 to get
+    the angle from the x-axis to the x,y point. Use that to sort.
+    This only works with convex shaped polygons.
+    
+    :param polygon:
+    """
+
+    coords = np.array(polygon)
+    coords = np.unique(coords, axis=0)
+    center = coords.mean(axis=0)
+    centered = coords - center
+    angles = -np.arctan2(centered[:, 1], centered[:, 0])
+    sorted_coords = coords[np.argsort(angles)]
+    return list(map(tuple, sorted_coords))
+
+
+def dice(im1, im2):
+    """
+    Computes the Dice coefficient, a measure of set similarity.
+    Parameters
+    ----------
+    im1 : array-like, bool
+        Any array of arbitrary size. If not boolean, will be converted.
+    im2 : array-like, bool
+        Any other array of identical size. If not boolean, will be converted.
+    Returns
+    -------
+    dice : float
+        Dice coefficient as a float on range [0,1].
+        Maximum similarity = 1
+        No similarity = 0
+        
+    Notes
+    -----
+    The order of inputs for `dice` is irrelevant. The result will be
+    identical if `im1` and `im2` are switched.
+    """
+    im1 = np.asarray(im1).astype(bool)
+    im2 = np.asarray(im2).astype(bool)
+
+    if im1.shape != im2.shape:
+        raise ValueError("Shape mismatch: im1 and im2 must have the same shape.")
+
+    # Compute Dice coefficient
+    intersection = np.logical_and(im1, im2)
+    return 2. * intersection.sum() / (im1.sum() + im2.sum())
+
+def pad_volume(volume, padto):
+    re = (padto[2] - volume.shape[2]) // 1
+    ce = (padto[1] - volume.shape[1]) // 1
+    return np.pad(volume, [[0, 0], [0, ce], [0, re]], constant_values=(0))
