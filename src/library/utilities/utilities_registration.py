@@ -166,7 +166,7 @@ def create_affine_parameters(elastixImageFilter):
     params["ImageSampler"] = ["Random"]
     params["Metric"] =  ["AdvancedMattesMutualInformation"]
     params["Optimizer"] =  ["AdaptiveStochasticGradientDescent"]
-    params["ResampleInterpolator"] = ["FinalBSplineInterpolator"]        
+    params["ResampleInterpolator"] = ["FinalBSplineInterpolator"]  
 
     return params
 

@@ -31,7 +31,7 @@ import sys
 import numpy as np
 from skimage import io
 from scipy.ndimage import zoom
-#from skimage.filters import gaussian        
+from skimage.filters import gaussian        
 #from skimage.exposure import rescale_intensity
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
@@ -879,14 +879,26 @@ class VolumeRegistration:
         reference_image = volumes[fixed_brain]
         registered_images = []
         fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
-        genericMap = sitk.GetDefaultParameterMap('affine')
+        #genericMap = sitk.GetDefaultParameterMap('affine')
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        if self.um < 30:
-            bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-        else:
+        affineParameterMap = sitk.GetDefaultParameterMap('affine')
+
+        bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
+        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
+        if self.um > 20:
             bsplineParameterMap["NumberOfResolutions"]= ["5"]
             bsplineParameterMap["GridSpacingSchedule"] = ["4.1", "2.8", "1.9", "1.4", "1.0"]
+            affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
+        else:
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
+            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+        
+        del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
+        affineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
+        bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
+
 
         for brain, image in tqdm(volumes.items(), desc="Registering brain"):
             if brain == fixed_brain:
@@ -895,16 +907,6 @@ class VolumeRegistration:
             elastixImageFilter.SetFixedImage(reference_image)
             elastixImageFilter.SetMovingImage(image)
 
-            elastixImageFilter.SetParameterMap(genericMap)
-            elastixImageFilter.AddParameterMap(bsplineParameterMap)
-            elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-            elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
-            #elastixImageFilter.SetParameter("NumberOfResolutions", "5") #### Very important, less than 6 gives lousy results.
-            elastixImageFilter.SetParameter("ComputeZYX", "true")
-            elastixImageFilter.SetParameter("DefaultPixelValue", "222")
-            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
-            elastixImageFilter.SetLogToFile(False)
-            elastixImageFilter.LogToConsoleOff()
             moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
                 with open(fixed_point_path, 'r') as fp:
@@ -913,20 +915,26 @@ class VolumeRegistration:
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
 
-                elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
-                elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-                elastixImageFilter.SetParameter("Metric0Weight", ["0.75"]) # the weight of 1st metric
-                elastixImageFilter.SetParameter("Metric1Weight",  ["0.25"]) # the weight of 2nd metric
+                affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+                affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
+                affineParameterMap["Metric0Weight"] = ["0.75"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["0.25"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-                print(f'moving point path={moving_point_path}')
-                print(f'fixed point path={fixed_point_path}')
-            else:
-                print('No point files found, skipping registration')
-                print(f'moving point path={moving_point_path}')
-                print(f'fixed point path={fixed_point_path}')
-                return
+            
+            
+            elastixImageFilter.SetParameterMap(affineParameterMap)
+            elastixImageFilter.AddParameterMap(bsplineParameterMap)
+
+            elastixImageFilter.SetParameter("ResultImageFormat", "tif")
+            elastixImageFilter.SetParameter("ComputeZYX", "true")
+            elastixImageFilter.SetParameter("DefaultPixelValue", "222")
+            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
+            elastixImageFilter.SetParameter("WriteResultImage", "false")
+            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
+            elastixImageFilter.SetLogToFile(False)
+            elastixImageFilter.LogToConsoleOff()
 
 
             elastixImageFilter.PrintParameterMap()
@@ -938,10 +946,13 @@ class VolumeRegistration:
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
         registered_images.append(sitk.GetArrayFromImage(reference_image))
         avg_array = np.mean(registered_images, axis=0)
+        #avg_array = gaussian(avg_array, sigma=1)
 
-        savepath = os.path.join(self.registration_path, f'averaged_{self.um}um_{self.orientation}.tif')
-        print(f'Saving img to {savepath}')
-        write_image(savepath, avg_array.astype(np.uint8))
+        savepath = os.path.join(self.registration_path, 'AtlasV8')
+        os.makedirs(savepath, exist_ok=True)
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
+        print(f'Saving img to {save_atlas_path}')
+        write_image(save_atlas_path, avg_array.astype(np.uint8))
 
 
     def volume_origin_creation(self):
