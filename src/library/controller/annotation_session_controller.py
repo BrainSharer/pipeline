@@ -211,9 +211,18 @@ class AnnotationSessionController:
             rigid_euler = sitk.Euler3DTransform(center, theta_x, theta_y, theta_z, translation)
             R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
             t = np.asarray(rigid_euler.GetTranslation())
+            (TransformParameters 
+                0.754822 -0.466372 -0.050235 
+                0.343261 0.675983 -0.106562 
+                0.015882 0.095323 0.996939 
+                -223.304122 -161.919033 29.791810)            
             """
-            params = [0.808140, -0.439742, -0.064120, 0.393423, 0.666833, -0.104813, 0.011812, 
+            params0 = [0.808140, -0.439742, -0.064120, 0.393423, 0.666833, -0.104813, 0.011812, 
                                     0.046400, 0.993291, -240.865225, -173.912066, 34.285577]
+            params = [0.754822, -0.466372, -0.050235, 
+                0.343261, 0.675983, -0.106562, 
+                0.015882, 0.095323, 0.996939, 
+                -223.304122, -161.919033, 29.791810]
             center = np.array([1166.5, 689.5, 436.5])
             t = np.array(params[9:])
             R = np.array(params[:9]).reshape(3,3)

@@ -604,15 +604,12 @@ class BrainStructureManager:
         xy_resolution = self.fixed_brain.sqlController.scan_run.resolution
         zresolution = self.fixed_brain.sqlController.scan_run.zresolution
 
-        """
         moving_all = list_coms(animal, scaling_factor=self.allen_um)
         fixed_all = list_coms('MD589', scaling_factor=self.allen_um)
         common_keys = list(moving_all.keys() & fixed_all.keys())
         moving_src = np.array([moving_all[s] for s in common_keys])
         fixed_src = np.array([fixed_all[s] for s in common_keys])
         transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
-        """
-
 
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
@@ -626,22 +623,22 @@ class BrainStructureManager:
 
             # Now convert com and origin to micrometers
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
-            origin_um = origin0 * scale0
             com_um = com0 * scale0
-            #origin_um = apply_affine_transform(origin_um, transformation_matrix)
             # we want the origin scaled to 10um, so adjust the above scale
-            scale1 = scale0 / self.allen_um
-            origin0 *= scale1
+            scale_allen = scale0 / self.allen_um
+            origin_allen = origin0 * scale_allen
+            origin_moving_to_fixed = apply_affine_transform(origin_allen, transformation_matrix)
 
             volume = np.swapaxes(volume, 0, 2)
-            volume = zoom(volume, scale1)
+            volume = zoom(volume, scale_allen)
 
             if debug:
                 if structure == 'SC':
-                    print(f"ID={animal} {structure} origin={np.round(origin0)} com={np.round(com_um)}um {volume.shape=}")
+                    print(f"ID={animal} {structure} {volume.shape=} com={np.round(com_um)}um", end=" ")
+                    print(f"origin0={np.round(origin0)} origin allen{np.round(origin_allen)} origin moving2fixed {np.round(origin_moving_to_fixed)}")
             else:
                 brainMerger.coms[structure] = com_um
-                brainMerger.origins[structure] = origin0
+                brainMerger.origins[structure] = origin_moving_to_fixed
                 brainMerger.volumes[structure] = volume
 
     @staticmethod

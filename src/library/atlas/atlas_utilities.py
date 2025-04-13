@@ -220,16 +220,16 @@ def resample_image(image, reference_image):
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     return resampler.Execute(image)
 
-def average_images(volumes, iterations="250"):
+def average_images(volumes, iterations="250", default_pixel_value="0"):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
     reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
     resampled_images = [resample_image(img, reference_image) for img in images]
-    registered_images = [register_volume(img, reference_image, iterations) for img in resampled_images if img != reference_image]
+    registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
     avg_array = np.mean(registered_images, axis=0)
     return avg_array
 
 
-def register_volume(movingImage, fixedImage, iterations="250"):
+def register_volume(movingImage, fixedImage, iterations="250", default_pixel_value="0"):
 
     elastixImageFilter = sitk.ElastixImageFilter()
     elastixImageFilter.SetFixedImage(fixedImage)
@@ -244,7 +244,7 @@ def register_volume(movingImage, fixedImage, iterations="250"):
     rigid_params["MovingImageDimension"] = ["3"]
     rigid_params["UseDirectionCosines"] = ["false"]
     rigid_params["HowToCombineTransforms"] = ["Compose"]
-    rigid_params["DefaultPixelValue"] = ["0"]
+    rigid_params["DefaultPixelValue"] = [default_pixel_value]
     rigid_params["WriteResultImage"] = ["false"]    
     rigid_params["WriteIterationInfo"] = ["false"]
     rigid_params["Resampler"] = ["DefaultResampler"]

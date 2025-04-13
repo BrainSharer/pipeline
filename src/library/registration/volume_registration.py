@@ -44,6 +44,7 @@ import pandas as pd
 import cv2
 import json
 
+from library.atlas.atlas_utilities import average_images
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -620,7 +621,7 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        volumepath = os.path.join(self.registration_output, self.registered_volume)
+        volumepath = os.path.join(self.registration_output, self.moving_volume_path)
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
@@ -728,7 +729,6 @@ class VolumeRegistration:
         elastixImageFilter.SetFixedImage(fixedImage)
         elastixImageFilter.SetMovingImage(movingImage)
 
-        genericMap = sitk.GetDefaultParameterMap('affine')
         genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
 
         if self.bspline:
@@ -785,13 +785,14 @@ class VolumeRegistration:
         print(f'Saving img to {savepath}')
         io.imsave(savepath, moving_volume)
 
-
     def create_average_volume(self):
 
         moving_brains = ['MD585', 'MD594']
         fixed_brain = 'MD589'
         all_brains = [fixed_brain] + moving_brains
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
+        
+        
         for brain in all_brains:
             brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             brain_com_path = os.path.join(base_com_path, brain, 'com')
@@ -829,17 +830,17 @@ class VolumeRegistration:
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
         if self.um > 20:
-            bsplineParameterMap["NumberOfResolutions"]= ["5"]
-            affineParameterMap["NumberOfResolutions"]= ["5"] # Takes lots of RAM
-            bsplineParameterMap["GridSpacingSchedule"] = ["5.0", "4.0", "3.0", "2.0", "1.0"]
+            bsplineParameterMap["NumberOfResolutions"]= ["6"]
+            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
+            bsplineParameterMap["GridSpacingSchedule"] = ["32.0", "16.0", "8.0", "4.0", "2.0", "1.0"]
         else:
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
             bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["6.0", "5.0", "4.0", "3.0", "2.0", "1.0"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["32.0", "16.0", "8.0", "4.0", "2.0", "1.0"]
 
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
-
+        defaul_pixel_value = "232"
         registered_images = []
         savepath = os.path.join(self.registration_path, 'AtlasV8')
         for brain, image in tqdm(volumes.items(), desc="Registering brain"):
@@ -871,7 +872,7 @@ class VolumeRegistration:
 
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("ComputeZYX", "true")
-            elastixImageFilter.SetParameter("DefaultPixelValue", "232")
+            elastixImageFilter.SetParameter("DefaultPixelValue", defaul_pixel_value)
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("WriteResultImage", "false")
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
@@ -890,8 +891,10 @@ class VolumeRegistration:
 
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
         registered_images.append(sitk.GetArrayFromImage(reference_image))
-        avg_array = np.mean(registered_images, axis=0)
+        #avg_array = np.mean(registered_images, axis=0)
         #avg_array = gaussian(avg_array, sigma=1)
+        avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
+
 
         os.makedirs(savepath, exist_ok=True)
         save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
