@@ -621,12 +621,16 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        volumepath = os.path.join(self.registration_output, self.moving_volume_path)
+        if self.fixed_path is None:
+            volumepath = os.path.join(self.registration_output, self.moving_volume_path)
+        else:
+            volumepath = self.registration_output + '.tif'
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
         else:
             print(f'Creating precomputed from {volumepath}')
+
 
         PRECOMPUTED = self.neuroglancer_data_path
         scale = self.um * 1000
@@ -636,7 +640,7 @@ class VolumeRegistration:
         volume = np.swapaxes(volume, 0, 2)
         num_channels = 1
         volume_size = volume.shape
-        print(f'volume shape={volume.shape} dtype={volume.dtype}')
+        print(f'volume shape={volume.shape} dtype={volume.dtype} creating at {PRECOMPUTED}')
         volume = normalize16(volume)
 
         ng = NumpyToNeuroglancer(
