@@ -143,7 +143,7 @@ def create_affine_parameters(elastixImageFilter):
     - rigid_params: A dictionary of rigid registration parameters.
     """
 
-    params = elastixImageFilter.GetDefaultParameterMap("rigid")
+    params = elastixImageFilter.GetDefaultParameterMap("affine")
     params["AutomaticTransformInitialization"] = ["true"]
     params["FixedInternalImagePixelType"] = ["float"]
     params["MovingInternalImagePixelType"] = ["float"]
