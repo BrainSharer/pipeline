@@ -16,6 +16,7 @@ from skimage.filters import gaussian
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from tqdm import tqdm
 
+from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.pipeline_process import Pipeline
 from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
@@ -386,25 +387,36 @@ class BrainStructureManager:
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.volume_path)
 
+        ### test using aligned images from foundation brain
+        if 'MD' in self.animal:
+            xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.allen_um
+            z_resolution = self.sqlController.scan_run.zresolution / self.allen_um
+            input_path = os.path.join(self.fileLocationManager.prep, "C1", "thumbnail_aligned")
+            image_manager = ImageManager(input_path)
+            self.atlas_box_size = image_manager.volume_size
+            self.atlas_box_size = np.array([int(self.atlas_box_size[0] * xy_resolution), 
+                                               int(self.atlas_box_size[1] * xy_resolution),
+                                               int(self.atlas_box_size[2] * z_resolution)])
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.origin_path}")
+        coms = sorted(os.listdir(self.com_path))
         origins = sorted(os.listdir(self.origin_path))
         volumes = sorted(os.listdir(self.volume_path))
         if len(origins) != len(volumes):
             print(f'The number of origins: {len(origins)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(origins)} origins and volumes.")
+        print(f"Working with {len(origins)} origins/volumes from {self.origin_path}")
         ids = {}
         atlas_centers = {}
-        transformation_matrix = get_affine_transformation(moving_name=self.animal, fixed_name='Allen', scaling_factor=self.allen_um)
-        if transformation_matrix is None:
-            print(f"Could not find transformation matrix for {self.animal} to Allen")
+        if self.affine:
+            transformation_matrix = get_affine_transformation(moving_name=self.animal, fixed_name='Allen', scaling_factor=self.allen_um)
+        else:
             transformation_matrix = np.eye(4)
 
 
-        for origin_file, volume_file in zip(origins, volumes):
+        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(
                     f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match"
@@ -417,6 +429,9 @@ class BrainStructureManager:
             except IndexError as ke:
                 print(f"Problem with index error: {structure=} {allen_id=} in database")
                 sys.exit()
+            # Origin is already in allen um coordinates, usually 10um
+            com = np.loadtxt(os.path.join(self.com_path, origin_file))
+            com = com / self.allen_um
             origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
             volume = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
@@ -426,40 +441,33 @@ class BrainStructureManager:
             COM = center_of_mass(volume)
             volume = adjust_volume(volume, allen_id)
 
-            if math.isnan(COM[0]):
-                nids, ncounts = np.unique(volume, return_counts=True)
-                print(f"{structure} volume is invalid {nids} {ncounts}")
-                continue
-                COM = (0, 0, 0)
+            # center origin from the middle of the super volume
+            #origin = origin - self.atlas_box_center
+            #center = (self.atlas_box_center + origin_and_com * self.atlas_raw_scale / self.atlas_box_scales)
             # transform into the atlas box coordinates that neuroglancer assumes
-            origin_and_com = origin + COM
-            center = (
-                self.atlas_box_center
-                + origin_and_com * self.atlas_raw_scale / self.atlas_box_scales
-            )
-            atlas_centers[structure] = center
+            #####origin_and_com = origin + COM
+            #####center = (self.atlas_box_center + origin_and_com * self.atlas_raw_scale / self.atlas_box_scales)
+            #####atlas_centers[structure] = center
             if self.affine:
-                #####center = apply_affine_transform(center, transformation_matrix)
-                origin = apply_affine_transform(origin, transformation_matrix)
+                com = apply_affine_transform(com, transformation_matrix)
+                #origin = apply_affine_transform(origin, transformation_matrix)
 
-            #x_start = int(center[0] - COM[0])
-            #y_start = int(center[1] - COM[1])
-            #z_start = int(center[2] - COM[2])
-            x_start = int(origin[0])
-            y_start = int(origin[1])
-            z_start = int(origin[2])
+            #####x_start = int(center[0] - COM[0])
+            #####y_start = int(center[1] - COM[1])
+            #####z_start = int(center[2] - COM[2])
+            x_start = int(com[0] - COM[0])
+            y_start = int(com[1] - COM[1])
+            z_start = int(com[2] - COM[2])
+            #x_start = int(origin[0])
+            #y_start = int(origin[1])
+            #z_start = int(origin[2])
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
             z_end = z_start + volume.shape[2]
-            print(
-                f"{structure} origin={np.round(origin)} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}"
-            )
 
             if self.debug:
-                print(
-                    f"{structure} origin={np.round(origin)} center={np.round(center)} x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}"
-                )
+                print(f"{structure} origin={np.round(origin)}  x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}")
             else:
                 try:
                     atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
@@ -586,9 +594,12 @@ class BrainStructureManager:
             else:
                 print(f"Creating data in {structure_path}")
             os.makedirs(structure_path, exist_ok=True)
-            neuroglancer = AtlasToNeuroglancer(
-                volume=atlas_volume, scales=self.atlas_box_scales * 1000
+            self.atlas_box_scales = np.array(
+                (int(self.atlas_box_scales[0] * 1000), 
+                 int(self.atlas_box_scales[1] * 1000), 
+                 int(self.atlas_box_scales[2] * 1000))
             )
+            neuroglancer = AtlasToNeuroglancer(volume=atlas_volume, scales=self.atlas_box_scales)
             neuroglancer.init_precomputed(path=structure_path)
             neuroglancer.add_segment_properties(ids)
             neuroglancer.add_downsampled_volumes()
@@ -634,13 +645,13 @@ class BrainStructureManager:
 
             # Now convert com and origin to micrometers
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
-            com_um = com0 * scale0
-            origin_um = origin0 * scale0
+            com_um = com0 * scale0 # COM in um
+            origin_um = origin0 * scale0 # origin in um
 
             # we want the origin and the volume scaled to 10um, so adjust the above scale
             scale_allen = scale0 / self.allen_um
-            origin_fixed = apply_affine_transform(origin_um/self.allen_um, transformation_matrix)  
             origin_allen = origin_um / self.allen_um
+            origin_fixed = apply_affine_transform(origin_allen, transformation_matrix)  
             volume = np.swapaxes(volume, 0, 2)
             volume_allen = zoom(volume, scale_allen)
 
@@ -650,7 +661,7 @@ class BrainStructureManager:
                     print(f"origin0={np.round(origin0)} {np.round(origin_um)}um origin allen={np.round(origin_allen)} origin fixed={np.round(origin_fixed)}")
             else:
                 brainMerger.coms[structure] = com_um
-                brainMerger.origins[structure] = origin_fixed
+                brainMerger.origins[structure] = origin_allen
                 brainMerger.volumes[structure] = volume_allen
 
     @staticmethod
@@ -969,9 +980,7 @@ class BrainStructureManager:
         volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
          # pad the volume in the z axis
         volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
-        pads = np.array([0, 0, pad_z])
         min_z = min(sections)
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
-        com = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin
         return origin, volume
 
