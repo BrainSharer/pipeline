@@ -1,4 +1,5 @@
 import os, re
+import inspect
 import json
 import glob
 import paramiko
@@ -123,6 +124,11 @@ class PrepCreater:
 
 
     def gen_ng_preview(self):
+
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+
         # GET CHANNEL NAMES FROM meta-data.json
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
@@ -326,26 +332,15 @@ class PrepCreater:
             }}
 
         combined_json = {**dimensions_json, **view_field, **other_stuff, **layers_json, **annotations_json, **gen_settings}
-        print(json.dumps(combined_json, indent=2))
+        #print(json.dumps(combined_json, indent=2))
 
-
-        #save to DB:
-        '''
-        id (auto)
-        neuroglancer_state
-        FK_lab_id
-        created
-        updated
-        user_data
-        comments
-        description
-        FK_user_id
-        readonly
-        public
-        active
-        '''
-
-                
+        combined_json_str = json.dumps(combined_json)
+        active_query = self.sqlController.insert_ng_state(combined_json_str, comments='auto preview', readonly=True, public=False, active=True)
+        
+        if active_query:
+            print(f"preview state created: {active_query}")
+        else:
+            print("error; no preview state created")
 
         #TODO: add more targeted link to only expose channels of interest on imageserv
         target_path = str(self.fileLocationManager.www)

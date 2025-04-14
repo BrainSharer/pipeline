@@ -14,6 +14,7 @@ FIDUCIAL = 8  # label ID in table annotation_label
 class AnnotationSessionController:
     """The class that queries and addes entry to the annotation_session table"""
 
+
     def update_session(self, id: int, update_dict: dict):
         """
         Update the table with the given ID using the provided update dictionary.
@@ -36,6 +37,7 @@ class AnnotationSessionController:
             print(f"No merge for  {e}")
             self.session.rollback()
     
+
     def get_labels(self, labels):
         annotation_labels = (
             self.session.query(AnnotationLabel)
@@ -74,6 +76,7 @@ class AnnotationSessionController:
 
         return annotation_label
     
+
     def create_annotation_session(self, FK_user_id, FK_prep_id, annotation):
         data = AnnotationSession(
             FK_user_id=FK_user_id,
@@ -85,6 +88,7 @@ class AnnotationSessionController:
         self.add_row(data)
         self.session.commit()
         return data.id
+
 
     def insert_annotation_with_labels(self, FK_user_id: int, FK_prep_id: int, annotation: dict, labels: list):
 
@@ -108,6 +112,7 @@ class AnnotationSessionController:
         self.session.add(annotation_session)
         self.session.commit()
         return annotation_session.id
+
 
     def get_fiducials(self, prep_id, debug: bool = False):
         """Fiducials will be marked on downsampled images. You will need the resolution
@@ -309,8 +314,6 @@ class AnnotationSessionController:
 
 
         return features
-
-
 
 
     def get_annotation_by_id(self, session_id):

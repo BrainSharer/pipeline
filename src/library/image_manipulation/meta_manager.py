@@ -1,8 +1,7 @@
 """This module is responsible for extracting metadata from the CZI files.
 """
 
-import hashlib
-import os, sys, time, re, io, json
+import os, sys, time, re, io
 import inspect
 from datetime import datetime
 from pathlib import Path
@@ -246,22 +245,17 @@ class MetaUtilities:
             img_scaled.save(img_scaled_byte_arr, format='PNG')
             img_scaled_byte_arr = img_scaled_byte_arr.getvalue()
 
-            # Calculate checksum for scaled image
-            #####MOVED readable_hash_scaled = hashlib.sha256(img_scaled_byte_arr).hexdigest()
-
             # Save scaled image
             if self.debug:
                 print(f'Saving scaled image to {slide_preview_path}')
             with open(slide_preview_path, 'wb') as f:
                 f.write(img_scaled_byte_arr)
 
-
         if self.debug:
             if os.path.isfile(slide_preview_path):
                 print(f'Slide preview exists: {slide_preview_path}')
             else:
                 print(f'Slide preview does not exist, creating: {slide_preview_path}')
-
 
 
     def parallel_extract_slide_meta_data_and_insert_to_database(self, file_key):

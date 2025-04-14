@@ -15,7 +15,6 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 from library.image_manipulation.elastix_manager import ElastixManager
-from library.cell_labeling.cell_manager import CellMaker
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, REALIGNED_DIR, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker

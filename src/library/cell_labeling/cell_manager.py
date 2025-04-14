@@ -10,10 +10,8 @@ from ome_zarr.reader import Reader
 import dask
 from dask import delayed
 import dask.array as da
-import imageio.v2 as imageio
 from pathlib import Path
 import csv
-import cv2
 import numpy as np
 from compress_pickle import dump, load
 import pandas as pd
@@ -29,7 +27,6 @@ except ImportError as ie:
 
 from library.cell_labeling.cell_detector_trainer import CellDetectorTrainer
 from library.cell_labeling.cell_utilities import (
-    calc_moments_of_mask,
     calculate_correlation_and_energy,
     filter_cell_candidates,
     find_connected_segments,
@@ -41,10 +38,7 @@ from library.cell_labeling.cell_utilities import (
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import (
-    ALIGNED_DIR,
-    FileLocationManager,
-)
+from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image, get_hostname
 
