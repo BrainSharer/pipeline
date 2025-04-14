@@ -179,7 +179,7 @@ def get_affine_transformation(moving_name, fixed_name='Allen', scaling_factor=1)
         Adjust accordingly
         """
 
-        moving_all = list_coms(moving_name, scaling_factor=scaling_factor)
+        moving_all = fetch_coms(moving_name, scaling_factor=scaling_factor)
         fixed_all = list_coms(fixed_name, scaling_factor=scaling_factor)
 
         bad_keys = ('RtTg', 'AP')

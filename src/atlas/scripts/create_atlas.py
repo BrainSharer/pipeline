@@ -45,7 +45,7 @@ class AtlasManager():
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD585']
+        #self.foundation_brains = ['MD589']
 
     def create_brain_json(self):
         """
@@ -207,15 +207,7 @@ if __name__ == '__main__':
         print('Cannot update COMs with affine set to True')
         sys.exit()
 
-    
-    if animal == NEW_ATLAS or animal == ORIGINAL_ATLAS:
-        print(f'Working on {animal}')
-    else:
-        print(f'{animal} is not a valid animal. Choose one of these:')
-        print(f'\t{NEW_ATLAS}')
-        print(f'\t{ORIGINAL_ATLAS}')
-        sys.exit()
-    
+        
     pipeline = AtlasManager(animal, task, um, affine, debug)
 
     function_mapping = {'json': pipeline.create_brain_json,
@@ -228,6 +220,7 @@ if __name__ == '__main__':
                         'list_coms': pipeline.list_coms,
                         'validate': pipeline.validate,
                         'evaluate': pipeline.evaluate,
+                        'status': pipeline.brainManager.report_status
     }
 
     if task in function_mapping:

@@ -74,7 +74,8 @@ class BrainStructureManager:
         self.origin = None
         self.volume = None
         self.abbreviation = None
-        self.pad_z = 40
+        #self.pad_z = 40
+        self.pad_z = 0
 
         self.affine = affine
         self.atlas_box_scales = np.array((self.allen_um, self.allen_um, self.allen_um))
@@ -438,11 +439,15 @@ class BrainStructureManager:
             )
             atlas_centers[structure] = center
             if self.affine:
-                center = apply_affine_transform(center, transformation_matrix)
+                #####center = apply_affine_transform(center, transformation_matrix)
+                origin = apply_affine_transform(origin, transformation_matrix)
 
-            x_start = int(center[0] - COM[0])
-            y_start = int(center[1] - COM[1])
-            z_start = int(center[2] - COM[2])
+            #x_start = int(center[0] - COM[0])
+            #y_start = int(center[1] - COM[1])
+            #z_start = int(center[2] - COM[2])
+            x_start = int(origin[0])
+            y_start = int(origin[1])
+            z_start = int(origin[2])
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
@@ -590,7 +595,10 @@ class BrainStructureManager:
             neuroglancer.add_segmentation_mesh()
 
     def create_foundation_brain_volumes_origins(self, brainMerger, animal, debug):
-        """Step 2"""
+        """Step 2
+        We want to save the COMs in micrometers, but the volumes and origins
+        get saved in 10um allen space
+        """
 
         jsonpath = os.path.join(
             self.data_path, animal, "aligned_padded_structures.json"
@@ -604,13 +612,16 @@ class BrainStructureManager:
         xy_resolution = self.fixed_brain.sqlController.scan_run.resolution
         zresolution = self.fixed_brain.sqlController.scan_run.zresolution
 
-        moving_all = list_coms(animal, scaling_factor=self.allen_um)
-        fixed_all = list_coms('MD589', scaling_factor=self.allen_um)
+        
+        moving_all = fetch_coms(animal, scaling_factor=self.allen_um)
+        fixed_all = fetch_coms('MD589', scaling_factor=self.allen_um)
         common_keys = list(moving_all.keys() & fixed_all.keys())
         moving_src = np.array([moving_all[s] for s in common_keys])
         fixed_src = np.array([fixed_all[s] for s in common_keys])
         transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
-
+        if transformation_matrix is None:
+            transformation_matrix = np.eye(4)
+        
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
@@ -624,22 +635,23 @@ class BrainStructureManager:
             # Now convert com and origin to micrometers
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
             com_um = com0 * scale0
-            # we want the origin scaled to 10um, so adjust the above scale
-            scale_allen = scale0 / self.allen_um
-            origin_allen = origin0 * scale_allen
-            origin_moving_to_fixed = apply_affine_transform(origin_allen, transformation_matrix)
+            origin_um = origin0 * scale0
 
+            # we want the origin and the volume scaled to 10um, so adjust the above scale
+            scale_allen = scale0 / self.allen_um
+            origin_fixed = apply_affine_transform(origin_um/self.allen_um, transformation_matrix)  
+            origin_allen = origin_um / self.allen_um
             volume = np.swapaxes(volume, 0, 2)
-            volume = zoom(volume, scale_allen)
+            volume_allen = zoom(volume, scale_allen)
 
             if debug:
                 if structure == 'SC':
                     print(f"ID={animal} {structure} {volume.shape=} com={np.round(com_um)}um", end=" ")
-                    print(f"origin0={np.round(origin0)} origin allen{np.round(origin_allen)} origin moving2fixed {np.round(origin_moving_to_fixed)}")
+                    print(f"origin0={np.round(origin0)} {np.round(origin_um)}um origin allen={np.round(origin_allen)} origin fixed={np.round(origin_fixed)}")
             else:
                 brainMerger.coms[structure] = com_um
-                brainMerger.origins[structure] = origin_moving_to_fixed
-                brainMerger.volumes[structure] = volume
+                brainMerger.origins[structure] = origin_fixed
+                brainMerger.volumes[structure] = volume_allen
 
     @staticmethod
     def save_volume_origin(animal, structure, volume, xyz_offsets):
@@ -889,6 +901,36 @@ class BrainStructureManager:
                 error={np.round(np.array(difference))} ss={round(ss,2)}"
             )
         print("RMS", sum(error) / len(common_keys))
+
+
+    def report_status(self) -> None:
+        com_path = os.path.join(self.data_path, self.animal, "com")
+        origin_path = os.path.join(self.data_path, self.animal, "origin")
+        volume_path = os.path.join(self.data_path, self.animal, "structure")
+        self.check_for_existing_dir(com_path)
+        self.check_for_existing_dir(origin_path)
+        self.check_for_existing_dir(volume_path)
+        coms = sorted(os.listdir(com_path))
+        origins = sorted(os.listdir(origin_path))
+        volumes = sorted(os.listdir(volume_path))
+
+        # loop through structure objects
+        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
+            if Path(origin_file).stem != Path(volume_file).stem:
+                print(
+                    f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match"
+                )
+                sys.exit()
+            structure = Path(origin_file).stem
+            com_um = np.loadtxt(os.path.join(com_path, com_file))
+            origin_allen = np.loadtxt(os.path.join(origin_path, origin_file))
+            origin_um = origin_allen * self.allen_um
+            volume_allen = np.load(os.path.join(volume_path, volume_file))
+            com_allen = center_of_mass(volume_allen)
+            test_com = (origin_allen + com_allen) * self.allen_um
+            difference = com_um - test_com
+            if structure == 'SC':
+                print(f"{self.animal} {structure} com={np.round(com_um)}um origin um={np.round(origin_um)} COM={np.round(com_allen)} diff={difference}")
 
     @staticmethod
     def transform_create_alignment(points, transform):
