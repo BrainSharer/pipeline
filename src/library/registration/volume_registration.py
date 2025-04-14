@@ -44,7 +44,7 @@ import pandas as pd
 import cv2
 import json
 
-from library.atlas.atlas_utilities import average_images
+from library.atlas.atlas_utilities import adjust_volume, average_images
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -75,11 +75,6 @@ class VolumeRegistration:
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
-        if fixed is not None:
-            self.fixed = fixed
-            self.fixed_path = os.path.join(self.registration_path, fixed)
-            self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{um}um_{orientation}.tif' )
-            os.makedirs(self.fixed_path, exist_ok=True)
         self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
         self.allen_path = os.path.join(self.registration_path, 'Allen')
         self.tmp_dir = get_scratch_dir()
@@ -107,7 +102,6 @@ class VolumeRegistration:
         
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
-        self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}{um}um')
         self.number_of_sampling_attempts = "10"
         self.number_of_resolutions = "4"
         if self.debug:
@@ -120,9 +114,18 @@ class VolumeRegistration:
             self.affineIterations = "2500"
             self.bsplineIterations = "15000"
 
-        if self.fixed is not None and not os.path.exists(self.fixed_volume_path):
-            print(f'{self.fixed_volume_path} does not exist, exiting.')
-            sys.exit()        
+
+        if fixed is not None:
+            self.fixed = fixed
+            self.fixed_path = os.path.join(self.registration_path, fixed)
+            self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{um}um_{orientation}.tif' )
+            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{um}um')
+            os.makedirs(self.fixed_path, exist_ok=True)
+        else:
+            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{um}um')
+
+
+
         self.report_status()
 
     def report_status(self):
@@ -574,14 +577,17 @@ class VolumeRegistration:
             image stack = 10.4um x 10.4um x 20um
             atlas stack = 10um x 10um x 10um
             MD589 z is 20um * 447 sections so 894um
+            Allen z is 10um  = 1140 sections = 11400um
 
         """
+        ALLEN_Z_SIZE = 1140
+        image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution / self.um
+        #z_resolution = self.sqlController.scan_run.zresolution
+        
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
-        image_manager = ImageManager(self.thumbnail_aligned)
 
 
         image_stack = np.zeros(image_manager.volume_size)
@@ -592,7 +598,7 @@ class VolumeRegistration:
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
         
-        change_z = z_resolution
+        change_z = ALLEN_Z_SIZE/image_manager.len_files
         change_y = xy_resolution
         change_x = xy_resolution
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
@@ -621,7 +627,7 @@ class VolumeRegistration:
     def create_precomputed(self):
         chunk = 64
         chunks = (chunk, chunk, chunk)
-        if self.fixed_path is None:
+        if self.fixed is None:
             volumepath = os.path.join(self.registration_output, self.moving_volume_path)
         else:
             volumepath = self.registration_output + '.tif'
@@ -633,6 +639,10 @@ class VolumeRegistration:
 
 
         PRECOMPUTED = self.neuroglancer_data_path
+        if os.path.exists(PRECOMPUTED):
+            print(f'{PRECOMPUTED} exists, removing')
+            shutil.rmtree(PRECOMPUTED)
+
         scale = self.um * 1000
         scales = (scale, scale, scale)
         os.makedirs(PRECOMPUTED, exist_ok=True)
@@ -640,6 +650,7 @@ class VolumeRegistration:
         volume = np.swapaxes(volume, 0, 2)
         num_channels = 1
         volume_size = volume.shape
+        
         print(f'volume shape={volume.shape} dtype={volume.dtype} creating at {PRECOMPUTED}')
         volume = normalize16(volume)
 
@@ -898,6 +909,8 @@ class VolumeRegistration:
         #avg_array = np.mean(registered_images, axis=0)
         #avg_array = gaussian(avg_array, sigma=1)
         avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
+
+        avg_array = gaussian(avg_array, 1.0)
 
 
         os.makedirs(savepath, exist_ok=True)

@@ -74,11 +74,12 @@ class BrainMerger():
         return np.mean(xyz, axis=0)
 
     def save_foundation_brain_coms_meshes_origins_volumes(self):
+        """COMs saved as um, origins and volumes as 10um, mesh origin is allen origin - mean"""
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
-            origin = self.origins[structure]
+            allen_origin = self.origins[structure]
             com = self.coms[structure]
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
@@ -86,11 +87,11 @@ class BrainMerger():
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, origin)
+            np.savetxt(origin_filepath, allen_origin)
             np.save(volume_filepath, volume)
 
             #mesh STL file
-            mesh_origin = origin - origins_mean
+            mesh_origin = allen_origin - origins_mean
             aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
@@ -105,7 +106,8 @@ class BrainMerger():
             com = coms[structure]
             volume = self.volumes[structure]
             mesh_volume = adjust_volume(volume, 100)
-            origin = origins[structure] - origins_mean
+            mesh_origin = origins[structure] - origins_mean
+            origin = origins[structure]
             
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
@@ -116,7 +118,7 @@ class BrainMerger():
             np.save(volume_filepath, volume)
 
             #mesh
-            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=origin, times_to_simplify=3)
+            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=mesh_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 
