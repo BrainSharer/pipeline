@@ -22,6 +22,7 @@ from library.controller.histology_controller import HistologyController
 from library.controller.scan_run_controller import ScanRunController
 from library.controller.sections_controller import SectionsController
 from library.controller.slide_tif_controller import SlideCZIToTifController
+from library.controller.ng_state_controller import NeoroglancerStateController
 from library.database_model.scan_run import ScanRun
 from library.database_model.histology import Histology
 
@@ -34,7 +35,7 @@ except ImportError as fe:
 
 
 class SqlController(AnnotationSessionController, AnimalController, ElastixController, HistologyController,
-                     ScanRunController, SectionsController, SlideCZIToTifController):
+                     ScanRunController, SectionsController, SlideCZIToTifController, NeoroglancerStateController):
     """ This is the base controller class for all things SQL.  
     Each parent class of SqlController would correspond to one table in the database, and include all the 
     methods to interact with that table

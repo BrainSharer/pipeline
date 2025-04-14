@@ -1,4 +1,3 @@
-
 from sqlalchemy.orm import relationship
 from sqlalchemy import JSON, Column, String, Integer, ForeignKey,Enum,DateTime
 from sqlalchemy.sql.sqltypes import Float
@@ -6,7 +5,6 @@ import enum
 
 from library.database_model.atlas_model import Base
 from library.database_model.user import User
-
 
 
 class AnnotationSession(Base):
@@ -20,7 +18,6 @@ class AnnotationSession(Base):
     active =  Column(Integer,default=1)
     created =  Column(DateTime)
     updated = Column(DateTime)
-
 
 
 class AnnotationLabel(Base):
@@ -48,6 +45,7 @@ class CellSources(enum.Enum):
     HUMAN_NEGATIVE = 'HUMAN-NEGATIVE'
     UNMARKED = 'UNMARKED'
 
+
 class MarkedCell(Base):
     __tablename__ = 'marked_cells'
     id =  Column(Integer, primary_key=True, nullable=False)
@@ -59,6 +57,7 @@ class MarkedCell(Base):
     FK_cell_type_id = Column(Integer, ForeignKey('cell_type.id'), nullable=True)
     session = relationship('AnnotationSession', lazy=True)
     cell_type = relationship('CellType', lazy=True, primaryjoin="MarkedCell.FK_cell_type_id == CellType.id")
+
 
 class CellType(Base):
     __tablename__ = 'cell_type'
@@ -81,7 +80,6 @@ class StructureCOM(Base):
     session = relationship("AnnotationSession")    
 
 
-
 class PolygonSources(enum.Enum):
     NA = 'NA'
 
@@ -96,6 +94,7 @@ class PolygonSequence(Base):
     polygon_index = Column(Integer)
     point_order = Column(Integer)
     session = relationship('AnnotationSession', lazy=True)
+
 
 class MarkedCellView(Base):
     __tablename__ = 'view_marked_cells'

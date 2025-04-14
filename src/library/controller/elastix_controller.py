@@ -1,4 +1,3 @@
-import sys
 from datetime import datetime
 from library.database_model.elastix_transformation import ElastixTransformation
 
