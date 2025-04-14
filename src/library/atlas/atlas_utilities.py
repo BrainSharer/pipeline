@@ -190,7 +190,6 @@ def get_affine_transformation(moving_name, fixed_name='Allen', scaling_factor=1)
         moving_src = np.array([moving_all[s] for s in good_keys])
         fixed_src = np.array([fixed_all[s] for s in good_keys])
 
-
         return compute_affine_transformation(moving_src, fixed_src)
 
 
