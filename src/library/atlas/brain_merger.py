@@ -106,19 +106,19 @@ class BrainMerger():
             com = coms[structure]
             volume = self.volumes[structure]
             mesh_volume = adjust_volume(volume, 100)
-            mesh_origin = origins[structure] - origins_mean
             origin = origins[structure]
+            relative_origin = origin - origins_mean
             
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, origin)
+            np.savetxt(origin_filepath, relative_origin)
             np.save(volume_filepath, volume)
 
             #mesh
-            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=mesh_origin, times_to_simplify=3)
+            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=relative_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 

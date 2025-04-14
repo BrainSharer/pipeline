@@ -113,75 +113,6 @@ class AtlasManager():
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.test_brain_volumes_and_origins(animal)
 
-    def create_neuroglancer_volume(self):
-        """
-        Creates a Neuroglancer-compatible volume for visualization.
-
-        This method utilizes the brainManager to generate a volume
-        that can be used with Neuroglancer, a web-based tool for
-        visualizing volumetric data.
-
-        Returns:
-            None
-        """
-        self.brainManager.create_neuroglancer_volume()
-
-    def save_atlas_volume(self):
-        """
-        Saves the atlas volume using the brain manager.
-
-        This method delegates the task of saving the atlas volume to the
-        `brainManager` instance, ensuring that the current state of the atlas
-        volume is persisted.
-
-        Returns:
-            None
-        """
-        self.brainManager.save_atlas_volume()
-
-    def update_atlas_coms(self):
-        """
-        Updates the atlas center of mass (COM) information by delegating the task
-        to the brainManager instance. This ensures that the atlas COMs are kept
-        up-to-date with any changes in the underlying data.
-
-        Returns:
-            None
-        """
-        self.brainManager.update_atlas_coms()
-
-    def list_coms(self):
-        """
-        Lists the center of mass (COM) coordinates for all regions in the atlas.
-
-        This method utilizes the `brainManager` to retrieve and display the 
-        COMs for each region defined in the atlas. It is useful for inspecting 
-        or debugging the spatial organization of the atlas regions.
-
-        Returns:
-            None
-        """
-        self.brainManager.list_coms_by_atlas()
-
-    def validate(self):
-        """
-        Validates the volumes managed by the brainManager.
-
-        This method ensures that the volumes associated with the brainManager
-        meet the required criteria or constraints. This ensures the volumes
-        only have two values and are of the correct shape.
-        """
-        self.brainManager.validate_volumes()
-
-    def evaluate(self):
-        """
-        Evaluates the current state of the alignment of the atlas to the Allen atlas.
-
-        Returns:
-            None
-        """
-        self.brainManager.evaluate()
-
 
 
 if __name__ == '__main__':
@@ -214,12 +145,12 @@ if __name__ == '__main__':
                         'draw': pipeline.test_brain_volumes_and_origins,
                         'create': pipeline.create_brain_volumes_and_origins,
                         'merge': pipeline.merge_all,
-                        'neuroglancer': pipeline.create_neuroglancer_volume,
-                        'save_atlas': pipeline.save_atlas_volume,
-                        'update_coms': pipeline.update_atlas_coms,
-                        'list_coms': pipeline.list_coms,
-                        'validate': pipeline.validate,
-                        'evaluate': pipeline.evaluate,
+                        'neuroglancer': pipeline.brainManager.create_neuroglancer_volume,
+                        'save_atlas': pipeline.brainManager.save_atlas_volume,
+                        'update_coms': pipeline.brainManager.update_atlas_coms,
+                        'list_coms': pipeline.brainManager.list_coms_by_atlas,
+                        'validate': pipeline.brainManager.validate_volumes,
+                        'evaluate': pipeline.brainManager.evaluate,
                         'status': pipeline.brainManager.report_status
     }
 

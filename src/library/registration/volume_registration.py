@@ -580,15 +580,13 @@ class VolumeRegistration:
             Allen z is 10um  = 1140 sections = 11400um
 
         """
-        ALLEN_Z_SIZE = 1140
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        #z_resolution = self.sqlController.scan_run.zresolution
+        z_resolution = self.sqlController.scan_run.zresolution / self.um
         
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
-
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
@@ -598,7 +596,7 @@ class VolumeRegistration:
             file_list.append(farr)
         image_stack = np.stack(file_list, axis = 0)
         
-        change_z = ALLEN_Z_SIZE/image_manager.len_files
+        change_z = z_resolution
         change_y = xy_resolution
         change_x = xy_resolution
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
