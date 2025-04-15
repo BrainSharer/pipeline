@@ -10,9 +10,9 @@ class NeoroglancerStateController():
         self.session = session
         
 
-    def insert_ng_state(self, combined_json, created='', updated='', fk_lab_id=2, user_date=None, comments="", description=None, fk_user_id=None, readonly=False, public=False, active=True):
+    def insert_ng_state(self, combined_json: str, created='', updated='', fk_lab_id=2, user_date=None, comments="", description=None, fk_user_id=None, readonly=False, public=False, active=True):
         """
-        Inserts a new record into the neuroglancer_state table.
+        Inserts a new record into the neuroglancer_state table.  If a record with the same comments exists, updates it instead.
 
         Args:
             combined_json (str): The JSON data to insert (neuroglancer_state).
@@ -31,13 +31,34 @@ class NeoroglancerStateController():
             NeoroglancerState: The inserted record.
         """
         #TODO: create 'system' account for auto-generated preview states
-        if not created:
-            created = datetime.now()
-            updated = datetime.now()
+        #TODO: WOULD BE BETTER TO SET FIELD DEFAULT IN DB
+        created = datetime.now()
+        updated = datetime.now()
         if not fk_user_id:
             fk_user_id = 37
 
         try:
+            # Check if a record with the same comments already exists
+            existing_record = (
+                self.session.query(NeoroglancerState)
+                .filter_by(comments=comments)
+                .first()
+            )
+
+            if existing_record:
+                existing_record.neuroglancer_state = combined_json
+                existing_record.updated = updated
+                existing_record.user_date = user_date
+                existing_record.description = description
+                existing_record.FK_user_id = fk_user_id
+                existing_record.readonly = readonly
+                existing_record.public = public
+                existing_record.active = active
+
+                self.session.commit()
+                print(f"Updated existing record with ID: {existing_record.id}")
+                return existing_record
+
             new_record = NeoroglancerState(
                 neuroglancer_state=combined_json,
                 FK_lab_id=fk_lab_id,

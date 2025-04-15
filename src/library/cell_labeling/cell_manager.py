@@ -930,6 +930,8 @@ class CellMaker(ParallelManager):
         points = []
         childJsons = []
         parent_id = f"{random_string()}"
+        FK_user_id = 1
+        labels = ['MACHINE_SURE']
 
         # TODO: resolution stored IN meta-data.json
         # meta_data_file = 'meta-data.json'
@@ -957,55 +959,71 @@ class CellMaker(ParallelManager):
             print(f'Error: no csv files found in {self.cell_label_path}')
             sys.exit(1)
 
+        dfs = []
         for file_path in detection_files:
-            rows = self.parse_csv(file_path)
-            if rows:
-                for row in rows:
-                    prediction = float(row['predictions'])
-                    section = float(row['section']) + 0.5 # Neuroglancer needs that extra 0.5
-                    x = float(row['col'])
-                    y = float(row['row'])
-
-                    if prediction > 0:
-                        if self.debug:
-                            print(f'{prediction=} x={int(x)} y={int(y)} section={int(section)}')
-                        dataframe_data.append([x, y, int(section - 0.5)])
-                        x = x / M_UM_SCALE * xy_resolution
-                        y = y / M_UM_SCALE * xy_resolution
-                        section = section * z_resolution / M_UM_SCALE
-                        found += 1
-                        point = [x, y, section]
-                        childJson = {
-                            "point": point,
-                            "type": "point",
-                            "parentAnnotationId": f"{parent_id}",
-                            "props": default_props
-                        }
-                        childJsons.append(childJson)
-                        points.append(childJson["point"])
+            # Read CSV with Polars (much faster than pandas)
+            try:
+                df = pl.read_csv(file_path)
+                if df.is_empty():
+                    continue
+                    
+                # Filter and process in one go
+                filtered = df.filter(
+                (pl.col("predictions").cast(pl.Float32) > 0))
+                
+                if filtered.is_empty():
+                    continue
+                    
+                # Process all rows at once
+                x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
+                
+                # Append to dataframe data
+                dfs.append(filtered.select([
+                    pl.col("col").alias("x"),
+                    pl.col("row").alias("y"),
+                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                ]))
+                
+                # Generate annotations
+                for x, y, section in zip(x_vals, y_vals, sections):
+                    found += 1
+                    point = [x, y, section]
+                    childJsons.append({
+                        "point": point,
+                        "type": "point",
+                        "parentAnnotationId": f"{parent_id}",
+                        "props": default_props
+                    })
+                    points.append(point)
+            
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
 
         print(f'Found {found} total neurons')
         if found == 0:
             print('No neurons found')
             sys.exit()
 
-        FK_user_id = 1
-        FK_prep_id = self.animal
-        labels = ['MACHINE_SURE']
-        id = None
-        description = labels[0]
-        cloud_points = {}
-
-        cloud_points["source"] = points[0]
-        cloud_points["centroid"] = np.mean(points, axis=0).tolist()
-        cloud_points["childrenVisible"] = True
-        cloud_points["type"] = "cloud"
-        cloud_points["description"] = f"{description}"
-        cloud_points["sessionID"] = f"{parent_id}"
-        cloud_points["props"] = default_props
-        cloud_points["childJsons"] = childJsons
-
-        ###############################################
+        # Concatenate all dataframes at once
+        final_df = pl.concat(dfs) if dfs else pl.DataFrame()
+        
+        # Rest of your code remains similar...
+        cloud_points = {
+            "source": points[0],
+            "centroid": np.mean(points, axis=0).tolist(),
+            "childrenVisible": True,
+            "type": "cloud",
+            "description": labels[0],
+            "sessionID": f"{parent_id}",
+            "props": default_props,
+            "childJsons": childJsons
+        }
+        
+        # Save outputs
+         ###############################################
         # 'workaround' for db timeout [save to file and then sql insert from file]
         # long-term store in www folder for direct import
         annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
@@ -1013,14 +1031,9 @@ class CellMaker(ParallelManager):
         annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
         with open(annotations_file, 'w') as fh:
             json.dump(cloud_points, fh)
-        print(f'Annotations saved to {annotations_file}')
-        ###############################################
-
-        #TODO: See if converting to polars is faster
-        df = pd.DataFrame(dataframe_data, columns=['x', 'y', 'section'])
-        print(f'Found {len(df)} total neurons and writing to {dfpath}')
-
-        df.to_csv(dfpath, index=False)
+            
+        if not final_df.is_empty():
+            final_df.write_csv(dfpath)
 
         ###############################################
         if not self.debug:
@@ -1032,7 +1045,7 @@ class CellMaker(ParallelManager):
                 self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
 
             try:
-                id = self.sqlController.insert_annotation_with_labels(FK_user_id, FK_prep_id, cloud_points, labels)
+                id = self.sqlController.insert_annotation_with_labels(FK_user_id, self.animal, cloud_points, labels)
             except Exception as e:
                 print(f'Error inserting data: {e}')
 
@@ -1040,6 +1053,7 @@ class CellMaker(ParallelManager):
                 print(f'Inserted annotation with labels with id: {id}')
             else:
                 print('Error inserting annotation with labels')
+
 
     ##### start methods from cell pipeline
     def create_detections(self):
