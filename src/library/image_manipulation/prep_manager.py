@@ -138,11 +138,17 @@ class PrepCreater:
         channel_names = [info.get("channel_name") for info in tracing_data.values()]
 
         #IF AVAIABLE, GET XY RESOLUTION FROM meta-data.json, ELSE FROM DATABASE
-        #TODO: remove hard-coded z resolution
         xy_resolution_unit = data.get("xy_resolution_unit", {})
-        x_resolution = float(xy_resolution_unit[0])
-        y_resolution = float(xy_resolution_unit[2])
-        z_resolution = 0.00002  # hard-coded z resolution
+        if not xy_resolution_unit:
+            print('pulling resolution from DB')
+            xy_resolution_unit = self.sqlController.scan_run.resolution
+            x_resolution = xy_resolution_unit * 1e-6
+            y_resolution  = xy_resolution_unit * 1e-6
+        else:
+            x_resolution = float(xy_resolution_unit[0])
+            y_resolution = float(xy_resolution_unit[2])
+
+        z_resolution = round(self.sqlController.scan_run.zresolution * 1e-6, 7)
         dimensions = {
             "x": [x_resolution, "m"],
             "y": [y_resolution, "m"],
@@ -335,7 +341,8 @@ class PrepCreater:
         #print(json.dumps(combined_json, indent=2))
 
         combined_json_str = json.dumps(combined_json)
-        active_query = self.sqlController.insert_ng_state(combined_json_str, comments='auto preview', readonly=True, public=False, active=True)
+        comments = self.animal + ' auto preview'
+        active_query = self.sqlController.insert_ng_state(combined_json_str, comments=comments, readonly=True, public=False, active=True)
         
         if active_query:
             print(f"preview state created: {active_query}")
