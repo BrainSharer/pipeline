@@ -73,51 +73,52 @@ class BrainMerger():
     def get_mean_coordinates(xyz):
         return np.mean(xyz, axis=0)
 
-    def save_foundation_brain_coms_meshes_origins_volumes(self):
-        """COMs saved as um, origins and volumes as 10um, mesh origin is allen origin - mean"""
+    def save_foundation_brain_coms_meshes_origins_volumes(self, allen_um):
+        """COMs and origins saved as um, volumes as 10um, mesh origin is allen origin - mean"""
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
-            allen_origin = self.origins[structure]
-            com = self.coms[structure]
+            origin_um = self.origins[structure]
+            com_um = self.coms[structure]
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, allen_origin)
+            np.savetxt(com_filepath, com_um)
+            np.savetxt(origin_filepath, origin_um)
             np.save(volume_filepath, volume)
 
             #mesh STL file
-            mesh_origin = allen_origin - origins_mean
-            aligned_structure = volume_to_polygon(volume=volume, origin=mesh_origin, times_to_simplify=3)
+            relative_origin = (origin_um - origins_mean)  / allen_um
+            aligned_structure = volume_to_polygon(volume=volume, origin=relative_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 
-    def save_atlas_meshes_origins_volumes(self):
+    def save_atlas_meshes_origins_volumes(self, allen_um):
         coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         desc = "Saving atlas meshes/origins/volumes"
         for structure in tqdm(self.volumes.keys(), desc=desc):
-            com = coms[structure]
+            origin_um = origins[structure]
+            com_um = coms[structure]
+            
             volume = self.volumes[structure]
-            mesh_volume = adjust_volume(volume, 100)
-            origin = origins[structure]
-            relative_origin = origin - origins_mean
             
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            np.savetxt(com_filepath, com)
-            np.savetxt(origin_filepath, relative_origin)
+            np.savetxt(com_filepath, com_um)
+            np.savetxt(origin_filepath, origin_um)
             np.save(volume_filepath, volume)
 
             #mesh
+            mesh_volume = adjust_volume(volume, 100)
+            relative_origin = (origin_um - origins_mean)  / allen_um
             aligned_structure = volume_to_polygon(volume=mesh_volume, origin=relative_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
