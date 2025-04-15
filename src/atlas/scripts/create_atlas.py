@@ -65,7 +65,7 @@ class AtlasManager():
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
             if not self.debug:
-                brainMerger.save_foundation_brain_coms_meshes_origins_volumes()
+                brainMerger.save_foundation_brain_coms_meshes_origins_volumes(self.um)
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
@@ -96,7 +96,7 @@ class AtlasManager():
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:
-            self.atlasMerger.save_atlas_meshes_origins_volumes()
+            self.atlasMerger.save_atlas_meshes_origins_volumes(self.um)
         else:
             print('No data to save')
 
