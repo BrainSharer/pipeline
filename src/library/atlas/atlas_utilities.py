@@ -349,3 +349,15 @@ def euler_to_rigid_transform(euler_transform, rotation_order='xyz', degrees=Fals
     transform[:3, 3] = translation
 
     return transform
+
+def itk_rigid_euler():
+    params = [0.066036, 0.006184, 0.476529, -235.788051, -169.603207, 36.877408]
+    theta_x = params[0]
+    theta_y = params[1]
+    theta_z = params[2]
+    translation = np.array(params[3:6])
+    center = np.array([0,0,0,])
+    rigid_euler = sitk.Euler3DTransform(center, theta_x, theta_y, theta_z, translation)
+    R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
+    t = np.asarray(rigid_euler.GetTranslation())
+    return R, t
