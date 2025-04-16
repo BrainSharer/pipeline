@@ -577,10 +577,14 @@ class VolumeRegistration:
             image stack = 10.4um x 10.4um x 20um
             atlas stack = 10um x 10um x 10um
             MD589 z is 20um * 447 sections so 894um
-            Allen z is 10um  = 1140 sections = 11400um
+            Allen z @ 10um  = 1140 sections = 11400um
 
         """
+        allen_z_um = 11400
         image_manager = ImageManager(self.thumbnail_aligned)
+        current_z_um = image_manager.len_files * 2 * self.sqlController.scan_run.zresolution
+        change_z = (allen_z_um / current_z_um)
+        
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
         z_resolution = self.sqlController.scan_run.zresolution / self.um
         
@@ -594,6 +598,12 @@ class VolumeRegistration:
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
+
+        for ffile in tqdm(sorted(image_manager.files, reverse=True), desc='Creating volume'):
+            fpath = os.path.join(self.thumbnail_aligned, ffile)
+            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+            file_list.append(farr)
+            
         image_stack = np.stack(file_list, axis = 0)
         
         change_z = z_resolution
@@ -607,6 +617,7 @@ class VolumeRegistration:
             json.dump(changes, f)            
         
         zoomed = zoom(image_stack, change)
+        #zoomed = image_stack.copy()
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
