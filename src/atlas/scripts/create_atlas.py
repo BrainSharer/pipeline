@@ -50,6 +50,8 @@ class AtlasManager():
     def create_brain_json(self):
         """
         # 1st step, this parses the original CSV files and creates the JSON files
+        All data is downsampled by 1/32=SCALING_FACTOR. This is also the same size
+        as the downsampled images.
         """
         for animal in self.foundation_brains:
             brainManager = BrainStructureManager(animal, self.um, self.debug)
@@ -65,7 +67,7 @@ class AtlasManager():
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
             if not self.debug:
-                brainMerger.save_foundation_brain_coms_meshes_origins_volumes(self.um)
+                brainMerger.save_foundation_brain_coms_meshes_origins_volumes()
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
@@ -85,7 +87,7 @@ class AtlasManager():
             self.brainManager.polygon_annotator_id = polygon_annotator_id
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
 
-        # Note, for DK78 TG_L, The C1 source is C1.v1
+        # Note, for DK78, The C1 source is C1.v1
         structures = ['TG_L', 'TG_R']
         for structure in structures:
             self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
@@ -96,7 +98,7 @@ class AtlasManager():
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:
-            self.atlasMerger.save_atlas_meshes_origins_volumes(self.um)
+            self.atlasMerger.save_atlas_meshes_origins_volumes()
         else:
             print('No data to save')
 

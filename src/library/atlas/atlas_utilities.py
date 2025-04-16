@@ -9,7 +9,7 @@ from scipy.ndimage import affine_transform
 
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
-from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
+from library.utilities.utilities_process import M_UM_SCALE
 
 
 
