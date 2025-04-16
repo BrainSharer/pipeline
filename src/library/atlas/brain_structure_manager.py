@@ -182,7 +182,7 @@ class BrainStructureManager:
 
             #if annotation_session.id not in [8113, 7387]:
             #    continue
-            if animal != 'DK78':
+            if animal not in ['DK73','DK78']:
                 continue
 
             # polygons are in micrometers
@@ -452,12 +452,11 @@ class BrainStructureManager:
         """
 
         print(f"evaluating atlas data from {self.com_path}")
-        atlas_volume, ids = self.create_atlas_volume()
-        foundation_brains = ['MD585', 'MD589', 'MD594']
+        brains = ['MD585', 'MD589', 'MD594', 'AtlasV8']
 
         if self.debug:
 
-            for animal in foundation_brains:
+            for animal in brains:
                 com_path = os.path.join(self.data_path, animal, "com")
                 files = sorted(os.listdir(com_path))
                 for file in files:
@@ -466,7 +465,7 @@ class BrainStructureManager:
                     structure = file.replace(".txt", "")
                     print(f"{animal} {structure}={np.round(com)}")
         else:
-            for animal in foundation_brains:
+            for animal in brains:
                 com_path = os.path.join(self.data_path, animal, "com")
                 files = sorted(os.listdir(com_path))
                 for file in files:

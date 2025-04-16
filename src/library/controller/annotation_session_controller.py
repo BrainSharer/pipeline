@@ -206,46 +206,29 @@ class AnnotationSessionController:
 
     def get_annotation_volume(self, session_id, scaling_factor=1):
 
-        def convert_euler(x, y, z):
-            """
-            reuler = [0.066036, 0.006184, 0.476529, -235.788051, -169.603207, 36.877408]
-            theta_x = reuler[0]
-            theta_y = reuler[1]
-            theta_z = reuler[2]
-            translation = np.array(reuler[3:6])
-            rigid_euler = sitk.Euler3DTransform(center, theta_x, theta_y, theta_z, translation)
-            R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
-            t = np.asarray(rigid_euler.GetTranslation())
-            (TransformParameters 
-            0.783480 -0.393835 -0.060641 
-            0.370914 0.626950 -0.105860 
-            0.008366 0.041943 0.973044 
-            -235.465802 -170.488135 32.717128)            
-            """
-            params0 = [0.783480, -0.393835, -0.060641, 
-                0.370914, 0.626950, -0.105860,
-                0.008366, 0.041943, 0.973044,
-                -235.465802, -170.488135, 32.717128]
-            average_brain_params = [0.754822, -0.466372, -0.050235, 
-                                    0.343261, 0.675983, -0.106562, 
-                                    0.015882, 0.095323, 0.996939, 
-                                    -223.304122, -161.919033, 29.791810] 
+        def convert_euler(animal, x, y, z):
+            params = {}
+            center = {}
 
-            allen_params = [0.980378, -0.089661, -0.066413, 
+            params['DK78'] = [0.980378, -0.089661, -0.066413, 
                       0.125817, 0.993954, 0.018945, 
                       -0.023975, -0.052066, 1.130004, 
                       -486.920976, -324.908254, 168.106900]
-            md589_params = [0.778010, -0.417097, -0.064262, 
-                            0.370222, 0.617123, -0.102197, 
-                            0.008483, 0.050750, 1.237533, 
-                            -234.548071, -173.612025, 160.263196]
-            params = allen_params
-            center = np.array([1166.5, 689.5, 436.5])
-            t = np.array(params[9:])
-            R = np.array(params[:9]).reshape(3,3)
+            params['DK73'] = [0.790191, 0.016371, 0.004234, 
+                           -0.012672, 0.647301, -0.004467, 
+                           0.000022, 0.000442, 1.133986, 
+                           -550.917378, -470.768038, 146.956533]
+            
+            center['DK78'] = np.array([1166.5, 689.5, 436.5])
+            center['DK73'] = np.array([1321.5, 818.5, 423.5])
 
+            if animal not in params:
+                return x, y, z
+            
+            t = np.array(params[animal][9:])
+            R = np.array(params[animal][:9]).reshape(3,3)
             p = np.array([x, y, z])
-            x1,y1,z1 = np.dot(R, p - center) + t + center
+            x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
             return int(round(x1)), int(round(y1)), int(round(z1))
 
         """
@@ -268,6 +251,7 @@ class AnnotationSessionController:
             print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
             return polygons
         
+        animal = annotation_session.FK_prep_id
 
         for row in data:
             if 'childJsons' not in row:
@@ -277,8 +261,7 @@ class AnnotationSessionController:
                 x = int(np.round(x * M_UM_SCALE / scaling_factor))
                 y = int(np.round(y * M_UM_SCALE / scaling_factor))
                 section = int(np.round(z * M_UM_SCALE / scaling_factor))
-                if annotation_session.FK_prep_id == 'DK78':
-                    x, y, section = convert_euler(x, y, section)
+                x, y, section = convert_euler(animal, x, y, section)
 
                 #polygons[section].append((x,y))
                 polygons[section].append((x,y))
