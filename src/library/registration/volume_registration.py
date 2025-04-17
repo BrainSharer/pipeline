@@ -733,6 +733,12 @@ class VolumeRegistration:
         
         fixed_path = os.path.join(fixed_path, f'{fixed_basename}.tif' )
         moving_path = os.path.join(moving_path, f'{moving_basename}.tif') 
+        thumbnail_path = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
+        print(thumbnail_path)
+        image_manager = ImageManager(thumbnail_path)
+        default_pixel_value = image_manager.get_bgcolor()
+        if isinstance(default_pixel_value, tuple):
+            default_pixel_value = np.mean(default_pixel_value)
 
         if not os.path.exists(fixed_path):
             print(f'Fixed {fixed_path} does not exist')
@@ -793,9 +799,10 @@ class VolumeRegistration:
         elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
         elastixImageFilter.SetParameter("NumberOfResolutions", "6") #### Very important, less than 6 gives lousy results.
         elastixImageFilter.SetParameter("ComputeZYX", "true")
-
+        elastixImageFilter.SetParameter("DefaultPixelValue", f"{default_pixel_value}")
+        elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.LogToConsoleOff()
+        elastixImageFilter.LogToConsoleOn()
 
         elastixImageFilter.SetLogFileName('elastix.log')
 
