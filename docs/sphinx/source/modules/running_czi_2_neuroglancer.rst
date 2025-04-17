@@ -172,5 +172,11 @@ Running on other channels and the full resolution images
 Final steps
 ~~~~~~~~~~~
 
-*   After you have completed the steps above, make sure to create a symbolic
-    link on imageserv.dk.ucsd.edu in the /srv directory pointing to /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/www DKXX
+*   After you have completed the steps above, you will need to create a 'preview' state for brain image stacks.
+*   Run: ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task preview``
+
+    This will search birdstore directory for Neuroglancer-compatible image stacks, pull meta-data from database and generate
+    the json file used in Neuroglancer.  This json file is inserted into the database Neuroglancer_state table with comments field: 
+    '{DKXX} auto preview'.  Script will also create symbolic links on imageserv.dk.ucsd.edu to point to correct directories on birdstore
+    where image stacks are located. 
+    ex. ln -s /srv/DKXX /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/www

@@ -10,6 +10,7 @@ The program can be run with the following commands:
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task extract
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task train
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task fix
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task precomputed
 
 Explanation for the tasks:
 
@@ -24,7 +25,10 @@ Explanation for the tasks:
 - fix - This is only needed when the images have the extra tissue and skull present. \
     You will need to create the rotated and aligned masks for the images.
 
-Plan for implementation:
+Training workflow::
+- The supervised models used require manual steps for processing (see )
+
+
 
 - Detect cells on available brains.
 - Some of the brains have too many points to easily display in Neuroglancer. DK59 has about 75MB of points. \

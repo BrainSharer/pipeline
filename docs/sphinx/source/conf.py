@@ -16,9 +16,9 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Brainsharer Pipeline'
-copyright = "2023, Kleinfeld lab UCSD"
+copyright = "2025, Kleinfeld lab UCSD"
 author = "Kleinfeld lab UCSD"
-release = '1.0'
+release = '1.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

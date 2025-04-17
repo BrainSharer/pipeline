@@ -103,14 +103,15 @@ Directory          Size  Number of files
 
 1. There are two steps to creating the precomputed format:
 
-   1. Create the intial chunk size of (64,64,1). Neuroglancer serves
+   1. Create the initial chunk size of (64,64,1). Neuroglancer serves
       data from the webserver in chunks. The initial chunk only has a z
       length of 1. This is necessary for the initial creation. However,
       this chunk size results in too many files and needs to be
-      *transfered* by the next step in the process which creates a
+      *transferred* by the next step in the process which creates a
       better chunk size and results in the *pyramid* scheme that is best
       for viewing in a web browser. This data is stored in
       */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/neuroglancer_data/CX_rechunkme*
+
    2. The 2nd phase in the precomputed process creates a set of optimum
       chunks from the directory created in the previous step and places
       the new pyramid files in
@@ -121,3 +122,10 @@ Directory          Size  Number of files
       configured to serve compressed files. This is done in one of the
       configuration files under the Apache configuration directory on
       the web server.
+
+2. All data in */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/* is available to Neuroglancer. When the user opens up Neuroglancer and enters a URL path in the precomputed field, the URL will actually be pointing to the data on birdstore.
+
+   For example, typing this URL in Neuroglancer:
+   https://activebrainatlas.ucsd.edu/data/DK39/neuroglancer_data/C1 will be pointing to
+   */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK39/www/neuroglancer_data/C1*
+   on birdstore.
