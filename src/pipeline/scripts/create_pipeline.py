@@ -11,6 +11,7 @@ them again for the remaining channels and then for the full resolution version:
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
 - python src/pipeline/scripts/create_pipeline.py --animal DKXX --task omezarr
+- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task ng_preview
 
 Explanation for the tasks:
 
@@ -31,6 +32,8 @@ Explanation for the tasks:
 - realign - If the alignment needs improvement, the user can run the realign task to realign the images.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 - omezarr - The final step is creating the OME-Zarr data from the aligned and cleaned images. You can run this instead of neuroglancer.
+- ng_preview - This will create a preview of the brain images as Neuroglancer state and insert into database. \
+It also creates symbolic links to image stacks on imageserv.dk.ucsd.edu
 
 **Timing results**
 

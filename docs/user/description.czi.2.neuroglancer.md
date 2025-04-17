@@ -96,10 +96,10 @@ in the alignment process to create a stack of section to section aligned images.
     only has a z length of 1. This is necessary for the initial creation. 
     However, this chunk size results in too many files and needs to be *transfered* by the next step in the process which creates
     a better chunk size and results in the *pyramid* scheme that is best for viewing in a web browser. This
-    data is stored in */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/neuroglancer_data/CX_rechunkme*
+    data is stored in */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/www/neuroglancer_data/CX_rechunkme*
     1. The 2nd phase in the precomputed process creates a set of optimum chunks from the  directory created in the previous
     step and places the new pyramid files in 
-    */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/neuroglancer_data/CX*
+    */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/www/neuroglancer_data/CX*
     This data is now ready to be served by the Apache web server. Note that all the chunks 
     (and there can be millions of files) are compressed with *gzip* and so the Apache web server
     must be configured to serve compressed files. This is done in one of the configuration files
@@ -108,5 +108,7 @@ in the alignment process to create a stack of section to section aligned images.
 the user opens up Neuroglancer and enters a URL path in the precomputed field, the URL will actually be
 pointing to the data on birdstore. For example, typing this URL in Neuroglancer: 
 https://activebrainatlas.ucsd.edu/data/DK39/neuroglancer_data/C1 will be pointing to
-*/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK39/neuroglancer_data/C1 on birdstore. 
-
+*/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK39/neuroglancer_data/www/C1 on birdstore. 
+#### Visualization of the Neuroglancer-compatible image stacks
+1. Visualizing image stacks in Neuroglancer is accomplished in browser however a prerequisite for this is to make the image stack available to the Internet and creating a json state of avaialble channels.  The script, `python src/create_pipeline.py --animal DKXX --task preview` will scan the image stack directory, /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DKXX/neuroglancer_data/www/, and create the required symbolic links on imageserv.dk.ucsd.edu in /srv/ directory.
+2. This script will also insert this state into the database for users to view.  Only 1 state is created per brain with comments field 'DKXX auto preview'.
