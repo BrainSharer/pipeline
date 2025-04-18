@@ -56,17 +56,11 @@ class BrainStructureManager:
         self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, "atlas_data")
         self.structure_path = os.path.join(data_path, "pipeline_data", "structures")
-
-        self.com_path = os.path.join(
-            self.data_path, self.animal, "com"
-        )  # need this for the transforamtion matrix
+        self.com_path = os.path.join(self.data_path, self.animal, "com") 
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
 
-        self.aligned_contours = {}
-        self.com_annotator_id = 2
-        self.polygon_annotator_id = 0
         self.debug = debug
         self.allen_um = um  # size in um of allen atlas
         self.com = None
@@ -74,11 +68,9 @@ class BrainStructureManager:
         self.volume = None
         self.abbreviation = None
         self.pad_z = 40
-        #self.pad_z = 0
 
         self.affine = affine
         self.atlas_box_scales = np.array((self.allen_um, self.allen_um, self.allen_um))
-        # self.atlas_box_scales = np.array((14.464, 14.464, 20))
         self.atlas_raw_scale = 10
 
         self.allen_x_length = 1820
@@ -91,11 +83,6 @@ class BrainStructureManager:
             (self.allen_x_length, self.allen_y_length, self.allen_z_length)
         )
         self.atlas_box_center = self.atlas_box_size / 2
-
-        self.allen_resolution = np.array([10, 10, 10])
-        self.atlas2allen = (
-            np.array((0.452 * 32, 0.452 * 32, 20)) / self.allen_resolution
-        )
 
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -182,7 +169,7 @@ class BrainStructureManager:
 
             #if annotation_session.id not in [8113, 7387]:
             #    continue
-            if animal not in ['DK73','DK78']:
+            if animal not in ['DK78XXX']:
                 continue
 
             # polygons are in micrometers
@@ -656,7 +643,7 @@ class BrainStructureManager:
                         vertices = np.array(points)
                         points = (vertices).astype(np.int32)
                         cv2.polylines(
-                            img, [points], isClosed=True, color=1, thickness=5
+                            img, [points], isClosed=True, color=255, thickness=2
                         )
 
             write_image(outfile, img)

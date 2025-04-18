@@ -32,7 +32,6 @@ import numpy as np
 from skimage import io
 from scipy.ndimage import zoom
 from skimage.filters import gaussian        
-#from skimage.exposure import rescale_intensity
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
 import SimpleITK as sitk
@@ -594,15 +593,16 @@ class VolumeRegistration:
 
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
-        for ffile in tqdm(image_manager.files):
+        for ffile in tqdm(image_manager.files, desc='Creating volume'):
             fpath = os.path.join(self.thumbnail_aligned, ffile)
             farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             file_list.append(farr)
 
-        for ffile in tqdm(sorted(image_manager.files, reverse=True), desc='Creating volume'):
-            fpath = os.path.join(self.thumbnail_aligned, ffile)
-            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
-            file_list.append(farr)
+        if self.animal == 'DK73':
+            for ffile in tqdm(sorted(image_manager.files, reverse=True), desc='Creating volume'):
+                fpath = os.path.join(self.thumbnail_aligned, ffile)
+                farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+                file_list.append(farr)
             
         image_stack = np.stack(file_list, axis = 0)
         
@@ -802,7 +802,7 @@ class VolumeRegistration:
         elastixImageFilter.SetParameter("DefaultPixelValue", f"{default_pixel_value}")
         elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
-        elastixImageFilter.LogToConsoleOn()
+        elastixImageFilter.LogToConsoleOff()
 
         elastixImageFilter.SetLogFileName('elastix.log')
 
@@ -819,8 +819,8 @@ class VolumeRegistration:
 
     def create_average_volume(self):
 
-        moving_brains = ['MD585', 'MD594']
-        fixed_brain = 'MD589'
+        moving_brains = ['MD585', 'MD594', 'MD589']
+        fixed_brain = 'AtlasV8'
         all_brains = [fixed_brain] + moving_brains
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
         
@@ -845,39 +845,47 @@ class VolumeRegistration:
             brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
-                sys.exit()
+                continue
             brainimg = read_image(brainpath)
             volumes[brain] = sitk.GetImageFromArray(brainimg.astype(np.float32))
 
         fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
+        if not os.path.exists(fixed_path):
+            print(f'{fixed_path} exists, using MD589')
+            fixed_path = os.path.join(self.registration_path, 'MD589', f'MD589_{self.um}um_{self.orientation}.tif')
+            fixed_brain = 'MD589'
         fixed_img = read_image(fixed_path)
         volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
         reference_image = volumes[fixed_brain]
+        fixed_brain = 'AtlasV8'
         fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
-
+        fixed_brain = 'MD589'
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
         bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
 
         bsplineParameterMap["Optimizer"] = ["StandardGradientDescent"]
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations]
+        bsplineParameterMap["MaximumNumberOfIterations"] = ["2500"]
+        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
         if self.um > 20:
             bsplineParameterMap["NumberOfResolutions"]= ["6"]
             affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-            bsplineParameterMap["GridSpacingSchedule"] = ["32.0", "16.0", "8.0", "4.0", "2.0", "1.0"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
         else:
-            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-            bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["32.0", "16.0", "8.0", "4.0", "2.0", "1.0"]
+            affineParameterMap["NumberOfResolutions"]= ["8"] # Takes lots of RAM
+            bsplineParameterMap["NumberOfResolutions"]= ["8"]
+            bsplineParameterMap["GridSpacingSchedule"] = ["11.066214285714288", "8.3785", "6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
 
         del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
         bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
-        defaul_pixel_value = "232"
         registered_images = []
         savepath = os.path.join(self.registration_path, 'AtlasV8')
-        for brain, image in tqdm(volumes.items(), desc="Registering brain"):
+        for brain, image in volumes.items():
             if brain == fixed_brain:
+                print(f'Skipping {brain} = {fixed_brain}')
                 continue
+            else:
+                print(f'Processing {brain} to {fixed_brain}')
             elastixImageFilter = sitk.ElastixImageFilter()
             elastixImageFilter.SetFixedImage(reference_image)
             elastixImageFilter.SetMovingImage(image)
@@ -889,22 +897,24 @@ class VolumeRegistration:
                 with open(moving_point_path, 'r') as fp:
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-
+                print(f'From {fixed_point_path} -> {moving_point_path}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.75"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["0.25"] # the weight of 2nd metric
+                affineParameterMap["Metric0Weight"] = ["0.00"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["1.00"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-            
+            else:
+                print(f'No point files found for {brain}')
+                sys.exit()
             
             elastixImageFilter.SetParameterMap(affineParameterMap)
-            elastixImageFilter.AddParameterMap(bsplineParameterMap)
+            #elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("ComputeZYX", "true")
-            elastixImageFilter.SetParameter("DefaultPixelValue", defaul_pixel_value)
+            elastixImageFilter.SetParameter("DefaultPixelValue", "0")
             elastixImageFilter.SetParameter("UseDirectionCosines", "false")
             elastixImageFilter.SetParameter("WriteResultImage", "false")
             elastixImageFilter.SetParameter("FixedImageDimension", "3")
@@ -913,8 +923,7 @@ class VolumeRegistration:
             elastixImageFilter.LogToConsoleOff()
             elastixImageFilter.SetLogFileName('elastix.log')
             elastixImageFilter.SetOutputDirectory(savepath)
-
-            elastixImageFilter.PrintParameterMap()
+            #elastixImageFilter.PrintParameterMap()
 
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
@@ -922,13 +931,12 @@ class VolumeRegistration:
             del resultImage
 
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
-        registered_images.append(sitk.GetArrayFromImage(reference_image))
-        #avg_array = np.mean(registered_images, axis=0)
-        #avg_array = gaussian(avg_array, sigma=1)
-        avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
+        #registered_images.append(sitk.GetArrayFromImage(reference_image))
+        avg_array = np.mean(registered_images, axis=0)
+        avg_array = gaussian(avg_array, sigma=1)
+        #avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
 
-        avg_array = gaussian(avg_array, 1.0)
-
+        #avg_array = gaussian(avg_array, 1.0)
 
         os.makedirs(savepath, exist_ok=True)
         save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
