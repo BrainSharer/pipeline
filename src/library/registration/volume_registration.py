@@ -577,15 +577,24 @@ class VolumeRegistration:
             atlas stack = 10um x 10um x 10um
             MD589 z is 20um * 447 sections so 894um
             Allen z @ 10um  = 1140 sections = 11400um
+            Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
 
         """
-        allen_z_um = 11400
+        allen_z_um = 11400 / self.um
         image_manager = ImageManager(self.thumbnail_aligned)
-        current_z_um = image_manager.len_files * 2 * self.sqlController.scan_run.zresolution
-        change_z = (allen_z_um / current_z_um)
-        
+        volume_size = np.array((image_manager.len_files, image_manager.height, image_manager.width))
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
         z_resolution = self.sqlController.scan_run.zresolution / self.um
+
+        #change_z = z_resolution
+        change_y = xy_resolution
+        change_x = xy_resolution
+        print(f'Allen@{self.um}  z={allen_z_um} volume z={image_manager.len_files} diff={allen_z_um - image_manager.len_files}')
+        change_z = allen_z_um / image_manager.len_files
+        change = (change_z, change_y, change_x) 
+        changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+
         
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
@@ -606,13 +615,7 @@ class VolumeRegistration:
             
         image_stack = np.stack(file_list, axis = 0)
         
-        change_z = z_resolution
-        change_y = xy_resolution
-        change_x = xy_resolution
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
         
-        change = (change_z, change_y, change_x) 
-        changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
@@ -900,8 +903,8 @@ class VolumeRegistration:
                 print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.00"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["1.00"] # the weight of 2nd metric
+                affineParameterMap["Metric0Weight"] = ["0.50"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["0.50"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
