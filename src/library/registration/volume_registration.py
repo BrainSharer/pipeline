@@ -851,9 +851,9 @@ class VolumeRegistration:
 
         fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
         if not os.path.exists(fixed_path):
-            print(f'{fixed_path} exists, using MD589')
-            fixed_path = os.path.join(self.registration_path, 'MD589', f'MD589_{self.um}um_{self.orientation}.tif')
             fixed_brain = 'MD589'
+            print(f'{fixed_path} does not exist, using {fixed_brain}')
+            fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
         fixed_img = read_image(fixed_path)
         volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
         reference_image = volumes[fixed_brain]
@@ -897,7 +897,7 @@ class VolumeRegistration:
                 with open(moving_point_path, 'r') as fp:
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-                print(f'From {fixed_point_path} -> {moving_point_path}')
+                print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
                 affineParameterMap["Metric0Weight"] = ["0.00"] # the weight of 1st metric
