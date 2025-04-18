@@ -111,9 +111,8 @@ class AtlasManager():
         # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
         # The output is in /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MDXXX/preps/C1/drawn    
         """
-        for animal in self.foundation_brains:
-            brainManager = BrainStructureManager(animal, self.um, self.debug)
-            brainManager.test_brain_volumes_and_origins(animal)
+        brainManager = BrainStructureManager(self.animal, self.um, self.debug)
+        brainManager.test_brain_volumes_and_origins(self.animal)
 
 
 
