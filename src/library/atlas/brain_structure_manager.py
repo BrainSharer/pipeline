@@ -344,10 +344,10 @@ class BrainStructureManager:
         coms = sorted(os.listdir(self.com_path))
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
-            print(f'The number of origins: {len(coms)} does not match the number of volumes: {len(volumes)}')
+            print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(coms)} origins/volumes from {self.origin_path}")
+        print(f"Working with {len(coms)} coms/volumes from {self.origin_path}")
         ids = {}
         if self.affine:
             moving_name = 'AtlasV8'
