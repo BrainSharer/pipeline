@@ -168,7 +168,7 @@ class BrainStructureManager:
 
             #if annotation_session.id not in [8113, 7387]:
             #    continue
-            if animal not in ['DK78XXX']:
+            if animal not in ['DK78']:
                 continue
 
             # polygons are in micrometers
@@ -340,7 +340,7 @@ class BrainStructureManager:
                                                int(self.atlas_box_size[2] * z_resolution)])
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
-        print(f"Using data from {self.origin_path}")
+        print(f"Using data from {self.com_path}")
         coms = sorted(os.listdir(self.com_path))
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
@@ -389,8 +389,8 @@ class BrainStructureManager:
             else:
                 com = com0
 
-            if 'TG' in structure:
-                com = com0
+            #if 'TG' in structure:
+            #    com = com0
 
             x_start = int(com[0] - COM[0])
             y_start = int(com[1] - COM[1])

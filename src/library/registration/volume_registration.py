@@ -791,7 +791,7 @@ class VolumeRegistration:
 
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
-            
+
         elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
@@ -858,8 +858,8 @@ class VolumeRegistration:
         fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
         fixed_brain = 'MD589'
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
-        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
 
+        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
         bsplineParameterMap["Optimizer"] = ["StandardGradientDescent"]
         bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
         bsplineParameterMap["MaximumNumberOfIterations"] = ["2500"]
@@ -897,8 +897,8 @@ class VolumeRegistration:
                 print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.05"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["0.95"] # the weight of 2nd metric
+                affineParameterMap["Metric0Weight"] = ["0.5"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["0.5"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
@@ -907,7 +907,8 @@ class VolumeRegistration:
                 sys.exit()
             
             elastixImageFilter.SetParameterMap(affineParameterMap)
-            #elastixImageFilter.AddParameterMap(bsplineParameterMap)
+            if self.bspline:
+                elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
             elastixImageFilter.SetParameter("ResultImageFormat", "tif")
             elastixImageFilter.SetParameter("ComputeZYX", "true")
@@ -928,7 +929,7 @@ class VolumeRegistration:
             del resultImage
 
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
-        #registered_images.append(sitk.GetArrayFromImage(reference_image))
+        registered_images.append(sitk.GetArrayFromImage(reference_image))
         avg_array = np.mean(registered_images, axis=0)
         avg_array = gaussian(avg_array, sigma=1)
         #avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
