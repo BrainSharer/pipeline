@@ -80,6 +80,7 @@ if __name__ == '__main__':
                         'transformix_origins': volumeRegistration.transformix_origins,
                         'pad_volume': volumeRegistration.pad_volume,
                         'group_volume': volumeRegistration.group_volume,
+                        'create_brain_coms': volumeRegistration.create_brain_coms,
     }
 
     if task in function_mapping:
