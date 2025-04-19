@@ -71,7 +71,6 @@ class BrainStructureManager:
 
         self.affine = affine
         self.atlas_box_scales = np.array((self.allen_um, self.allen_um, self.allen_um))
-        self.atlas_raw_scale = 10
 
         self.allen_x_length = 1820
         self.allen_y_length = 1000
@@ -189,7 +188,7 @@ class BrainStructureManager:
             volume = gaussian(volume, 1.0)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
             volume = volume.astype(np.uint8)
-            com = np.array(center_of_mass(volume)) * self.allen_um + (origin * self.allen_um)
+            com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.allen_um + (origin * self.allen_um)
             print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
 
             if not debug:
@@ -566,7 +565,7 @@ class BrainStructureManager:
             polygons = aligned_dict[structure]
             origin0, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
             pads = np.array([0, 0, self.pad_z])
-            com0 = center_of_mass(np.swapaxes(volume, 0, 2)) + origin0
+            com0 = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin0
 
             # Now convert com and origin to micrometers
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
