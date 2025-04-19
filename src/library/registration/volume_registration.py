@@ -730,7 +730,6 @@ class VolumeRegistration:
         
         fixed_path = os.path.join(fixed_path, f'{fixed_basename}.tif' )
         moving_path = os.path.join(moving_path, f'{moving_basename}.tif') 
-        thumbnail_path = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
 
         if not os.path.exists(fixed_path):
             print(f'Fixed {fixed_path} does not exist')
@@ -789,7 +788,6 @@ class VolumeRegistration:
                 print(f'fixed point path={fixed_point_path}')
         else:
             print(f'Fixed point path {fixed_point_path} or \nmoving point path {moving_point_path} do not exist')
-            sys.exit()
 
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
@@ -898,8 +896,8 @@ class VolumeRegistration:
                 print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.50"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["0.50"] # the weight of 2nd metric
+                affineParameterMap["Metric0Weight"] = ["0.05"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["0.95"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
