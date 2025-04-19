@@ -921,7 +921,7 @@ class VolumeRegistration:
             elastixImageFilter.LogToConsoleOff()
             elastixImageFilter.SetLogFileName('elastix.log')
             elastixImageFilter.SetOutputDirectory(savepath)
-            #elastixImageFilter.PrintParameterMap()
+            elastixImageFilter.PrintParameterMap()
 
             resultImage = elastixImageFilter.Execute()
             resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
