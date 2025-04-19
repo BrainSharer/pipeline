@@ -580,17 +580,13 @@ class VolumeRegistration:
             Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
 
         """
-        allen_z_um = 11400 / self.um
         image_manager = ImageManager(self.thumbnail_aligned)
-        volume_size = np.array((image_manager.len_files, image_manager.height, image_manager.width))
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
         z_resolution = self.sqlController.scan_run.zresolution / self.um
 
-        #change_z = z_resolution
+        change_z = z_resolution
         change_y = xy_resolution
         change_x = xy_resolution
-        print(f'Allen@{self.um}  z={allen_z_um} volume z={image_manager.len_files} diff={allen_z_um - image_manager.len_files}')
-        change_z = allen_z_um / image_manager.len_files
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
@@ -750,11 +746,13 @@ class VolumeRegistration:
             print(f'Moving {moving_path} does not exist')
             sys.exit()
         # set point paths
-        fixed_point_path = os.path.join(fixed_path, f'{fixed_basename}.pts')
-        moving_point_path = os.path.join(moving_path, f'{moving_basename}.pts')
+        fixed_point_path = os.path.join(self.registration_path, self.fixed, f'{fixed_basename}.pts')
+        moving_point_path = os.path.join(self.registration_path, self.moving, f'{moving_basename}.pts')
         if self.debug:
             print(f'moving volume path={moving_path}')
             print(f'fixed volume path={fixed_path}')
+            print(f'moving point path={moving_point_path}')
+            print(f'fixed point path={fixed_point_path}')
         
         fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
         movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
@@ -787,14 +785,17 @@ class VolumeRegistration:
 
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.0"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["1.0"]) # the weight of 2nd metric
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
             if self.debug:
                 print(f'moving point path={moving_point_path}')
                 print(f'fixed point path={fixed_point_path}')
+        else:
+            print(f'Fixed point path {fixed_point_path} or \nmoving point path {moving_point_path} do not exist')
+            sys.exit()
 
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
@@ -820,15 +821,11 @@ class VolumeRegistration:
         print(f'Saving img to {savepath}')
         io.imsave(savepath, moving_volume)
 
-    def create_average_volume(self):
-
-        moving_brains = ['MD585', 'MD594', 'MD589']
-        fixed_brain = 'AtlasV8'
-        all_brains = [fixed_brain] + moving_brains
+    def create_brain_coms(self):
+        brains = ['MD585', 'MD594', 'MD589', 'AtlasV8']
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
         
-        
-        for brain in all_brains:
+        for brain in tqdm(brains, desc='Creating brain coms'):
             brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             brain_com_path = os.path.join(base_com_path, brain, 'com')
             comfiles = sorted(os.listdir(brain_com_path))
@@ -842,6 +839,9 @@ class VolumeRegistration:
                     if 'SC' in compath:
                         print(f'{brain=} {x/self.um} {y/self.um} {z/self.um}')
                     f.write('\n')
+
+    def create_average_volume(self):
+        moving_brains = ['MD585', 'MD594', 'MD589']
 
         volumes = {}
         for brain in moving_brains:
