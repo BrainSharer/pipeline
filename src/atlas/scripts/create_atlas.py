@@ -149,6 +149,7 @@ if __name__ == '__main__':
                         'neuroglancer': pipeline.brainManager.create_neuroglancer_volume,
                         'save_atlas': pipeline.brainManager.save_atlas_volume,
                         'update_coms': pipeline.brainManager.update_atlas_coms,
+                        'update_volumes': pipeline.brainManager.update_atlas_volumes,
                         'list_coms': pipeline.brainManager.list_coms_by_atlas,
                         'validate': pipeline.brainManager.validate_volumes,
                         'evaluate': pipeline.brainManager.evaluate,

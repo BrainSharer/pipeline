@@ -1,29 +1,3 @@
-"""
-Important notes,
-If your fixed image has a smaller field of view than your moving image, 
-your moving image will be cropped. (This is what happens when the brain stem
-gets cropped out. However, when the fixed image is bigger than the moving image, we get the following error:
-Too many samples map outside moving image buffer. The moving image needs to be properly initialized.
-
-In other words, only the part your moving image 
-that overlap with the fixed image is included in your result image.
-To warp the whole image, you can edit the size of the domain in the 
-transform parameter map to match your moving image, and pass your moving image and 
-the transform parameter map to sitk.Transformix().
-10um allen is 1320x800
-25um allen is 528x320
-aligned volume @ 32 is 2047x1109 - unreg size matches allen10um
-aligned volume @ 64 is 1024x555 - unreg size matches allen25um
-aligned volume @ 128 is 512x278
-aligned volume @50 is 1310x710
-full aligned is 65500x35500
-Need to scale a moving image as close as possible to the fixed image
-COM info:
-allen SC: (368, 62, 227)
-pred  SC: 369, 64, 219
-TODO, transform polygons in DB using the transformation below
-"""
-
 from collections import defaultdict
 import os
 import shutil
@@ -61,14 +35,6 @@ M_UM_SCALE = 1000000
 
 
 class VolumeRegistration:
-    """This class takes a downsampled image stack and registers it to the Allen volume
-    Data resides in /net/birdstore/Active_Atlas_Data/data_root/brains_info/registration
-    Volumes have the following naming convention:
-        1. image stack = {animal}_{um}um_{orientation}.tif -> MD589_25um_sagittal.tif
-        2. registered volume = {moving}_{fixed}_{um}um_{orientation}.tif -> MD585_MD589_25um_sagittal.tif
-        3. point file = {animal}_{um}um_{orientation}.pts -> MD589_25um_sagittal.pts
-        
-    """
 
     def __init__(self, moving, channel=1, um=25, fixed=None, orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
@@ -123,11 +89,24 @@ class VolumeRegistration:
         else:
             self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{um}um')
 
-
-
         self.report_status()
 
     def report_status(self):
+        """
+        Prints the current status of the volume registration process with its settings.
+
+        This method outputs a formatted summary of the key parameters used in the 
+        volume registration process, including the preparation ID, unit of measurement, 
+        orientation, debug mode status, number of resolutions, and rigid iterations.
+
+        Attributes:
+            animal (str): The preparation ID or identifier for the subject.
+            um (float): The unit of measurement used in the registration process.
+            orientation (str): The orientation setting for the volume registration.
+            debug (bool): Indicates whether debug mode is enabled.
+            number_of_resolutions (int): The number of resolutions used in the registration.
+            affineIterations (int): The number of iterations for rigid affine transformations.
+        """
         print("Running volume registration with the following settings:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tum:".ljust(20), f"{str(self.um)}".ljust(20))
@@ -280,8 +259,6 @@ class VolumeRegistration:
             print(i, structure,  int(x), int(y), int(z))
             origin_filepath = os.path.join(registered_origin_path, f'{structure}.txt')
             np.savetxt(origin_filepath, (x,y,z))
-
-
 
 
     def insert_points(self):
@@ -573,12 +550,12 @@ class VolumeRegistration:
     def create_volume(self):
         """
         Create a 3D volume
-            image stack = 10.4um x 10.4um x 20um
-            atlas stack = 10um x 10um x 10um
-            MD589 z is 20um * 447 sections so 894um
-            Allen z @ 10um  = 1140 sections = 11400um
-            Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
 
+        * image stack = 10.4um x 10.4um x 20um
+        * atlas stack = 10um x 10um x 10um
+        * MD589 z is 20um * 447 sections so 894um
+        * Allen z @ 10um  = 1140 sections = 11400um
+        * Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
         """
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
@@ -683,9 +660,33 @@ class VolumeRegistration:
 
 
     def register_volume(self):
-        """This will perform the elastix registration of the volume to the atlas.
-        It first does an affine registration, then a bspline registration.
         """
+        Registers a moving volume to a fixed volume using elastix and saves the resulting registered volume.
+        This method performs the following steps:
+
+        1. Removes the existing elastix output directory if it exists.
+        2. Checks if the fixed and moving volume paths are provided; exits if not.
+        3. Creates the elastix output directory if it does not exist.
+        4. Sets up the registration process using the provided fixed and moving volume paths.
+        5. Executes the registration and processes the resulting image.
+        6. Saves the registered volume to the specified output path.
+        
+        Attributes:
+            self.elastix_output (str): Path to the directory where elastix output will be stored.
+            self.fixed_path (str): Path to the fixed volume image.
+            self.moving_path (str): Path to the moving volume image.
+            self.fixed (str): Identifier for the fixed volume.
+            self.moving (str): Identifier for the moving volume.
+            self.um (int): Resolution of the images in micrometers.
+            self.orientation (str): Orientation of the images.
+            self.registered_volume (str): Path to save the registered volume.
+        Raises:
+            SystemExit: If either `self.fixed_path` or `self.moving_path` is None.
+        Outputs:
+            - The registered volume is saved to the path specified by `self.registered_volume`.
+            - Prints status messages to indicate progress and output paths.
+        """
+
         if os.path.exists(self.elastix_output):
             print(f'Removing {self.elastix_output}')
             shutil.rmtree(self.elastix_output)
@@ -777,15 +778,14 @@ class VolumeRegistration:
 
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.0"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["1.0"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-            if self.debug:
-                print(f'moving point path={moving_point_path}')
-                print(f'fixed point path={fixed_point_path}')
+            print(f'moving point path={moving_point_path}')
+            print(f'fixed point path={fixed_point_path}')
         else:
             print(f'Fixed point path {fixed_point_path} or \nmoving point path {moving_point_path} do not exist')
 
@@ -815,9 +815,50 @@ class VolumeRegistration:
         io.imsave(savepath, moving_volume)
 
     def create_brain_coms(self):
+        """
+        Creates brain center of mass (COM) files for a set of brains and validates their consistency.
+        This method performs the following steps:
+
+        1. Validates that the number of COM files for each brain is consistent.
+        2. Generates a `.pts` file for each brain containing the COM points.
+        
+        The method uses the following attributes:
+
+        - `self.registration_path`: Path to the registration directory.
+        - `self.um`: Unit scaling factor for coordinates.
+        - `self.orientation`: Orientation of the brain data.
+        
+        The method processes a predefined list of brains and assumes the COM files are stored
+        in a specific directory structure.
+        Raises:
+            SystemExit: If the number of COM files is inconsistent across brains.
+        Outputs:
+            - Prints the number of COM files for each brain.
+            - Prints an error message and exits if the number of COM files is inconsistent.
+            - Writes `.pts` files containing the COM points for each brain.
+        
+        Note:
+            If a COM file contains "SC" in its path, the corresponding coordinates are printed
+            to the console for debugging purposes.
+        """
+
         brains = ['MD585', 'MD594', 'MD589', 'AtlasV8']
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
+        number_of_coms = {}
+        for brain in tqdm(brains, desc='Validating brain coms'):
+            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            brain_com_path = os.path.join(base_com_path, brain, 'com')
+            comfiles = sorted(os.listdir(brain_com_path))
+            nfiles = len(comfiles)
+            number_of_coms[brain] = nfiles
+            print(f'{brain} has {nfiles} coms')
         
+        test_length = len(set(list(number_of_coms.values())))
+        if test_length > 1:
+            print(f'Error, the number of coms for each brain is not the same: {number_of_coms}')
+            sys.exit()
+
+
         for brain in tqdm(brains, desc='Creating brain coms'):
             brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
             brain_com_path = os.path.join(base_com_path, brain, 'com')
@@ -834,6 +875,20 @@ class VolumeRegistration:
                     f.write('\n')
 
     def create_average_volume(self):
+        """ Instructions for creating an average volume
+
+        1. Create a volume for each brain using the create_volume method with the same um and orientation.
+        2. Run the create_brain_coms method to generate COM files for each brain.
+        3. Copy each volume from the above step to the AtlasV8/AtlasV8_10um_sagittal.tif. You are basically
+           creating a copy of the volume for each brain in the AtlasV8 directory and registering it to itself with the new COM coordinates
+           created in the create_atlas script.
+        4. Run the register_volume method to register each brain to the AtlasV8 volume.
+
+        Using just a rigid transform on the above 3 brains works well in aligned the COMs, but the spinal cord and ocular are off a bit.
+
+        """
+
+
         moving_brains = ['MD585', 'MD594', 'MD589']
         fixed_brain = 'AtlasV8'
 
@@ -897,8 +952,8 @@ class VolumeRegistration:
                 print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
                 affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
                 affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.5"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["0.5"] # the weight of 2nd metric
+                affineParameterMap["Metric0Weight"] = ["0.05"] # the weight of 1st metric
+                affineParameterMap["Metric1Weight"] =  ["0.95"] # the weight of 2nd metric
 
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
@@ -930,9 +985,9 @@ class VolumeRegistration:
 
         reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
         registered_images.append(sitk.GetArrayFromImage(reference_image))
-        avg_array = np.mean(registered_images, axis=0)
-        avg_array = gaussian(avg_array, sigma=1)
-        #avg_array = average_images(registered_images, iterations="500", default_pixel_value=defaul_pixel_value)
+        #avg_array = np.mean(registered_images, axis=0)
+        #avg_array = gaussian(avg_array, sigma=1)
+        avg_array = average_images(registered_images, iterations="500")
 
         #avg_array = gaussian(avg_array, 1.0)
 

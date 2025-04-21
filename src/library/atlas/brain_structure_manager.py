@@ -40,6 +40,7 @@ from library.utilities.utilities_process import (
     SCALING_FACTOR,
     get_hostname,
     get_image_size,
+    random_string,
     read_image,
     write_image,
 )
@@ -141,16 +142,19 @@ class BrainStructureManager:
                 brainMerger.origins_to_merge[structure].append(origin)
                 brainMerger.volumes_to_merge[structure].append(volume)
 
-
-    def create_brains_origin_volume_from_polygons(self, brainMerger, structure, debug=False):
-
-
+    def get_label_ids(self, structure) -> list:
         label = self.sqlController.get_annotation_label(structure)
         if label is not None:
             label_ids = [label.id]
         else:
             print(f"Could not find {structure} label in database")
-            return
+            label_ids = [0]
+
+        return label_ids
+
+    def create_brains_origin_volume_from_polygons(self, brainMerger, structure, debug=False):
+
+        label_ids = self.get_label_ids(structure)
 
         annotation_sessions = (
             self.sqlController.session.query(AnnotationSession)
@@ -250,6 +254,7 @@ class BrainStructureManager:
             # com = scale_coordinate(com, self.animal)
             print(f"{structure}={com}")
 
+
     def update_database_com(self, animal: str, structure: str, com: np.ndarray, um=1) -> None:
         """Annotator ID is hardcoded to 2 for Beth
         Data coming in is in pixels, so we need to convert to um and then to meters
@@ -275,7 +280,6 @@ class BrainStructureManager:
             print(f"Could not find {structure} label in database")
             return
         # update label with allen ID
-
         try:
             annotation_session = (
                 self.sqlController.session.query(AnnotationSession)
@@ -460,6 +464,29 @@ class BrainStructureManager:
                     structure = file.replace(".txt", "")
                     self.update_database_com(animal, structure, com, 1)
 
+    def update_atlas_volumes(self) -> None:
+
+
+        com_path = os.path.join(self.data_path, self.animal, "com")
+        origin_path = os.path.join(self.data_path, self.animal, "origin")
+        volume_path = os.path.join(self.data_path, self.animal, "structure")
+        self.check_for_existing_dir(com_path)
+        self.check_for_existing_dir(origin_path)
+        self.check_for_existing_dir(volume_path)
+        coms = sorted(os.listdir(com_path))
+        origins = sorted(os.listdir(origin_path))
+        volumes = sorted(os.listdir(volume_path))
+
+
+        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
+            if Path(origin_file).stem != Path(volume_file).stem:
+                print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
+                sys.exit()
+            structure = Path(origin_file).stem
+            origin = np.loadtxt(os.path.join(origin_path, origin_file))
+            volume = np.load(os.path.join(volume_path, volume_file))
+            self.upsert_annotation_volume(structure, origin, volume)
+
     def save_atlas_volume(self) -> None:
         """
         Saves the atlas volume to a specified file path.
@@ -575,7 +602,7 @@ class BrainStructureManager:
             # we want the volume and origin scaled to 10um, so adjust the above scale
             scale_allen = scale0 / self.allen_um
             origin_allen = origin_um / self.allen_um
-            volume = np.swapaxes(volume, 0, 2)
+            volume = np.swapaxes(volume, 0, 2) # put into x,y,z order
             volume_allen = zoom(volume, scale_allen)
 
             if debug:
@@ -908,3 +935,158 @@ class BrainStructureManager:
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
         return origin, volume
 
+    def upsert_annotation_volume(self, structure, origin, volume):
+        """
+        {
+            'pointA': [0.010121309198439121, 0.008618032559752464, 0.005150000099092722], 
+            'pointB': [0.009859367273747921, 0.008647968992590904, 0.005150000099092722], 
+            'type': 'line', 
+            'parentAnnotationId': 'fdb486526ebb517fd6b7d19f0da63b96fe0acc1b', 
+            'props': ['#00ff59', 1, 1, 10, 3, 1]}
+        
+        """
+        
+        volume = adjust_volume(volume, 255)
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        default_props = ["#ff0000", 1, 1, 5, 3, 1]
+        description = structure
+
+        reformatted_polygons = []
+        centroids = []
+        counter = 0
+        volume = np.rot90(volume, axes=(0, 1))
+        volume = np.flip(volume, axis=0)
+        
+
+
+        for z in range(volume.shape[2]):
+
+            slice = volume[:, :, z].astype(np.uint8)
+            contours, _ = cv2.findContours(slice, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contours) == 0:
+                continue
+            largest_contour = max(contours, key=cv2.contourArea)
+            points_shape = (largest_contour.shape[0], 2)
+            vertices = largest_contour.reshape(points_shape).tolist()
+            nl = len(vertices)
+            if nl < 40:
+                n = 1
+            elif nl > 40 and nl < 100:
+                n = 4
+            elif nl > 100:
+                n = 8
+            else:
+                n = 2
+
+
+
+            vertices = vertices[n-1::n]
+            new_lines = []
+            new_polygon = {}
+            parentAnnotationId = random_string()
+            points = []
+            for i, point in enumerate(vertices):
+                try:
+                    xa,ya = vertices[i]
+                except ValueError:
+                    print(f"Value A Error with {structure} {vertices[i]} {i}")
+                    continue
+                try:
+                    xb,yb = vertices[i+1]
+                except IndexError:
+                    xb,yb = vertices[0]
+                except ValueError as ve:
+                    print(f"Value Error B with {structure} {ve}")
+                    continue
+                xa += origin[0]
+                ya += origin[1]
+                za = z + origin[2] - self.pad_z / self.allen_um
+                
+                xb += origin[0]
+                yb += origin[1]
+                zb = z + origin[2] - self.pad_z / self.allen_um
+
+                xa,ya,za = [xa / M_UM_SCALE * xy_resolution, ya / M_UM_SCALE * xy_resolution, za / M_UM_SCALE * z_resolution]
+                xb,yb,zb = [xb / M_UM_SCALE * xy_resolution, yb / M_UM_SCALE * xy_resolution, zb / M_UM_SCALE * z_resolution]
+                pointA = [xa, ya, za]
+                pointB = [xb, yb, zb]
+                new_line = {
+                    "pointA": pointA,
+                    "pointB": pointB,
+                    "type": "line",
+                    "parentAnnotationId": parentAnnotationId,
+                    "props": default_props
+                }
+                new_lines.append(new_line)
+                points.append(pointA)
+                counter += 1
+
+            # polygon keys
+            parentAnnotationId = random_string()
+            new_polygon["source"] = points[0]
+            new_polygon["centroid"] = np.mean(points, axis=0).tolist()
+            new_polygon["childrenVisible"] = True
+            new_polygon["type"] = "polygon"
+            new_polygon["parentAnnotationId"] = parentAnnotationId
+            new_polygon["description"] = f"{description}"
+            new_polygon["props"] = default_props
+            new_polygon["childJsons"] = new_lines
+
+            centroids.append(new_polygon["centroid"])
+            reformatted_polygons.append(new_polygon)
+
+            if self.debug:
+                print(f'len of points={len(points)}')
+                x,y,section = new_polygon["centroid"]
+                pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
+                pixel_point = [round(x) for x in pixel_point]
+                print(f"Centroid of slice={x,y,section}")
+
+
+        # Create the annotation dictionary
+        # volume keys=['type', 'props', 'source', 'centroid', 'childJsons', 'description']
+        # create the childJsons dictionary
+        json_entry = {}
+        json_entry["type"] = "volume"
+        json_entry["props"] = default_props
+        json_entry["source"] = centroids[0]
+        json_entry["centroid"] = np.mean(centroids, axis=0).tolist()
+        json_entry["childJsons"] = reformatted_polygons
+        json_entry["description"] = f"{description}"   
+
+
+
+
+        if self.debug:
+            print(f"len of centroids={len(centroids)}")
+            x,y,section = json_entry["centroid"]
+            #pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
+            #pixel_point = [round(x) for x in pixel_point]
+            print(f"Centroid of structure={x,y,section}")
+            print(f'Total vertices= {counter}')
+        else:
+            annotator_id = 1 # hard coded to Edward 
+            label_ids = self.get_label_ids(structure)
+
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_prep_id == self.animal)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                .filter(AnnotationSession.annotation["type"] == "volume")
+                .one_or_none()
+            )
+
+            if annotation_session is None:
+                print(f"Inserting {structure}")
+                self.sqlController.insert_annotation_with_labels(
+                    FK_user_id=annotator_id,
+                    FK_prep_id=self.animal,
+                    annotation=json_entry,
+                    labels=[structure])
+            else:                
+                update_dict = {'annotation': json_entry}
+                print(f'Updating session {annotation_session.id} with {structure}')
+                self.sqlController.update_session(annotation_session.id, update_dict=update_dict)
