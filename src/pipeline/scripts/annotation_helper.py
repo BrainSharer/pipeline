@@ -15,13 +15,12 @@ from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, rand
 
 
 class AnnotationHelper:
-    def __init__(self, session_id, animal, channel=1, xshift=0, yshift=0, debug=False):
+    def __init__(self, session_id, animal, channel=1, shifts=(0,0,0), debug=False):
         self.session_id = session_id
         self.animal = animal
         self.channel = channel
         self.color = 65000
-        self.xshift = xshift
-        self.yshift = yshift
+        self.shift = shifts
         self.fileLocationManager = FileLocationManager(animal)
         self.sqlController = SqlController(animal)
         self.debug = debug
@@ -67,8 +66,7 @@ class AnnotationHelper:
         Attributes:
             self.sqlController (SQLController): Controller to interact with the SQL database.
             self.session_id (int): The ID of the current annotation session.
-            self.xshift (float): The shift value in the x direction.
-            self.yshift (float): The shift value in the y direction.
+            self.shifts (float): The shift value in the (x,y,z) direction.
         Raises:
             KeyError: If the 'childJsons' key is not found in the annotation data.
         Returns:
@@ -91,8 +89,9 @@ class AnnotationHelper:
             print("No childJsons key in data")
             print(f"Error: {ke}")
 
-        xshift = self.xshift / M_UM_SCALE * xy_resolution
-        yshift = self.yshift * M_UM_SCALE
+        xshift = self.shifts[0] / M_UM_SCALE * xy_resolution
+        yshift = self.shifts[1] * M_UM_SCALE
+        zshift = self.shifts[2] * M_UM_SCALE
         for row in data:
             try:
                 x, y, section = row["point"]
@@ -151,10 +150,9 @@ class AnnotationHelper:
         """
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-        default_props = ["#ff0000", 1, 1, 10, 3, 1]
+        default_props = ["#ff0000", 1, 1, 5, 3, 1]
         points = []
         childJsons = []
-        parent_id = f"{random_string()}"
         annotation_session = self.sqlController.get_annotation_by_id(self.session_id)
         volume = annotation_session.annotation
         description = volume["description"]
@@ -164,8 +162,9 @@ class AnnotationHelper:
             print("No childJsons key in volume")
             print(f"Error: {ke}")
 
-        xshift = self.xshift / M_UM_SCALE * xy_resolution
-        yshift = self.yshift / M_UM_SCALE * xy_resolution
+        xshift = self.shifts[0] / M_UM_SCALE * xy_resolution
+        yshift = self.shifts[1] / M_UM_SCALE * xy_resolution
+        zshift = self.shifts[2] / M_UM_SCALE * z_resolution
 
         reformatted_polygons = []
         for polygon in polygons:
@@ -183,8 +182,10 @@ class AnnotationHelper:
                     print(f"Original = {pixel_point}", end="\t")
                 xa += xshift
                 ya += yshift
+                za += zshift
                 xb += xshift
                 yb += yshift
+                zb += zshift
                 pointA = [xa, ya, za]
                 pointB = [xb, yb, zb]
                 new_line = {
@@ -272,8 +273,7 @@ if __name__ == "__main__":
     parser.add_argument("--session_id", help="Enter the session ID", required=False, default=0, type=int)
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
     parser.add_argument("--channel", help="Enter the channel", required=False, type=int)
-    parser.add_argument("--xshift", help="Enter xshift", required=False, default=0, type=float)
-    parser.add_argument("--yshift", help="Enter yshift", required=False, default=0, type=float)
+    parser.add_argument("--shifts", help="Enter xshift", required=False, default=(0,0,0), type=tuple)
     parser.add_argument("--task", help="Enter the task you want to perform: ",
         required=False,
         default="status",
@@ -284,12 +284,11 @@ if __name__ == "__main__":
     session_id = args.session_id
     animal = args.animal
     channel = args.channel
-    xshift = args.xshift
-    yshift = args.yshift
+    shifts = args.shifts
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
 
-    pipeline = AnnotationHelper(session_id, animal, channel, xshift, yshift, debug)
+    pipeline = AnnotationHelper(session_id, animal, channel, shifts, debug)
 
 
     function_mapping = {
