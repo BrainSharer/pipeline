@@ -64,6 +64,7 @@ class ImageManager:
     def get_bgcolor(self, maskpath=None):
         """align needs either an integer or a tuple of integers for the fill color
         Get the background color of the image based on the the 10th row and 10th column of the image.
+        This is usually the background color in the image.
         """
         if self.img.ndim == 2:
             return 0

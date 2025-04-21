@@ -1,32 +1,9 @@
 """
-Important notes,
+Important notes
+
 If your fixed image has a smaller field of view than your moving image, 
 your moving image will be cropped. (This is what happens when the brain stem
-gets cropped out. However, when the fixed image is bigger than the moving image, we get the following error:
-Too many samples map outside moving image buffer. The moving image needs to be properly initialized.
-
-In other words, only the part your moving image 
-that overlap with the fixed image is included in your result image.
-To warp the whole image, you can edit the size of the domain in the 
-transform parameter map to match your moving image, and pass your moving image and 
-the transform parameter map to sitk.Transformix().
-10um allen is 1320x800
-25um allen is 528x320
-aligned volume @ 32 is 2047x1109 - unreg size matches allen10um
-aligned volume @ 64 is 1024x555 - unreg size matches allen25um
-aligned volume @ 128 is 512x278
-aligned volume @50 is 1310x710
-full aligned is 65500x35500
-Need to scale a moving image as close as possible to the fixed image
-COM info:
-allen SC: (368, 62, 227)
-pred  SC: 369, 64, 219
-TODO, transform polygons in DB using the transformation below
-TODO Mar 2025 - 
-See how our structures fit on top of the Allen structure positions.
-Try changing our atlas to the Allen COMs
-Do an affine trans of our atlas to Allen
-Also try registering to the Princeton mouse atlas
+gets cropped out when setting a neurotrace brain against the Allen atlas. 
 """
 
 import argparse
@@ -80,6 +57,7 @@ if __name__ == '__main__':
                         'transformix_origins': volumeRegistration.transformix_origins,
                         'pad_volume': volumeRegistration.pad_volume,
                         'group_volume': volumeRegistration.group_volume,
+                        'create_brain_coms': volumeRegistration.create_brain_coms,
     }
 
     if task in function_mapping:

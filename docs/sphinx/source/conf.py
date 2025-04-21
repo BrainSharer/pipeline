@@ -4,8 +4,6 @@ from pathlib import Path
 ROOT = Path(__file__).parents[3]
 PIPELINE_ROOT = Path.joinpath(ROOT, "src")
 sys.path.append(PIPELINE_ROOT.as_posix())
-#print(PIPELINE_ROOT)
-#sys.exit()
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -25,7 +23,8 @@ release = '1.1'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.githubpages',
-    'sphinx.ext.autosummary',  # Create neat summary tables
+    'sphinx.ext.autosummary',
+    'sphinx.ext.napoleon'
 ]
 autosummary_generate = False  # Turn on sphinx.ext.autosummary
 autodoc_mock_imports = ["settings", "SimpleITK-SimpleElastix", "cloudvolume", \

@@ -225,7 +225,7 @@ class AnnotationHelper:
         new_annotation["description"] = f"{description}"   
 
         if self.debug:
-            x,y,section = annotation_points["centroid"]
+            x,y,section = new_annotation["centroid"]
             pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
             pixel_point = [round(x) for x in pixel_point]
             print(f"Shifted centroid={pixel_point}")

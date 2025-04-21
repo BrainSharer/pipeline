@@ -1,7 +1,7 @@
 Registration scripts
 --------------------
 
-.. automodule:: registration.scripts.create_registration
+.. automodule:: library.registration.volume_registration
    :members:
    :undoc-members:
    :show-inheritance:
