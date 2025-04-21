@@ -111,14 +111,8 @@ class AtlasManager():
         # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
         # The output is in /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MDXXX/preps/C1/drawn    
         """
-<<<<<<< HEAD
-        for animal in self.foundation_brains:
-            brainManager = BrainStructureManager(animal, self.um, self.debug)
-            brainManager.test_brain_volumes_and_origins(animal)
-=======
         brainManager = BrainStructureManager(self.animal, self.um, self.debug)
         brainManager.test_brain_volumes_and_origins(self.animal)
->>>>>>> c89dc31c7b40879f1d289164989ebfe92b1aa795
 
 
 
@@ -155,10 +149,7 @@ if __name__ == '__main__':
                         'neuroglancer': pipeline.brainManager.create_neuroglancer_volume,
                         'save_atlas': pipeline.brainManager.save_atlas_volume,
                         'update_coms': pipeline.brainManager.update_atlas_coms,
-<<<<<<< HEAD
-=======
                         'update_volumes': pipeline.brainManager.update_atlas_volumes,
->>>>>>> c89dc31c7b40879f1d289164989ebfe92b1aa795
                         'list_coms': pipeline.brainManager.list_coms_by_atlas,
                         'validate': pipeline.brainManager.validate_volumes,
                         'evaluate': pipeline.brainManager.evaluate,
