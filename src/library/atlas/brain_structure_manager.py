@@ -440,9 +440,10 @@ class BrainStructureManager:
         Returns:
             None
         """
-
-        print(f"evaluating atlas data from {self.com_path}")
-        brains = ['MD585', 'MD589', 'MD594', 'AtlasV8']
+        if self.animal is None:
+            brains = ['MD585', 'MD589', 'MD594', 'AtlasV8']
+        else:
+            brains = [self.animal]
 
         if self.debug:
 

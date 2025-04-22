@@ -17,7 +17,7 @@ import pandas as pd
 import cv2
 import json
 
-from library.atlas.atlas_utilities import adjust_volume, average_images
+from library.atlas.atlas_utilities import adjust_volume, average_images, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -875,6 +875,29 @@ class VolumeRegistration:
                     f.write('\n')
 
     def create_average_volume(self):
+        volumes = {}
+        moving_brains = ['MD585', 'MD594', 'MD589']
+        for brain in tqdm(moving_brains, 'Adding registered volume'):
+            brainpath = os.path.join(self.registration_path, 'AtlasV8', f'{brain}_{self.um}um_registered.tif')
+            if not os.path.exists(brainpath):
+                print(f'{brainpath} does not exist, exiting.')
+                return
+            brainimg = read_image(brainpath)
+            volumes[brain] = sitk.GetImageFromArray(brainimg.astype(np.float32))
+
+        images = [img for img in volumes.values()]
+        reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
+        resampled_images = [resample_image(img, reference_image) for img in images]
+        registered_images = [register_volume(img, reference_image, "500", "21") for img in resampled_images if img != reference_image]
+        avg_array = np.mean(registered_images, axis=0)
+        savepath = os.path.join(self.registration_path, 'AtlasV8')
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um.tif')
+        print(f'Saving img to {save_atlas_path}')
+        write_image(save_atlas_path, avg_array.astype(np.uint8))
+
+
+
+    def create_average_volumeXXX(self):
         """ Instructions for creating an average volume
 
         1. Create a volume for each brain using the create_volume method with the same um and orientation.
