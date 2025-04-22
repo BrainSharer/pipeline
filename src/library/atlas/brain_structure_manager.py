@@ -957,13 +957,10 @@ class BrainStructureManager:
         counter = 0
         volume = np.rot90(volume, axes=(0, 1))
         volume = np.flip(volume, axis=0)
-        
-
 
         for z in range(volume.shape[2]):
-
             slice = volume[:, :, z].astype(np.uint8)
-            vertices = get_evenly_spaced_vertices(slice)
+            vertices = get_evenly_spaced_vertices(slice, structure)
             if len(vertices) == 0:
                 continue
             new_lines = []

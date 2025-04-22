@@ -365,7 +365,7 @@ def itk_rigid_euler():
 import numpy as np
 import cv2
 
-def get_evenly_spaced_vertices(mask, num_points=20):
+def get_evenly_spaced_vertices(mask, structure, num_points=20):
     """
     This function was made entirely from ChatGTP
     Given a binary mask, extract the outer contour and return evenly spaced vertices along the edge.
@@ -389,8 +389,14 @@ def get_evenly_spaced_vertices(mask, num_points=20):
     contour = max(contours, key=cv2.contourArea).squeeze()
 
     # Calculate arc length (perimeter)
-    arc_length = cv2.arcLength(contour, True)
-
+    #arc_length = cv2.arcLength(contour, True)
+    """
+    try:
+        arc_length = cv2.arcLength(contour, True)
+    except Exception as e:
+        print(f"Error calculating arc length: {e}")
+        return []
+    """
     # Calculate the cumulative arc lengths
     distances = [0]
     for i in range(1, len(contour)):
@@ -408,7 +414,10 @@ def get_evenly_spaced_vertices(mask, num_points=20):
         # Linear interpolation between points j and j+1
         t = (d - distances[j]) / (distances[j+1] - distances[j])
         pt = (1 - t) * contour[j] + t * contour[j + 1]
-        vertices.append(tuple(pt.astype(int)))
+        try:
+            vertices.append(tuple(pt.astype(int)))
+        except TypeError as e:
+            continue
 
     return vertices
 
