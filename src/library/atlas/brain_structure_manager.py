@@ -24,6 +24,7 @@ from library.atlas.atlas_utilities import (
     apply_affine_transform,
     compute_affine_transformation,
     fetch_coms,
+    get_evenly_spaced_vertices,
     get_min_max_mean,
     list_coms,
     ORIGINAL_ATLAS,
@@ -962,25 +963,9 @@ class BrainStructureManager:
         for z in range(volume.shape[2]):
 
             slice = volume[:, :, z].astype(np.uint8)
-            contours, _ = cv2.findContours(slice, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if len(contours) == 0:
+            vertices = get_evenly_spaced_vertices(slice)
+            if len(vertices) == 0:
                 continue
-            largest_contour = max(contours, key=cv2.contourArea)
-            points_shape = (largest_contour.shape[0], 2)
-            vertices = largest_contour.reshape(points_shape).tolist()
-            nl = len(vertices)
-            if nl < 40:
-                n = 1
-            elif nl > 40 and nl < 100:
-                n = 4
-            elif nl > 100:
-                n = 8
-            else:
-                n = 2
-
-
-
-            vertices = vertices[n-1::n]
             new_lines = []
             new_polygon = {}
             parentAnnotationId = random_string()
@@ -1036,11 +1021,12 @@ class BrainStructureManager:
             reformatted_polygons.append(new_polygon)
 
             if self.debug:
-                print(f'len of points={len(points)}')
+                pass
+                #print(f'len of points={len(points)}', end=" ")
                 x,y,section = new_polygon["centroid"]
                 pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
                 pixel_point = [round(x) for x in pixel_point]
-                print(f"Centroid of slice={x,y,section}")
+                #print(f"Centroid of {structure} slice={pixel_point}")
 
 
         # Create the annotation dictionary
@@ -1058,12 +1044,12 @@ class BrainStructureManager:
 
 
         if self.debug:
-            print(f"len of centroids={len(centroids)}")
             x,y,section = json_entry["centroid"]
-            #pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
-            #pixel_point = [round(x) for x in pixel_point]
-            print(f"Centroid of structure={x,y,section}")
-            print(f'Total vertices= {counter}')
+            pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
+            pixel_point = [round(x) for x in pixel_point]
+            print(f"Centroid of {structure}={pixel_point}", end=" ")
+            print(f'total vertices={counter}', end=" ")
+            print(f"len of centroids={len(centroids)}")
         else:
             annotator_id = 1 # hard coded to Edward 
             label_ids = self.get_label_ids(structure)

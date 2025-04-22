@@ -361,3 +361,145 @@ def itk_rigid_euler():
     R = np.asarray(rigid_euler.GetMatrix()).reshape(3,3)
     t = np.asarray(rigid_euler.GetTranslation())
     return R, t
+
+import numpy as np
+import cv2
+
+def get_evenly_spaced_vertices(mask, num_points=20):
+    """
+    This function was made entirely from ChatGTP
+    Given a binary mask, extract the outer contour and return evenly spaced vertices along the edge.
+
+    Parameters:
+    - mask: 2D numpy array (binary mask)
+    - num_points: Number of evenly spaced points to return
+
+    Returns:
+    - List of (x, y) coordinates of vertices
+    """
+    # Ensure mask is uint8
+    mask = mask.astype(np.uint8)
+
+    # Find contours (external only)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return []
+
+    # Choose the largest contour (in case there are multiple)
+    contour = max(contours, key=cv2.contourArea).squeeze()
+
+    # Calculate arc length (perimeter)
+    arc_length = cv2.arcLength(contour, True)
+
+    # Calculate the cumulative arc lengths
+    distances = [0]
+    for i in range(1, len(contour)):
+        d = np.linalg.norm(contour[i] - contour[i - 1])
+        distances.append(distances[-1] + d)
+    distances = np.array(distances)
+
+    # Sample points at regular intervals
+    desired_distances = np.linspace(0, distances[-1], num_points, endpoint=False)
+    vertices = []
+    j = 0
+    for d in desired_distances:
+        while j < len(distances) - 1 and distances[j+1] < d:
+            j += 1
+        # Linear interpolation between points j and j+1
+        t = (d - distances[j]) / (distances[j+1] - distances[j])
+        pt = (1 - t) * contour[j] + t * contour[j + 1]
+        vertices.append(tuple(pt.astype(int)))
+
+    return vertices
+
+
+
+"""Below are some functions that might come in handy later"""
+def filter_top_n_values(volume: np.ndarray, n: int, set_value: int = 1) -> np.ndarray:
+    """
+    Get the `n` most common unique values from a numpy volume.
+    Sets those values to `set_value` and the rest to 0.
+
+    Parameters:
+        volume (np.ndarray): Input 3D volume.
+        n (int): Number of most common unique values to retain.
+        set_value (int, optional): The value to assign to the most common values. Defaults to 1.
+
+    Returns:
+        np.ndarray: Transformed volume.
+    """
+    from collections import Counter    
+    # Flatten the volume and count occurrences of unique values
+    values, counts = np.unique(volume[volume != 0], return_counts=True)
+    
+    # Get the top `n` most common values
+    top_n_values = [val for val, _ in Counter(dict(zip(values, counts))).most_common(n)]
+    print(f'top {n} {top_n_values=}')
+    
+    # Create a mask where only top N values are retained
+    mask = np.isin(volume, top_n_values)
+    
+    # Set the selected values to `set_value` and the rest to 0
+    result = np.where(mask, set_value, 0)
+    
+    return result
+
+
+def center_3d_volume(volume: np.ndarray) -> np.ndarray:
+    """
+    Centers a 3D volume by shifting its center of mass to the geometric center.
+
+    Parameters:
+    volume (np.ndarray): A 3D numpy array representing the volume.
+
+    Returns:
+    np.ndarray: The centered 3D volume.
+    """
+    from scipy.ndimage import zoom, center_of_mass, shift
+
+    if volume.ndim != 3:
+        raise ValueError("Input volume must be a 3D numpy array")
+    
+    # Compute the center of mass
+    com = np.array(center_of_mass(volume))
+    
+    # Compute the geometric center
+    shape = np.array(volume.shape)
+    geometric_center = (shape - 1) / 2
+    
+    # Compute the shift required
+    shift_values = geometric_center - com
+    
+    # Apply shift
+    centered_volume = shift(volume, shift_values, mode='constant', cval=0)
+    
+    return centered_volume
+
+def crop_nonzero_3d(volume):
+    """
+    Crops a 3D volume to remove all-zero regions.
+    
+    Parameters:
+        volume (numpy.ndarray): A 3D NumPy array.
+        
+    Returns:
+        numpy.ndarray: The cropped 3D volume.
+    """
+    if volume.ndim != 3:
+        raise ValueError("Input volume must be a 3D NumPy array")
+    
+    # Find nonzero elements
+    nonzero_coords = np.argwhere(volume)
+    
+    # Get bounding box of nonzero elements
+    min_coords = nonzero_coords.min(axis=0)
+    max_coords = nonzero_coords.max(axis=0) + 1  # Add 1 to include the max index
+    
+    # Crop the volume
+    cropped_volume = volume[min_coords[0]:max_coords[0],
+                            min_coords[1]:max_coords[1],
+                            min_coords[2]:max_coords[2]]
+    
+    return cropped_volume
+
+
