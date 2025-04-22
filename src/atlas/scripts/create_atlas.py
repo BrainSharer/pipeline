@@ -29,7 +29,6 @@ from tqdm import tqdm
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.atlas.atlas_utilities import NEW_ATLAS, ORIGINAL_ATLAS
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 

@@ -878,7 +878,7 @@ class VolumeRegistration:
         volumes = {}
         moving_brains = ['MD585', 'MD594', 'MD589']
         for brain in tqdm(moving_brains, 'Adding registered volume'):
-            brainpath = os.path.join(self.registration_path, 'AtlasV8', f'{brain}_{self.um}um_registered.tif')
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_AtlasV8_{self.um}um_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 return
@@ -888,10 +888,10 @@ class VolumeRegistration:
         images = [img for img in volumes.values()]
         reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
         resampled_images = [resample_image(img, reference_image) for img in images]
-        registered_images = [register_volume(img, reference_image, "500", "21") for img in resampled_images if img != reference_image]
+        registered_images = [register_volume(img, reference_image, "500", "0") for img in resampled_images if img != reference_image]
         avg_array = np.mean(registered_images, axis=0)
         savepath = os.path.join(self.registration_path, 'AtlasV8')
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um.tif')
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, avg_array.astype(np.uint8))
 
@@ -905,6 +905,12 @@ class VolumeRegistration:
         3. Copy each volume from the above step to the AtlasV8/AtlasV8_10um_sagittal.tif. You are basically
            creating a copy of the volume for each brain in the AtlasV8 directory and registering it to itself with the new COM coordinates
            created in the create_atlas script.
+           cp -vi MD585/MD585_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
+           python src/registration/scripts/create_registration.py --moving MD585 --fixed AtlasV8 --um 10 --task register_volume
+           cp -vi MD589/MD589_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
+           python src/registration/scripts/create_registration.py --moving MD589 --fixed AtlasV8 --um 10 --task register_volume
+           cp -vi MD594/MD594_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
+           python src/registration/scripts/create_registration.py --moving MD594 --fixed AtlasV8 --um 10 --task register_volume
         4. Run the register_volume method to register each brain to the AtlasV8 volume.
 
         Using just a rigid transform on the above 3 brains works well in aligned the COMs, but the spinal cord and ocular are off a bit.
