@@ -17,7 +17,7 @@ import pandas as pd
 import cv2
 import json
 
-from library.atlas.atlas_utilities import adjust_volume, average_images, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, average_images, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -778,24 +778,22 @@ class VolumeRegistration:
 
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.0"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["1.0"]) # the weight of 2nd metric
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-            print(f'moving point path={moving_point_path}')
-            print(f'fixed point path={fixed_point_path}')
         else:
             print(f'Fixed point path {fixed_point_path} or \nmoving point path {moving_point_path} do not exist')
 
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
+        #elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-        elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
-        elastixImageFilter.SetParameter("ComputeZYX", "true")
+        #elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
+        #elastixImageFilter.SetParameter("ComputeZYX", "true")
         elastixImageFilter.SetParameter("DefaultPixelValue", "0")
         elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
@@ -842,7 +840,7 @@ class VolumeRegistration:
             to the console for debugging purposes.
         """
 
-        brains = ['MD585', 'MD594', 'MD589', 'AtlasV8']
+        brains = ['MD585', 'MD594', 'MD589', 'AtlasV8', ]
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
         number_of_coms = {}
         for brain in tqdm(brains, desc='Validating brain coms'):
@@ -874,6 +872,47 @@ class VolumeRegistration:
                         print(f'{brain=} {x/self.um} {y/self.um} {z/self.um}')
                     f.write('\n')
 
+    def create_moving_fixed_points(self):
+        if self.fixed is None or self.moving is None:
+            print('Specify both moving and fixed brains, exiting')
+            sys.exit()
+
+
+        moving_all = list_coms(self.moving, scaling_factor=self.um)
+        fixed_all = list_coms(self.fixed, scaling_factor=self.um)
+
+        bad_keys = ('RtTg', 'AP')
+
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+
+        moving_src = {k:moving_all[k] for k in good_keys}
+        fixed_src = {k:fixed_all[k] for k in good_keys}
+        print(f'Found {len(good_keys)} common keys')
+        moving_file_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_{self.um}um_{self.orientation}.pts')
+        fixed_file_path = os.path.join(self.registration_path, self.fixed, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
+        moving_file = open(moving_file_path, "w")
+        fixed_file = open(fixed_file_path, "w")
+        moving_file.write('point\n')
+        moving_file.write(f'{len(good_keys)}\n')
+        fixed_file.write('point\n')
+        fixed_file.write(f'{len(good_keys)}\n')
+        
+        for (mk,mv),(fk,fv) in zip(moving_src.items(), fixed_src.items()):
+            if mk != fk:
+                print(f'Error, moving key {mk} does not match fixed key {fk}')
+                continue
+            mx, my, mz = mv
+            fx, fy, fz = fv
+            moving_file.write(f'{mx} {my} {mz}')
+            moving_file.write('\n')
+            fixed_file.write(f'{fx} {fy} {fz}')
+            fixed_file.write('\n')
+            print(f'{fk} {fv}\t{mv}')
+        moving_file.close()
+        fixed_file.close()
+
+
     def create_average_volume(self):
         volumes = {}
         moving_brains = ['MD585', 'MD594', 'MD589']
@@ -890,6 +929,7 @@ class VolumeRegistration:
         resampled_images = [resample_image(img, reference_image) for img in images]
         registered_images = [register_volume(img, reference_image, "500", "0") for img in resampled_images if img != reference_image]
         avg_array = np.mean(registered_images, axis=0)
+        avg_array = gaussian(avg_array, sigma=1)
         savepath = os.path.join(self.registration_path, 'AtlasV8')
         save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')

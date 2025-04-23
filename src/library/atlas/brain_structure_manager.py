@@ -64,15 +64,15 @@ class BrainStructureManager:
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
 
         self.debug = debug
-        self.allen_um = um  # size in um of allen atlas
+        self.um = um  # size in um of allen atlas
         self.com = None
         self.origin = None
         self.volume = None
         self.abbreviation = None
-        self.pad_z = 40
+        self.pad_z = 0 # set to 40 to make nice rounded edges on the big structures
 
         self.affine = affine
-        self.atlas_box_scales = np.array((self.allen_um, self.allen_um, self.allen_um))
+        self.atlas_box_scales = np.array((self.um, self.um, self.um))
 
         self.allen_x_length = 1820
         self.allen_y_length = 1000
@@ -173,17 +173,17 @@ class BrainStructureManager:
 
             #if annotation_session.id not in [8113, 7387]:
             #    continue
-            if animal not in ['DK78']:
+            if animal not in ['DK78XXX']:
                 continue
 
             # polygons are in micrometers
-            polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.allen_um)
+            polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
             if len(polygons) < 10:
                 continue
 
             origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
             # we want to keep the origin in micrometers, so we multiply by the allen um
-            #####origin = origin * self.allen_um
+            #####origin = origin * self.um
 
             if origin is None or volume is None:
                 print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
@@ -193,7 +193,7 @@ class BrainStructureManager:
             volume = gaussian(volume, 1.0)
             volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
             volume = volume.astype(np.uint8)
-            com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.allen_um + (origin * self.allen_um)
+            com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.um + (origin * self.um)
             print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
 
             if not debug:
@@ -334,8 +334,8 @@ class BrainStructureManager:
 
         ### test using aligned images from foundation brain
         if 'MD' in self.animal:
-            xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.allen_um
-            z_resolution = self.sqlController.scan_run.zresolution / self.allen_um
+            xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
+            z_resolution = self.sqlController.scan_run.zresolution / self.um
             input_path = os.path.join(self.fileLocationManager.prep, "C1", "thumbnail_aligned")
             image_manager = ImageManager(input_path)
             self.atlas_box_size = image_manager.volume_size
@@ -346,12 +346,13 @@ class BrainStructureManager:
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.com_path}")
         coms = sorted(os.listdir(self.com_path))
+        origins = sorted(os.listdir(self.origin_path))
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
             print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(coms)} coms/volumes from {self.origin_path}")
+        print(f"Working with {len(coms)} coms/volumes from {self.com_path}")
         ids = {}
         if self.affine:
             moving_name = 'AtlasV8'
@@ -365,7 +366,7 @@ class BrainStructureManager:
             fixed_src = np.array([fixed_all[s] for s in good_keys])
             transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
 
-        for com_file, volume_file in zip(coms, volumes):
+        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(com_file).stem != Path(volume_file).stem:
                 print(f"{Path(com_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
@@ -378,8 +379,11 @@ class BrainStructureManager:
                 sys.exit()
 
             com0 = np.loadtxt(os.path.join(self.com_path, com_file))
+            # origin0 is already in 10um space
+            origin0 = np.loadtxt(os.path.join(self.origin_path, origin_file))
             # com0 is in micrometers, so convert to allen space
-            com0 = com0 / self.allen_um
+            com0 = com0 / self.um
+
             volume = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
                 volume = np.rot90(volume, axes=(0, 1))
@@ -396,9 +400,13 @@ class BrainStructureManager:
             #if 'TG' in structure:
             #    com = com0
 
-            x_start = int(com[0] - COM[0])
-            y_start = int(com[1] - COM[1])
-            z_start = int(com[2] - COM[2])
+            #x_start = int(com[0] - COM[0])
+            #y_start = int(com[1] - COM[1])
+            #z_start = int(com[2] - COM[2])
+
+            x_start = int(origin0[0])
+            y_start = int(origin0[1])
+            z_start = int(origin0[2])
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
@@ -465,7 +473,7 @@ class BrainStructureManager:
                     structure = file.replace(".txt", "")
                     self.update_database_com(animal, structure, com, 1)
 
-    def update_atlas_volumes(self) -> None:
+    def update_volumes(self) -> None:
 
 
         com_path = os.path.join(self.data_path, self.animal, "com")
@@ -502,8 +510,8 @@ class BrainStructureManager:
 
         atlas_volume, ids = self.create_atlas_volume()
         if not self.debug:
-            outpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.allen_um}um_sagittal.tif"
-            midpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.allen_um}um_midpath.tif"
+            outpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.um}um_sagittal.tif"
+            midpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.um}um_midpath.tif"
 
             if os.path.exists(outpath):
                 print(f"Removing {outpath}")
@@ -546,7 +554,7 @@ class BrainStructureManager:
 
         if not self.debug:
             aligned = "aligned" if self.affine else "unaligned"
-            atlas_name = f"DK.{self.animal}.{aligned}.{self.allen_um}um"
+            atlas_name = f"DK.{self.animal}.{aligned}.{self.um}um"
             structure_path = os.path.join(self.structure_path, atlas_name)
             if os.path.exists(structure_path):
                 if 'tobor' in get_hostname() or 'mothra' in get_hostname():
@@ -592,6 +600,7 @@ class BrainStructureManager:
         for structure in tqdm(structures, desc=desc, disable=debug):
             polygons = aligned_dict[structure]
             origin0, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+            self.create_polygons_from_one_structure(structure, polygons)
             pads = np.array([0, 0, self.pad_z])
             com0 = center_of_mass(np.swapaxes(volume, 0, 2)) - pads + origin0
 
@@ -601,8 +610,8 @@ class BrainStructureManager:
             origin_um = origin0 * scale0 # origin in um
 
             # we want the volume and origin scaled to 10um, so adjust the above scale
-            scale_allen = scale0 / self.allen_um
-            origin_allen = origin_um / self.allen_um
+            scale_allen = scale0 / self.um
+            origin_allen = origin_um / self.um
             volume = np.swapaxes(volume, 0, 2) # put into x,y,z order
             volume_allen = zoom(volume, scale_allen)
 
@@ -610,7 +619,7 @@ class BrainStructureManager:
                 if structure == 'SC':
                     print(f"ID={animal} {structure} com={np.round(com_um)}um", end=" ")
                     print(f"origin0={np.round(origin0)} origin um={np.round(origin_um)}um \
-                        origin allen(10um)={np.round(origin_allen)} com allen{np.round(com_um/self.allen_um)}")
+                        origin allen(10um)={np.round(origin_allen)} com allen{np.round(com_um/self.um)}")
             else:
                 brainMerger.coms[structure] = com_um
                 brainMerger.origins[structure] = origin_allen
@@ -887,10 +896,10 @@ class BrainStructureManager:
             structure = Path(origin_file).stem
             com_um = np.loadtxt(os.path.join(com_path, com_file))
             origin_allen = np.loadtxt(os.path.join(origin_path, origin_file))
-            origin_um = origin_allen * self.allen_um
+            origin_um = origin_allen * self.um
             volume_allen = np.load(os.path.join(volume_path, volume_file))
             com_allen = center_of_mass(volume_allen)
-            test_com = (origin_allen + com_allen) * self.allen_um
+            test_com = (origin_allen + com_allen) * self.um
             difference = com_um - test_com
             if structure == 'SC':
                 print(f"{self.animal} {structure} com={np.round(com_um)}um origin um={np.round(origin_um)} COM={np.round(com_allen)} diff={difference}")
@@ -936,6 +945,157 @@ class BrainStructureManager:
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
         return origin, volume
 
+    def fetch_create_polygons(self):    
+        jsonpath = os.path.join(
+            self.data_path, self.animal, "aligned_padded_structures.json"
+        )
+        if not os.path.exists(jsonpath):
+            print(f"{jsonpath} does not exist")
+            sys.exit()
+        with open(jsonpath) as f:
+            aligned_dict = json.load(f)
+        
+        structures = list(aligned_dict.keys())
+        desc = f"Create {self.animal} polygons"
+        for structure in structures:
+            polygons = aligned_dict[structure]
+            self.create_polygons_from_one_structure(structure, polygons)
+
+
+
+    def create_polygons_from_one_structure(self, structure, polygons):
+        """Creates a volume from a dictionary of polygons
+        The polygons are in the form of {section: [x,y]}
+        """
+        xy_resolution = self.sqlController.scan_run.resolution
+        zresolution = self.sqlController.scan_run.zresolution
+
+        
+        default_props = ["#ff0000", 1, 1, 5, 3, 1]
+
+        reformatted_polygons = []
+        centroids = []
+        counter = 0
+        test_redundant_z = []
+        for z_index, (section, points) in enumerate(sorted(polygons.items())):
+            section = int(section)
+            points = get_evenly_spaced_vertices(points)
+            vertices = np.array(points)
+            if len(vertices) == 0:
+                continue
+            new_lines = []
+            new_polygon = {}
+            parentAnnotationId = random_string()
+            points = []
+            for i in range(len(vertices)):
+                try:
+                    xa,ya = vertices[i]
+                except ValueError:
+                    continue
+                try:
+                    xb,yb = vertices[i+1]
+                except IndexError:
+                    xb,yb = vertices[0]
+                except ValueError as ve:
+                    print(f"Value Error B with {structure} {ve}")
+                    continue
+
+                xa = xa * xy_resolution * SCALING_FACTOR / M_UM_SCALE
+                ya = ya * xy_resolution * SCALING_FACTOR / M_UM_SCALE
+                # neuroglancer uses another 0.5 for the z axis
+                z =  (section + 0.5) * zresolution / M_UM_SCALE
+                xb = xb * xy_resolution * SCALING_FACTOR / M_UM_SCALE
+                yb = yb * xy_resolution * SCALING_FACTOR / M_UM_SCALE
+
+                pointA = [xa, ya, z]
+                pointB = [xb, yb, z]
+                
+                new_line = {
+                    "pointA": pointA,
+                    "pointB": pointB,
+                    "type": "line",
+                    "parentAnnotationId": parentAnnotationId,
+                    "props": default_props
+                }
+                new_lines.append(new_line)
+                points.append(pointA)
+                counter += 1
+
+            current_z = section
+            test_redundant_z.append(current_z)
+            try:
+                pre_z = test_redundant_z[z_index-1]
+            except IndexError:
+                pre_z = current_z
+            
+            if current_z != pre_z:
+                # polygon keys
+                parentAnnotationId = random_string()
+                new_polygon["source"] = points[0]
+                new_polygon["centroid"] = np.mean(points, axis=0).tolist()
+                new_polygon["childrenVisible"] = True
+                new_polygon["type"] = "polygon"
+                new_polygon["parentAnnotationId"] = parentAnnotationId
+                new_polygon["description"] = f"{structure}"
+                new_polygon["props"] = default_props
+                new_polygon["childJsons"] = new_lines
+
+                centroids.append(new_polygon["centroid"])
+                reformatted_polygons.append(new_polygon)
+
+                if self.debug:
+                    print(f'len of points={len(points)} at {section=}', end=" ")
+                    centroid = new_polygon["centroid"]
+                    pixel_point = centroid
+                    #pixel_point = [round(v * M_UM_SCALE / self.um) for v in centroid]
+                    print(f"Centroid of {structure} slice={pixel_point}")
+
+        # Create the annotation dictionary
+        # volume keys=['type', 'props', 'source', 'centroid', 'childJsons', 'description']
+        # create the childJsons dictionary
+        json_entry = {}
+        json_entry["type"] = "volume"
+        json_entry["props"] = default_props
+        json_entry["source"] = centroids[0]
+        json_entry["centroid"] = np.mean(centroids, axis=0).tolist()
+        json_entry["childJsons"] = reformatted_polygons
+        json_entry["description"] = f"{structure}"   
+
+        if self.debug:
+            centroid = json_entry["centroid"]
+            cx = centroid[0] / xy_resolution
+            cy = centroid[1] / xy_resolution
+            cz = centroid[2] / zresolution
+            print(f"Centroid of {structure}={cx, cy, cz}", end=" ")
+            print(f'total vertices={counter}', end=" ")
+            print(f"len of centroids={len(centroids)} len of polygons={len(polygons)} len of reformatted_polygons={len(reformatted_polygons)}")
+        else:
+            annotator_id = 1 # hard coded to Edward 
+            label_ids = self.get_label_ids(structure)
+
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_prep_id == self.animal)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                .filter(AnnotationSession.annotation["type"] == "volume")
+                .one_or_none()
+            )
+
+            if annotation_session is None:
+                print(f"Inserting {structure}")
+                self.sqlController.insert_annotation_with_labels(
+                    FK_user_id=annotator_id,
+                    FK_prep_id=self.animal,
+                    annotation=json_entry,
+                    labels=[structure])
+            else:                
+                update_dict = {'annotation': json_entry}
+                print(f'Updating session {annotation_session.id} with {structure}')
+                self.sqlController.update_session(annotation_session.id, update_dict=update_dict)
+
+
     def upsert_annotation_volume(self, structure, origin, volume):
         """
         {
@@ -946,10 +1106,14 @@ class BrainStructureManager:
             'props': ['#00ff59', 1, 1, 10, 3, 1]}
         
         """
+        if self.debug:
+            if structure != "SC":
+                return
         
-        volume = adjust_volume(volume, 255)
-        xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
+        if volume.dtype == np.float32:
+            volume = adjust_volume(volume, 255)
+        
         default_props = ["#ff0000", 1, 1, 5, 3, 1]
         description = structure
 
@@ -958,8 +1122,9 @@ class BrainStructureManager:
         counter = 0
         volume = np.rot90(volume, axes=(0, 1))
         volume = np.flip(volume, axis=0)
-
+        test_redundant_z = []
         for z in range(volume.shape[2]):
+
             slice = volume[:, :, z].astype(np.uint8)
             vertices = get_evenly_spaced_vertices(slice, structure)
             if len(vertices) == 0:
@@ -968,7 +1133,7 @@ class BrainStructureManager:
             new_polygon = {}
             parentAnnotationId = random_string()
             points = []
-            for i, point in enumerate(vertices):
+            for i in range(len(vertices)):
                 try:
                     xa,ya = vertices[i]
                 except ValueError:
@@ -983,14 +1148,14 @@ class BrainStructureManager:
                     continue
                 xa += origin[0]
                 ya += origin[1]
-                za = z + origin[2] - self.pad_z / self.allen_um
+                za = int(round(z + origin[2])) - self.pad_z * 2
                 
                 xb += origin[0]
                 yb += origin[1]
-                zb = z + origin[2] - self.pad_z / self.allen_um
+                zb = int(round(z + origin[2])) - self.pad_z * 2
 
-                xa,ya,za = [xa / M_UM_SCALE * xy_resolution, ya / M_UM_SCALE * xy_resolution, za / M_UM_SCALE * z_resolution]
-                xb,yb,zb = [xb / M_UM_SCALE * xy_resolution, yb / M_UM_SCALE * xy_resolution, zb / M_UM_SCALE * z_resolution]
+                xa,ya,za = [xa / M_UM_SCALE * self.um, ya / M_UM_SCALE * self.um, za / M_UM_SCALE * self.um]
+                xb,yb,zb = [xb / M_UM_SCALE * self.um, yb / M_UM_SCALE * self.um, zb / M_UM_SCALE * self.um]
                 pointA = [xa, ya, za]
                 pointB = [xb, yb, zb]
                 new_line = {
@@ -1004,28 +1169,34 @@ class BrainStructureManager:
                 points.append(pointA)
                 counter += 1
 
-            # polygon keys
-            parentAnnotationId = random_string()
-            new_polygon["source"] = points[0]
-            new_polygon["centroid"] = np.mean(points, axis=0).tolist()
-            new_polygon["childrenVisible"] = True
-            new_polygon["type"] = "polygon"
-            new_polygon["parentAnnotationId"] = parentAnnotationId
-            new_polygon["description"] = f"{description}"
-            new_polygon["props"] = default_props
-            new_polygon["childJsons"] = new_lines
+            test_z = int(round(za * M_UM_SCALE / z_resolution))
+            test_redundant_z.append(test_z)
+            current_z = test_z
+            try:
+                pre_z = test_redundant_z[z-1]
+            except IndexError:
+                pre_z = current_z
 
-            centroids.append(new_polygon["centroid"])
-            reformatted_polygons.append(new_polygon)
+            if pre_z != current_z:
+                # polygon keys
+                parentAnnotationId = random_string()
+                new_polygon["source"] = points[0]
+                new_polygon["centroid"] = np.mean(points, axis=0).tolist()
+                new_polygon["childrenVisible"] = True
+                new_polygon["type"] = "polygon"
+                new_polygon["parentAnnotationId"] = parentAnnotationId
+                new_polygon["description"] = f"{description}"
+                new_polygon["props"] = default_props
+                new_polygon["childJsons"] = new_lines
 
-            if self.debug:
-                pass
-                #print(f'len of points={len(points)}', end=" ")
-                x,y,section = new_polygon["centroid"]
-                pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
-                pixel_point = [round(x) for x in pixel_point]
-                #print(f"Centroid of {structure} slice={pixel_point}")
+                centroids.append(new_polygon["centroid"])
+                reformatted_polygons.append(new_polygon)
 
+                if self.debug:
+                    print(f'len of points={len(points)} at {z=}', end=" ")
+                    centroid = new_polygon["centroid"]
+                    pixel_point = [round(v * M_UM_SCALE / self.um) for v in centroid]
+                    print(f"Centroid of {structure} slice={pixel_point}")
 
         # Create the annotation dictionary
         # volume keys=['type', 'props', 'source', 'centroid', 'childJsons', 'description']
@@ -1042,12 +1213,29 @@ class BrainStructureManager:
 
 
         if self.debug:
-            x,y,section = json_entry["centroid"]
-            pixel_point = [x * M_UM_SCALE / xy_resolution, y * M_UM_SCALE / xy_resolution, section * M_UM_SCALE / z_resolution]
-            pixel_point = [round(x) for x in pixel_point]
+            centroid = json_entry["centroid"]
+            pixel_point = [round(v * M_UM_SCALE / self.um) for v in centroid]
             print(f"Centroid of {structure}={pixel_point}", end=" ")
             print(f'total vertices={counter}', end=" ")
             print(f"len of centroids={len(centroids)}")
+            test_z = len(reformatted_polygons) // 2
+            test_polygon0 = reformatted_polygons[test_z-1]['childJsons']
+            test_polygon1 = reformatted_polygons[test_z]['childJsons']
+            test_polygon2 = reformatted_polygons[test_z+1]['childJsons']
+            for polygon in test_polygon0:
+                data = np.array(polygon['pointA'])
+                data = np.round(data * M_UM_SCALE / 20)
+                print(data)
+            print()
+            for polygon in test_polygon1:
+                data = np.array(polygon['pointA'])
+                data = np.round(data * M_UM_SCALE / 20)
+                print(data)
+            print()
+            for polygon in test_polygon2:
+                data = np.array(polygon['pointA'])
+                data = np.round(data * M_UM_SCALE / 20)
+                print(data)
         else:
             annotator_id = 1 # hard coded to Edward 
             label_ids = self.get_label_ids(structure)

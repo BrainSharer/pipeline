@@ -72,6 +72,7 @@ class AtlasManager():
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"{self.task} took {total_elapsed_time} seconds")
 
+
     def merge_all(self):
         """
         # 3rd step, this merges the volumes and origins from the foundation brains into the new atlas
@@ -148,11 +149,12 @@ if __name__ == '__main__':
                         'neuroglancer': pipeline.brainManager.create_neuroglancer_volume,
                         'save_atlas': pipeline.brainManager.save_atlas_volume,
                         'update_coms': pipeline.brainManager.update_atlas_coms,
-                        'update_volumes': pipeline.brainManager.update_atlas_volumes,
+                        'update_volumes': pipeline.brainManager.update_volumes,
                         'list_coms': pipeline.brainManager.list_coms_by_atlas,
                         'validate': pipeline.brainManager.validate_volumes,
                         'evaluate': pipeline.brainManager.evaluate,
-                        'status': pipeline.brainManager.report_status
+                        'status': pipeline.brainManager.report_status,
+                        'polygons': pipeline.brainManager.fetch_create_polygons
     }
 
     if task in function_mapping:

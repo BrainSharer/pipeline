@@ -1,3 +1,4 @@
+import math
 import os
 from pathlib import Path
 import sys
@@ -52,7 +53,7 @@ def affine_transform_volume(volume, matrix):
     if matrix.shape != (4, 4):
         raise ValueError("Matrix must be a 4x4 numpy array")
     translation = (matrix[..., 3][0:3])
-    translation = 0
+    #translation = 0
     matrix = matrix[:3, :3]
     transformed_volume = affine_transform(volume, matrix, offset=translation, order=1)
     return transformed_volume
@@ -365,7 +366,7 @@ def itk_rigid_euler():
 import numpy as np
 import cv2
 
-def get_evenly_spaced_vertices(mask, structure, num_points=20):
+def get_evenly_spaced_vertices_from_volume(mask, num_points=20):
     """
     This function was made entirely from ChatGTP
     Given a binary mask, extract the outer contour and return evenly spaced vertices along the edge.
@@ -421,7 +422,51 @@ def get_evenly_spaced_vertices(mask, structure, num_points=20):
 
     return vertices
 
+def get_evenly_spaced_vertices(vertices: list, num_points=20) -> np.ndarray:
+    """
+    Returns a specified number of evenly spaced points along the perimeter of a polygon.
 
+    Args:
+        vertices (list of tuple): List of (x, y) tuples representing the polygon vertices.
+        num_points (int): The number of evenly spaced points to return.
+
+    Returns:
+        list of tuple: List of (x, y) tuples representing the evenly spaced points.
+    """
+    # Close the polygon if it's not already closed
+    if vertices[0] != vertices[-1]:
+        vertices.append(vertices[0])
+
+    # Calculate distances between consecutive vertices
+    distances = [np.linalg.norm(np.subtract(vertices[i+1], vertices[i])) for i in range(len(vertices)-1)]
+    perimeter = sum(distances)
+
+    # Total length between each evenly spaced point
+    step = perimeter / num_points
+
+    # Generate points
+    result = []
+    current_distance = 0
+    i = 0
+    while len(result) < num_points:
+        start = np.array(vertices[i])
+        end = np.array(vertices[i+1])
+        segment_length = distances[i]
+
+        while current_distance + segment_length >= len(result) * step:
+            t = ((len(result) * step) - current_distance) / segment_length
+            point = start + t * (end - start)
+            result.append(tuple(point))
+
+            if len(result) == num_points:
+                break
+
+        current_distance += segment_length
+        i += 1
+        if i >= len(distances):  # Safety break in case of rounding issues
+            break
+
+    return result
 
 """Below are some functions that might come in handy later"""
 def filter_top_n_values(volume: np.ndarray, n: int, set_value: int = 1) -> np.ndarray:
