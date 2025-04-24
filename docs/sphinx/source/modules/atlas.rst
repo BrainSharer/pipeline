@@ -13,6 +13,7 @@ This python code contains utility methods related to:
    :hidden:
 
    library/atlas/atlas_creation_process.rst
+   library/atlas/structure_enhancement_process.rst
 
 
 
