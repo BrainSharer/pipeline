@@ -963,6 +963,7 @@ class BrainStructureManager:
 
 
 
+
     def create_polygons_from_one_structure(self, structure, polygons):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}

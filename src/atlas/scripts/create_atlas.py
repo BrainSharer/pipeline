@@ -154,7 +154,7 @@ if __name__ == '__main__':
                         'validate': pipeline.brainManager.validate_volumes,
                         'evaluate': pipeline.brainManager.evaluate,
                         'status': pipeline.brainManager.report_status,
-                        'polygons': pipeline.brainManager.fetch_create_polygons
+                        'polygons': pipeline.brainManager.fetch_create_polygons,
     }
 
     if task in function_mapping:

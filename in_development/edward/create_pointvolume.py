@@ -17,8 +17,10 @@ import numpy as np
 import gzip
 
 
-PIPELINE_ROOT = Path('./pipeline').absolute()
+PIPELINE_ROOT = Path('./').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
+print(PIPELINE_ROOT)
+sys.exit()
 
 from Controllers.MarkedCellController import MarkedCellController
 from Controllers.SqlController import SqlController
