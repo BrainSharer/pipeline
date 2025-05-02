@@ -31,21 +31,41 @@ from library.image_manipulation.filelocation_manager import FileLocationManager,
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 
-def create_points(animal):
+def create_points(animal, scaling_factor=32, debug=False):
     fileLocationManager = FileLocationManager(animal)
     sqlController = SqlController(animal)
     coordinates = []
-    w = sqlController.scan_run.width//32
-    h = sqlController.scan_run.height//32
-    z = 10
-    chunk_size = [w, h, z]
-    for i in range(z):
-        for j in range(0, w):
-            x = 10
-            y = 10
-            coordinates.append([x, y, i])
-    print(f'length of coordinates: {len(coordinates)}')
+    session_id = 8061    
+    fileLocationManager = FileLocationManager(animal)
+    sqlController = SqlController(animal)
+    w = sqlController.scan_run.width//scaling_factor
+    h = sqlController.scan_run.height//scaling_factor
+    z_length = 440
 
+    polygons = sqlController.get_annotation_volume(session_id, scaling_factor=1)
+    xyresolution = sqlController.scan_run.resolution / scaling_factor
+    zresolution = sqlController.scan_run.zresolution
+    print(f'{xyresolution=}, {zresolution=}')
+
+    path = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0')
+    if os.path.exists(path):
+        print(f'Removing existing directory {path}')
+        shutil.rmtree(path)
+    os.makedirs(path, exist_ok=True)
+    
+    coordinates = []
+    for section, points  in polygons.items():
+        converted_points = [(p[0]/xyresolution, p[1]/xyresolution) for p in points]
+        z = int(round(section / zresolution))
+        if debug:
+            print(f'{z=} {converted_points[0]=}')
+        for point in converted_points:
+            x, y = point
+            coordinates.append([x, y, z])
+    points = np.array(coordinates)
+
+    print(f'length of coordinates: {len(coordinates)} {points.shape=} mean={np.mean(points, axis=0)}')
+    
     spatial_dir = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0', 'spatial0')
     info_dir = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0')
     if os.path.exists(info_dir):
@@ -81,7 +101,7 @@ def create_points(animal):
     info = {}
     spatial = {}
     properties = {}
-    spatial["chunk_size"] = chunk_size
+    spatial["chunk_size"] = (w,h, z_length)
     spatial["grid_shape"] = [1, 1, 1]
     spatial["key"] = "spatial0"
     spatial["limit"] = 10000
@@ -91,11 +111,11 @@ def create_points(animal):
     info["@type"] = "neuroglancer_annotations_v1"
     info["annotation_type"] = "POINT"
     info["by_id"] = {"key":"spatial0"}
-    info["dimensions"] = {"x":[str(14),"um"],
-                        "y":[str(14),"um"],
-                        "z":[str(20),"um"]}
+    info["dimensions"] = {"x":[str(xyresolution*1000),"um"],
+                        "y":[str(xyresolution*1000),"um"],
+                        "z":[str(int(zresolution)),"um"]}
     info["lower_bound"] = [0,0,0]
-    info["upper_bound"] = chunk_size
+    info["upper_bound"] = (w,h,z)
     info["properties"] = [properties]
     info["relationships"] = []
     info["spatial"] = [spatial]    
@@ -223,6 +243,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--animal', help='Enter the animal', required=True)
     parser.add_argument('--session_id', help='Session ID', required=False, default=1)
+    parser.add_argument('--scaling_factor', help='scaling factor', required=True, default=32)
     parser.add_argument('--layer', help='layer', required=False, default='test_layer')
     parser.add_argument('--debug', help='print info', required=False, default='true')
 
@@ -230,7 +251,8 @@ if __name__ == '__main__':
     animal = args.animal
     layer = args.layer
     session_id = int(args.session_id)
+    scaling_factor = int(args.scaling_factor)
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
-    #create_points(animal)
-    create_cloud_volume(animal)
+    create_points(animal, scaling_factor, debug)
+    #create_cloud_volume(animal)
 
