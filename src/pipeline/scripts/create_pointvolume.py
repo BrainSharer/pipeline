@@ -43,9 +43,8 @@ def create_points(animal, scaling_factor=32, debug=False):
     z_length = 440
 
     polygons = sqlController.get_annotation_volume(session_id, scaling_factor=1)
-    xyresolution = sqlController.scan_run.resolution / scaling_factor
+    xyresolution = sqlController.scan_run.resolution
     zresolution = sqlController.scan_run.zresolution
-    print(f'{xyresolution=}, {zresolution=}')
 
     path = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0')
     if os.path.exists(path):
@@ -54,17 +53,22 @@ def create_points(animal, scaling_factor=32, debug=False):
     os.makedirs(path, exist_ok=True)
     
     coordinates = []
+
     for section, points  in polygons.items():
-        converted_points = [(p[0]/xyresolution, p[1]/xyresolution) for p in points]
+        converted_points = [(p[0]/xyresolution/scaling_factor, p[1]/xyresolution/scaling_factor) for p in points]
         z = int(round(section / zresolution))
         if debug:
             print(f'{z=} {converted_points[0]=}')
         for point in converted_points:
             x, y = point
-            coordinates.append([x, y, z])
-    points = np.array(coordinates)
+            coordinates.append((int(x), int(y), int(z)))
 
-    print(f'length of coordinates: {len(coordinates)} {points.shape=} mean={np.mean(points, axis=0)}')
+    coordinates = coordinates[:10]
+    points = np.array(coordinates)
+    shape = (w, h, z_length)
+
+
+    print(f'length of coordinates: {len(coordinates)} {points.shape=} mean={np.mean(points, axis=0)} {shape=}')
     
     spatial_dir = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0', 'spatial0')
     info_dir = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0')
@@ -74,48 +78,53 @@ def create_points(animal, scaling_factor=32, debug=False):
     os.makedirs(spatial_dir, exist_ok=True)
     point_filename = os.path.join(spatial_dir, '0_0_0.gz')
     info_filename = os.path.join(info_dir, 'info')
-    """
-    with open(point_filename, 'wb') as outfile:
-        buf = struct.pack('<Q', len(coordinates))
-        pt_buf = b''.join(struct.pack('<3f', x, y, z) for (x, y, z) in coordinates)
-        buf += pt_buf
-        id_buf = struct.pack('<%sQ' % len(coordinates), *range(len(coordinates)))
-        #struct.pack('<4f4BH2B', x, y, z, cell_size, r, g, b, a, cell_type, 0, 0)
-        buf += id_buf
-        bufout = gzip.compress(buf)
-        outfile.write(bufout)
-#        struct.pack('<4f4BH2B', x, y, z, cell_size, r, g, b, a, cell_type, 0, 0)
-    """
+    
     with open(point_filename,'wb') as outfile:
         total_count=len(coordinates) # coordinates is a list of tuples (x,y,z) 
         buf = struct.pack('<Q',total_count)
+        
         for (x,y,z) in coordinates:
+            #print(x,y,z)
             pt_buf = struct.pack('<3f',x,y,z)
             buf+=pt_buf
+
         # write the ids at the end of the buffer as increasing integers 
         id_buf = struct.pack('<%sQ' % len(coordinates), *range(len(coordinates)))
         buf+=id_buf
         bufout = gzip.compress(buf)
         outfile.write(bufout)
+    
+
+    #junk1 = "len coords = %s" % len(coordinates)
+    #print(f'{junk1=}')
+    #print(*range(len(coordinates)))
+    #return
 
     info = {}
     spatial = {}
     properties = {}
-    spatial["chunk_size"] = (w,h, z_length)
+    spatial["chunk_size"] = (1,1,1)
     spatial["grid_shape"] = [1, 1, 1]
     spatial["key"] = "spatial0"
     spatial["limit"] = 10000
-    properties["id"] = "joe"
-    properties["type"] = "uint16"
+    properties["id"] = "color"
+    properties["type"] = "rgb"
+    properties["default"] = "red"
+    properties["id"] = "size"
+    properties["type"] = "float32"
+    properties["default"] = "10"
+    properties["id"] = "p_uint8"
+    properties["type"] = "int8"
+    properties["default"] = "10"
 
     info["@type"] = "neuroglancer_annotations_v1"
     info["annotation_type"] = "POINT"
-    info["by_id"] = {"key":"spatial0"}
-    info["dimensions"] = {"x":[str(xyresolution*1000),"um"],
-                        "y":[str(xyresolution*1000),"um"],
+    info["by_id"] = {"key":"by_id"}
+    info["dimensions"] = {"x":[str(xyresolution/scaling_factor*1000),"um"],
+                        "y":[str(xyresolution/scaling_factor*1000),"um"],
                         "z":[str(int(zresolution)),"um"]}
     info["lower_bound"] = [0,0,0]
-    info["upper_bound"] = (w,h,z)
+    info["upper_bound"] = shape
     info["properties"] = [properties]
     info["relationships"] = []
     info["spatial"] = [spatial]    
