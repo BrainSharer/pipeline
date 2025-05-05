@@ -12,6 +12,7 @@ import struct
 import sys
 import shutil
 from pathlib import Path
+import cv2
 import pandas as pd
 import numpy as np
 import gzip
@@ -103,7 +104,7 @@ def create_points(animal, scaling_factor=32, debug=False):
     info = {}
     spatial = {}
     properties = {}
-    spatial["chunk_size"] = (1,1,1)
+    spatial["chunk_size"] = shape
     spatial["grid_shape"] = [1, 1, 1]
     spatial["key"] = "spatial0"
     spatial["limit"] = 10000
@@ -142,38 +143,33 @@ def create_cloud_volume(animal):
     fileLocationManager = FileLocationManager(animal)
     sqlController = SqlController(animal)
     polygons = sqlController.get_annotation_volume(session_id, scaling_factor=1)
-    xyresolution = sqlController.scan_run.resolution / scaling_factor
+    xyresolution = sqlController.scan_run.resolution
     zresolution = sqlController.scan_run.zresolution
 
-    w = sqlController.scan_run.width//32
-    h = sqlController.scan_run.height//32
+    w = sqlController.scan_run.width//scaling_factor
+    h = sqlController.scan_run.height//scaling_factor
+    z_length = len(os.listdir(fileLocationManager.get_directory(channel=1, downsample=True, inpath='aligned')))
     path = os.path.join(fileLocationManager.neuroglancer_data, 'predictions0')
     if os.path.exists(path):
         print(f'Removing existing directory {path}')
         shutil.rmtree(path)
     os.makedirs(path, exist_ok=True)
     
-    shape = (w, h, 440)  # Shape of your volume
-    coordinates = []
+    shape = (w, h, z_length)  # Shape of your volume
+    #coordinates = defaultdict(list)
+    volume = np.zeros(shape, dtype=np.uint8)  # Initialize the volume with zeros
     for section, points  in polygons.items():
-        converted_points = [(p[0]*xyresolution, p[1]*xyresolution) for p in points]
-        section = int(round(section / zresolution))
-        for point in converted_points:
-            x, y = point
-            coordinates.append([x, y, section])
-    print(f'length of coordinates: {len(coordinates)}')
-    points = np.array(coordinates)
+        contour_points = np.array([(p[0]/xyresolution/scaling_factor, p[1]/xyresolution/scaling_factor) for p in points]).astype(np.int32)
+
+        z = int(round(section / zresolution))
+        #coordinates[z].append(converted_points)
+        volume_slice = np.zeros((w, h), dtype=np.uint8)  # Create a slice for the current z
+        cv2.polylines(volume_slice, [contour_points], isClosed=True, color=255, thickness=10)
+        volume[:,:,z] = volume_slice
+
+    xy = (xyresolution*1000)/scaling_factor
+    resolution =(xy, xy, int(zresolution*1000))
     
-    volume = np.zeros(shape, dtype=np.uint8)
-    print(f'volume shape: {volume.shape}')
-    for x, y, z in points:
-        volume[int(z), int(y-1), int(x-1)] = 255
-        volume[int(z), int(y), int(x-1)] = 255
-        volume[int(z), int(y+1), int(x-1)] = 255
-        volume[int(z), int(y), int(x)] = 255
-        volume[int(z), int(y+1), int(x)] = 255
-        volume[int(z), int(y+1), int(x)] = 255
-    resolution = (10000, 10000, 20000)  # Microns per voxel
     info = CloudVolume.create_new_info(
         num_channels=1,
         layer_type='image',  # or 'segmentation' if you're using labels
@@ -262,6 +258,6 @@ if __name__ == '__main__':
     session_id = int(args.session_id)
     scaling_factor = int(args.scaling_factor)
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
-    create_points(animal, scaling_factor, debug)
-    #create_cloud_volume(animal)
+    #create_points(animal, scaling_factor, debug)
+    create_cloud_volume(animal)
 

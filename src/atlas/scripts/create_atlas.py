@@ -114,6 +114,14 @@ class AtlasManager():
         brainManager = BrainStructureManager(self.animal, self.um, self.debug)
         brainManager.test_brain_volumes_and_origins(self.animal)
 
+    def create_precomputed(self):
+        """
+        # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
+        # The output is in /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MDXXX/preps/C1/drawn    
+        """
+        brainManager = BrainStructureManager(self.animal, self.um, self.debug)
+        brainManager.create_cloud_volume()
+
 
 
 if __name__ == '__main__':
@@ -155,6 +163,7 @@ if __name__ == '__main__':
                         'evaluate': pipeline.brainManager.evaluate,
                         'status': pipeline.brainManager.report_status,
                         'polygons': pipeline.brainManager.fetch_create_polygons,
+                        'precomputed': pipeline.create_precomputed,
     }
 
     if task in function_mapping:

@@ -11,6 +11,9 @@ import json
 import pandas as pd
 from scipy.ndimage import center_of_mass, zoom
 from skimage.filters import gaussian
+from cloudvolume import CloudVolume
+from taskqueue import LocalTaskQueue
+import igneous.task_creation as tc
 
 
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
@@ -683,6 +686,78 @@ class BrainStructureManager:
                         )
 
             write_image(outfile, img)
+
+    def create_cloud_volume(self):
+        jsonpath = os.path.join(
+            self.data_path, self.animal, "aligned_padded_structures.json"
+        )
+        if not os.path.exists(jsonpath):
+            print(f"{jsonpath} does not exist")
+            sys.exit()
+        with open(jsonpath) as f:
+            aligned_dict = json.load(f)
+        structures = list(aligned_dict.keys())
+        input_directory = os.path.join(
+            self.fileLocationManager.prep, "C1", "thumbnail_aligned"
+        )
+        if not os.path.exists(input_directory):
+            print(f"{input_directory} does not exist")
+            sys.exit()
+        xyresolution = self.sqlController.scan_run.resolution
+        zresolution = self.sqlController.scan_run.zresolution
+
+        w = int(self.sqlController.scan_run.width//SCALING_FACTOR)
+        h = int(self.sqlController.scan_run.height//SCALING_FACTOR)
+        z_length = len(os.listdir(input_directory))
+        shape = (w, h, z_length)
+
+        drawn_directory = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions0')
+        if os.path.exists(drawn_directory):
+            print(f"Removing {drawn_directory}")
+            shutil.rmtree(drawn_directory)
+        os.makedirs(drawn_directory, exist_ok=True)
+        volume = np.zeros((z_length, h, w), dtype=np.uint8)  # Initialize the volume with zeros
+        desc = f"Drawing on {self.animal} volume={volume.shape}"
+        for z in tqdm(range(volume.shape[0]), desc=desc):
+            volume_slice = np.zeros((h, w), dtype=np.uint8)  # Create a slice for the current z
+            for structure in structures:
+                onestructure = aligned_dict[structure]
+                for section, points in sorted(onestructure.items()):
+                    if int(z) == int(section):
+                        vertices = np.array(points)
+                        points = (vertices).astype(np.int32)
+                        cv2.polylines(volume_slice, [points], isClosed=True, color=255, thickness=2)
+                        #cv2.fillPoly(volume_slice, [points], color=200)
+            volume[z,:,:] = volume_slice
+
+        resolution = int(xyresolution * 1000 * SCALING_FACTOR)
+        #ids, counts = np.unique(volume, return_counts=True)
+        #print(f"Unique ids {ids} counts {counts}")
+        volume = np.swapaxes(volume, 0, 2)          
+        #return
+        scales = (resolution, resolution, int(zresolution * 1000))
+        
+        
+        info = CloudVolume.create_new_info(
+            num_channels=1,
+            layer_type='image',  # or 'segmentation' if you're using labels
+            data_type=np.uint8,   # or 'uint32' for segmentation
+            encoding='raw',
+            resolution=scales,
+            voxel_offset=(0, 0, 0),
+            chunk_size=(32,32,32),
+            #volume_size=volume.shape[::-1],  # x,y,z
+            volume_size=shape,  # x,y,z
+        )
+        tq = LocalTaskQueue(parallel=1)
+
+        vol = CloudVolume(f'file://{drawn_directory}', info=info)
+        vol.commit_info()
+        vol[:,:,:] = volume
+        tasks = tc.create_downsampling_tasks(f'file://{drawn_directory}', mip=0, num_mips=2, compress=True)
+        tq.insert(tasks)
+        tq.execute()
+
 
     ### Imported methods from old build_foundationbrain_aligned data
     def create_clean_transform(self, animal):
