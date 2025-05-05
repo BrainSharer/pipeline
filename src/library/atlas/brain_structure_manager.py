@@ -711,7 +711,7 @@ class BrainStructureManager:
         z_length = len(os.listdir(input_directory))
         shape = (w, h, z_length)
 
-        drawn_directory = os.path.join(self.fileLocationManager.neuroglancer_data, 'predictions0')
+        drawn_directory = os.path.join(self.fileLocationManager.neuroglancer_data, 'structures')
         if os.path.exists(drawn_directory):
             print(f"Removing {drawn_directory}")
             shutil.rmtree(drawn_directory)
