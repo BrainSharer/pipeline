@@ -42,6 +42,11 @@ from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image, get_hostname
 
+from cloudvolume import CloudVolume
+from taskqueue import LocalTaskQueue
+import igneous.task_creation as tc
+import cv2
+
 try:
     from settings import data_path, host, schema
 except ImportError:
@@ -53,7 +58,7 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", debug: bool = False):
+    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -83,6 +88,7 @@ class CellMaker(ParallelManager):
         self.segmentation_threshold = 2000 
         self.cell_radius = 40
         self.ground_truth_filename = 'ground_truth.csv'
+        self.sampling = sampling
 
 
     def report_status(self):
@@ -358,8 +364,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            # if section < 58:
-            #     continue
+            if section < 68 or section > 72: #Song-Mao filter
+                continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -504,7 +510,8 @@ class CellMaker(ParallelManager):
         if debug:
             print(f'dask array created with following parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
-        cuda_available = cp.is_available()
+        #cuda_available = cp.is_available()
+        cuda_available = False
 
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
@@ -599,6 +606,13 @@ class CellMaker(ParallelManager):
             results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(avg_cell_img["CH3"], cell['image_CH3'])
             results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = features_using_center_connected_components(cell, debug=debug)
 
+            #CONVEX HULL FILTER ()
+            #Song-Mao filter
+            if cell["absolute_coordinates_YX"][1] <= 15000 or cell["absolute_coordinates_YX"][1] >= 24000:
+                continue
+            if cell["absolute_coordinates_YX"][0] <= 30200 or cell["absolute_coordinates_YX"][0] >= 47000:
+                continue
+
             # Build features dictionary
             spreadsheet_row = {
                 "animal": animal,
@@ -664,32 +678,6 @@ class CellMaker(ParallelManager):
             print(model_msg)
             print(f'Starting function score_and_detect_cell on section {section}')
 
-        def calculate_scores_old(features: pd.DataFrame, model):
-            """
-                Calculate scores, mean, and standard deviation for each feature.
-
-                Args:
-                features (pd.DataFrame): Input features.
-                model: XGBoost model.
-
-                Returns:
-                tuple: Mean scores and standard deviation scores.
-            """
-            all_data = xgb.DMatrix(features)
-            scores=np.zeros([features.shape[0], len(model)])
-
-            for i, bst in enumerate(model):
-                attributes = bst.attributes()
-                try:
-                    best_ntree_limit = int(attributes["best_ntree_limit"])
-                except KeyError:
-                    best_ntree_limit = 676
-                scores[:, i] = bst.predict(all_data, iteration_range=[1, best_ntree_limit], output_margin=True)
-
-            mean_scores = np.mean(scores, axis=1)
-            std_scores = np.std(scores, axis=1)
-            return mean_scores, std_scores
-
         def calculate_scores(features: pl.DataFrame, model):
             """
                 Calculate scores, mean, and standard deviation for each feature.
@@ -735,52 +723,6 @@ class CellMaker(ParallelManager):
 
             return mean_scores, std_scores
 
-        def calculate_scores2(features: pl.DataFrame, model):
-            """
-                Calculate scores, mean, and standard deviation for each feature.
-
-                Args:
-                features (pl.DataFrame): Input features.
-                model: XGBoost model.
-
-                Returns:
-                tuple: Mean scores and standard deviation scores.
-            """
-            # Convert Polars DataFrame to pandas (XGBoost DMatrix prefers pandas)
-            features_pd = features.to_pandas()
-
-            # Ensure model is a list (for consistent processing)
-            models = [model] if not isinstance(model, list) else model
-
-            # Initialize scores array
-            scores = np.zeros((features.shape[0], len(models)))
-
-            for i, bst in enumerate(models):
-                 # Get the model's expected features (excluding 'predictions' and 'idx')
-                expected_features = [f for f in bst.feature_names if f not in ['predictions', 'idx']]
-
-                # Select only the features the model should use
-                data = features_pd[expected_features]
-
-                # Create DMatrix (optimized for XGBoost)
-                dmat = xgb.DMatrix(data)
-
-                # Get best_ntree_limit (fallback to default if missing)
-                best_ntree_limit = int(bst.attributes().get("best_ntree_limit", 676))
-
-                # Predict
-                scores[:, i] = bst.predict(
-                    dmat,
-                    iteration_range=[1, best_ntree_limit],
-                    output_margin=True,
-                    validate_features=False  # Safe because we filtered features
-                )
-
-            mean_scores = np.mean(scores, axis=1)
-            std_scores = np.std(scores, axis=1)
-            
-            return mean_scores, std_scores
-
         def get_prediction_and_label(mean_scores: np.ndarray) -> list:
             """
                 Get predictive cell labels based on mean scores.
@@ -798,11 +740,12 @@ class CellMaker(ParallelManager):
                 mean_score = float(mean_score)
                 classification = -2  # Default: cell candidate is not actually a cell
 
-                if mean_score > threshold:  # Candidate is a cell
+                if mean_score > threshold:  # Candidate is a cell/neuron
                     classification = 2
                 elif -threshold <= mean_score <= threshold:
                     classification = 0  # UNKNOWN/UNSURE
 
+                classification = 2 #Song-Mao filter
                 predictions.append(classification)
 
             return predictions
@@ -850,6 +793,7 @@ class CellMaker(ParallelManager):
             del dask_data
         return total_sections
 
+    #TODO: possibly deprecated (see extract_predictions)
     def create_precomputed_annotations(self):
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
@@ -903,6 +847,542 @@ class CellMaker(ParallelManager):
             print(f'Wrote {info} to {info_filename}')
 
     def extract_predictions(self):
+        labels = ['ML_POSITIVE']
+        sampling = self.sampling
+
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        w = int(self.sqlController.scan_run.width//SCALING_FACTOR)
+        h = int(self.sqlController.scan_run.height//SCALING_FACTOR)
+        z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
+
+        #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
+        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
+        if os.path.exists(self.cell_label_path):
+            print(f'Parsing cell labels from {self.cell_label_path}')
+        else:
+            print(f'ERROR: {self.cell_label_path} not found')
+            sys.exit(1)
+        
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'Error: no csv files found in {self.cell_label_path}')
+            sys.exit(1)
+
+        dfs = []
+        for file_path in detection_files:
+            # Read CSV with Polars (much faster than pandas)
+            try:
+                df = pl.read_csv(file_path)
+                if df.is_empty():
+                    continue
+                    
+                # Filter and process in one go
+                filtered = df.filter(
+                (pl.col("predictions").cast(pl.Float32) > 0))
+                
+                if filtered.is_empty():
+                    continue
+                    
+                # Process all rows at once
+                x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
+                
+                # Append to dataframe data
+                dfs.append(filtered.select([
+                    pl.col("col").alias("x"),
+                    pl.col("row").alias("y"),
+                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                ]))
+            
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
+
+        # Concatenate all dataframes at once
+        final_df = pl.concat(dfs) if dfs else pl.DataFrame()
+
+        #random sampling for model training, if selected
+        # Choose between full dataset or sampled subset
+        if self.sampling:
+            sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
+            df = sampled_df
+            print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
+        else:
+            df = final_df
+            print(f"No sampling - using all {df.height} points")
+        
+        if len(df) == 0:
+            print('No neurons found')
+            sys.exit()
+
+        ###############################################
+        #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
+        ###############################################
+
+        ###############################################
+        # SAVE OUTPUTS
+        ###############################################
+        # SAVE CSV FORMAT (x,y,z POINTS IN CSV) *SAMPLED DATA
+        if not df.is_empty():
+            df.write_csv(dfpath)
+
+        # SAVE JSON FORMAT *SAMPLED DATA
+        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+        # Populate points variable after sampling
+        sampled_points = (
+            df.sort("section")
+            .select(["x", "y", "section"])
+            .to_numpy()
+            .tolist()
+        )
+        with open(annotations_file, 'w') as fh:
+            json.dump(sampled_points, fh)
+
+        # SAVE PRECOMPUTED [SEGMENTATION] FORMAT *SAMPLED DATA
+        shape = (w, h, z_length)
+        volume = np.zeros((z_length, h, w), dtype=np.uint8)
+        desc = f"Drawing on {self.animal} volume={volume.shape}"
+        for row in tqdm(df.iter_rows(named=True), desc=desc):
+            x = int(row["x"] // SCALING_FACTOR)
+            y = int(row["y"] // SCALING_FACTOR)
+            z = int(row["section"])
+            if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
+                # Draw a small circle to make the point more visible
+                cv2.circle(volume[z], center=(x, y), radius=2, color=1, thickness=-1)  # label = 1
+
+        out_dir = Path(annotations_dir, labels[0] + '.precomputed')
+        if os.path.exists(out_dir):
+            print(f'Removing existing directory {out_dir}')
+            shutil.rmtree(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
+        
+        print(f'Creating precomputed annotations in {out_dir}')
+        resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
+        scales = (resolution, resolution, int(z_resolution * 1000))
+        preferred_chunk_size = (128, 128, 64)
+        adjusted_chunk_size = tuple(min(p, s) for p, s in zip(preferred_chunk_size, shape))
+
+        info = CloudVolume.create_new_info(
+            num_channels=1,
+            layer_type='segmentation', 
+            data_type=np.uint8,
+            encoding='raw',
+            resolution=scales,
+            voxel_offset=(0, 0, 0),
+            chunk_size=adjusted_chunk_size,
+            volume_size=shape,  # x, y, z
+        )
+
+        vol = CloudVolume(f'file://{out_dir}', info=info)
+        vol.commit_info()
+        vol[:, :, :] = np.transpose(volume, (2, 1, 0))  # (z, h, w) → (w, h, z)
+
+        tq = LocalTaskQueue(parallel=1)
+        tasks = tc.create_downsampling_tasks(f'file://{out_dir}', mip=0, num_mips=2, compress=True)
+        tq.insert(tasks)
+        tq.execute()
+
+        # MODIFY PROVENANCE FILE WITH META-DATA
+        prov_path = Path(out_dir, 'provenance')
+        with open(prov_path, 'r') as f:
+            prov = json.load(f)
+        if self.sampling:
+            prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - SAMPLING ENABLED (n={sampling} of {final_df.height} TOTAL)"
+        else:
+            prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - (n={df.height})"
+        prov['sources'] = self.animal
+        with open(prov_path, 'w') as f:
+            json.dump(prov, f, indent=2)
+
+        # SETUP COLOR MAP IN NEUROGLANCER (POINT FORMATTING FOR INCREASED VISIBILITY)
+        # requires creating 'preview' ng state
+        
+
+    def extract_predictions_WIP(self):
+            labels = ['ML_POSITIVE']
+            sampling = self.sampling
+
+            xy_resolution = self.sqlController.scan_run.resolution
+            z_resolution = self.sqlController.scan_run.zresolution
+            w = int(self.sqlController.scan_run.width//SCALING_FACTOR)
+            h = int(self.sqlController.scan_run.height//SCALING_FACTOR)
+            z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
+
+            #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
+            dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
+            if os.path.exists(self.cell_label_path):
+                print(f'Parsing cell labels from {self.cell_label_path}')
+            else:
+                print(f'ERROR: {self.cell_label_path} not found')
+                sys.exit(1)
+            
+            detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
+            if len(detection_files) == 0:
+                print(f'Error: no csv files found in {self.cell_label_path}')
+                sys.exit(1)
+
+            dfs = []
+            for file_path in detection_files:
+                # Read CSV with Polars (much faster than pandas)
+                try:
+                    df = pl.read_csv(file_path)
+                    if df.is_empty():
+                        continue
+                        
+                    # Filter and process in one go
+                    filtered = df.filter(
+                    (pl.col("predictions").cast(pl.Float32) > 0))
+                    
+                    if filtered.is_empty():
+                        continue
+                        
+                    # Process all rows at once
+                    x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                    y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                    sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
+                    
+                    # Append to dataframe data
+                    dfs.append(filtered.select([
+                        pl.col("col").alias("x"),
+                        pl.col("row").alias("y"),
+                        (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                    ]))
+                
+                except Exception as e:
+                    print(f"Error processing {file_path}: {e}")
+                    continue
+
+            # Concatenate all dataframes at once
+            final_df = pl.concat(dfs) if dfs else pl.DataFrame()
+
+            #random sampling for model training, if selected
+            # Choose between full dataset or sampled subset
+            if self.sampling:
+                sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
+                df = sampled_df
+                print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
+            else:
+                df = final_df
+                print(f"No sampling - using all {df.height} points")
+            
+            if len(df) == 0:
+                print('No neurons found')
+                sys.exit()
+
+            ###############################################
+            #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
+            ###############################################
+
+            ###############################################
+            # SAVE OUTPUTS
+            ###############################################
+            # SAVE CSV FORMAT (x,y,z POINTS IN CSV) *SAMPLED DATA
+            if not df.is_empty():
+                df.write_csv(dfpath)
+
+            # SAVE JSON FORMAT *SAMPLED DATA
+            annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+            annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+            # Populate points variable after sampling
+            sampled_points = (
+                df.sort("section")
+                .select(["x", "y", "section"])
+                .to_numpy()
+                .tolist()
+            )
+            with open(annotations_file, 'w') as fh:
+                json.dump(sampled_points, fh)
+
+            # SAVE PRECOMPUTED [IMG] FORMAT *SAMPLED DATA
+            # shape = (w, h, z_length)
+            # volume = np.zeros((z_length, h, w), dtype=np.uint8)
+            # desc = f"Drawing on {self.animal} volume={volume.shape}"
+            # for row in tqdm(df.iter_rows(named=True), desc=desc):
+            #     x = int(row["x"] // SCALING_FACTOR)
+            #     y = int(row["y"] // SCALING_FACTOR)
+            #     z = int(row["section"])
+            #     if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
+            #         volume[z, y, x] = 255
+
+            # volume = np.transpose(volume, (2, 1, 0))  # Convert from (Z, H, W) to (W, H, Z)
+            # volume = volume[..., np.newaxis]  # Add channel dimension: (W, H, Z, 1)
+
+            # out_dir = Path(annotations_dir, labels[0] + '.precomputed')
+            # if os.path.exists(out_dir):
+            #     print(f'Removing existing directory {out_dir}')
+            #     shutil.rmtree(out_dir)
+            # os.makedirs(out_dir, exist_ok=True)
+            # print(f'Creating precomputed annotations in {out_dir}')
+            # resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
+            # scales = (resolution, resolution, int(z_resolution * 1000))
+
+            # info = CloudVolume.create_new_info(
+            #     num_channels=1,
+            #     layer_type='image', 
+            #     data_type=np.uint8,
+            #     encoding='raw',
+            #     resolution=scales,
+            #     voxel_offset=(0, 0, 0),
+            #     chunk_size=(32, 32, 32),
+            #     volume_size=shape,  # x, y, z
+            # )
+
+            # vol = CloudVolume(f'file://{out_dir}', info=info)
+            # vol.commit_info()
+            # vol[:, :, :] = volume
+
+            # tq = LocalTaskQueue(parallel=1)
+            # tasks = tc.create_downsampling_tasks(f'file://{out_dir}', mip=0, num_mips=2, compress=True)
+            # tq.insert(tasks)
+            # tq.execute()
+
+            # SAVE PRECOMPUTED [SEGMENTATION] FORMAT *SAMPLED DATA
+            shape = (w, h, z_length)
+            volume = np.zeros((z_length, h, w), dtype=np.uint8)
+            desc = f"Drawing on {self.animal} volume={volume.shape}"
+            radius = 2  # adjust as needed
+            for row in tqdm(df.iter_rows(named=True), desc=desc):
+                x = int(row["x"] // SCALING_FACTOR)
+                y = int(row["y"] // SCALING_FACTOR)
+                z = int(row["section"])
+                if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
+                    # Draw a small square (e.g., 5x5) for visibility
+                    for dx in range(-radius, radius + 1):
+                        for dy in range(-radius, radius + 1):
+                            xx, yy = x + dx, y + dy
+                            if 0 <= xx < w and 0 <= yy < h:
+                                volume[z, yy, xx] = 1  # label ID = 1
+
+            volume = np.transpose(volume, (2, 1, 0))  # Convert from (Z, H, W) to (W, H, Z)
+            volume = volume[..., np.newaxis]  # Add channel dimension: (W, H, Z, 1)
+
+            out_dir = Path(annotations_dir, labels[0] + '.precomputed')
+            if os.path.exists(out_dir):
+                print(f'Removing existing directory {out_dir}')
+                shutil.rmtree(out_dir)
+            os.makedirs(out_dir, exist_ok=True)
+            print(f'Creating precomputed annotations in {out_dir}')
+            resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
+            scales = (resolution, resolution, int(z_resolution * 1000))
+
+            info = CloudVolume.create_new_info(
+                num_channels=1,
+                layer_type='segmentation', 
+                data_type=np.uint8,
+                encoding='raw',
+                resolution=scales,
+                voxel_offset=(0, 0, 0),
+                chunk_size=(32, 32, 32),
+                volume_size=shape,  # x, y, z
+            )
+
+            vol = CloudVolume(f'file://{out_dir}', info=info)
+            vol.commit_info()
+            vol[:, :, :] = volume
+
+            tq = LocalTaskQueue(parallel=1)
+            tasks = tc.create_downsampling_tasks(f'file://{out_dir}', mip=0, num_mips=2, compress=True)
+            tq.insert(tasks)
+            tq.execute()
+
+
+    def extract_predictions1(self):
+        """
+        Note, the point information from the CSV must be converted to 
+        meters. 
+        Parses cell label data from CSV files and inserts annotations with labels into the database.
+        This method performs the following steps:
+        1. Sets default properties for cell annotations.
+        2. Initializes empty lists for points and child JSON objects.
+        3. Generates a unique parent ID for the annotation session.
+        4. Retrieves the XY and Z resolutions from the SQL controller.
+        5. Constructs the path to the directory containing cell label CSV files.
+        6. Checks if the CSV directory exists and exits if not found.
+        7. Retrieves and sorts all CSV files in the directory.
+        8. Parses each CSV file and extracts cell data if the file name contains 'detections_057'.
+        9. Converts cell coordinates and predictions, and creates JSON objects for each detected cell.
+        10. Aggregates the cell points and creates a cloud point annotation.
+        11. Inserts the annotation with labels into the database if not in debug mode.
+        Raises:
+            SystemExit: If the CSV directory or files are not found.
+            Exception: If there is an error inserting data into the database.
+        Prints:
+            Status messages indicating the progress and results of the parsing and insertion process.
+        """
+
+        # default_props = ["#ffff00", 1, 1, 5, 3, 1]
+        # parent_id = f"{random_string()}"
+        # FK_user_id = 1
+        labels = ['ML_POSITIVE']
+
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        sampling = self.sampling
+        # found = 0
+
+        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
+        if os.path.exists(self.cell_label_path):
+            print(f'Parsing cell labels from {self.cell_label_path}')
+        else:
+            print(f'ERROR: {self.cell_label_path} not found')
+            sys.exit(1)
+        
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'Error: no csv files found in {self.cell_label_path}')
+            sys.exit(1)
+
+        dfs = []
+        for file_path in detection_files:
+            # Read CSV with Polars (much faster than pandas)
+            try:
+                df = pl.read_csv(file_path)
+                if df.is_empty():
+                    continue
+                    
+                # Filter and process in one go
+                filtered = df.filter(
+                (pl.col("predictions").cast(pl.Float32) > 0))
+                
+                if filtered.is_empty():
+                    continue
+                    
+                # Process all rows at once
+                x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
+                sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
+                
+                # Append to dataframe data
+                dfs.append(filtered.select([
+                    pl.col("col").alias("x"),
+                    pl.col("row").alias("y"),
+                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                ]))
+            
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
+
+        # Concatenate all dataframes at once
+        final_df = pl.concat(dfs) if dfs else pl.DataFrame()
+
+        #random sampling for model training, if selected
+        # Choose between full dataset or sampled subset
+        if self.sampling:
+            sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
+            df = sampled_df
+            print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
+        else:
+            df = final_df
+            print(f"No sampling - using all {df.height} points")
+        
+        if len(df) == 0:
+            print('No neurons found')
+            sys.exit()
+        
+        ################################
+        #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
+        ################################
+
+        # Populate points variable after sampling
+        sampled_points = (
+            df.sort("section")
+            .select(["x", "y", "section"])
+            .to_numpy()
+            .tolist()
+        )
+        #ng_dir = Path(self.fileLocationManager.neuroglancer_data)
+        z_length = 108
+        # w=35500
+        # h=68500
+        scaling_factor=32
+        w = self.sqlController.scan_run.width//scaling_factor
+        h = self.sqlController.scan_run.height//scaling_factor
+        
+        shape = (w, h, z_length)
+
+        ###############################################
+        # SAVE OUTPUTS
+        ###############################################
+        # SAVE CSV FORMAT (x,y,z POINTS IN CSV)
+        if not df.is_empty():
+            df.write_csv(dfpath)
+        
+        ###############################################
+        # 'workaround' for db timeout [save to file and then sql insert from file]
+        # long-term store in www folder for direct import
+        # SAVE JSON FORMAT
+        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+        with open(annotations_file, 'w') as fh:
+            json.dump(sampled_points, fh)
+            
+        # SAVE PRECOMPUTED EXPORT
+        info_dir = Path(annotations_dir, labels[0] + '.precomputed')
+        spatial_dir = Path(info_dir, 'spatial0')
+        if info_dir.exists():
+            shutil.rmtree(info_dir)
+        os.makedirs(info_dir)
+        os.makedirs(spatial_dir)
+        point_filename = Path(spatial_dir, '0_0_0.gz')
+        info_filename = Path(info_dir, 'info')
+        with open(point_filename,'wb') as outfile:
+            total_count=len(sampled_points) # coordinates is a list of tuples (x,y,z) 
+            buf = struct.pack('<Q',total_count)
+            
+            for (x,y,z) in sampled_points:
+                pt_buf = struct.pack('<3f',x,y,z)
+                buf += pt_buf
+
+            # write the ids at the end of the buffer as increasing integers 
+            id_buf = struct.pack('<%sQ' % len(sampled_points), *range(len(sampled_points)))
+            buf += id_buf
+            bufout = gzip.compress(buf)
+            outfile.write(bufout)
+            
+        info = {}
+        spatial = {}
+        properties = {}
+        spatial["chunk_size"] = shape
+        spatial["grid_shape"] = [1, 1, 1]
+        spatial["key"] = "spatial0"
+        spatial["limit"] = 10000
+        properties["id"] = "color"
+        properties["type"] = "rgb"
+        properties["default"] = "red"
+        properties["id"] = "size"
+        properties["type"] = "float32"
+        properties["default"] = "10"
+        properties["id"] = "p_uint8"
+        properties["type"] = "int8"
+        properties["default"] = "10"
+
+        info["@type"] = "neuroglancer_annotations_v1"
+        info["annotation_type"] = "POINT"
+        info["by_id"] = {"key":"by_id"}
+        info["dimensions"] = {"x":[str(xy_resolution/scaling_factor*1000),"um"],
+                            "y":[str(xy_resolution/scaling_factor*1000),"um"],
+                            "z":[str(int(z_resolution)),"um"]}
+        info["lower_bound"] = [0,0,0]
+        info["upper_bound"] = shape
+        info["properties"] = [properties]
+        info["relationships"] = []
+        info["spatial"] = [spatial]    
+
+        with open(info_filename, 'w') as infofile:
+            json.dump(info, infofile, indent=2)
+            print('Info')
+            print(info)
+            print(info_filename)
+       
+
+    def extract_predictions2(self):
         """
         Note, the point information from the CSV must be converted to 
         meters. 
@@ -945,6 +1425,7 @@ class CellMaker(ParallelManager):
 
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
+        sampling = self.sampling
         found = 0
 
         dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
@@ -953,8 +1434,8 @@ class CellMaker(ParallelManager):
         else:
             print(f'ERROR: {self.cell_label_path} not found')
             sys.exit(1)
-        dataframe_data = []
-        detection_files = sorted(glob.glob( os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.cell_label_path}')
             sys.exit(1)
@@ -1009,18 +1490,71 @@ class CellMaker(ParallelManager):
 
         # Concatenate all dataframes at once
         final_df = pl.concat(dfs) if dfs else pl.DataFrame()
-        
-        # Rest of your code remains similar...
+
+        #random sampling for model training, if selected
+        # Choose between full dataset or sampled subset
+        if self.sampling:
+            sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
+            df = sampled_df
+            print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
+        else:
+            df = final_df
+            print(f"No sampling - using all {df.height} points")
+
+        # Define the voxel size (in nm)
+        voxel_size = (
+            int(xy_resolution * 1000),
+            int(xy_resolution * 1000),
+            int(z_resolution * 1000)
+        )
+        # Voxel coordinate computation from selected df
+        x_vox = (df["x"].cast(pl.Float32) / M_UM_SCALE * xy_resolution)
+        y_vox = (df["y"].cast(pl.Float32) / M_UM_SCALE * xy_resolution)
+        z_vox = ((df["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE)
+
+        # Bounding box in nm
+        x_min = int(x_vox.min() * voxel_size[0])
+        y_min = int(y_vox.min() * voxel_size[1])
+        z_min = int(z_vox.min() * voxel_size[2])
+
+        x_max = int((x_vox.max() + 1) * voxel_size[0])
+        y_max = int((y_vox.max() + 1) * voxel_size[1])
+        z_max = int((z_vox.max() + 1) * voxel_size[2])
+
+        lower_bound = [x_min, y_min, z_min]
+        upper_bound = [x_max, y_max, z_max]
+
+        # Final export annotations (replacing earlier block)
+        x_list = x_vox.to_list()
+        y_list = y_vox.to_list()
+        z_list = z_vox.to_list()
+
+        childJsons_final = []
+        points_final = []
+
+        for x, y, z in zip(x_list, y_list, z_list):
+            point = [x, y, z]
+            childJsons_final.append({
+                "point": point,
+                "type": "point",
+                "parentAnnotationId": f"{parent_id}",
+                "props": default_props
+            })
+            points_final.append(point)
+
         cloud_points = {
-            "source": points[0],
-            "centroid": np.mean(points, axis=0).tolist(),
+            "source": points_final[0],
+            "centroid": np.mean(points_final, axis=0).tolist(),
             "childrenVisible": True,
             "type": "cloud",
             "description": labels[0],
             "sessionID": f"{parent_id}",
             "props": default_props,
-            "childJsons": childJsons
+            "childJsons": childJsons_final
         }
+
+        export_points = points_final
+
         
         # Save outputs
          ###############################################
@@ -1032,27 +1566,225 @@ class CellMaker(ParallelManager):
         with open(annotations_file, 'w') as fh:
             json.dump(cloud_points, fh)
             
-        if not final_df.is_empty():
-            final_df.write_csv(dfpath)
+        if not sampled_df.is_empty():
+            sampled_df.write_csv(dfpath)
+
+        #GRAPHENE EXPORT - NOT WORKING
+        #ref: https://github.com/seung-lab/cloud-volume/wiki/Graphene
+        # annotations_np = sampled_df.to_numpy()
+        # annotations_file_graphene = Path(annotations_dir) / f"{labels[0]}.graphene"
+        # annotations_graphene = Graphene(labels[0])
+        # for annotation in annotations_np:
+        #     x, y, section = annotation
+        #     point = np.array([x, y, section])  # x, y, z coordinates
+        #     annotations_graphene.add_point(point, id=len(annotations_graphene.points))  # add point annotation
+        # serialized_annotations = annotations_graphene.serialize()
+        # with open(annotations_file_graphene, "wb") as fh:
+        #     fh.write(serialized_annotations)
+
+        #ZARR2 EXPORT - NOT WORKING
+        # annotations_np = sampled_df.to_numpy()
+        # annotations_file_zarr = Path(annotations_dir) / f"{labels[0]}.zarr"
+        # # Create a Zarr group in v2 format
+        # store = zarr.DirectoryStore(annotations_file_zarr)
+        # root = zarr.group(store=store, overwrite=True)
+        # annotations = []
+        # for i, (x, y, z) in enumerate(annotations_np):
+        #     annotations.append({
+        #         "id": i,
+        #         "point": [float(x), float(y), float(z)],
+        #         "type": "point",
+        #         "description": f"annotation {i}"
+        #     })
+        # annotation_data = json.dumps({"annotations": annotations})
+        # annotation_bytes = annotation_data.encode('utf-8')
+        # # Store the serialized JSON as a single chunk (dataset "0")
+        # ds = root.create_dataset("0", shape=(len(annotation_bytes),), dtype="u1")
+        # ds[:] = np.frombuffer(annotation_bytes, dtype="u1")
+        # # Add metadata (.zattrs) required by Neuroglancer
+        # zattrs = {
+        #     "type": "neuroglancer_annotations",
+        #     "annotations": {
+        #         "description": f"Annotations for {labels[0]}",
+        #         "annotation_type": "point"
+        #     },
+        #     "dimensions": {
+        #         "x": [1e-9, "m"],
+        #         "y": [1e-9, "m"],
+        #         "z": [1e-9, "m"]
+        #     }
+        # }
+        # with open(annotations_file_zarr / ".zattrs", "w") as f:
+        #     json.dump(zattrs, f)
+
+        #PRECOMPUTED EXPORT - (ADAPTED FROM FILE @ neuroglancer/python/neuroglancer/write_annotations.py)
+        #ref: https://github.com/google/neuroglancer/blob/master/src/datasource/precomputed/annotations.md#info-json-file-format
+
+        #(annotations in binary format) -> info file created automatically by write_annotations
+        output_dir = Path(annotations_dir, f"{labels[0]}.precomputed")
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir)
+
+        #POTENTIAL ADAPTATION: ADD LABELS FOR EACH POINT (e.g. cell type)
+        #############################################
+        #CREATE info FILE
+        #############################################
+        annotations = []            
+        for i, (x, y, z) in enumerate(export_points):  # Use export_points here instead of sampled_x, sampled_y, sampled_section
+            annotations.append({
+                "id": i,
+                "point": [x, y, z],
+                "properties": {
+                    "label": 1
+                }
+            })
+
+        info = {
+            "@type": "neuroglancer_annotations_v1",
+            "dimensions": {
+                "x": [voxel_size[0], "nm"],
+                "y": [voxel_size[1], "nm"],
+                "z": [voxel_size[2], "nm"]
+            },
+            "lower_bound": lower_bound,
+            "upper_bound": upper_bound,
+            "annotation_type": "POINT",
+            "properties": [
+                {"id": "label", "type": "uint8"}
+            ],
+            "relationships": [],
+            "by_id": {
+                "key": "by_id"
+            },
+            "spatial": [
+                {
+                    "key": "spatial0",
+                    "grid_shape": [1, 1, 1],
+                    "chunk_size": [
+                        upper_bound[0] - lower_bound[0],
+                        upper_bound[1] - lower_bound[1],
+                        upper_bound[2] - lower_bound[2]
+                    ],
+                    "limit": 10000  # how many annotations are displayed at each zoom level.
+                }
+            ]
+        }
+        # spatial= {
+        #             "key": "spatial0",
+        #             "grid_shape": [1, 1, 1],
+        #             "chunk_size": [
+        #                 upper_bound[0] - lower_bound[0],
+        #                 upper_bound[1] - lower_bound[1],
+        #                 upper_bound[2] - lower_bound[2]
+        #             ],
+        #             "limit": 10000  # how many annotations are displayed at each zoom level.
+        #         }
+        # chunk_size = [self.sqlController.scan_run.width, self.sqlController.scan_run.height, 348]
+        
+        # info = {}
+        # info["@type"] = "neuroglancer_annotations_v1"
+        # info["annotation_type"] = "POINT"
+        # info["by_id"] = {"key":"by_id"}
+        # info["dimensions"] = {"x":[str(xy_resolution),"μm"],
+        #                     "y":[str(xy_resolution),"μm"],
+        #                     "z":[str(z_resolution),"μm"]}
+        # info["lower_bound"] = [0,0,0]
+        # info["upper_bound"] = chunk_size
+        # info["properties"] = []
+        # info["relationships"] = []
+        # info["spatial"] = [spatial]  
+
+        # Write the 'info' file with the annotations
+        with open(os.path.join(output_dir, "info"), "w") as f:
+            json.dump(info, f, indent=2)
+
+        #############################################
+        #CREATE 'by-id' FOLDER (individual annotation points' labels)
+        #############################################
+        def encode_annotation(annotation):
+            x, y, z = annotation["point"]
+            
+            # Ensure label is an integer
+            label = 1  # Use 1 or any other integer to represent "MACHINE_SURE"
+            
+            # Encode as: 3 x float32 + 1 uint8 (label)
+            buf = struct.pack("<fffB", x, y, z, label)
+            buf += b"\x00" * (4 - len(buf) % 4)  # Pad to 4-byte alignment
+            return buf
+
+
+        for ann in annotations:
+            binary = encode_annotation(ann)
+            ann_path = os.path.join(output_dir, "by_id", str(ann["id"]))
+            
+            # Ensure the directory exists before writing the binary file
+            os.makedirs(os.path.dirname(ann_path), exist_ok=True)
+
+            with open(ann_path, "wb") as f:
+                f.write(binary)
+
+        #############################################
+        #CREATE 'spacial0' FOLDER (individual annotation points in binary format)
+        #############################################
+        spatial_dir = os.path.join(output_dir, "spatial")
+        os.makedirs(spatial_dir, exist_ok=True)
+
+        def write_spatial_chunk(chunk_key, chunk_data):
+            chunk_path = os.path.join(spatial_dir, f"{chunk_key}.bin")
+            with open(chunk_path, "wb") as f:
+                f.write(chunk_data)
+
+        def create_spatial_chunk(annotations, chunk_size):
+            # Create a chunk from annotations within the chunk bounds
+            chunk_data = b""
+            for annotation in annotations:
+                x, y, z = annotation["point"]
+                # Ensure padding is applied and convert to binary format
+                buf = struct.pack("<fffB", x, y, z, annotation["properties"]["label"])
+                buf += b"\x00" * (4 - len(buf) % 4)  # pad to 4-byte alignment
+                chunk_data += buf
+            return chunk_data
+
+        # Example to create and write chunks (assuming chunk size and annotations are available)
+        chunk_size = (64, 64, 64)  # Example chunk size (you may want to change this)
+        chunk_data = create_spatial_chunk(annotations, chunk_size)
+        write_spatial_chunk("spatial0", chunk_data)  # Write the spatial chunk for the given key
+
+        #ng write version - NOT WORKING
+        # write_annotations(
+        #     annotations=annotations,
+        #     output_dir=output_dir,
+        #     voxel_size=(
+        #         int(xy_resolution * 1000),  # μm → nm
+        #         int(xy_resolution * 1000),
+        #         int(z_resolution * 1000)
+        #     ),
+        #     annotation_type="point",
+        #     properties=[{"id": "label", "type": "string"}],
+        # )
+
+        
+
 
         ###############################################
-        if not self.debug:
-            label_objects = self.sqlController.get_labels(labels)
-            label_ids = [label.id for label in label_objects]
+        # if not self.debug:
+        #     label_objects = self.sqlController.get_labels(labels)
+        #     label_ids = [label.id for label in label_objects]
 
-            annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, FK_user_id)
-            if annotation_session is not None:
-                self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
+        #     annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, FK_user_id)
+        #     if annotation_session is not None:
+        #         self.sqlController.delete_row(AnnotationSession, {"id": annotation_session.id})
 
-            try:
-                id = self.sqlController.insert_annotation_with_labels(FK_user_id, self.animal, cloud_points, labels)
-            except Exception as e:
-                print(f'Error inserting data: {e}')
+        #     try:
+        #         id = self.sqlController.insert_annotation_with_labels(FK_user_id, self.animal, cloud_points, labels)
+        #     except Exception as e:
+        #         print(f'Error inserting data: {e}')
 
-            if id is not None:
-                print(f'Inserted annotation with labels with id: {id}')
-            else:
-                print('Error inserting annotation with labels')
+        #     if id is not None:
+        #         print(f'Inserted annotation with labels with id: {id}')
+        #     else:
+        #         print('Error inserting annotation with labels')
 
 
     ##### start methods from cell pipeline

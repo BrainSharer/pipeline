@@ -64,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("--step", help="Enter step", required=False, type=int)
     parser.add_argument("--x", help="Enter x", required=False, default=0, type=int)
     parser.add_argument("--y", help="Enter y", required=False, default=0, type=int)
+    parser.add_argument("--sampling", help="Random sampling qty", required=False, default=0, type=int)
 
     parser.add_argument(
         "--task",
@@ -82,8 +83,9 @@ if __name__ == "__main__":
     x = args.x
     y = args.y
     annotation_id = args.annotation
-
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, debug=debug)
+    sampling = args.sampling #Note: only used in conjunction with 'extract' task
+    
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, debug=debug)
 
     function_mapping = {
         "create_features": pipeline.create_features,
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         "extract": pipeline.extract_predictions,
         "train": pipeline.train,
         "fix": pipeline.fix_coordinates,
-        "precomputed": pipeline.create_precomputed_annotations
+        "precomputed": pipeline.create_precomputed_annotations #TODO: remove?
     }
     
 
