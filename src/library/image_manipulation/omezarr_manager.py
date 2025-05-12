@@ -85,15 +85,15 @@ class OmeZarrManager():
             return
         else:
 
-            for i in tqdm(range(volume.shape[0])):
+            for i in tqdm(range(volume.shape[-1])):
                 outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
                 if os.path.exists(outfile):
                     continue
-                section = volume[i, :, :]
+                section = volume[..., i]
 
                 write_image(outfile, section)
 
-        print(f'writing {i+1} sections in C{self.channel} took {writing_sections_elapsed_time} seconds')
+        print(f'writing {i+1} sections in C{self.channel}')
 
 
 
