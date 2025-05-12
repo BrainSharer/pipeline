@@ -56,7 +56,7 @@ class OmeZarrManager():
             print(f'OME-Zarr store {storepath} does not exist')
 
     def write_sections_from_volume(self):
-        mip = "3"
+        mip = "0"
         if self.downsample:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T.zarr', mip)
         else:
