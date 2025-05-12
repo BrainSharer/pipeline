@@ -36,13 +36,7 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         resolution_0_path = os.path.join(self.output, '0')
         if os.path.exists(resolution_0_path):
-            print(f'Resolution 0 already exists at {resolution_0_path}')
-            if self.debug:
-                store = store = zarr.storage.NestedDirectoryStore(resolution_0_path)
-                volume = zarr.open(store, 'r')
-                print(volume.info)
-                print(f'volume.shape={volume.shape}')
-                
+            print(f'Resolution 0 already exists at {resolution_0_path}')                
 
             return
 

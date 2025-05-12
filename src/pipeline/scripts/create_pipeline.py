@@ -125,6 +125,7 @@ if __name__ == "__main__":
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
         "omezarr": pipeline.omezarr,
+        "omezarrinfo": pipeline.omezarr_info,
         "shell": pipeline.shell,
         "align_masks": pipeline.align_masks,
         "status": pipeline.check_status,

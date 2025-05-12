@@ -303,6 +303,10 @@ class Pipeline(
         self.create_omezarr()
         print(f'Finished {self.TASK_OMEZARR}.')
 
+    def omezarr_info(self):
+        self.get_omezarr_info()
+
+
     def shell(self):
         print(self.TASK_SHELL, end=" ")
         self.create_shell()

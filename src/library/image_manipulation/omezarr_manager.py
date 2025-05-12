@@ -18,6 +18,7 @@ import dask
 
 from dask.distributed import Client
 from distributed import LocalCluster
+import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, use_scratch_dir
@@ -30,6 +31,29 @@ class OmeZarrManager():
     512 = omezarr took 44.06 seconds
     1024 = omezarr took 33.65 seconds
     """
+
+    def get_omezarr_info(self):
+        if self.downsample:
+            storefile = f'C{self.channel}T.zarr'
+        else:
+            storefile = f'C{self.channel}.zarr'
+        storepath = os.path.join(
+            self.fileLocationManager.www, "neuroglancer_data", storefile
+        )
+        if os.path.exists(storepath):
+            scale_paths = sorted(os.listdir(storepath))
+            scale_paths = [os.path.join(storepath, p) for p in scale_paths if os.path.isdir(os.path.join(storepath, p))]
+            print(f'{len(scale_paths)} OME-Zarr stores exist at {storepath}')
+            for scale_path in scale_paths:
+                if os.path.exists(scale_path) and os.path.isdir(scale_path):
+                    print(f'Resolution {os.path.basename(scale_path)} exists at {scale_path}')                
+                    store = store = zarr.storage.NestedDirectoryStore(scale_path)
+                    volume = zarr.open(store, 'r')
+                    print(volume.info)
+                    print(f'volume.shape={volume.shape}')
+        else:
+            print(f'OME-Zarr store {storepath} does not exist')
+
 
     def create_omezarr(self):
         """Create OME-Zarr (NGFF) data store. WIP
