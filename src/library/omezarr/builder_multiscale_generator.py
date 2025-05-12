@@ -13,6 +13,7 @@ These classes are designed to be inherited by the builder class (builder.py)
 
 import glob
 import os
+import sys
 from time import sleep
 import shutil
 import time
@@ -27,15 +28,22 @@ from distributed import progress
 # from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
 from library.omezarr.builder_image_utils import TiffManager3d
-from library.utilities.dask_utilities import get_pyramid, mean_dtype
+from library.utilities.dask_utilities import get_pyramid, get_store, mean_dtype
 
 class BuilderMultiscaleGenerator:
 
     def write_resolution_0(self, client):
         start_time = timer()
-        resolution_0_path = os.path.join(self.output, 'scale0')
+        resolution_0_path = os.path.join(self.output, '0')
         if os.path.exists(resolution_0_path):
             print(f'Resolution 0 already exists at {resolution_0_path}')
+            if self.debug:
+                store = store = zarr.storage.NestedDirectoryStore(resolution_0_path)
+                volume = zarr.open(store, 'r')
+                print(volume.info)
+                print(f'volume.shape={volume.shape}')
+                
+
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
@@ -95,12 +103,18 @@ class BuilderMultiscaleGenerator:
 
     def write_mips(self, mip, client):
         print()
-        read_storepath = os.path.join(self.output, f'scale{mip-1}')
+        read_storepath = os.path.join(self.output, str(mip-1))
         if os.path.exists(read_storepath):
             print(f'Resolution {mip-1} exists at {read_storepath} loading ...')
-        write_storepath = os.path.join(self.output, f'scale{mip}')
+        write_storepath = os.path.join(self.output, str(mip))
         if os.path.exists(write_storepath):
-            print(f'Resolution {mip} exists at {write_storepath} returning')
+            print(f'Resolution {mip} exists at {write_storepath}')
+            if self.debug:
+                store = store = zarr.storage.NestedDirectoryStore(write_storepath)
+                volume = zarr.open(store, 'r')
+                print(volume.info)
+                print(f'volume.shape={volume.shape}')
+
             return
 
         previous_stack = da.from_zarr(url=read_storepath)
@@ -143,7 +157,7 @@ class BuilderMultiscaleGenerator:
         # These values are added to zattrs omero:channels
         # out is a list of tuple (min,max,channel)
 
-        resolution_path = os.path.join(self.output, f'scale{mip}')
+        resolution_path = os.path.join(self.output, str(mip))
         if os.path.exists(resolution_path):
             print(f'Resolution {mip} already exists at {resolution_path}')
             return
