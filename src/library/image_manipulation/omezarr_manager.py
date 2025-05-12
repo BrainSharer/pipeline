@@ -18,10 +18,11 @@ import dask
 
 from dask.distributed import Client
 from distributed import LocalCluster
+from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, use_scratch_dir
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, use_scratch_dir, write_image
 
 
 class OmeZarrManager():
@@ -53,6 +54,46 @@ class OmeZarrManager():
                     print(f'volume.shape={volume.shape}')
         else:
             print(f'OME-Zarr store {storepath} does not exist')
+
+    def write_sections_from_volume(self):
+        if self.downsample:
+            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T.zarr', str(0))
+        else:
+            zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr', str(0))
+
+        outpath = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+        if os.path.exists(zarrpath):
+            print(f'Using existing {zarrpath}')
+        else:
+            print(f'No zarr: {zarrpath}')
+            return
+
+        store = store = zarr.storage.NestedDirectoryStore(zarrpath)
+        volume = zarr.open(store, 'r')
+        if self.debug:
+            print(volume.info)
+
+
+        os.makedirs(outpath, exist_ok=True)
+
+        if self.debug:
+            print(f'Volume type ={type(volume)}')
+            print(f'Volume shape={volume.shape} ')
+            print(f'Volume dtype={volume.dtype}')
+            print('Exiting early')
+            return
+        else:
+
+            for i in tqdm(range(volume.shape[0])):
+                outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
+                if os.path.exists(outfile):
+                    continue
+                section = volume[i, :, :]
+
+                write_image(outfile, section)
+
+        print(f'writing {i+1} sections in C{self.channel} took {writing_sections_elapsed_time} seconds')
+
 
 
     def create_omezarr(self):

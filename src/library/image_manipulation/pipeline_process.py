@@ -306,6 +306,9 @@ class Pipeline(
     def omezarr_info(self):
         self.get_omezarr_info()
 
+    def omezarr2tif(self):
+        self.write_sections_from_volume()
+
 
     def shell(self):
         print(self.TASK_SHELL, end=" ")

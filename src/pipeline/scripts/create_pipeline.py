@@ -126,6 +126,7 @@ if __name__ == "__main__":
         "neuroglancer": pipeline.neuroglancer,
         "omezarr": pipeline.omezarr,
         "omezarrinfo": pipeline.omezarr_info,
+        "omezarr2tif": pipeline.omezarr2tif,
         "shell": pipeline.shell,
         "align_masks": pipeline.align_masks,
         "status": pipeline.check_status,
