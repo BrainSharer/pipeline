@@ -145,8 +145,10 @@ class Pipeline(
         :returns: int: The total count of sections.
         """
         section_count = self.sqlController.get_section_count(self.animal)
-        if section_count  == 0:
+        if section_count  == 0 and os.path.exists(self.fileLocationManager.get_thumbnail()):
             section_count = len(os.listdir(self.fileLocationManager.get_thumbnail()))
+        elif section_count == 0 and not os.path.exists(self.fileLocationManager.get_thumbnail()):
+            section_count = self.sqlController.scan_run.number_of_slides
                                            
         return section_count
 
