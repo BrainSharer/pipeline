@@ -13,16 +13,16 @@ distributed:
 """
 import os
 import inspect
-import shutil
 import dask
 
 from dask.distributed import Client
 from distributed import LocalCluster
+from timeit import default_timer as timer
 from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, use_scratch_dir, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, write_image
 
 
 class OmeZarrManager():
@@ -56,6 +56,7 @@ class OmeZarrManager():
             print(f'OME-Zarr store {storepath} does not exist')
 
     def write_sections_from_volume(self):
+        start_time = timer()
         mip = "0"
         if self.downsample:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T.zarr', mip)
@@ -85,15 +86,19 @@ class OmeZarrManager():
             return
         else:
 
-            for i in tqdm(range(volume.shape[-1])):
-                outfile = os.path.join(outpath, f'{str(i).zfill(3)}.tif')
+            for i in tqdm(range(volume.shape[-1]), disable=self.debug):
+                outfile = os.path.join(outpath, f'{str(i).zfill(4)}.tif')
                 if os.path.exists(outfile):
                     continue
                 section = volume[..., i]
+                if section.ndim > 2:
+                    section = section.reshape(section.shape[-2], section.shape[-1])
 
                 write_image(outfile, section)
 
-        print(f'writing {i+1} sections in C{self.channel}')
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f'writing {i+1} sections in C{self.channel} completed in {total_elapsed_time} seconds"')
 
 
 

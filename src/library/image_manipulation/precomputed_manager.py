@@ -41,8 +41,6 @@ class NgPrecomputedMaker:
         self.input and self.output are defined in the pipeline_process
         """
         image_manager = ImageManager(self.input)
-        max_width = image_manager.width
-        max_height = image_manager.height
 
         if self.downsample:
             self.xy_chunk = int(XY_CHUNK//2)
@@ -52,9 +50,10 @@ class NgPrecomputedMaker:
 
         test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         scales = self.get_scales()
+        print(f'scales={scales} scaling_factor={self.scaling_factor} downsample={self.downsample}')
         num_channels = image_manager.num_channels
+        print(image_manager.width, image_manager.height, image_manager.len_files, image_manager.shape)
         print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels} and size={image_manager.size}')
-           
         ng = NumpyToNeuroglancer(
             self.animal,
             None,

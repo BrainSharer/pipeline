@@ -10,6 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
+
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -22,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument('--um', help="size of atlas in micrometers", required=False, default=25, type=int)
+    parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, type=int)
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
@@ -32,12 +34,13 @@ if __name__ == '__main__':
     moving = args.moving
     channel = args.channel
     um = args.um
+    scaling_factor = args.scaling_factor
     fixed = args.fixed
     orientation = args.orientation
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     bspline = bool({"true": True, "false": False}[str(args.bspline).lower()])
     task = str(args.task).strip().lower()
-    volumeRegistration = VolumeRegistration(moving, channel, um, fixed, orientation, bspline, debug)
+    volumeRegistration = VolumeRegistration(moving, channel, um, scaling_factor, fixed, orientation, bspline, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,

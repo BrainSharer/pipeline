@@ -36,7 +36,7 @@ M_UM_SCALE = 1000000
 
 class VolumeRegistration:
 
-    def __init__(self, moving, channel=1, um=25, fixed=None, orientation='sagittal', bspline=False, debug=False):
+    def __init__(self, moving, channel=1, um=25, scaling_factor=SCALING_FACTOR, fixed=None, orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
@@ -53,7 +53,7 @@ class VolumeRegistration:
         self.orientation = orientation
         self.bspline = bspline
         self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
-        self.scaling_factor = 32 # This is the downsampling factor used to create the aligned volume at 10um
+        self.scaling_factor = scaling_factor # This is the downsampling factor used to create the aligned volume at 10um
         self.fileLocationManager = FileLocationManager(self.moving)
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
@@ -558,8 +558,8 @@ class VolumeRegistration:
         * Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
         """
         image_manager = ImageManager(self.thumbnail_aligned)
-        xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution / self.um
+        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.um
+        z_resolution = self.sqlController.scan_run.zresolution * self.scaling_factor / self.um
 
         change_z = z_resolution
         change_y = xy_resolution

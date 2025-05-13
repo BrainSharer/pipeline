@@ -36,6 +36,8 @@ class ImageManager:
         DK37 024 downsampled size = 1,555,500
         YH10 full res size = 35,490,384
 
+
+
     Methods:
         get_bgcolor(maskpath): Returns the background color of the image based on the provided mask.
 
@@ -50,15 +52,23 @@ class ImageManager:
         self.midpoint = (self.len_files // 2) # works with odd number of files
         self.midfile = self.files[self.midpoint] 
         midfilepath = os.path.join(directory, self.midfile)
-        self.img = io.imread(midfilepath)
+        self.img = read_image(midfilepath)
         self.dtype = self.img.dtype
         self.ndim = self.img.ndim
         self.shape = self.img.shape
-        self.width = self.shape[1]
-        self.height = self.shape[0]
+
+        if self.ndim == 4:
+            self.width = self.shape[-1]
+            self.height = self.shape[-2]
+        elif self.ndim == 3:
+            self.width = self.shape[1]
+            self.height = self.shape[0]
+        else:
+            self.width = self.shape[1]
+            self.height = self.shape[0]
         self.center = np.array([self.width, self.height]) / 2
         self.volume_size = (self.width, self.height, self.len_files)
-        self.num_channels = self.img.shape[2] if len(self.img.shape) > 2 else 1
+        self.num_channels = self.img.shape[1] if len(self.img.shape) > 2 else 1
         self.size = self.img.size
 
     def get_bgcolor(self, maskpath=None):
