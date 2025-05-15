@@ -57,7 +57,7 @@ class OmeZarrManager():
 
     def write_sections_from_volume(self):
         start_time = timer()
-        mip = "0"
+        mip = "2"
         if self.downsample:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T.zarr', mip)
         else:

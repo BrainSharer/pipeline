@@ -265,6 +265,37 @@ class AnnotationSessionController:
                 polygons[section].append((x,y))
 
         return polygons
+
+    def get_annotation_array(self, session_id):
+
+        """
+        This returns data in meters in an array of nx3.
+        """
+
+        annotation_session = self.session.query(AnnotationSession).get(session_id)
+        arr = np.zeros((0,3))
+        if not annotation_session:
+            return arr
+        
+        annotation = annotation_session.annotation
+        # first test data to make sure it has the right keys
+        try:
+            data = annotation["childJsons"]
+        except KeyError as ke:
+            print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
+            return arr
+        
+        animal = annotation_session.FK_prep_id
+        arrays = []
+        for row in data:
+            if 'childJsons' not in row:
+                return arr
+            for child in row['childJsons']:
+                x,y,z = child['pointA']
+                array_to_add = np.array([x,y,z])
+                arrays.append(array_to_add)
+
+        return np.concatenate(arrays)
     
 
     def get_annotation_features(self, prep_id: str, annotator_id: int, debug: bool = False):
