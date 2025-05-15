@@ -11,9 +11,9 @@ um = "10"
 mi = ants.image_read(f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{um}um_sagittal.tif')
 fi = ants.image_read(f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/{fixed}_{um}um_sagittal.tif')
 tx = ants.registration(fixed=fi, moving=mi, type_of_transform = (transformation) )
-arr = tx['warpedmovout']
-ants.image_write(arr, f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{um}um_sagittal_to_Allen.tif')
-print(tx)
+#arr = tx['warpedmovout']
+mywarpedimage = ants.apply_transforms( fixed=fi, moving=mi, transformlist=tx['fwdtransforms'], defaultvalue=0 )
+ants.image_write(mywarpedimage, f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{fixed}_{um}um_sagittal.tif')
 
 """"
 original_filepath = tx['fwdtransforms'][0]
