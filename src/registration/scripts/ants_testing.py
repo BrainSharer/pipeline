@@ -1,25 +1,55 @@
 # .mat are actually dictionnary. This function support .mat from
 # antsRegistration that encode a 4x4 transformation matrix.
+import shutil
 import ants
+import os
 
 transformation = 'Affine'
 moving = 'ALLEN771602'
 fixed = 'Allen'
-um = "10"
+um = "25"
 
+PATH = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+moving_path = os.path.join(PATH, moving)
+fixed_path = os.path.join(PATH, fixed)
+fixed_filepath = os.path.join(fixed_path, f'{fixed}_{um}um_sagittal.tif')
+normalized_path = os.path.join(moving_path, f'{moving}_{um}um_sagittal_normalized.tif')
+non_normalized_path = os.path.join(moving_path, f'{moving}_{um}um_sagittal_non_normalized.tif')
 
-mi = ants.image_read(f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{um}um_sagittal.tif')
-fi = ants.image_read(f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/{fixed}_{um}um_sagittal.tif')
-tx = ants.registration(fixed=fi, moving=mi, type_of_transform = (transformation) )
+if not os.path.isfile(normalized_path):
+    print(f"Normalized image not found at {normalized_path}.")
+    exit(1)
+else:
+    print(f"Normalized image found at {normalized_path}.")
+
+if not os.path.isfile(non_normalized_path):
+    print(f"Non-normalized image not found at {non_normalized_path}.")
+    exit(1)
+else:
+    print(f"Non-normalized image found at {non_normalized_path}.")
+
+if not os.path.isfile(fixed_filepath):
+    print(f"Fixed image not found at {fixed_path}.")
+    exit(1)
+else:
+    print(f"Fixed image found at {fixed_path}.")
+                                   
+
+mi_normalized = ants.image_read(normalized_path)
+mi_non_normalized = ants.image_read(non_normalized_path)
+fi = ants.image_read(fixed_filepath)
+tx = ants.registration(fixed=fi, moving=mi_normalized, type_of_transform = (transformation) )
 #arr = tx['warpedmovout']
-mywarpedimage = ants.apply_transforms( fixed=fi, moving=mi, transformlist=tx['fwdtransforms'], defaultvalue=0 )
-ants.image_write(mywarpedimage, f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{fixed}_{um}um_sagittal.tif')
+print(tx)
+mywarpedimage = ants.apply_transforms( fixed=fi, moving=mi_non_normalized, transformlist=tx['fwdtransforms'], defaultvalue=0 )
+outpath = os.path.join(moving_path, f'{moving}_{fixed}_{um}um_sagittal.tif')
+ants.image_write(mywarpedimage, outpath)
 
-""""
 original_filepath = tx['fwdtransforms'][0]
-new_filepath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{um}um_sagittal_to_Allen.mat'
-shutil.move(original_filepath, f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/{moving}/{moving}_{um}um_sagittal_to_Allen.mat')
+transform_filepath = os.path.join(moving_path, f'{moving}_{fixed}_{um}um_sagittal_to_Allen.mat')
+shutil.move(original_filepath, transform_filepath)
 
+"""
 
 new_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ls_to_template_rigid_0GenericAffine.mat'
 transfo_dict = loadmat(new_filepath)

@@ -57,13 +57,14 @@ class OmeZarrManager():
 
     def write_sections_from_volume(self):
         start_time = timer()
-        mip = "2"
+        mip = str(self.zarrlevel)
         if self.downsample:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}T.zarr', mip)
         else:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr', mip)
 
-        outpath = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
+        outpath = os.path.join( self.fileLocationManager.prep, 'C1', mip)
+        os.makedirs(outpath, exist_ok=True)
         if os.path.exists(zarrpath):
             print(f'Using existing {zarrpath}')
         else:

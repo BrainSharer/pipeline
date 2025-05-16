@@ -79,6 +79,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
+    parser.add_argument("--zarrlevel", help="Enter zarr level", required=False, default=0, type=int)
     parser.add_argument(
         "--downsample",
         help="Enter true or false",
@@ -101,6 +102,7 @@ if __name__ == "__main__":
 
     animal = args.animal
     channel = args.channel
+    zarrlevel = args.zarrlevel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
@@ -108,6 +110,7 @@ if __name__ == "__main__":
     pipeline = Pipeline(
         animal,
         channel=channel,
+        zarrlevel=zarrlevel,
         downsample=downsample,
         scaling_factor=args.scaling_factor,
         task=task,

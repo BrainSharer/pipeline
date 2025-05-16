@@ -71,7 +71,7 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal, channel='C1', downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
+    def __init__(self, animal, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -105,6 +105,7 @@ class Pipeline(
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
         self.multiple_slides = []
         self.channel = channel
+        self.zarrlevel = zarrlevel
         self.scaling_factor = scaling_factor
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
