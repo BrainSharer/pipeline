@@ -15,8 +15,8 @@ def create_registration(um):
     PATH = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
     moving_path = os.path.join(PATH, moving)
     fixed_path = os.path.join(PATH, fixed)
-    fixed_filepath = os.path.join(fixed_path, f'{fixed}_{um}um_sagittal.tif')
-    moving_filepath = os.path.join(moving_path, f'{moving}_{um}um_sagittal.tif')
+    fixed_filepath = os.path.join(fixed_path, 'Allen_8x7.2x7.2um_sagittal.tif')
+    moving_filepath = os.path.join(moving_path, 'ALLEN771602_8x7.2x7.2um_sagittal.tif')
 
     if not os.path.isfile(moving_filepath):
         print(f"Normalized image not found at {moving_filepath}.")
