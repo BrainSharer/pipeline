@@ -79,7 +79,7 @@ def create_matrix():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument("--um", help="Enter um", required=True, default=10, type=int)
+    parser.add_argument("--um", help="Enter um", required=True, default=10, type=str)
     
     args = parser.parse_args()
     um = args.um
