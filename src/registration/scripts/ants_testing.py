@@ -7,7 +7,7 @@ import os
 transformation = 'Affine'
 moving = 'ALLEN771602'
 fixed = 'Allen'
-um = "25"
+um = "10"
 
 PATH = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
 moving_path = os.path.join(PATH, moving)
