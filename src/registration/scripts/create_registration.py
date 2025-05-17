@@ -26,9 +26,9 @@ if __name__ == '__main__':
     parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, type=int)
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
-    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--bspline", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
+    parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     
     args = parser.parse_args()
     moving = args.moving
@@ -37,9 +37,9 @@ if __name__ == '__main__':
     scaling_factor = args.scaling_factor
     fixed = args.fixed
     orientation = args.orientation
-    debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     bspline = bool({"true": True, "false": False}[str(args.bspline).lower()])
     task = str(args.task).strip().lower()
+    debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     volumeRegistration = VolumeRegistration(moving, channel, um, scaling_factor, fixed, orientation, bspline, debug)
 
 
