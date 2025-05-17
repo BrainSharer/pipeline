@@ -8,9 +8,10 @@ import sys
 from pathlib import Path
 from scipy.ndimage import zoom
 import numpy as np
-
+from tqdm import tqdm
 import dask.array as da
 from dask.diagnostics import ProgressBar
+from tifffile import TiffWriter
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -100,23 +101,73 @@ class AntsRegistration:
         reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen'
         allenpath = os.path.join(reg_path, 'Allen_10um_sagittal_padded.tif')
         allen_arr = read_image(allenpath)
+        del allenpath
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
-        new_shape = (int(allen_arr.shape[0] * change_z), int(allen_arr.shape[1] * change_y), int(allen_arr.shape[2] * change_x))
-        scaling_factors = (change_z, change_y, change_x)
         chunk_size = (64,64,64)
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {new_shape=} {chunk_size=}')
-
-        zoomed = zoom_large_3d_array(allen_arr, scale_factors=scaling_factors, chunks=chunk_size)
-
-        with ProgressBar():
-            result = zoomed.compute()
-
+        scale_factors = (change_z, change_y, change_x)
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=}')
+        zoomed = zoom_large_3d_array(allen_arr, scale_factors=scale_factors, chunks=chunk_size)
         outpath = os.path.join(reg_path, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
-        write_image(outpath, result)
+
+        # Write incrementally to TIFF
+        with TiffWriter(outpath, bigtiff=True) as tif:
+            for i in tqdm(range(zoomed.shape[0])):
+                slice_i = zoomed[i].compute()
+                tif.write(slice_i.astype(allen_arr.dtype), contiguous=True)
+
         print(f'Wrote zoomed volume to {outpath}')
-        print(f'With shape {result.shape} and dtype {result.dtype}')
+
+def zoom_large_3d_array_to_tiff(input_array_path, output_tif_path, shape, dtype, scale_factors, chunk_size=(64, 64, 64)):
+    """
+    Zoom a large 3D array and save it incrementally to a TIFF file.
+
+    Parameters:
+        input_array_path (str): Path to a .npy or .zarr file storing the array.
+        output_tif_path (str): Destination path for the TIFF file.
+        shape (tuple): Original shape of the array (z, y, x).
+        dtype (np.dtype): Data type of the array.
+        scale_factors (tuple): Scaling factors (z_scale, y_scale, x_scale).
+        chunk_size (tuple): Chunk size for dask processing.
+    """
+
+    # Create a Dask array from the file (memory-mapped if .npy)
+    if input_array_path.endswith('.npy'):
+        memmap = np.load(input_array_path, mmap_mode='r')
+        darr = da.from_array(memmap, chunks=chunk_size)
+    elif input_array_path.endswith('.tif'):
+        darr = da.from_array(read_image(input_array_path), chunks=chunk_size)
+    else:
+        darr = da.from_zarr(input_array_path)
+
+    zf, yf, xf = scale_factors
+
+    # Calculate new shape
+    new_shape = tuple(int(s * f) for s, f in zip(shape, scale_factors))
+
+    # Define a function for dask to map over blocks
+    def blockwise_zoom(block):
+        zoom_factors_block = (
+            zf * block.shape[0] / chunk_size[0],
+            yf * block.shape[1] / chunk_size[1],
+            xf * block.shape[2] / chunk_size[2],
+        )
+        return zoom_chunk(block, zoom_factors_block)
+
+    # Map zoom over all blocks
+    zoomed = darr.map_blocks(blockwise_zoom, dtype=dtype)
+
+    # Write incrementally to TIFF
+    with TiffWriter(output_tif_path, bigtiff=True) as tif:
+        for i in tqdm(range(zoomed.shape[0])):
+            slice_i = zoomed[i].compute()
+            tif.write(slice_i.astype(dtype), contiguous=True, compression='LZW')
+
+    print(f"Saved zoomed volume to: {output_tif_path}")
+
+def zoom_chunk(chunk, zoom_factors):
+    return zoom(chunk, zoom_factors, order=1)  # linear interpolation
 
 def zoom_large_3d_array(input_array, scale_factors, chunks=(100, 100, 100)):
     """
