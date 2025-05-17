@@ -9,6 +9,10 @@ from pathlib import Path
 from scipy.ndimage import zoom
 import numpy as np
 
+import dask.array as da
+import tifffile
+from dask.diagnostics import ProgressBar
+
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -94,6 +98,8 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
 
     def create_big_volume(self):
+        def zoom_chunk(chunk, zoom_factors):
+            return zoom(chunk, zoom=zoom_factors, order=1).astype(np.uint16)
         reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen'
         allenpath = os.path.join(reg_path, 'Allen_10um_sagittal_padded.tif')
         allen_arr = read_image(allenpath)
@@ -101,15 +107,24 @@ class AntsRegistration:
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
-        change = (change_z, change_y, change_x)
+        zoom_factors = (change_z, change_y, change_x)
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+        chunks=(64, 64, 64)
+        darr = da.from_array(allen_arr, chunks=chunks)
+        # Use map_blocks to apply zooming on full array (not per-chunk)
+        darr_full = darr.rechunk(darr.shape)  # process entire volume
+        zoomed = darr_full.map_blocks(zoom_chunk, dtype=allen_arr.dtype, zoom_factors=zoom_factors, new_axis=None)
 
-        zoomed = zoom(allen_arr, change)
-        print(f'{zoomed.dtype=} {zoomed.shape=}')
+        # Save to TIFF
+        with ProgressBar():
+            result = zoomed.compute()
+
 
         outpath = os.path.join(reg_path, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
-        write_image(outpath, zoomed)
+        write_image(outpath, result)
         print(f'Wrote zoomed volume to {outpath}')
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
