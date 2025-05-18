@@ -136,7 +136,7 @@ class AntsRegistration:
         print(f'Wrote zoomed volume to {outpath}')
 
     def create_big_dask_volume(self):
-        inpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_10um_sagittal.tif')
+        inpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         if not os.path.isfile(inpath):
             print(f"File not found at {inpath}")
             exit(1)
@@ -154,15 +154,12 @@ class AntsRegistration:
         if os.path.exists(outpath):
             print(f"Zarr file already exists at {outpath}")
         else:
-            zoomed = zoom_large_3d_array(arr, scale_factors=scale_factors, chunks=chunk_size)
+            zoomed = da.from_array(arr, chunks=chunk_size)
+            delayed = zoomed.to_zarr(outpath, compute=False, overwrite=True)
             with ProgressBar():
-                zoomed = zoomed.rechunk('auto').compute()
+                delayed.compute()
+
             print(f'zoomed.shape={zoomed.shape} {zoomed.dtype=}')
-            # Save to Zarr
-            zarr.save(outpath, zoomed)
-            #with ProgressBar():
-            #    #da.to_zarr(zoomed, outpath, overwrite=True, mode='w')
-            #    zoomed.to_zarr(outpath, overwrite=True)
 
         
         print(f"Written scaled volume to: {outpath}")
