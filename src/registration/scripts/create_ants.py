@@ -39,25 +39,40 @@ class AntsRegistration:
         self.fixed_path = os.path.join(self.reg_path, self.fixed)
         self.fixed_filepath = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         self.moving_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        self.fixed_filepath_zarr = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
 
 
-
-    def create_registration(self):
+    def check_registration(self):
         print('Starting registration')
 
-        if not os.path.isfile(self.moving_filepath):
-            print(f"Moving image not found at {self.moving_filepath}")
+        if not os.path.isdir(self.moving_filepath_zarr):
+            print(f"Moving image dir not found at {self.moving_filepath_zarr}")
             exit(1)
         else:
-            print(f"Moving image found at {self.moving_filepath}")
+            print(f"Moving image found at {self.moving_filepath_zarr}")
 
-        if not os.path.isfile(self.fixed_filepath):
-            print(f"Reference image not found at {self.fixed_filepath}")
+        if not os.path.isdir(self.fixed_filepath_zarr):
+            print(f"Reference image dir not found at {self.fixed_filepath_zarr}")
             exit(1)
         else:
-            print(f"Reference image found at {self.fixed_filepath}")
-                                        
+            print(f"Reference image found at {self.fixed_filepath_zarr}")
+
+    def create_registration(self):
+        self.check_registration()
+
+        # Example usage
+        fixed_zarr = self.fixed_filepath_zarr
+        moving_zarr = self.moving_filepath_zarr
+
+        registration = register_zarr_images(fixed_zarr, moving_zarr)
+        print(registration)
+        original_filepath = registration['fwdtransforms'][0]
+        shutil.move(original_filepath, self.transform_filepath)
+        print(f"Transform file moved to {self.transform_filepath}")
+
+        """
         moving_image = ants.image_read(self.moving_filepath)
         print(f"Moving image loaded and shape: {moving_image.shape} dtype: {moving_image.dtype}")
         reference = ants.image_read(self.fixed_filepath)
@@ -78,6 +93,7 @@ class AntsRegistration:
         outpath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         ants.image_write(mywarpedimage, outpath)
         print(f'Wrote transformed volume to {outpath}')
+        """
 
 
 
@@ -374,6 +390,34 @@ def scale_3d_volume_with_dask(input_array: da.Array, scale_factors: tuple, outpu
     # Save to Zarr
     da.to_zarr(zoomed, output_zarr_path, overwrite=True)
     print(f"Written scaled volume to: {output_zarr_path}")
+
+def load_zarr_as_numpy(zarr_path, chunk_size=(64, 64, 64)):
+    """Load a Zarr dataset as a Dask array and convert it to NumPy."""
+    print(f"Loading: {zarr_path}")
+    z = zarr.open(zarr_path, mode='r')
+    dask_array = da.from_zarr(z).rechunk(chunk_size)
+    # Force compute into memory; for out-of-core registration, advanced ANTs customization is needed
+    numpy_array = dask_array.compute()
+    return numpy_array
+
+def register_zarr_images(fixed_path, moving_path, output_transform_prefix="output"):
+    # Load datasets
+    fixed_np = load_zarr_as_numpy(fixed_path)
+    moving_np = load_zarr_as_numpy(moving_path)
+
+    # Convert to ANTs images
+    fixed = ants.from_numpy(fixed_np)
+    moving = ants.from_numpy(moving_np)
+
+    # Perform registration
+    print("Starting registration...")
+    registration = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine')
+
+    # Apply transform
+    #warped_moving = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=registration['fwdtransforms'], defaultvalue=0)
+
+    print("Registration completed.")
+    return registration
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
