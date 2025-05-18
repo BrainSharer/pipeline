@@ -33,39 +33,47 @@ class AntsRegistration:
         self.debug = debug
         self.reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.fileLocationManager = FileLocationManager(moving)
+        self.moving_path = os.path.join(self.reg_path, self.moving)
+        self.fixed_path = os.path.join(self.reg_path, self.fixed)
+        self.fixed_filepath = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        self.moving_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
 
 
     def create_registration(self):
 
-        moving_path = os.path.join(self.reg_path, self.moving)
-        fixed_path = os.path.join(self.reg_path, self.fixed)
-        fixed_filepath = os.path.join(fixed_path, f'{self.fixed}_{self.xy_um}um_sagittal.tif')
-        moving_filepath = os.path.join(moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
 
-        if not os.path.isfile(moving_filepath):
-            print(f"Moving image not found at {moving_filepath}")
+        if not os.path.isfile(self.moving_filepath):
+            print(f"Moving image not found at {self.moving_filepath}")
             exit(1)
         else:
-            print(f"Moving image found at {moving_filepath}.")
+            print(f"Moving image found at {self.moving_filepath}")
 
-        if not os.path.isfile(fixed_filepath):
-            print(f"Fixed image not found at {fixed_path}")
+        if not os.path.isfile(self.fixed_filepath):
+            print(f"Reference image not found at {self.fixed_filepath}")
             exit(1)
         else:
-            print(f"Fixed image found at {fixed_filepath}")
+            print(f"Reference image found at {self.fixed_filepath}")
                                         
 
-        moving_image = ants.image_read(moving_filepath)
-        fixed_image = ants.image_read(fixed_filepath)
-        tx = ants.registration(fixed=fixed_image, moving=moving_image, type_of_transform = (self.transformation) )
-        print(tx)
-        mywarpedimage = ants.apply_transforms( fixed=fixed_image, moving=moving_image, transformlist=tx['fwdtransforms'], defaultvalue=0 )
-        outpath = os.path.join(moving_path, f'{self.moving}_{self.fixed}_{self.um}um_sagittal.tif')
-        ants.image_write(mywarpedimage, outpath)
+        moving_image = ants.image_read(self.moving_filepath)
+        reference = ants.image_read(self.fixed_filepath)
+        if os.path.isfile(self.transform_filepath):
+            print(f"Transform file already exists at {self.transform_filepath}")
+        else:
+            print(f"Transform file not found at {self.transform_filepath}")
+            tx = ants.registration(fixed=reference, moving=moving_image, 
+                               type_of_transform = (self.transformation))
+            original_filepath = tx['fwdtransforms'][0]
+            shutil.move(original_filepath, self.transform_filepath)
+            print(f"Transform file moved to {self.transform_filepath}")
 
-        original_filepath = tx['fwdtransforms'][0]
-        transform_filepath = os.path.join(moving_path, f'{self.moving}_{self.fixed}_{um}um_sagittal_to_Allen.mat')
-        shutil.move(original_filepath, transform_filepath)
+        mywarpedimage = ants.apply_transforms( fixed=reference, moving=moving_image, 
+                                              transformlist=self.transform_filepath, defaultvalue=0)
+        outpath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        ants.image_write(mywarpedimage, outpath)
+        print(f'Wrote transformed volume to {outpath}')
+
 
 
     def create_matrix(self):
@@ -100,6 +108,29 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
 
     def create_big_volume(self):
+        inpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_10um_sagittal.tif')
+        if not os.path.isfile(inpath):
+            print(f"File not found at {inpath}")
+            exit(1)
+        else:
+            print(f"File found at {inpath}.")
+        outpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        arr = read_image(inpath)
+        change_z = 10/self.z_um
+        change_y = 10/self.xy_um
+        change_x = 10/self.xy_um
+        scale_factors = (change_z, change_y, change_x)
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {arr.shape=} {arr.dtype=}')
+        zoomed = zoom(arr, scale_factors)
+        # Write incrementally to TIFF
+        with TiffWriter(outpath, bigtiff=True) as tif:
+            for i in tqdm(range(zoomed.shape[0])):
+                slice = zoomed[i]
+                tif.write(slice.astype(arr.dtype), contiguous=True)
+
+        print(f'Wrote zoomed volume to {outpath}')
+
+    def create_big_dask_volume(self):
         allenpath = os.path.join(self.reg_path, 'Allen', 'Allen_10um_sagittal_padded.tif')
         allen_arr = read_image(allenpath)
         change_z = 10/self.z_um
@@ -107,14 +138,15 @@ class AntsRegistration:
         change_x = 10/self.xy_um
         chunk_size = (64,64,64)
         scale_factors = (change_z, change_y, change_x)
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=}')
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {allen_arr.shape=} {allen_arr.dtype=}')
         zoomed = zoom_large_3d_array(allen_arr, scale_factors=scale_factors, chunks=chunk_size)
         outpath = os.path.join(self.reg_path, 'Allen', f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
 
         # Write incrementally to TIFF
         with TiffWriter(outpath, bigtiff=True) as tif:
             for i in tqdm(range(zoomed.shape[0])):
-                slice_i = zoomed[i].compute()
+                slice = zoomed[i]
+                slice_i = slice.compute()
                 tif.write(slice_i.astype(allen_arr.dtype), contiguous=True)
 
         print(f'Wrote zoomed volume to {outpath}')
