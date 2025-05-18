@@ -146,7 +146,7 @@ class AntsRegistration:
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
-        chunk_size = (64,64,64)
+        chunk_size = 'auto'
         scale_factors = (change_z, change_y, change_x)
         print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {arr.shape=} {arr.dtype=}')
         outpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
@@ -154,10 +154,9 @@ class AntsRegistration:
             print(f"Zarr file already exists at {outpath}")
         else:
             zoomed = zoom_large_3d_array(arr, scale_factors=scale_factors, chunks=chunk_size)
-            zoomed = zoomed.rechunk('auto')
             # Save to Zarr
             with ProgressBar():
-                da.to_zarr(zoomed, outpath, overwrite=True)
+                da.to_zarr(zoomed, outpath, overwrite=True, mode='w')
 
         print(f"Written scaled volume to: {outpath}")
         volume = zarr.open(outpath, 'r')
