@@ -154,6 +154,7 @@ class AntsRegistration:
             print(f"Zarr file already exists at {outpath}")
         else:
             zoomed = zoom_large_3d_array(arr, scale_factors=scale_factors, chunks=chunk_size)
+            zoomed = zoomed.rechunk('auto')
             # Save to Zarr
             with ProgressBar():
                 da.to_zarr(zoomed, outpath, overwrite=True)
