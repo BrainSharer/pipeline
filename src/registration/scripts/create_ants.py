@@ -56,12 +56,14 @@ class AntsRegistration:
             print(f"Reference image found at {self.fixed_filepath}")
                                         
         moving_image = ants.image_read(self.moving_filepath)
+        print(f"Moving image loaded and shape: {moving_image.shape} dtype: {moving_image.dtype}")
         reference = ants.image_read(self.fixed_filepath)
+        print(f"Reference image loaded and shape: {reference.shape} dtype: {reference.dtype}")
 
         if os.path.isfile(self.transform_filepath):
             print(f"Transform file already exists at {self.transform_filepath}")
         else:
-            print(f"Transform file not found at {self.transform_filepath}")
+            print(f"Transform file not and now creating ...")
             tx = ants.registration(fixed=reference, moving=moving_image, 
                                type_of_transform = (self.transformation))
             original_filepath = tx['fwdtransforms'][0]
