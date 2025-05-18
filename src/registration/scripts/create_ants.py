@@ -146,31 +146,38 @@ class AntsRegistration:
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
-        chunk_size = 'auto'
         scale_factors = (change_z, change_y, change_x)
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {arr.shape=} {arr.dtype=}')
+        new_shape = tuple(int(s * f) for s, f in zip(arr.shape, scale_factors))
+        chunk_size = (64,64,64)
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {arr.shape=} {arr.dtype=} {new_shape=}')
         outpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         if os.path.exists(outpath):
             print(f"Zarr file already exists at {outpath}")
         else:
             zoomed = zoom_large_3d_array(arr, scale_factors=scale_factors, chunks=chunk_size)
-            # Save to Zarr
             with ProgressBar():
-                da.to_zarr(zoomed, outpath, overwrite=True, mode='w')
+                zoomed = zoomed.rechunk('auto').compute()
+            print(f'zoomed.shape={zoomed.shape} {zoomed.dtype=}')
+            # Save to Zarr
+            zarr.save(outpath, zoomed)
+            #with ProgressBar():
+            #    #da.to_zarr(zoomed, outpath, overwrite=True, mode='w')
+            #    zoomed.to_zarr(outpath, overwrite=True)
 
+        
         print(f"Written scaled volume to: {outpath}")
         volume = zarr.open(outpath, 'r')
         print(volume.info)
         print(f'volume.shape={volume.shape}')
         return
-
+        
 
         # Write incrementally to TIFF
         with TiffWriter(outpath, bigtiff=True) as tif:
             for i in tqdm(range(zoomed.shape[0])):
                 slice = zoomed[i]
                 slice_i = slice.compute()
-                tif.write(slice_i.astype(allen_arr.dtype), contiguous=True)
+                tif.write(slice_i.astype(arr.dtype), contiguous=True)
 
         print(f'Wrote zoomed volume to {outpath}')
 
@@ -212,7 +219,7 @@ class AntsRegistration:
                 del img
 
 
-def zoom_large_3d_array_to_tiff(input_array_path, output_tif_path, shape, dtype, scale_factors, chunk_size=(64, 64, 64)):
+def zoom_large_3d_array_to_tiff(input_array_path, shape, dtype, scale_factors, chunk_size=(64, 64, 64)):
     """
     Zoom a large 3D array and save it incrementally to a TIFF file.
 
@@ -250,6 +257,7 @@ def zoom_large_3d_array_to_tiff(input_array_path, output_tif_path, shape, dtype,
 
     # Map zoom over all blocks
     zoomed = darr.map_blocks(blockwise_zoom, dtype=dtype)
+    return zoomed
 
     # Write incrementally to TIFF
     with TiffWriter(output_tif_path, bigtiff=True) as tif:
