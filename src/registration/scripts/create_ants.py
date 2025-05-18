@@ -41,7 +41,7 @@ class AntsRegistration:
 
 
     def create_registration(self):
-
+        print('Starting registration')
 
         if not os.path.isfile(self.moving_filepath):
             print(f"Moving image not found at {self.moving_filepath}")
@@ -55,9 +55,9 @@ class AntsRegistration:
         else:
             print(f"Reference image found at {self.fixed_filepath}")
                                         
-
         moving_image = ants.image_read(self.moving_filepath)
         reference = ants.image_read(self.fixed_filepath)
+
         if os.path.isfile(self.transform_filepath):
             print(f"Transform file already exists at {self.transform_filepath}")
         else:
