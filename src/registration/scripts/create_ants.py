@@ -10,8 +10,10 @@ from scipy.ndimage import zoom
 import numpy as np
 from tqdm import tqdm
 import dask.array as da
-from dask.diagnostics import ProgressBar
 from tifffile import TiffWriter
+import zarr
+from numcodecs import Blosc
+from dask.diagnostics import ProgressBar
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -38,6 +40,7 @@ class AntsRegistration:
         self.fixed_filepath = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         self.moving_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
+
 
 
     def create_registration(self):
@@ -133,16 +136,34 @@ class AntsRegistration:
         print(f'Wrote zoomed volume to {outpath}')
 
     def create_big_dask_volume(self):
-        allenpath = os.path.join(self.reg_path, 'Allen', 'Allen_10um_sagittal_padded.tif')
-        allen_arr = read_image(allenpath)
+        inpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_10um_sagittal.tif')
+        if not os.path.isfile(inpath):
+            print(f"File not found at {inpath}")
+            exit(1)
+        else:
+            print(f"File found at {inpath}.")
+        arr = read_image(inpath)
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
         chunk_size = (64,64,64)
         scale_factors = (change_z, change_y, change_x)
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {allen_arr.shape=} {allen_arr.dtype=}')
-        zoomed = zoom_large_3d_array(allen_arr, scale_factors=scale_factors, chunks=chunk_size)
-        outpath = os.path.join(self.reg_path, 'Allen', f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=} {arr.shape=} {arr.dtype=}')
+        outpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        if os.path.exists(outpath):
+            print(f"Zarr file already exists at {outpath}")
+        else:
+            zoomed = zoom_large_3d_array(arr, scale_factors=scale_factors, chunks=chunk_size)
+            # Save to Zarr
+            with ProgressBar():
+                da.to_zarr(zoomed, outpath, overwrite=True)
+
+        print(f"Written scaled volume to: {outpath}")
+        volume = zarr.open(outpath, 'r')
+        print(volume.info)
+        print(f'volume.shape={volume.shape}')
+        return
+
 
         # Write incrementally to TIFF
         with TiffWriter(outpath, bigtiff=True) as tif:
@@ -266,6 +287,88 @@ def zoom_large_3d_array(input_array, scale_factors, chunks=(100, 100, 100)):
     zoomed = input_array.map_blocks(zoom_block, dtype=input_array.dtype)
     return zoomed
 
+def apply_ants_transform_zarr(input_zarr_path, output_zarr_path, transform_list, reference_image_path, chunk_size=(64, 64, 64)):
+    """
+    Apply ANTs transform to a large 3D Zarr volume in chunks.
+
+    Parameters:
+    - input_zarr_path: path to the input Zarr array (3D).
+    - output_zarr_path: path to the output Zarr array.
+    - transform_list: list of ANTs transform files (e.g., from ants.registration).
+    - reference_image_path: path to reference image (defines output space).
+    - chunk_size: tuple defining the size of chunks to process at a time.
+    """
+
+    input_zarr = zarr.open(input_zarr_path, mode='r')
+    shape = input_zarr.shape
+    dtype = input_zarr.dtype
+
+    # Create output zarr with same shape and dtype
+    compressor = Blosc(cname='zstd', clevel=3)
+    output_zarr = zarr.open(output_zarr_path, mode='w')
+    output_array = output_zarr.create('data', shape=shape, chunks=chunk_size, dtype=dtype, compressor=compressor)
+
+    # Load reference image
+    reference = ants.image_read(reference_image_path)
+
+    # Iterate through chunks
+    for z in range(0, shape[0], chunk_size[0]):
+        for y in range(0, shape[1], chunk_size[1]):
+            for x in tqdm(range(0, shape[2], chunk_size[2])):
+                z0, y0, x0 = z, y, x
+                z1, y1, x1 = min(z+chunk_size[0], shape[0]), min(y+chunk_size[1], shape[1]), min(x+chunk_size[2], shape[2])
+                
+                # Load chunk
+                chunk = input_zarr[z0:z1, y0:y1, x0:x1]
+                chunk_img = ants.from_numpy(chunk.astype(np.float32), origin=(x0, y0, z0), spacing=reference.spacing, direction=reference.direction)
+
+                # Apply transform
+                warped_chunk = ants.apply_transforms(fixed=reference, moving=chunk_img, transformlist=transform_list, interpolator='linear')
+                
+                # Write transformed chunk to output Zarr
+                transformed_array = warped_chunk.numpy()
+                output_array[z0:z1, y0:y1, x0:x1] = transformed_array
+
+                print(f"Processed chunk: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1}")
+
+    print("Transformation complete.")
+
+def scale_3d_volume_with_dask(input_array: da.Array, scale_factors: tuple, output_zarr_path: str, chunks: tuple = None):
+    """
+    Scales a 3D Dask array using scipy.ndimage.zoom and writes it to a Zarr file.
+
+    Parameters:
+    - input_array: dask.array.Array
+        The input 3D Dask array (z, y, x).
+    - scale_factors: tuple of 3 floats
+        Scaling factors for (z, y, x) dimensions.
+    - output_zarr_path: str
+        Path to save the output Zarr dataset.
+    - chunks: tuple, optional
+        Chunk size for the output Dask array. Defaults to input_array.chunks.
+    """
+    if input_array.ndim != 3:
+        raise ValueError("Input array must be 3-dimensional (z, y, x)")
+
+    if chunks is None:
+        chunks = input_array.chunks
+
+    # Wrap zoom to be Dask-compatible via map_blocks
+    def zoom_block(block, zoom_factors):
+        return zoom(block, zoom_factors, order=1)
+
+    zoomed = input_array.map_blocks(
+        zoom_block,
+        zoom_factors=scale_factors,
+        dtype=input_array.dtype
+    )
+
+    # Rechunk to the desired output shape
+    zoomed = zoomed.rechunk(chunks)
+
+    # Save to Zarr
+    da.to_zarr(zoomed, output_zarr_path, overwrite=True)
+    print(f"Written scaled volume to: {output_zarr_path}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -288,6 +391,7 @@ if __name__ == '__main__':
 
 
     function_mapping = {'zoom_volume': pipeline.create_big_volume,
+                        'create_big_dask_volume': pipeline.create_big_dask_volume,
                         'create_matrix': pipeline.create_matrix,
                         'create_registration': pipeline.create_registration,
                         'split_volume': pipeline.split_big_volume,
