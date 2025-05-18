@@ -16,6 +16,7 @@ from tifffile import TiffWriter
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
+from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import read_image, write_image
 
 class AntsRegistration:
@@ -31,6 +32,7 @@ class AntsRegistration:
         self.transformation = transformation
         self.debug = debug
         self.reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        self.fileLocationManager = FileLocationManager(moving)
 
 
     def create_registration(self):
@@ -98,10 +100,8 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
 
     def create_big_volume(self):
-        reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen'
-        allenpath = os.path.join(reg_path, 'Allen_10um_sagittal_padded.tif')
+        allenpath = os.path.join(self.reg_path, 'Allen', 'Allen_10um_sagittal_padded.tif')
         allen_arr = read_image(allenpath)
-        del allenpath
         change_z = 10/self.z_um
         change_y = 10/self.xy_um
         change_x = 10/self.xy_um
@@ -109,7 +109,7 @@ class AntsRegistration:
         scale_factors = (change_z, change_y, change_x)
         print(f'change_z={change_z} change_y={change_y} change_x={change_x} {chunk_size=}')
         zoomed = zoom_large_3d_array(allen_arr, scale_factors=scale_factors, chunks=chunk_size)
-        outpath = os.path.join(reg_path, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
+        outpath = os.path.join(self.reg_path, 'Allen', f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
 
         # Write incrementally to TIFF
         with TiffWriter(outpath, bigtiff=True) as tif:
@@ -118,6 +118,44 @@ class AntsRegistration:
                 tif.write(slice_i.astype(allen_arr.dtype), contiguous=True)
 
         print(f'Wrote zoomed volume to {outpath}')
+
+    def split_big_volume(self):
+        filepath = os.path.join(self.reg_path, self.moving, 'ALLEN771602_Allen_8um_sagittal.tif')
+        if not os.path.isfile(filepath):
+            print(f"File not found at {filepath}")
+            exit(1)
+        else:
+            print(f"File found at {filepath}.")
+        arr = read_image(filepath)
+        outpath = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
+        os.makedirs(outpath, exist_ok=True) 
+        for i in tqdm(range(arr.shape[0])):
+            slice_i = arr[i]
+            slice_i = slice_i.astype(np.uint16)
+            outpath_slice = os.path.join(outpath, f'{str(i).zfill(4)}.tif')
+            write_image(outpath_slice, slice_i)
+            print(f'Wrote slice {i} to {outpath_slice}')
+
+    def repack_big_volume(self):
+        filespath = os.path.join(self.fileLocationManager.prep, 'C1', str(0))
+        if not os.path.isdir(filespath):
+            print(f"Dir not found at {filespath}")
+            exit(1)
+        else:
+            print(f"Dir found at {filespath}.")
+        output_tif_path = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.z_um}um_sagittal.tif')
+        files = sorted(os.listdir(filespath))
+        # Write incrementally to TIFF
+        with TiffWriter(output_tif_path, bigtiff=True) as tif:
+            for file in tqdm(files):
+                filepath = os.path.join(filespath, file)
+                img = read_image(filepath)
+                if img.ndim != 2:
+                    img = img.reshape((img.shape[-2], img.shape[-1]))
+                #print(f'img shape: {img.shape} img dtype: {img.dtype}')
+                tif.write(img, contiguous=True)
+                del img
+
 
 def zoom_large_3d_array_to_tiff(input_array_path, output_tif_path, shape, dtype, scale_factors, chunk_size=(64, 64, 64)):
     """
@@ -218,6 +256,8 @@ if __name__ == '__main__':
     function_mapping = {'zoom_volume': pipeline.create_big_volume,
                         'create_matrix': pipeline.create_matrix,
                         'create_registration': pipeline.create_registration,
+                        'split_volume': pipeline.split_big_volume,
+                        'repack_volume': pipeline.repack_big_volume,
     }
 
     if task in function_mapping:
