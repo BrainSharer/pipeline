@@ -42,9 +42,14 @@ class AntsRegistration:
         self.fixed_filepath_zarr = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
+        self.transform_filepath = os.path.join(self.moving_path, 'Allen.mat')
 
     def apply_registration(self):
         self.check_registration(self.fixed_filepath_zarr)
+
+        if not os.path.isfile(self.transform_filepath):
+            print(f"Transform file not found at {self.transform_filepath}")
+            exit(1)
 
         transform_list = [self.transform_filepath]
         output_tif_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered')
@@ -168,7 +173,7 @@ class AntsRegistration:
             print(f"File not found at {inpath}")
             exit(1)
         else:
-            print(f"File found at {inpath}.")
+            print(f"File found at {inpath}")
         outpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         arr = read_image(inpath)
         change_z = 10/self.z_um
