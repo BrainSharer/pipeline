@@ -43,8 +43,42 @@ class AntsRegistration:
         self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
 
+    def apply_registration(self):
+        self.check_registration(self.fixed_filepath_zarr)
 
-    def check_registration(self):
+        transform_list = [self.transform_filepath]
+        output_tif_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered')
+        os.makedirs(output_tif_path, exist_ok=True)
+
+        fixed_np = load_zarr_as_numpy(self.fixed_filepath_zarr)
+        moving_np = load_zarr_as_numpy(self.fixed_filepath_zarr)
+        print(f'Fixed image shape: {fixed_np.shape} dtype: {fixed_np.dtype}')
+        print(f'Moving image shape: {moving_np.shape} dtype: {moving_np.dtype}')
+        fixed = numpy_to_ants_image(fixed_np)
+        del fixed_np
+        print(f'Fixed image shape: {fixed.shape} dtype: {fixed.dtype}')
+        moving = numpy_to_ants_image(moving_np)
+        del moving_np
+        print(f'Moving image shape: {moving.shape} dtype: {moving.dtype}')
+         # Apply transformation
+        warped_moving = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=transform_list, defaultvalue=0)
+        del moving
+        del fixed
+        # Convert to numpy and save as Zarr
+        warped_np = warped_moving.numpy()
+        del warped_moving
+        print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
+        for i in range(warped_np.shape[0]):
+            slice_i = warped_np[i]
+            slice_i = slice_i.astype(np.uint16)
+            outpath_slice = os.path.join(output_tif_path, f'{str(i).zfill(4)}.tif')
+            write_image(outpath_slice, slice_i)
+            print(f'Wrote slice {i} to {outpath_slice}')
+            del slice_i
+
+
+
+    def check_registration(self, reference_image_path):
         print('Starting registration')
 
         if not os.path.isdir(self.moving_filepath_zarr):
@@ -53,14 +87,14 @@ class AntsRegistration:
         else:
             print(f"Moving image found at {self.moving_filepath_zarr}")
 
-        if not os.path.isdir(self.fixed_filepath_zarr):
-            print(f"Reference image dir not found at {self.fixed_filepath_zarr}")
+        if not os.path.exists(reference_image_path):
+            print(f"Reference image  not found at {reference_image_path}")
             exit(1)
         else:
-            print(f"Reference image found at {self.fixed_filepath_zarr}")
+            print(f"Reference image found at {reference_image_path}")
 
     def create_registration(self):
-        self.check_registration()
+        self.check_registration(self.fixed_filepath_zarr)
 
         # Example usage
         fixed_zarr = self.fixed_filepath_zarr
@@ -151,7 +185,7 @@ class AntsRegistration:
 
         print(f'Wrote zoomed volume to {outpath}')
 
-    def create_big_dask_volume(self):
+    def create_zarr(self):
         inpath = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         if not os.path.isfile(inpath):
             print(f"File not found at {inpath}")
@@ -391,7 +425,7 @@ def scale_3d_volume_with_dask(input_array: da.Array, scale_factors: tuple, outpu
     da.to_zarr(zoomed, output_zarr_path, overwrite=True)
     print(f"Written scaled volume to: {output_zarr_path}")
 
-def load_zarr_as_numpy(zarr_path, chunk_size=(64, 64, 64)):
+def load_zarr_as_numpyXXX(zarr_path, chunk_size=(64, 64, 64)):
     """Load a Zarr dataset as a Dask array and convert it to NumPy."""
     print(f"Loading: {zarr_path}")
     z = zarr.open(zarr_path, mode='r')
@@ -419,6 +453,36 @@ def register_zarr_images(fixed_path, moving_path, output_transform_prefix="outpu
     print("Registration completed.")
     return registration
 
+# Load Zarr images (assuming shape [z, y, x] or [x, y, z])
+def load_zarr_as_numpy(zarr_path):
+    store = zarr.open(zarr_path, mode='r')
+    return np.array(store)
+
+# Convert numpy to ANTs image
+def numpy_to_ants_image(np_array, spacing=(1.0, 1.0, 1.0)):
+    return ants.from_numpy(np_array, spacing=spacing)
+
+# Apply affine transform
+def apply_affine_transform(fixed_zarr_path, moving_zarr_path, output_path, spacing=(1.0, 1.0, 1.0)):
+    fixed_np = load_zarr_as_numpy(fixed_zarr_path)
+    moving_np = load_zarr_as_numpy(moving_zarr_path)
+
+    fixed = numpy_to_ants_image(fixed_np, spacing=spacing)
+    moving = numpy_to_ants_image(moving_np, spacing=spacing)
+
+    # Compute affine registration
+    tx = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine')
+
+    # Apply transformation
+    warped_moving = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx['fwdtransforms'])
+
+    # Convert to numpy and save as Zarr
+    warped_np = warped_moving.numpy()
+
+    zarr.save(output_path, warped_np)
+    print(f"Warped image saved to: {output_path}")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
@@ -440,11 +504,12 @@ if __name__ == '__main__':
 
 
     function_mapping = {'zoom_volume': pipeline.create_big_volume,
-                        'create_big_dask_volume': pipeline.create_big_dask_volume,
+                        'create_zarr': pipeline.create_zarr,
                         'create_matrix': pipeline.create_matrix,
                         'create_registration': pipeline.create_registration,
                         'split_volume': pipeline.split_big_volume,
                         'repack_volume': pipeline.repack_big_volume,
+                        'apply_registration': pipeline.apply_registration,
     }
 
     if task in function_mapping:
