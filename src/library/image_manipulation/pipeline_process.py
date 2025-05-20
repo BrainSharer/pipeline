@@ -118,8 +118,8 @@ class Pipeline(
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        self.report_status()
-        self.check_settings()
+        #self.report_status()
+        #self.check_settings()
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -418,21 +418,13 @@ class Pipeline(
 
     def check_settings(self):
         """
-        Make sure there is a ./src/settings.py file and make sure there is enough RAM
-        I set an arbitrary limit of 50GB of RAM for the full resolution images
+        Make sure there is a ./src/settings.py file
         """
 
         error = ""
 
         if not os.path.exists("./src/settings.py"):
             error += "\nThere is no ./src/settings.py file!"
-
-        if not self.downsample and not self.TASK_EXTRACT and self.available_memory < 50:
-            error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
-            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
-            error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
-            error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
-            
 
         if len(error) > 0:
             print(error)
@@ -451,7 +443,7 @@ class Pipeline(
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
             error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
             
-
+        
         if len(error) > 0:
             print(error)
             sys.exit()

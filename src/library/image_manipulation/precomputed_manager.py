@@ -20,17 +20,16 @@ class NgPrecomputedMaker:
     def __init__(self, sqlController, *args, **kwargs):
         self.sqlController = sqlController
         # Initialize other attributes as needed
-        # Example:
-        # self.input = kwargs.get('input', None)
-        # self.output = kwargs.get('output', None)
-        # self.animal = kwargs.get('animal', None)
-        # self.section_count = kwargs.get('section_count', None)
+        self.input = kwargs.get('input', None)
+        self.output = kwargs.get('output', None)
+        self.animal = kwargs.get('animal', None)
+        self.section_count = kwargs.get('section_count', None)
         self.downsample = kwargs.get('downsample', False)
         self.scaling_factor = kwargs.get('scaling_factor', 1.0)
-        # self.rechunkme_path = kwargs.get('rechunkme_path', None)
-        # self.progress_dir = kwargs.get('progress_dir', None)
-        # self.fileLogger = kwargs.get('fileLogger', None)
-        # self.debug = kwargs.get('debug', False)
+        self.rechunkme_path = kwargs.get('rechunkme_path', None)
+        self.progress_dir = kwargs.get('progress_dir', None)
+        self.fileLogger = kwargs.get('fileLogger', None)
+        self.debug = kwargs.get('debug', False)
 
     def get_scales(self):
         """returns the scanning resolution for a given animal.  
@@ -42,13 +41,16 @@ class NgPrecomputedMaker:
         """
         db_resolution = self.sqlController.scan_run.resolution
         zresolution = self.sqlController.scan_run.zresolution
-        resolution = int(db_resolution * 1000) 
+        resolution = db_resolution * 1000
         if self.downsample:
           if zresolution < 20:
-                zresolution = int(zresolution * 1000 * self.scaling_factor)
-          resolution = int(db_resolution * 1000 * self.scaling_factor)          
- 
-        scales = (resolution, resolution, int(zresolution * 1000))
+                zresolution *=  self.scaling_factor
+
+          resolution *=  self.scaling_factor         
+
+        resolution = int(resolution)
+        zresolution = int(zresolution * 1000)
+        scales = (resolution, resolution, zresolution)
         return scales
 
 
