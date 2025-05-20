@@ -200,7 +200,10 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
 
 
-    def check_registration(self, reference_image_path):
+    def check_registration(self, reference_image_path=None):
+        if reference_image_path is None:
+            reference_image_path = self.fixed_filepath
+
         print('Checking for necessary files for registration')
 
         if not os.path.isdir(self.moving_filepath_zarr):
@@ -776,6 +779,7 @@ if __name__ == '__main__':
                         'apply_registration': pipeline.apply_registration,
                         'resize_volume': pipeline.resize_volume,
                         'zarr2tif': pipeline.zarr2tif,
+                        'status': pipeline.check_registration,
     }
 
     if task in function_mapping:
