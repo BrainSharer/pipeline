@@ -89,11 +89,11 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
         """
         matrix = np.array(
-            [[ 0.83822471, 0.04959],
-            [ -0.104,   1.0528295 ]]            
+            [[0.9946726,   0.06427754 ],
+            [ -0.04618119,  1.00449967]]            
         )
         #offset = (-47.81493201,  31.04401488)
-        offset = (8.399, -42)
+        offset = (0,0)
         inpath = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized_3')
         outpath = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         if os.path.exists(outpath):
@@ -259,8 +259,7 @@ class AntsRegistration:
             print(f"Transform file already exists at {self.transform_filepath}")
         else:
             print(f"Transform file not and now creating ...")
-            tx = ants.registration(fixed=reference, moving=moving_image, 
-                               type_of_transform = (self.transformation))
+            tx = ants.registration(fixed=reference, moving=moving_image,  type_of_transform = (self.transformation))
             original_filepath = tx['fwdtransforms'][0]
             shutil.move(original_filepath, self.transform_filepath)
             print(f"Transform file moved to {self.transform_filepath}")
@@ -408,7 +407,7 @@ class AntsRegistration:
             print(f'Wrote slice {i} to {outpath_slice}')
 
     def repack_big_volume(self):
-        filespath = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized_3')
+        filespath = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized_1')
         if not os.path.isdir(filespath):
             print(f"Dir not found at {filespath}")
             exit(1)
