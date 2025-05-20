@@ -200,26 +200,86 @@ class AntsRegistration:
         print(f'Wrote transformed volume to {outpath}')
 
 
-    def check_registration(self, reference_image_path=None):
-        if reference_image_path is None:
-            reference_image_path = self.fixed_filepath
+    def check_registration(self):
 
-        print('Checking for necessary files for registration')
-
-        if not os.path.isdir(self.moving_filepath_zarr):
-            print(f"Moving image dir not found at {self.moving_filepath_zarr}")
-            exit(1)
+        print('\nChecking for registration files ...')
+        if os.path.isfile(self.moving_filepath):
+            print(f"Moving image found at {self.moving_filepath}")
         else:
-            print(f"Moving image found at {self.moving_filepath_zarr}")
-
-        if not os.path.exists(reference_image_path):
-            print(f"Reference image  not found at {reference_image_path}")
-            exit(1)
+            print(f"Moving image not found at {self.moving_filepath}")
+        if os.path.isfile(self.fixed_filepath):
+            print(f"Moving image found at {self.fixed_filepath}")
         else:
-            print(f"Reference image found at {reference_image_path}")
+            print(f"Moving image not found at {self.fixed_filepath}")
+        
+        print('\nChecking for registration zarr dirs ...')
+        if os.path.isdir(self.moving_filepath_zarr):
+            print(f"Moving image dir found at {self.moving_filepath_zarr}")
+        else:
+            print(f"Moving image not found at {self.moving_filepath_zarr}")
+        if os.path.isdir(self.fixed_filepath_zarr):
+            print(f"Fixed image dir found at {self.fixed_filepath_zarr}")
+        else:
+            print(f"Fixed image dir not found at {self.fixed_filepath_zarr}")
+
+        print('\nChecking for registration transformation files ...')
+        if os.path.isfile(self.transform_filepath):
+            print(f"Transformation found at {self.transform_filepath}")
+        else:
+            print(f"Transformation not found at {self.transform_filepath}")
+
+
+    def create_registration_in_memory(self):
+        if os.path.isfile(self.moving_filepath):
+            print(f"Moving image found at {self.moving_filepath}")
+        else:
+            print(f"Moving image not found at {self.moving_filepath}")
+            exit(1)
+        if os.path.isfile(self.fixed_filepath):
+            print(f"Moving image found at {self.fixed_filepath}")
+        else:
+            print(f"Moving image not found at {self.fixed_filepath}")
+            exit(1)
+
+        if os.path.isfile(self.transform_filepath):
+            print(f"Removing {self.transform_filepath}")
+            os.remove(self.transform_filepath)
+
+        print(f'Reading moving image from {self.moving_filepath}')
+        moving = ants.image_read(self.moving_filepath)
+        print("Moving image loaded")
+        print(f'Reading fixed image from {self.fixed_filepath}')
+        fixed = ants.image_read(self.fixed_filepath)
+        print("Fixed image loaded")
+
+        print("Starting registration ...")
+        registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
+
+        print(registration)
+        original_filepath = registration['fwdtransforms'][0]
+        shutil.move(original_filepath, self.transform_filepath)
+        print(f"Transform file moved to {self.transform_filepath}")
+        output_tif_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
+        if os.path.exists(output_tif_path):
+            print(f"Removing tiff file already exists at {output_tif_path}")
+            shutil.rmtree(output_tif_path)
+        os.makedirs(output_tif_path, exist_ok=True)
+
+        warped_moving = registration['warpedmovout']
+        # Convert to numpy and save as Zarr
+        warped_np = warped_moving.numpy()
+        del warped_moving
+        print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
+        for i in range(warped_np.shape[0]):
+            slice_i = warped_np[i]
+            slice_i = slice_i.astype(np.uint16)
+            outpath_slice = os.path.join(output_tif_path, f'{str(i).zfill(4)}.tif')
+            write_image(outpath_slice, slice_i)
+            print(f'Wrote slice {i} to {outpath_slice}')
+            del slice_i
+
 
     def create_registration(self):
-        self.check_registration(self.fixed_filepath_zarr)
 
         if os.path.isfile(self.transform_filepath):
             print(f"Removing {self.transform_filepath}")
@@ -773,7 +833,7 @@ if __name__ == '__main__':
     function_mapping = {'zoom_volume': pipeline.create_big_volume,
                         'create_zarr': pipeline.create_zarr,
                         'create_matrix': pipeline.create_matrix,
-                        'create_registration': pipeline.create_registration,
+                        'create_registration': pipeline.create_registration_in_memory,
                         'split_volume': pipeline.split_big_volume,
                         'repack_volume': pipeline.repack_big_volume,
                         'apply_registration': pipeline.apply_registration,
