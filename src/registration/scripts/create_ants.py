@@ -231,8 +231,11 @@ class AntsRegistration:
         original_filepath = registration['fwdtransforms'][0]
         shutil.move(original_filepath, self.transform_filepath)
         print(f"Transform file moved to {self.transform_filepath}")
-        return
         output_tif_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered')
+        output_tif_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
+        if os.path.exists(output_tif_path):
+            print(f"Removing tiff file already exists at {output_tif_path}")
+            shutil.rmtree(output_tif_path)
         os.makedirs(output_tif_path, exist_ok=True)
 
         warped_moving = registration['warpedmovout']
