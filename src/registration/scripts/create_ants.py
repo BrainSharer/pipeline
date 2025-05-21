@@ -93,7 +93,7 @@ class AntsRegistration:
             [ -0.04618119,  1.00449967]]            
         )
         #offset = (-47.81493201,  31.04401488)
-        offset = (0,0)
+        offset = (0.0, 0.0)
         inpath = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized_3')
         outpath = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         if os.path.exists(outpath):
@@ -121,7 +121,7 @@ class AntsRegistration:
             write_image(fileoutpath, transformed.astype(np.uint16))
 
     def apply_registration(self):
-        self.check_registration(self.fixed_filepath_zarr)
+        self.check_registration()
 
         output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
         if os.path.exists(output_zarr_path):
@@ -138,8 +138,8 @@ class AntsRegistration:
         z = fixed_z.shape[0] // 1
         
         tile_shape = (z, y, x)  # Customize based on memory
-        moving_z = moving_z.rechunk(tile_shape)
-        fixed_z = fixed_z.rechunk(tile_shape)
+        moving_z = moving_z.rechunk(tile_shape) # type: ignore
+        fixed_z = fixed_z.rechunk(tile_shape) # type: ignore
         #output_z = zarr.open(output_zarr_path, mode='w', shape=fixed_z.shape, chunks=tile_shape, dtype='float32')
         print(f'tile_shape={tile_shape} {fixed_z.shape=} {moving_z.shape=}')
 
@@ -241,9 +241,6 @@ class AntsRegistration:
             print(f"Moving image not found at {self.fixed_filepath}")
             exit(1)
 
-        if os.path.isfile(self.transform_filepath):
-            print(f"Removing {self.transform_filepath}")
-            os.remove(self.transform_filepath)
 
         print(f'Reading moving image from {self.moving_filepath}')
         moving = ants.image_read(self.moving_filepath)
@@ -252,28 +249,34 @@ class AntsRegistration:
         fixed = ants.image_read(self.fixed_filepath)
         print("Fixed image loaded")
 
-        print("Starting registration ...")
-        registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
+        if not os.path.isfile(self.transform_filepath):
+            print(f"Removing {self.transform_filepath}")
+            print("Starting registration ...")
+            registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
+            warped_moving = registration['warpedmovout']
+            original_filepath = registration['fwdtransforms'][0]
+            shutil.move(original_filepath, self.transform_filepath)
+            print(f"Transform file moved to {self.transform_filepath}")
+        else:
+            print(f"Transform file already exists at {self.transform_filepath}")
+            print("Applying registration ...")
+            warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
+                                        transformlist=self.transform_filepath, defaultvalue=0)
 
-        print(registration)
-        original_filepath = registration['fwdtransforms'][0]
-        shutil.move(original_filepath, self.transform_filepath)
-        print(f"Transform file moved to {self.transform_filepath}")
-        output_tif_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
-        if os.path.exists(output_tif_path):
-            print(f"Removing tiff file already exists at {output_tif_path}")
-            shutil.rmtree(output_tif_path)
-        os.makedirs(output_tif_path, exist_ok=True)
-
-        warped_moving = registration['warpedmovout']
-        # Convert to numpy and save as Zarr
+        # Convert to numpy and save to disk
         warped_np = warped_moving.numpy()
-        del warped_moving
+        warped_np = np.swapaxes(warped_np, 0, 2)
         print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
+        output_tifs_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
+        if os.path.exists(output_tifs_path):
+            print(f"Removing tiff files already exists at {output_tifs_path}")
+            shutil.rmtree(output_tifs_path)
+        os.makedirs(output_tifs_path, exist_ok=True)
+
         for i in range(warped_np.shape[0]):
-            slice_i = warped_np[i]
+            slice_i = warped_np[i, ...]
             slice_i = slice_i.astype(np.uint16)
-            outpath_slice = os.path.join(output_tif_path, f'{str(i).zfill(4)}.tif')
+            outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
             write_image(outpath_slice, slice_i)
             print(f'Wrote slice {i} to {outpath_slice}')
             del slice_i
