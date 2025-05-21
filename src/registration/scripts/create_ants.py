@@ -236,9 +236,9 @@ class AntsRegistration:
             print(f"Moving image not found at {self.moving_filepath}")
             exit(1)
         if os.path.isfile(self.fixed_filepath):
-            print(f"Moving image found at {self.fixed_filepath}")
+            print(f"Fixed image found at {self.fixed_filepath}")
         else:
-            print(f"Moving image not found at {self.fixed_filepath}")
+            print(f"Fixed image not found at {self.fixed_filepath}")
             exit(1)
 
 
