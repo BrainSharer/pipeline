@@ -26,25 +26,26 @@ from pathlib import Path
 from timeit import default_timer as timer
 from tqdm import tqdm
 
+
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
+from library.utilities.utilities_process import SCALING_FACTOR
 
 
 class AtlasManager():
 
-    def __init__(self, animal, task, um=10, affine=False, debug=False):
+    def __init__(self, animal, task, um=10, affine=False, scaling_factor=SCALING_FACTOR, debug=False):
 
         self.animal = animal
-        self.brainManager = BrainStructureManager(animal, um, affine, debug)
+        self.brainManager = BrainStructureManager(animal, um, affine, scaling_factor, debug)
         self.atlasMerger = BrainMerger(animal)
         self.task = task
         self.debug = debug
         self.um = um
         self.foundation_brains = ['MD589', 'MD594', 'MD585']
-        #self.foundation_brains = ['MD589']
 
     def create_brain_json(self):
         """
@@ -132,6 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', required=False, default='false', type=str)
     parser.add_argument('--affine', required=False, default='false', type=str)
     parser.add_argument('--um', required=False, default=10, type=int)
+    parser.add_argument('--scaling_factor', required=False, default=SCALING_FACTOR, type=float)
     
     
     parser.add_argument('--task', required=True, type=str)
@@ -140,7 +142,8 @@ if __name__ == '__main__':
     animal = str(args.animal).strip()
     task = str(args.task).strip().lower()
     debug = bool({'true': True, 'false': False}[args.debug.lower()])    
-    affine = bool({'true': True, 'false': False}[args.affine.lower()])    
+    affine = bool({'true': True, 'false': False}[args.affine.lower()])
+    scaling_factor = float(args.scaling_factor)   
     um = args.um
 
     if task == 'update_coms' and affine:
@@ -148,7 +151,7 @@ if __name__ == '__main__':
         sys.exit()
 
         
-    pipeline = AtlasManager(animal, task, um, affine, debug)
+    pipeline = AtlasManager(animal, task, um, affine, scaling_factor, debug)
 
     function_mapping = {'json': pipeline.create_brain_json,
                         'draw': pipeline.test_brain_volumes_and_origins,
@@ -156,6 +159,7 @@ if __name__ == '__main__':
                         'merge': pipeline.merge_all,
                         'neuroglancer': pipeline.brainManager.create_neuroglancer_volume,
                         'save_atlas': pipeline.brainManager.save_atlas_volume,
+                        'create_atlas': pipeline.brainManager.create_atlas_volume,
                         'update_coms': pipeline.brainManager.update_atlas_coms,
                         'update_volumes': pipeline.brainManager.update_volumes,
                         'list_coms': pipeline.brainManager.list_coms_by_atlas,
@@ -164,6 +168,7 @@ if __name__ == '__main__':
                         'status': pipeline.brainManager.report_status,
                         'polygons': pipeline.brainManager.fetch_create_polygons,
                         'precomputed': pipeline.create_precomputed,
+                        'atlas2allen': pipeline.brainManager.atlas2allen,
     }
 
     if task in function_mapping:

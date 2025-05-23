@@ -204,13 +204,11 @@ class AnnotationSessionController:
         return coms
 
 
-    def get_annotation_volume(self, session_id, scaling_factor=1):
+    def get_annotation_volume(self, session_id: int, scaling_factor=1) -> dict:
 
         def convert_euler(animal, x, y, z):
             params = {}
             center = {}
-
-            params['DK78'] = []
             
             params['DK78'] = [0.839732, -0.360354, -0.073608, 
                               0.192520, 0.756523, -0.061689, 
@@ -266,10 +264,11 @@ class AnnotationSessionController:
 
         return polygons
 
-    def get_annotation_array(self, session_id):
+    def get_annotation_array(self, session_id, scaling_factor=1):
 
         """
-        This returns data in meters in an array of nx3.
+        This returns data in meters * scaling_factor in an array of nx3.
+        scaling factor is usually: M_UM_SCALE, to get to micrometers
         """
 
         annotation_session = self.session.query(AnnotationSession).get(session_id)
@@ -293,9 +292,11 @@ class AnnotationSessionController:
             for child in row['childJsons']:
                 x,y,z = child['pointA']
                 array_to_add = np.array([x,y,z])
+                array_to_add = array_to_add *  scaling_factor
                 arrays.append(array_to_add)
 
-        return np.concatenate(arrays)
+        data = np.stack(arrays)
+        return data.reshape(data.shape[0], 3)
     
 
     def get_annotation_features(self, prep_id: str, annotator_id: int, debug: bool = False):

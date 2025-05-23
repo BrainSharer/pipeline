@@ -17,6 +17,9 @@ from dask.diagnostics import ProgressBar
 from skimage.util import view_as_blocks
 from scipy.ndimage import affine_transform
 from itertools import product
+import SimpleITK as sitk
+import nibabel as nib
+from nibabel.orientations import axcodes2ornt, ornt_transform
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -59,20 +62,39 @@ class AntsRegistration:
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
 
     def zarr2tif(self):
-        """
-        output_tif_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered')
-        output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
-        os.makedirs(output_tif_path, exist_ok=True)
-        volume = zarr.open(output_zarr_path, mode='r')
-        for i in tqdm(range(volume.shape[0])):
-            outfile = os.path.join(output_tif_path, f'{str(i).zfill(4)}.tif')
-            if os.path.exists(outfile):
-                continue
+        output_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.nii.gz')
+        input_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        if not os.path.isdir(input_zarr_path):
+            print(f"Zarr dir not found at {input_zarr_path}")
+            exit(1)
+        volume = zarr.open(input_zarr_path, mode='r')
+        image_stack = []
+        for i in tqdm(range(int(volume.shape[0]))): # type: ignore
             section = volume[i, ...]
-            if section.ndim > 2:
-                section = section.reshape(section.shape[-2], section.shape[-1])
-            write_image(outfile, section)
+            if section.ndim > 2: # type: ignore
+                section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
+            #img = sitk.GetImageFromArray(section)
+            image_stack.append(section)
 
+        print('Stacking images ...')
+        volume = np.stack(image_stack, axis=0)
+        # Create a NIfTI image
+        print(f'Creating Nifti image from {volume.shape} dtype: {volume.dtype}')
+        #sitk.WriteImage(volume, output_nii_path)
+        # Create a NIfTI image
+        affine = np.eye(4)  # Identity matrix as default affine
+        nifti_img = nib.Nifti1Image(volume, affine) # type: ignore
+        # Save to .nii file
+        print(nib.aff2axcodes(nifti_img.affine)) # type: ignore
+        desired_orientation = axcodes2ornt('SAR') # Example: to RAS orientation
+        current_orientation = nib.orientations.io_orientation(nifti_img.affine)
+        transform = ornt_transform(current_orientation, desired_orientation)
+        reoriented_img = nifti_img.as_reoriented(transform)         # type: ignore
+        print(nib.aff2axcodes(reoriented_img.affine)) # type: ignore
+        nib.save(reoriented_img, output_nii_path) # type: ignore
+        print(f'Wrote Nifti volume to {output_nii_path}')
+
+        """
         outpath = os.path.join(self.moving_path, 'registered.tif')
         if os.path.exists(outpath):
             print(f"Removing tiff file already exists at {outpath}")
@@ -87,13 +109,6 @@ class AntsRegistration:
                 tif.write(section.astype(np.uint16), contiguous=True)
 
         print(f'Wrote transformed volume to {outpath}')
-        """
-        matrix = np.array(
-            [[0.9946726,   0.06427754 ],
-            [ -0.04618119,  1.00449967]]            
-        )
-        #offset = (-47.81493201,  31.04401488)
-        offset = (0.0, 0.0)
         inpath = os.path.join(self.fileLocationManager.prep, 'C1', 'normalized_3')
         outpath = os.path.join(self.fileLocationManager.prep, 'C1', 'thumbnail_aligned')
         if os.path.exists(outpath):
@@ -108,17 +123,9 @@ class AntsRegistration:
             if img.ndim != 2:
                 img = img.reshape((img.shape[-2], img.shape[-1]))
 
-            transformed = affine_transform(
-                img,
-                matrix,
-                offset=offset,
-                order=0,
-                mode='constant',
-                cval=0
-            )
-                
             
             write_image(fileoutpath, transformed.astype(np.uint16))
+        """
 
     def apply_registration(self):
         self.check_registration()

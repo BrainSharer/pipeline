@@ -1,3 +1,4 @@
+from collections import defaultdict
 import math
 import os
 from pathlib import Path
@@ -20,7 +21,7 @@ RESOLUTION = 0.452
 ALLEN_UM = 10
 
 
-def apply_affine_transform(point: list, matrix) -> np.ndarray:
+def affine_transform_point(point: list, matrix: np.ndarray) -> np.ndarray:
     """
     Applies an affine transformation to a 3D point.
 
@@ -48,7 +49,7 @@ def apply_affine_transform(point: list, matrix) -> np.ndarray:
     # Return the transformed x, y, z coordinates (ignoring the homogeneous coordinate)
     return transformed_point[:3]
 
-def affine_transform_volume(volume, matrix):
+def affine_transform_volume(volume: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     """Apply an affine transformation to a 3D volume."""
     if matrix.shape != (4, 4):
         raise ValueError("Matrix must be a 4x4 numpy array")
@@ -58,6 +59,31 @@ def affine_transform_volume(volume, matrix):
     transformed_volume = affine_transform(volume, matrix, offset=translation, order=1)
     return transformed_volume
 
+def affine_transform_points(polygons: defaultdict, matrix: np.ndarray) -> defaultdict:
+    """
+    Applies an affine transformation to a dictionary of 3D points in um
+    the points will be in a defaultdict like points[section] = (x, y)
+    where section = z
+
+    Parameters:
+        points (dictionary of lists): List of (x, y) coordinates per z.
+        matrix (numpy.ndarray): A 4x4 affine transformation matrix.
+
+    Returns:
+        transformed_points (list of tuples): Transformed (x, y, z) coordinates.
+    """
+    if matrix.shape != (4, 4):
+        raise ValueError("Transformation matrix must be 4x4.")
+    
+    affine_matrix = matrix[:3, :3]
+    transformed = defaultdict(list)
+    for z, points in polygons.items():
+        for x, y in points:
+            vec = np.array([x, y, z])
+            x_new, y_new, z_new = affine_matrix @ vec
+            transformed[z_new].append((x_new, y_new))
+
+    return transformed
 
 
 def list_coms(animal, scaling_factor=1):
@@ -78,6 +104,22 @@ def list_coms(animal, scaling_factor=1):
 
     if len(coms.keys()) == 0:
         coms = fetch_coms(animal, scaling_factor=scaling_factor)
+
+    return coms
+
+def list_raw_coms(animal, scaling_factor=1):
+    """
+    Lists the COMs from the annotation session table. The data
+    is stored in meters and is then converted to micrometers.
+    """
+    sqlController = SqlController(animal)
+
+    coms = {}
+    com_dictionaries = sqlController.get_com_dictionary(prep_id=animal)
+    if len(com_dictionaries.keys()) == 0:
+        return coms
+    for k, v in com_dictionaries.items():
+        coms[k] = v
 
     return coms
 
@@ -422,6 +464,73 @@ def get_evenly_spaced_vertices_from_volume(mask, num_points=20):
 
     return vertices
 
+def get_edge_coordinates(array):
+    from scipy.ndimage import binary_erosion
+    """
+    Returns the coordinates of non-zero edge pixels in a 2D binary array.
+    """
+    # Ensure the input is a binary array
+    binary = array > 0
+
+    # Erode the binary mask
+    eroded = binary_erosion(binary)
+
+    # Subtract eroded version from original to get edges
+    edges = binary & ~eroded
+
+    # Get coordinates of edge pixels
+    edge_coords = np.column_stack(np.nonzero(edges))
+
+    return edge_coords
+
+def get_evenly_spaced_vertices_from_slice(mask, num_points=20):
+    """
+    Given a binary mask, extract the outer contour and return evenly spaced vertices along the edge.
+
+    Parameters:
+    - mask: 2D numpy array (binary mask)
+    - num_points: Number of evenly spaced points to return
+
+    Returns:
+    - List of (x, y) coordinates of vertices
+    """
+    # Ensure mask is uint8
+    mask = mask.astype(np.uint8)
+
+    # Find contours (external only)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return []
+
+    # Choose the largest contour (in case there are multiple)
+    contour = max(contours, key=cv2.contourArea).squeeze()
+
+    # Calculate arc length (perimeter)
+    arc_length = cv2.arcLength(contour, True)
+    print(arc_length)
+
+    # Calculate the cumulative arc lengths
+    distances = [0]
+    for i in range(1, len(contour)):
+        d = np.linalg.norm(contour[i] - contour[i - 1])
+        distances.append(distances[-1] + d)
+    distances = np.array(distances)
+
+    # Sample points at regular intervals
+    desired_distances = np.linspace(0, distances[-1], num_points, endpoint=False)
+    vertices = []
+    j = 0
+    for d in desired_distances:
+        while j < len(distances) - 1 and distances[j+1] < d:
+            j += 1
+        # Linear interpolation between points j and j+1
+        t = (d - distances[j]) / (distances[j+1] - distances[j])
+        pt = (1 - t) * contour[j] + t * contour[j + 1]
+        vertices.append(tuple(pt.astype(int)))
+
+    return vertices
+
+
 def get_evenly_spaced_vertices(vertices: list, num_points=20) -> np.ndarray:
     """
     Returns a specified number of evenly spaced points along the perimeter of a polygon.
@@ -434,6 +543,21 @@ def get_evenly_spaced_vertices(vertices: list, num_points=20) -> np.ndarray:
         list of tuple: List of (x, y) tuples representing the evenly spaced points.
     """
     # Close the polygon if it's not already closed
+
+
+    if not isinstance(vertices, list):
+        if isinstance(vertices, np.ndarray):
+            #non_zero_coords = np.argwhere(vertices != 0)
+            non_zero_coords = get_edge_coordinates(vertices)
+            vertices = [tuple(row) for row in non_zero_coords]
+            #return vertices
+
+
+    if not isinstance(vertices[0], tuple) and len(vertices[0]) != 2:
+        print("Vertices[0] should be a list of tuples.")
+        print(type(vertices[0]), len(vertices[0]))
+        exit(1)
+    
     if vertices[0] != vertices[-1]:
         vertices.append(vertices[0])
 
@@ -442,7 +566,13 @@ def get_evenly_spaced_vertices(vertices: list, num_points=20) -> np.ndarray:
     perimeter = sum(distances)
 
     # Total length between each evenly spaced point
-    step = perimeter / num_points
+    try:
+        step = perimeter / num_points
+    except TypeError as te:
+        print(f"Error in calculating step size: {te}")
+        print(f"perimeter = {perimeter}")
+        print(f"num_points = {num_points}")
+        exit(1)
 
     # Generate points
     result = []
