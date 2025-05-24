@@ -778,8 +778,8 @@ class VolumeRegistration:
             print(f'\nUsing fiducial points, fixed points: {fixed_count} moving points: {moving_count}\n')
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.1"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.9"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
@@ -790,10 +790,10 @@ class VolumeRegistration:
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        #elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-        #elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
-        #elastixImageFilter.SetParameter("ComputeZYX", "true")
+        elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
+        elastixImageFilter.SetParameter("ComputeZYX", "true")
         elastixImageFilter.SetParameter("DefaultPixelValue", "0")
         elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
