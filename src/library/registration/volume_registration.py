@@ -775,7 +775,7 @@ class VolumeRegistration:
             with open(moving_point_path, 'r') as fp:
                 moving_count = len(fp.readlines())
             assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-            print(f'Fixed points: {fixed_count} Moving points: {moving_count}')
+            print(f'\nUsing fiducial points, fixed points: {fixed_count} moving points: {moving_count}\n')
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
             elastixImageFilter.SetParameter("Metric0Weight", ["0.1"]) # the weight of 1st metric
