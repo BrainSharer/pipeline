@@ -778,8 +778,8 @@ class VolumeRegistration:
             print(f'Fixed points: {fixed_count} Moving points: {moving_count}')
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.1"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.9"]) # the weight of 2nd metric
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
