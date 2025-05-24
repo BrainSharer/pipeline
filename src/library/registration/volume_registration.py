@@ -775,11 +775,11 @@ class VolumeRegistration:
             with open(moving_point_path, 'r') as fp:
                 moving_count = len(fp.readlines())
             assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-
+            print(f'Fixed points: {fixed_count} Moving points: {moving_count}')
             elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-            elastixImageFilter.SetParameter("Metric0Weight", ["0.0"]) # the weight of 1st metric
-            elastixImageFilter.SetParameter("Metric1Weight",  ["1.0"]) # the weight of 2nd metric
+            elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
+            elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
             elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
@@ -1160,15 +1160,20 @@ class VolumeRegistration:
         """
         status = []
         
-        if self.fixed is not None and os.path.exists(self.fixed_volume_path):
-            status.append(f'\tFixed volume at {self.fixed_volume_path}')
-            arr = read_image(self.fixed_volume_path)
-            status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
+        if self.fixed is not None:
+            if os.path.exists(self.fixed_volume_path):
+                status.append(f'\tFixed volume at {self.fixed_volume_path}')
+                arr = read_image(self.fixed_volume_path)
+                status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
+            else:
+                status.append(f'\tFixed volume at {self.fixed_volume_path} does not exist')
 
         if os.path.exists(self.moving_volume_path):
             status.append(f'\tMoving volume at {self.moving_volume_path}')
             arr = read_image(self.moving_volume_path)
             status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
+        else:
+            status.append(f'\tMoving volume at {self.moving_volume_path} does not exist')
 
         result_path = os.path.join(self.registration_output, self.registered_volume)
         if os.path.exists(result_path):

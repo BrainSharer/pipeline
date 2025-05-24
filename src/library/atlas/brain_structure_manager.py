@@ -355,8 +355,8 @@ class BrainStructureManager:
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.com_path}")
-        coms = sorted(os.listdir(self.com_path))
-        origins = sorted(os.listdir(self.origin_path))
+        coms = sorted(os.listdir(self.com_path)) # COMs are in micrometers
+        origins = sorted(os.listdir(self.origin_path)) # origins are in micrometers/self.um
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
             print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
@@ -367,9 +367,10 @@ class BrainStructureManager:
         if self.affine:
             moving_name = 'AtlasV8'
             fixed_name = 'Allen'
-            moving_all = list_coms(moving_name, scaling_factor=10)
+            moving_all = list_coms('MD594', scaling_factor=10)
             fixed_all = list_coms(fixed_name, scaling_factor=10)
-            bad_keys = ('RtTg', 'AP')
+            #bad_keys = ('RtTg', 'AP')
+            bad_keys = ()
             common_keys = list(moving_all.keys() & fixed_all.keys())
             good_keys = set(common_keys) - set(bad_keys)
             moving_src = np.array([moving_all[s] for s in good_keys])
@@ -404,8 +405,10 @@ class BrainStructureManager:
 
             if self.affine:
                 com = affine_transform_point(com0, transformation_matrix)
+                origin = affine_transform_point(origin0, transformation_matrix)
             else:
                 com = com0
+                origin = origin0
 
             #if 'TG' in structure:
             #    com = com0
@@ -414,9 +417,9 @@ class BrainStructureManager:
             #y_start = int(com[1] - COM[1])
             #z_start = int(com[2] - COM[2])
 
-            x_start = int(origin0[0])
-            y_start = int(origin0[1])
-            z_start = int(origin0[2])
+            x_start = int(origin[0])
+            y_start = int(origin[1])
+            z_start = int(origin[2])
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
@@ -436,14 +439,12 @@ class BrainStructureManager:
                     atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
                 except ValueError as ve:
                     print(f"Error adding {structure} to atlas: {ve}")
-                    print(f"{structure} com0={np.round(com0)}", end = " ") 
+                    print(f"{structure} com={np.round(com)}", end = " ") 
                     print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}")
                     #sys.exit()
 
             if self.affine:
                 # transform the origin to the new space
-                origin = affine_transform_point(origin0, transformation_matrix)
-                com = affine_transform_point(com0, transformation_matrix)
                 com_path = os.path.join(self.data_path, 'Allen', "com")
                 origin_path = os.path.join(self.data_path, 'Allen', "origin")
                 volume_path = os.path.join(self.data_path, 'Allen', "structure")
@@ -451,9 +452,10 @@ class BrainStructureManager:
                 np.savetxt(os.path.join(origin_path, f"{structure}.txt"), origin)
                 np.save(os.path.join(volume_path, f"{structure}.npy"), volume)
 
-        if self.affine:
+        if self.affine:        
             print(f"Transformation matrix\n {transformation_matrix}")
 
+        print(f"Atlas volume shape={atlas_volume.shape} dtype={atlas_volume.dtype}")
         return atlas_volume, ids
 
     def update_atlas_coms(self) -> None:
@@ -512,8 +514,8 @@ class BrainStructureManager:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
             structure = Path(origin_file).stem
-            if structure not in ['SC', 'IC']:
-                continue
+            #if structure not in ['SC', 'IC']:
+            #    continue
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             volume = np.load(os.path.join(volume_path, volume_file))
             self.upsert_annotation_volume(structure, origin, volume)
@@ -532,8 +534,9 @@ class BrainStructureManager:
 
         atlas_volume, ids = self.create_atlas_volume()
         if not self.debug:
-            outpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.um}um_sagittal.tif"
-            midpath = f"/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK{self.animal}_{self.um}um_midpath.tif"
+            outpath = os.path.join(self.data_path, self.animal, f"DK{self.animal}_{self.um}um_sagittal.tif")
+            midpath = os.path.join(self.data_path, self.animal, f"DK{self.animal}_{self.um}um_midpath.tif")
+            jsonpath = os.path.join(self.data_path, self.animal, "ids.json")
 
             if os.path.exists(outpath):
                 print(f"Removing {outpath}")
@@ -548,10 +551,15 @@ class BrainStructureManager:
             midpoint = int(atlas_volume.shape[2] / 4)
             midvolume = atlas_volume[:, :, midpoint].astype(np.uint16)
             write_image(midpath, midvolume)
+            print(f"Saving ids to {jsonpath}")
+            with open(jsonpath, "w") as f:
+                json.dump(ids, f, indent=4)
 
     def create_neuroglancer_volume(self):
         """
         Creates a Neuroglancer volume from the atlas volume.
+        Note, COMs are saved in micrometers, but the volumes and origins
+        get saved in 10um allen space.
 
         This method performs the following steps:
         1. Creates the atlas volume by calling `self.create_atlas_volume()`.
@@ -569,6 +577,18 @@ class BrainStructureManager:
             OSError: If there is an issue creating or removing directories.
 
         """
+        # check if atlas volume and json already exist
+        outpath = os.path.join(self.data_path, self.animal, f"DK{self.animal}_{self.um}um_sagittal.tif")
+        jsonpath = os.path.join(self.data_path, self.animal, "ids.json")
+        print(f"Checking for {outpath}")
+        print(f"Checking for {jsonpath}")
+        if os.path.exists(outpath) and os.path.exists(jsonpath):
+            print(f"Atlas volume and json already exist")
+            #atlas_volume = read_image(outpath)
+            #with open(jsonpath, "r") as f:
+            #    ids = json.load(f)
+        else:
+            print(f"Atlas volume or json do not exist, creating new ...")
 
         atlas_volume, ids = self.create_atlas_volume()
 
@@ -1290,8 +1310,6 @@ class BrainStructureManager:
         for z in range(volume.shape[2]):
 
             slice = volume[:, :, z].astype(np.uint32)
-            #ids, counts = np.unique(slice, return_counts=True)
-            #print(f"Slice {z} {slice.shape} dtype={slice.dtype} min={slice.min()} max={slice.max()} {ids=} {counts=}")
             vertices = get_evenly_spaced_vertices_from_slice(slice)
             if len(vertices) == 0:
                 continue

@@ -71,7 +71,8 @@ class AtlasToNeuroglancer():
         if self.precomputed_vol is None:
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
         tq = LocalTaskQueue(parallel=2)
-        tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, compress=True)
+        print(f'Creating downsampled volumes in {self.precomputed_vol.layer_cloudpath}')
+        tasks = tc.create_downsampling_tasks(self.precomputed_vol.layer_cloudpath, compress=True, num_mips=1)
         tq.insert(tasks)
         tq.execute()
 
@@ -80,11 +81,11 @@ class AtlasToNeuroglancer():
             raise NotImplementedError('You have to call init_precomputed before calling this function.')
 
         tq = LocalTaskQueue(parallel=2)
-        tasks = tc.create_meshing_tasks(self.precomputed_vol.layer_cloudpath, mip=0, compress=True) # The first phase of creating mesh
+        tasks = tc.create_meshing_tasks(self.precomputed_vol.layer_cloudpath, mip=0, compress=True, sharded=False) # The first phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
-        # It should be able to incoporated to above tasks, but it will give a weird bug. Don't know the reason
+        # It should be able to incorporated to above tasks, but it will give a weird bug. Don't know the reason
         tasks = tc.create_mesh_manifest_tasks(self.precomputed_vol.layer_cloudpath) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()

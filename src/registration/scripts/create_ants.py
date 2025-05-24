@@ -59,7 +59,7 @@ class AntsRegistration:
         self.moving_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         self.fixed_filepath_zarr = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
-        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_to_Allen.mat')
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
     def zarr2tif(self):
         output_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.nii.gz')
@@ -257,7 +257,6 @@ class AntsRegistration:
         print("Fixed image loaded")
 
         if not os.path.isfile(self.transform_filepath):
-            print(f"Removing {self.transform_filepath}")
             print("Starting registration ...")
             registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
             warped_moving = registration['warpedmovout']
@@ -274,19 +273,26 @@ class AntsRegistration:
         warped_np = warped_moving.numpy()
         warped_np = np.swapaxes(warped_np, 0, 2)
         print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
-        output_tifs_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}')
+        output_tifs_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}_{self.transformation}')
         if os.path.exists(output_tifs_path):
             print(f"Removing tiff files already exists at {output_tifs_path}")
             shutil.rmtree(output_tifs_path)
         os.makedirs(output_tifs_path, exist_ok=True)
 
-        for i in range(warped_np.shape[0]):
+        for i in tqdm(range(warped_np.shape[0])):
             slice_i = warped_np[i, ...]
             slice_i = slice_i.astype(np.uint16)
             outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
             write_image(outpath_slice, slice_i)
-            print(f'Wrote slice {i} to {outpath_slice}')
             del slice_i
+
+        outpath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.tif')
+        with TiffWriter(outpath, bigtiff=True) as tif:
+            for i in tqdm(range(warped_np.shape[0])):
+                slice_i = warped_np[i, ...]
+                slice_i = slice_i.astype(np.uint16)
+                tif.write(slice_i.astype(np.uint16), contiguous=True)
+
 
 
     def create_registration(self):

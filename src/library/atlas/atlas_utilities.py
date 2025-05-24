@@ -507,7 +507,6 @@ def get_evenly_spaced_vertices_from_slice(mask, num_points=20):
 
     # Calculate arc length (perimeter)
     arc_length = cv2.arcLength(contour, True)
-    print(arc_length)
 
     # Calculate the cumulative arc lengths
     distances = [0]
