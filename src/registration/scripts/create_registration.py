@@ -62,6 +62,7 @@ if __name__ == '__main__':
                         'group_volume': volumeRegistration.group_volume,
                         'create_brain_coms': volumeRegistration.create_brain_coms,
                         'create_moving_fixed_points': volumeRegistration.create_moving_fixed_points,
+                        'register_volume_with_fiducials': volumeRegistration.register_volume_with_fiducials,
     }
 
     if task in function_mapping:

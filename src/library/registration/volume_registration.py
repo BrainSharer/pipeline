@@ -68,16 +68,12 @@ class VolumeRegistration:
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.number_of_sampling_attempts = "10"
-        self.number_of_resolutions = "4"
         if self.debug:
-            iterations = "50"
-            self.rigidIterations = iterations
-            self.affineIterations = iterations
-            self.bsplineIterations = iterations
+            self.iterations = 100
+            self.number_of_resolutions = "4"
         else:
-            self.rigidIterations = "1000"
-            self.affineIterations = "2500"
-            self.bsplineIterations = "15000"
+            self.iterations = 2500
+            self.number_of_resolutions = "8"
 
 
         if fixed is not None:
@@ -113,7 +109,7 @@ class VolumeRegistration:
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
-        print("\trigid iterations:".ljust(20), f"{str(self.affineIterations)}".ljust(20))
+        print("\trigid iterations:".ljust(20), f"{str(self.iterations)}".ljust(20))
         print()
 
 
@@ -780,7 +776,6 @@ class VolumeRegistration:
             elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
             elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric
             elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
-            elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
 
             elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
             elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
@@ -790,9 +785,9 @@ class VolumeRegistration:
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "2500")
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", self.i)
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-        elastixImageFilter.SetParameter("NumberOfResolutions", "8") #### Very important, less than 6 gives lousy results.
+        elastixImageFilter.SetParameter("NumberOfResolutions", self.number_of_resolutions) #### Very important, less than 6 gives lousy results.
         elastixImageFilter.SetParameter("ComputeZYX", "true")
         elastixImageFilter.SetParameter("DefaultPixelValue", "0")
         elastixImageFilter.PrintParameterMap
@@ -1153,6 +1148,62 @@ class VolumeRegistration:
             print('Finished saving data to disk and to DB.')
         else:
             print('No data to save')
+
+    def register_volume_with_fiducials(self):
+        """
+        Registers two 3D numpy volumes using affine transformation based on fiducials.
+        
+        Args:
+            fixed_volume_np (np.ndarray): The fixed/reference 3D volume.
+            moving_volume_np (np.ndarray): The moving 3D volume.
+            fixed_fiducials (np.ndarray): Nx3 array of fiducials for the fixed volume.
+            moving_fiducials (np.ndarray): Nx3 array of fiducials for the moving volume.
+
+        Returns:
+            registered_moving_image (sitk.Image): The transformed moving image.
+            transform (sitk.Transform): The computed affine transformation.
+        """
+        moving = 'MD594'
+        reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+        moving_path = os.path.join(reg_path, moving, 'MD594_10um_sagittal.tif')
+        fixed_path = os.path.join(reg_path, 'Allen', 'Allen_10um_sagittal.tif')
+        moving_volume_np = read_image(moving_path)
+        fixed_volume_np = read_image(fixed_path)
+
+        # Convert NumPy volumes to SimpleITK images
+        fixed_image = sitk.GetImageFromArray(fixed_volume_np)
+        moving_image = sitk.GetImageFromArray(moving_volume_np)
+
+        # Define fiducials for fixed and moving images
+        moving_all = list_coms(self.moving, scaling_factor=self.um)
+        fixed_all = list_coms(self.fixed, scaling_factor=self.um)
+        bad_keys = ('RtTg', 'AP')
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+        fixed_fiducials = [fixed_all[k] for k in good_keys]
+        moving_fiducials = [moving_all[k] for k in good_keys]
+
+        # Convert fiducial points to SimpleITK point sets
+        fixed_points = [tuple(p) for p in fixed_fiducials]
+        moving_points = [tuple(p) for p in moving_fiducials]
+
+        # Compute affine transform using fiducials
+        transform = sitk.LandmarkBasedTransformInitializer(
+            sitk.AffineTransform(3), fixed_points, moving_points
+        )
+
+        # Resample moving image
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(fixed_image)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        resampler.SetTransform(transform)
+
+        registered_moving_image = resampler.Execute(moving_image)
+        registered_moving_image = sitk.Cast(sitk.RescaleIntensity(registered_moving_image), sitk.sitkUInt16)
+        registered_moving_image.WriteImage(self.registered_volume)
+        print(f'Saved img to {self.registered_volume}')
+        transform.WriteTransform(self.registered_transform_file)
+
 
 
     def check_status(self):
