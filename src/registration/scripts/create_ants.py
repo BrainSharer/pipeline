@@ -20,6 +20,8 @@ from itertools import product
 import SimpleITK as sitk
 import nibabel as nib
 from nibabel.orientations import axcodes2ornt, ornt_transform
+import pandas as pd
+from scipy.io import loadmat
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -59,6 +61,7 @@ class AntsRegistration:
         self.moving_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.tif')
         self.fixed_filepath_zarr = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
     def zarr2tif(self):
@@ -257,17 +260,41 @@ class AntsRegistration:
         print("Fixed image loaded")
 
         if not os.path.isfile(self.transform_filepath):
-            print("Starting registration ...")
-            registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
+            print("Starting inverse registration ...")
+            registration = ants.registration(fixed=moving, moving=fixed, type_of_transform=self.transformation)
             warped_moving = registration['warpedmovout']
-            original_filepath = registration['fwdtransforms'][0]
-            shutil.move(original_filepath, self.transform_filepath)
-            print(f"Transform file moved to {self.transform_filepath}")
+            shutil.copy(registration['fwdtransforms'][0], self.inverse_transform_filepath)            
         else:
             print(f"Transform file already exists at {self.transform_filepath}")
             print("Applying registration ...")
-            warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
-                                        transformlist=self.transform_filepath, defaultvalue=0)
+            #warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
+            #                            transformlist=self.transform_filepath, defaultvalue=0)
+
+        moving_points = np.array([
+            [1119, 385, 517, 0],
+            [111, 35, 57, 0],
+        ]
+        )
+
+        print(f'moving points shape: {moving_points.shape} dtype: {moving_points.dtype}')
+        """
+        It's crucial to understand that the order of transformations for points is the opposite of that for 
+        images. When transforming images, the inverse warps are applied, while for points, the forward warps 
+        are used. This is because, for images, you're finding where each voxel in the output image comes 
+        from in the input image, while for points, you're directly moving the points from the fixed 
+        space to the moving space.
+        """
+
+        # Convert to DataFrame as required by ANTs
+        pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z', 't'])
+        #pts = pd.DataFrame({'x': [10], 'y': [15], 'z': [12], 't': [0]})
+        print("Moving points DataFrame:\n", pts.head())
+
+        # Apply the  inverse transform (fixed -> moving space)
+        transformed_points = ants.apply_transforms_to_points( 3, pts, self.inverse_transform_filepath)
+        print("Transformed points in reference space:\n", transformed_points[['x', 'y', 'z', 't']].values)
+        return
+
 
         # Convert to numpy and save to disk
         warped_np = warped_moving.numpy()
