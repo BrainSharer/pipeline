@@ -67,6 +67,9 @@ class VolumeRegistration:
         
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
+        self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{self.um}um_{self.orientation}.pts')
+        self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{self.um}um_{self.orientation}.pts')
+
         self.number_of_sampling_attempts = "10"
         if self.debug:
             self.iterations = "100"
@@ -696,7 +699,11 @@ class VolumeRegistration:
         moving_path = self.moving_path
         fixed_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
         moving_basename = f'{self.moving}_{self.um}um_{self.orientation}'
-        elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
+        #fixed_path, moving_path, moving_point_path, fixed_point_path, fixed_basename, moving_basename
+        elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
+                                                     self.fiducial_moving_file_path, 
+                                                     self.fiducial_fixed_file_path
+                                                     fixed_basename, moving_basename)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
         elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()
@@ -719,11 +726,16 @@ class VolumeRegistration:
         fixed_basename = f'{self.moving}_{self.um}um_{self.orientation}'
         moving_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
+        elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
+                                                     self.fiducial_fixed_file_path,
+                                                     self.fiducial_moving_file_path, 
+                                                     fixed_basename, moving_basename)
+
         elastixImageFilter.SetOutputDirectory(self.reverse_elastix_output)
         elastixImageFilter.Execute()
         print('Done performing inverse')
 
-    def setup_registration(self, fixed_path, moving_path, fixed_basename, moving_basename):
+    def setup_registration(self, fixed_path, moving_path, moving_point_path, fixed_point_path, fixed_basename, moving_basename):
         
         fixed_path = os.path.join(fixed_path, f'{fixed_basename}.tif' )
         moving_path = os.path.join(moving_path, f'{moving_basename}.tif') 
@@ -735,8 +747,6 @@ class VolumeRegistration:
             print(f'Moving {moving_path} does not exist')
             sys.exit()
         # set point paths
-        fixed_point_path = os.path.join(self.registration_path, self.fixed, f'{fixed_basename}.pts')
-        moving_point_path = os.path.join(self.registration_path, self.moving, f'{moving_basename}.pts')
         if self.debug:
             print(f'moving volume path={moving_path}')
             print(f'fixed volume path={fixed_path}')
@@ -884,10 +894,8 @@ class VolumeRegistration:
         moving_src = {k:moving_all[k] for k in good_keys}
         fixed_src = {k:fixed_all[k] for k in good_keys}
         print(f'Found {len(good_keys)} common keys')
-        moving_file_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_{self.um}um_{self.orientation}.pts')
-        fixed_file_path = os.path.join(self.registration_path, self.fixed, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
-        moving_file = open(moving_file_path, "w")
-        fixed_file = open(fixed_file_path, "w")
+        moving_file = open(self.fiducial_moving_file_path, "w")
+        fixed_file = open(self.fiducial_fixed_file_path, "w")
         moving_file.write('point\n')
         moving_file.write(f'{len(good_keys)}\n')
         fixed_file.write('point\n')
