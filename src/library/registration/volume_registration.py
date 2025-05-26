@@ -69,10 +69,10 @@ class VolumeRegistration:
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
         self.number_of_sampling_attempts = "10"
         if self.debug:
-            self.iterations = 100
+            self.iterations = "100"
             self.number_of_resolutions = "4"
         else:
-            self.iterations = 2500
+            self.iterations = "2500"
             self.number_of_resolutions = "8"
 
 
