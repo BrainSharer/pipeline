@@ -702,7 +702,7 @@ class VolumeRegistration:
         #fixed_path, moving_path, moving_point_path, fixed_point_path, fixed_basename, moving_basename
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
                                                      self.fiducial_moving_file_path, 
-                                                     self.fiducial_fixed_file_path
+                                                     self.fiducial_fixed_file_path,
                                                      fixed_basename, moving_basename)
         elastixImageFilter.SetOutputDirectory(self.elastix_output)
         elastixImageFilter.PrintParameterMap()
@@ -725,7 +725,6 @@ class VolumeRegistration:
         moving_path = self.fixed_path
         fixed_basename = f'{self.moving}_{self.um}um_{self.orientation}'
         moving_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
-        elastixImageFilter = self.setup_registration(fixed_path, moving_path, fixed_basename, moving_basename)
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
                                                      self.fiducial_fixed_file_path,
                                                      self.fiducial_moving_file_path, 
