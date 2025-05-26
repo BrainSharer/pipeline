@@ -68,6 +68,7 @@ class BrainStructureManager:
         self.data_path = os.path.join(data_path, "atlas_data")
         self.structure_path = os.path.join(data_path, "pipeline_data", "structures")
         self.com_path = os.path.join(self.data_path, self.animal, "com") 
+        self.registered_com_path = os.path.join(self.data_path, self.animal, "registered_com")
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
@@ -339,7 +340,7 @@ class BrainStructureManager:
         return new_point
 
     def create_atlas_volume(self):
-        self.check_for_existing_dir(self.com_path)
+        self.check_for_existing_dir(self.registered_com_path)
         self.check_for_existing_dir(self.volume_path)
 
         ### test using aligned images from foundation brain
@@ -355,14 +356,14 @@ class BrainStructureManager:
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.com_path}")
-        coms = sorted(os.listdir(self.com_path)) # COMs are in micrometers
+        coms = sorted(os.listdir(self.registered_com_path)) # registered COMs are in micrometers/self.um
         origins = sorted(os.listdir(self.origin_path)) # origins are in micrometers/self.um
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
             print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(coms)} coms/volumes from {self.com_path}")
+        print(f"Working with {len(coms)} coms/volumes from {self.registered_com_path}")
         ids = {}
         if self.affine:
             moving_name = 'AtlasV8'
@@ -389,11 +390,11 @@ class BrainStructureManager:
                 print(f"Problem with index error: {structure=} {allen_id=} in database")
                 sys.exit()
 
-            com0 = np.loadtxt(os.path.join(self.com_path, com_file))
+            com0 = np.loadtxt(os.path.join(self.registered_com_path, com_file))
             # origin0 is already in 10um space
             origin0 = np.loadtxt(os.path.join(self.origin_path, origin_file))
             # com0 is in micrometers, so convert to allen space
-            com0 = com0 / self.um
+            #TODOcom0 = com0 / self.um # the registered coms are already in micrometers/self.um
 
             volume = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
@@ -413,13 +414,13 @@ class BrainStructureManager:
             #if 'TG' in structure:
             #    com = com0
 
-            #x_start = int(com[0] - COM[0])
-            #y_start = int(com[1] - COM[1])
-            #z_start = int(com[2] - COM[2])
+            x_start = int(com[0] - COM[0])
+            y_start = int(com[1] - COM[1])
+            z_start = int(com[2] - COM[2])
 
-            x_start = int(origin[0])
-            y_start = int(origin[1])
-            z_start = int(origin[2])
+            #x_start = int(origin[0])
+            #y_start = int(origin[1])
+            #z_start = int(origin[2])
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]

@@ -17,7 +17,7 @@ import pandas as pd
 import cv2
 import json
 
-from library.atlas.atlas_utilities import adjust_volume, average_images, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -40,7 +40,7 @@ class VolumeRegistration:
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
-        self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Atlas' 
+        self.atlas_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data' 
         self.allen_path = os.path.join(self.registration_path, 'Allen')
         self.tmp_dir = get_scratch_dir()
         self.moving = moving
@@ -126,24 +126,15 @@ class VolumeRegistration:
         os.makedirs(self.registration_output, exist_ok=True)
 
         transform_parameter0_path = os.path.join(outputpath, 'TransformParameters.0.txt')
-        transform_parameter1_path = os.path.join(outputpath, 'TransformParameters.1.txt')
 
         if not os.path.exists(transform_parameter0_path):
             print(f'{transform_parameter0_path} does not exist, exiting.')
             sys.exit()
 
-        if os.path.exists(transform_parameter1_path):
-            print(f'{transform_parameter1_path} exists, using two transformation.')
-            number_of_transforms = 2
-            
 
         transformixImageFilter = sitk.TransformixImageFilter()
         parameterMap0 = sitk.ReadParameterFile(transform_parameter0_path)
         transformixImageFilter.SetTransformParameterMap(parameterMap0)
-        if number_of_transforms == 2:
-            # Read the second transform parameter map
-            parameterMap1 = sitk.ReadParameterFile(transform_parameter1_path)
-            transformixImageFilter.AddTransformParameterMap(parameterMap1)
         transformixImageFilter.LogToFileOn()
         transformixImageFilter.LogToConsoleOff()
         transformixImageFilter.SetOutputDirectory(self.registration_output)
@@ -196,7 +187,7 @@ class VolumeRegistration:
     def create_unregistered_pointfile(self):
         origin_dir = os.path.join(self.atlas_path, 'origin')
         origin_files = sorted(os.listdir(origin_dir))
-        pointfile = os.path.join(self.registration_path, 'Atlas_25um_sagittal_unregistered.pts')
+        pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.um}um_sagittal_registered.pts')
         with open(pointfile, 'w') as f:
             f.write('point\n')
             f.write(f'{len(origin_files)}\n')
@@ -225,28 +216,44 @@ class VolumeRegistration:
         if not os.path.exists(self.unregistered_point_file):
             print(f'{self.unregistered_point_file} does not exist, exiting.')
             sys.exit()
+        else:
+            print(f'Transforming {self.unregistered_point_file}')
 
         reverse_transformation_pfile = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
         if not os.path.exists(reverse_transformation_pfile):
             print(f'{reverse_transformation_pfile} does not exist, exiting.')
             sys.exit()
+        else:
+            print(f'Using {reverse_transformation_pfile} for reverse transformation')
         
         transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
         transformixImageFilter.SetFixedPointSetFileName(self.unregistered_point_file)
         transformixImageFilter.Execute()
 
-    def transformix_origins(self):
-        registered_origin_path = os.path.join(self.atlas_path, 'registered_origin')
-        os.makedirs(registered_origin_path, exist_ok=True)
-        origin_files = self.create_unregistered_pointfile()
-        structures = sorted([str(origin).replace('.txt','') for origin in origin_files])
-        self.transformix_points()
-        point_or_index = 'OutputPoint'
+    def transformix_coms(self):
+        formatted_registered_pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.um}um_sagittal_registered.pts')
+        moving_all = fetch_coms(self.moving, self.um)
+        structures = sorted(moving_all.keys())
+
+        if not os.path.exists(self.registered_point_file):
+            print(f'Error, registered point file does not exist: {self.registered_point_file}' )
+            return
+        else:
+            print(f'Formatting {self.registered_point_file}')
+
+        if os.path.exists(formatted_registered_pointfile):
+            print(f'{formatted_registered_pointfile} exists, removing')
+            os.remove(formatted_registered_pointfile)
+
 
         with open(self.registered_point_file, "r") as f:                
             lines=f.readlines()
             f.close()
 
+        assert len(lines) == len(structures), f'Length of {self.registered_point_file}={len(lines)} != length of structures={len(structures)}'
+        registered_com_path = os.path.join(self.atlas_path, 'AtlasV8', 'registered_coms')
+        os.makedirs(registered_com_path, exist_ok=True)
+        formatted_structures = {}
         point_or_index = 'OutputPoint'
         for i in range(len(lines)):        
             lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
@@ -255,9 +262,12 @@ class VolumeRegistration:
             y = lf[1]
             z = lf[2]
             structure = structures[i]
-            print(i, structure,  int(x), int(y), int(z))
-            origin_filepath = os.path.join(registered_origin_path, f'{structure}.txt')
-            np.savetxt(origin_filepath, (x,y,z))
+            #print(structure,  int(x), int(y), int(z))
+            formatted_structures[structure] = (x,y,z)
+            com_filepath = os.path.join(registered_com_path, f'{structure}.txt')
+            np.savetxt(com_filepath, (x,y,z))
+        print(formatted_structures)
+
 
 
     def insert_points(self):
@@ -468,7 +478,7 @@ class VolumeRegistration:
         print(f'Saved a 3D volume {self.registered_volume} with shape={registered_volume.shape} and dtype={registered_volume.dtype}')
 
 
-    def transformix_coms(self):
+    def transformix_coms_db(self):
         com_annotator_id = 2
         #controller = StructureCOMController(self.moving)
         controller = None
