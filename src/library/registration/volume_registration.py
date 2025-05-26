@@ -785,7 +785,7 @@ class VolumeRegistration:
         if self.bspline:
             elastixImageFilter.AddParameterMap(bsplineParameterMap)
 
-        elastixImageFilter.SetParameter("MaximumNumberOfIterations", self.i)
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", self.iterations)
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetParameter("NumberOfResolutions", self.number_of_resolutions) #### Very important, less than 6 gives lousy results.
         elastixImageFilter.SetParameter("ComputeZYX", "true")
