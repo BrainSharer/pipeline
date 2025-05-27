@@ -483,7 +483,7 @@ def get_edge_coordinates(array):
 
     return edge_coords
 
-def get_evenly_spaced_vertices_from_slice(mask, num_points=20):
+def get_evenly_spaced_vertices_from_slice(mask):
     """
     Given a binary mask, extract the outer contour and return evenly spaced vertices along the edge.
 
@@ -507,6 +507,16 @@ def get_evenly_spaced_vertices_from_slice(mask, num_points=20):
 
     # Calculate arc length (perimeter)
     arc_length = cv2.arcLength(contour, True)
+    if arc_length < 10:
+        num_points = 4
+    elif arc_length >= 10 and arc_length < 100:
+        num_points = 10
+    elif arc_length >= 100 and arc_length < 300:
+        num_points = 20
+    else:
+        num_points = 30
+
+    #print(f"Arc length: {arc_length} num_points: {num_points}")
 
     # Calculate the cumulative arc lengths
     distances = [0]

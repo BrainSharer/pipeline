@@ -26,17 +26,13 @@ from library.image_manipulation.pipeline_process import Pipeline
 from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
     adjust_volume,
-    affine_transform_points,
     affine_transform_point,
-    affine_transform_volume,
     compute_affine_transformation,
-    fetch_coms,
     get_evenly_spaced_vertices,
     get_evenly_spaced_vertices_from_slice,
     get_min_max_mean,
     list_coms,
     ORIGINAL_ATLAS,
-    list_raw_coms,
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
@@ -338,9 +334,30 @@ class BrainStructureManager:
     def get_transformed(self, point):
         new_point = affine_transform_point(point)
         return new_point
+    
+    @staticmethod
+    def get_start_positions(volume: np.ndarray, com: tuple) -> tuple:
+        COM = center_of_mass(volume) 
+        x_start = int(com[0] - COM[0])
+        y_start = int(com[1] - COM[1])
+        z_start = int(com[2] - COM[2])
+        return x_start, y_start, z_start
+
+
+    def get_transformation_matrix(self):
+        moving_name = 'AtlasV8'
+        fixed_name = 'Allen'
+        moving_all = list_coms(moving_name, scaling_factor=self.um)
+        fixed_all = list_coms(fixed_name, scaling_factor=self.um)
+        bad_keys = ('RtTg', 'AP')
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+        moving_src = np.array([moving_all[s] for s in good_keys])
+        fixed_src = np.array([fixed_all[s] for s in good_keys])
+        return compute_affine_transformation(moving_src, fixed_src)
 
     def create_atlas_volume(self):
-        self.check_for_existing_dir(self.registered_com_path)
+        self.check_for_existing_dir(self.com_path)
         self.check_for_existing_dir(self.volume_path)
 
         ### test using aligned images from foundation brain
@@ -356,27 +373,17 @@ class BrainStructureManager:
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
         print(f"Using data from {self.com_path}")
-        coms = sorted(os.listdir(self.registered_com_path)) # registered COMs are in micrometers/self.um
+        coms = sorted(os.listdir(self.com_path)) # registered COMs are in micrometers/self.um
         origins = sorted(os.listdir(self.origin_path)) # origins are in micrometers/self.um
         volumes = sorted(os.listdir(self.volume_path))
         if len(coms) != len(volumes):
             print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(coms)} coms/volumes from {self.registered_com_path}")
+        print(f"Working with {len(coms)} coms/volumes from {self.com_path}")
         ids = {}
         if self.affine:
-            moving_name = 'AtlasV8'
-            fixed_name = 'Allen'
-            moving_all = list_coms('MD594', scaling_factor=10)
-            fixed_all = list_coms(fixed_name, scaling_factor=10)
-            #bad_keys = ('RtTg', 'AP')
-            bad_keys = ()
-            common_keys = list(moving_all.keys() & fixed_all.keys())
-            good_keys = set(common_keys) - set(bad_keys)
-            moving_src = np.array([moving_all[s] for s in good_keys])
-            fixed_src = np.array([fixed_all[s] for s in good_keys])
-            transformation_matrix = compute_affine_transformation(moving_src, fixed_src)
+            transformation_matrix = self.get_transformation_matrix()
 
         for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(com_file).stem != Path(volume_file).stem:
@@ -390,11 +397,11 @@ class BrainStructureManager:
                 print(f"Problem with index error: {structure=} {allen_id=} in database")
                 sys.exit()
 
-            com0 = np.loadtxt(os.path.join(self.registered_com_path, com_file))
+            com0 = np.loadtxt(os.path.join(self.com_path, com_file))
             # origin0 is already in 10um space
             origin0 = np.loadtxt(os.path.join(self.origin_path, origin_file))
             # com0 is in micrometers, so convert to allen space
-            #TODOcom0 = com0 / self.um # the registered coms are already in micrometers/self.um
+            com0 = com0 / self.um
 
             volume = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
@@ -402,7 +409,6 @@ class BrainStructureManager:
                 volume = np.flip(volume, axis=0)
 
             volume = adjust_volume(volume, allen_id)
-            COM = center_of_mass(volume) 
 
             if self.affine:
                 com = affine_transform_point(com0, transformation_matrix)
@@ -414,10 +420,9 @@ class BrainStructureManager:
             #if 'TG' in structure:
             #    com = com0
 
-            x_start = int(com[0] - COM[0])
-            y_start = int(com[1] - COM[1])
-            z_start = int(com[2] - COM[2])
+            x_start, y_start, z_start = self.get_start_positions(volume, com)
 
+            # Using the origin makes the structures appear a bit too far up
             #x_start = int(origin[0])
             #y_start = int(origin[1])
             #z_start = int(origin[2])
@@ -510,6 +515,7 @@ class BrainStructureManager:
         volumes = sorted(os.listdir(volume_path))
 
 
+
         for com_file, origin_file, volume_file in zip(coms, origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
@@ -517,8 +523,10 @@ class BrainStructureManager:
             structure = Path(origin_file).stem
             #if structure not in ['SC', 'IC']:
             #    continue
-            origin = np.loadtxt(os.path.join(origin_path, origin_file))
+            #origin = np.loadtxt(os.path.join(origin_path, origin_file))
             volume = np.load(os.path.join(volume_path, volume_file))
+            com = np.loadtxt(os.path.join(com_path, com_file))
+            origin = self.get_start_positions(volume, com)
             self.upsert_annotation_volume(structure, origin, volume)
 
     def save_atlas_volume(self) -> None:
