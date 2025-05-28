@@ -340,7 +340,6 @@ class CellMaker(ParallelManager):
                 msg = "Neuroanatomical_tracing is missing either dye or virus channel."
                 if self.debug:
                     print(msg)
-                    print(f'')
                 self.fileLogger.logevent(msg)
                 raise ValueError(msg)
 
@@ -364,8 +363,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            if section < 68 or section > 72: #Song-Mao filter
-                continue
+            # if section < 68 or section > 72: #Song-Mao testing filter
+            #     continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -608,10 +607,10 @@ class CellMaker(ParallelManager):
 
             #CONVEX HULL FILTER ()
             #Song-Mao filter
-            if cell["absolute_coordinates_YX"][1] <= 15000 or cell["absolute_coordinates_YX"][1] >= 24000:
-                continue
-            if cell["absolute_coordinates_YX"][0] <= 30200 or cell["absolute_coordinates_YX"][0] >= 47000:
-                continue
+            # if cell["absolute_coordinates_YX"][1] <= 15000 or cell["absolute_coordinates_YX"][1] >= 24000:
+            #     continue
+            # if cell["absolute_coordinates_YX"][0] <= 30200 or cell["absolute_coordinates_YX"][0] >= 47000:
+            #     continue
 
             # Build features dictionary
             spreadsheet_row = {
@@ -750,8 +749,13 @@ class CellMaker(ParallelManager):
 
             return predictions
 
-        drops = ['animal', 'section', 'index', 'row', 'col']        
-        cell_features_selected_columns = cell_features.drop(drops)
+        drops = ['animal', 'section', 'index', 'row', 'col']
+        try:        
+            cell_features_selected_columns = cell_features.drop(drops)
+        except:
+            print(f'CELL FEATURES MISSING COLUMN(S); CHECK cell_features_{str_section_number}.csv FILE')
+            print(cell_features.columns)
+            sys.exit(1)
 
         # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
         if model_filename: #IF MODEL FILE EXISTS, USE TO SCORE
@@ -846,7 +850,439 @@ class CellMaker(ParallelManager):
             json.dump(info, infofile, indent=2)
             print(f'Wrote {info} to {info_filename}')
 
+
     def extract_predictions(self):
+        #precomputed, annotation volume with spatial indexing
+        labels = ['ML_POSITIVE']
+        sampling = self.sampling
+
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+        w = int(self.sqlController.scan_run.width)
+        h = int(self.sqlController.scan_run.height)
+        z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
+
+        #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
+        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
+        if os.path.exists(self.cell_label_path):
+            print(f'Parsing cell labels from {self.cell_label_path}')
+        else:
+            print(f'ERROR: {self.cell_label_path} not found')
+            sys.exit(1)
+        
+        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
+        if len(detection_files) == 0:
+            print(f'Error: no csv files found in {self.cell_label_path}')
+            sys.exit(1)
+
+        dfs = []
+        for file_path in detection_files:
+            # Read CSV with Polars (much faster than pandas)
+            try:
+                df = pl.read_csv(file_path)
+                if df.is_empty():
+                    continue
+                    
+                # Filter and process in one go
+                filtered = df.filter(
+                (pl.col("predictions").cast(pl.Float32) > 0))
+                
+                if filtered.is_empty():
+                    continue
+                
+                # Append to dataframe data
+                dfs.append(filtered.select([
+                    pl.col("col").alias("x"),
+                    pl.col("row").alias("y"),
+                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                ]))
+            
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
+
+        # Concatenate all dataframes at once
+        final_df = pl.concat(dfs) if dfs else pl.DataFrame()
+
+        #random sampling for model training, if selected
+        # Choose between full dataset or sampled subset
+        if self.sampling:
+            sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
+            df = sampled_df
+            print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
+        else:
+            df = final_df
+            print(f"No sampling - using all {df.height} points")
+        
+        if len(df) == 0:
+            print('No neurons found')
+            sys.exit()
+
+        ###############################################
+        #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
+        ###############################################
+
+        ###############################################
+        # SAVE OUTPUTS
+        ###############################################
+        # SAVE CSV FORMAT (x,y,z POINTS IN CSV) *SAMPLED DATA
+        if not df.is_empty():
+            df.write_csv(dfpath)
+
+        # SAVE JSON FORMAT *SAMPLED DATA
+        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+        # Populate points variable after sampling
+        sampled_points = (
+            df.sort("section")
+            .select(["x", "y", "section"])
+            .to_numpy()
+            .tolist()
+        )
+        with open(annotations_file, 'w') as fh:
+            json.dump(sampled_points, fh)
+
+        ###########################################################
+        # PRECOMPUTED ANNOTATION VOLUME CREATION
+        ###########################################################
+        def write_simple_annotations(output_dir, points):
+            # Create required directories
+            by_id_dir = os.path.join(output_dir, 'by_id')
+            os.makedirs(by_id_dir, exist_ok=True)
+
+            # Build label mapping for enum_values/enum_labels
+            label_to_value = {}
+            enum_labels = []
+            enum_values = []
+            for pt, label in points:
+                if label not in label_to_value:
+                    label_to_value[label] = len(enum_labels)
+                    enum_labels.append(label)
+                    enum_values.append(len(enum_values))
+
+            # Create info file (compliant with spec, with enum)
+            info = {
+                "@type": "neuroglancer_annotations_v1",
+                "dimensions": {
+                    "x": [1, "nm"],
+                    "y": [1, "nm"],
+                    "z": [1, "nm"]
+                },
+                "lower_bound": [0, 0, 0],
+                "upper_bound": [1000, 1000, 1000],  # Adjust as needed
+                "annotation_type": "POINT",
+                "properties": [
+                    {
+                        "id": "label",
+                        "type": "uint32",
+                        "enum_values": enum_values,
+                        "enum_labels": enum_labels
+                    }
+                ],
+                "relationships": [],
+                "by_id": {
+                    "key": "by_id"
+                },
+                "spatial": [
+                    {
+                        "key": "spatial0",
+                        "grid_shape": [1, 1, 1],
+                        "chunk_size": [1000, 1000, 1000],
+                        "limit": 1000
+                    }
+                ]
+            }
+            with open(os.path.join(output_dir, 'info'), 'w') as f:
+                json.dump(info, f, indent=2)
+
+            # Write each annotation as a separate file in by_id
+            annotation_ids = []
+            for idx, (pt, label) in enumerate(points):
+                ann_id = idx + 1  # uint64 id, start from 1
+                annotation_ids.append(ann_id)
+                ann_path = os.path.join(by_id_dir, str(ann_id))
+                with open(ann_path, 'wb') as f:
+                    # Write position as 3 float32
+                    f.write(struct.pack('<3f', *pt))
+                    # Write label as uint32 (property)
+                    f.write(struct.pack('<I', label_to_value[label]))
+                    # No relationships, so nothing more
+
+            # --- Write spatial index (spatial0/0_0_0) ---
+            spatial_dir = os.path.join(output_dir, 'spatial0')
+            os.makedirs(spatial_dir, exist_ok=True)
+            spatial_path = os.path.join(spatial_dir, '0_0_0')
+            with open(spatial_path, 'wb') as f:
+                # Number of annotations (uint64le)
+                f.write(struct.pack('<Q', len(points)))
+                # For each annotation: position (3 float32), label (uint32)
+                for idx, (pt, label) in enumerate(points):
+                    ann_id = idx + 1
+                    f.write(struct.pack('<3f', *pt))
+                    f.write(struct.pack('<I', label_to_value[label]))
+                # For each annotation: annotation id (uint64le)
+                for ann_id in annotation_ids:
+                    f.write(struct.pack('<Q', ann_id))
+
+        def write_precomputed_annotations(sampled_points, output_dir):
+
+            #testing
+            sampled_points = [
+                (19498, 12953, 70),
+                (19319, 12953, 70),
+                (19319, 15948, 70)
+            ]
+            xy_resolution = 325  # nanometers
+            z_resolution = 20000  # nanometers
+            print(f'DEBUG= {xy_resolution=},{xy_resolution=},{z_resolution=}')
+            print(f'DEBUG: {sampled_points=}')
+
+            # Validate inputs [for testing]
+            if not sampled_points:
+                raise ValueError("sampled_points is empty")
+            if not all(len(pt) == 3 for pt in sampled_points):
+                raise ValueError("Each point must have 3 coordinates (x, y, z)")
+            if not (xy_resolution > 0 and z_resolution > 0):
+                raise ValueError(f"Invalid resolutions: xy_resolution={xy_resolution}, z_resolution={z_resolution}")
+            
+            # Scale sampled_points from voxels to nanometers
+            scaled_points = [
+                [x * xy_resolution, y * xy_resolution, z * z_resolution]
+                for x, y, z in sampled_points
+            ]
+            
+            print(f"DEBUG: \"Scaled\" points sample: {scaled_points[:2]}")
+            
+            #CONVERSION FROM micrometers (μm) to meters (m)
+            # Use voxel units (no conversion to micrometers or meters)
+            # dimensions = {
+            #     "x": [str(xy_resolution), "voxels"],  # No conversion, using voxel resolution
+            #     "y": [str(xy_resolution), "voxels"],  # Same for y
+            #     "z": [str(z_resolution), "voxels"]   # Same for z
+            # }
+            dimensions = {
+                "x": [str(xy_resolution), "nm"],
+                "y": [str(xy_resolution), "nm"],
+                "z": [str(z_resolution), "nm"]
+            }
+            print(f'DEBUG: {dimensions=}')
+
+            shape = (w, h, z_length)
+            print(f'DEBUG: {shape=}')
+            preferred_chunk_size = (128, 128, 64)
+            # adjusted_chunk_size = tuple(min(p, s) for p, s in zip(preferred_chunk_size, shape))
+
+            #adjust grid_shape using physical units (nanometers):
+            adjusted_chunk_size = (
+                preferred_chunk_size[0] * xy_resolution,
+                preferred_chunk_size[1] * xy_resolution,
+                preferred_chunk_size[2] * z_resolution,
+            )
+
+            # Sharding configuration (1 shard per 256 annotations, min 2 shards)
+            num_annotations = len(sampled_points)
+            annotations_per_shard = 256
+            num_shards = max(2, (num_annotations + annotations_per_shard - 1) // annotations_per_shard)
+            # shard_bits = int(np.ceil(np.log2(num_shards)))
+            shard_bits = 8
+            minishard_bits = 8
+            preshift_bits = 0
+            #print(f'DEBUG: shard count: {num_shards} ({annotations_per_shard/shard})')
+
+            # Create sharding specification
+            sharding_spec = {
+                "@type": "neuroglancer_uint64_sharded_v1",
+                "hash": "identity",
+                "minishard_bits": minishard_bits,
+                "shard_bits": shard_bits,
+                "preshift_bits": preshift_bits,
+                "minishard_index_encoding": "gzip",
+                "data_encoding": "gzip"
+            }
+            print(f'DEBUG: {sharding_spec=}')
+
+            # Calculate bounds
+            lower_bound = [0, 0, 0]
+            # upper_bound = list(shape)
+
+            #Calculate upper_bound based on scaled points
+            xs, ys, zs = zip(*scaled_points)
+            upper_bound = [
+                int(np.ceil(max(xs))),
+                int(np.ceil(max(ys))),
+                int(np.ceil(max(zs)))
+            ]
+
+            if not all(isinstance(v, (int, float)) and np.isfinite(v) for v in lower_bound + upper_bound):
+                raise ValueError("Invalid bounds calculated from sampled_points")
+            print(f"DEBUG: Bounds: lower={lower_bound}, upper={upper_bound}")
+
+            #adjust chunk_size accordingly using physical units (nanometers):
+            grid_shape = [
+                int(np.ceil((upper_bound[0] - lower_bound[0]) / adjusted_chunk_size[0])),
+                int(np.ceil((upper_bound[1] - lower_bound[1]) / adjusted_chunk_size[1])),
+                int(np.ceil((upper_bound[2] - lower_bound[2]) / adjusted_chunk_size[2]))
+            ]
+            print(f"DEBUG: Grid shape: {grid_shape}")
+
+            # Estimate limit (max annotations per grid cell)
+            # Use the maximum number of points in any chunk, or a default
+            points_by_chunk = defaultdict(list)
+
+            for i, (x, y, z) in enumerate(scaled_points): #chunk_key must be computed from scaled_points
+                chunk_x = int(x // adjusted_chunk_size[0])
+                chunk_y = int(y // adjusted_chunk_size[1])
+                chunk_z = int(z // adjusted_chunk_size[2])
+                chunk_key = (chunk_x, chunk_y, chunk_z)
+                points_by_chunk[chunk_key].append((i, x, y, z))
+            limit = max(len(points) for points in points_by_chunk.values()) if points_by_chunk else 1000
+
+            # # Calculate chunk_size (physical size in meters)
+            # chunk_size = [
+            #     adjusted_chunk_size[0] * (xy_resolution / 1_000_000),
+            #     adjusted_chunk_size[1] * (xy_resolution / 1_000_000),
+            #     adjusted_chunk_size[2] * (z_resolution / 1_000_000),
+            # ]
+            #chunk_size needs physical units [nanometers to meters]
+            chunk_size = [
+                adjusted_chunk_size[0] / 1_000_000,
+                adjusted_chunk_size[1] / 1_000_000,
+                adjusted_chunk_size[2] / 1_000_000,
+            ]
+            # chunk_size = [
+            #     preferred_chunk_size[0] * xy_resolution / 1_000_000,
+            #     preferred_chunk_size[1] * xy_resolution / 1_000_000,
+            #     preferred_chunk_size[2] * z_resolution / 1_000_000,
+            # ]
+
+            # Create info dictionary
+            info = {
+                "@type": "neuroglancer_annotations_v1",
+                "annotation_type": "POINT",
+                "by_id": {
+                    "key": "by_id/"
+                },
+                "dimensions": dimensions,
+                "by_type": {
+                    "POINT": "by_type/POINT"
+                },
+                "spatial": [
+                    {
+                        "key": "spatial_index/",
+                        "grid_shape": grid_shape,
+                        "chunk_size": chunk_size,
+                        "limit": 1000
+                    }
+                ],
+                "properties": [
+                    {
+                        "id": "radius",
+                        "type": "float32",
+                        "default": 10.0  # Point size in nanometers
+                    }
+                ],
+                "relationships": [],
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "sharding": sharding_spec
+            }
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "info").write_text(json.dumps(info, indent=2))
+
+            # Write sharded annotation ID index
+            id_dir = output_dir / "by_id"
+            id_dir.mkdir(parents=True, exist_ok=True)
+
+            # Group annotations by shard
+            annotations_by_shard = defaultdict(list)
+            for i, (x, y, z) in enumerate(scaled_points):
+                shard_index = (i >> minishard_bits) % (1 << shard_bits)
+                annotations_by_shard[shard_index].append((i, x, y, z))
+
+            # Write shard files
+            for shard_index, annotations in annotations_by_shard.items():
+                shard_file = id_dir / f"{shard_index:016x}"
+                minishards = defaultdict(list)
+                for i, x, y, z in annotations:
+                    minishard_index = i % (1 << minishard_bits)
+                    annotation_data = json.dumps({
+                        "@type": "neuroglancer_annotation",
+                        "id": str(i),
+                        "point": [float(x), float(y), float(z)],
+                        "type": "point",  # Lowercase to match schema
+                        "properties": {"radius": 5.0}
+                    }).encode('utf-8')
+                    compressed_data = gzip.compress(annotation_data)
+                    minishards[minishard_index].append((i, compressed_data))
+
+                with shard_file.open("wb") as fh:
+                    minishard_index_data = []
+                    offset = 0
+                    for minishard_idx in range(1 << minishard_bits):
+                        if minishard_idx in minishards:
+                            entries = minishards[minishard_idx]
+                            entries.sort(key=lambda x: x[0])
+                            minishard_start = offset
+                            packed_data = b"".join(compressed_data for i, compressed_data in entries)
+                            fh.write(packed_data)
+                            offset += len(packed_data)
+                            minishard_end = offset
+                            minishard_index_data.append((minishard_idx, minishard_start, minishard_end))
+                        else:
+                            minishard_index_data.append((minishard_idx, offset, offset))
+
+                    index_data = b""
+                    for minishard_idx, start, end in minishard_index_data:
+                        # index_data += struct.pack("<QQQ", minishard_idx, start, end)
+                        index_data += struct.pack("<QQ", start, end)
+                    compressed_index = gzip.compress(index_data)
+                    fh.write(compressed_index)
+
+            # Write annotation type index
+            type_dir = output_dir / "by_type/POINT"
+            type_dir.mkdir(parents=True, exist_ok=True)
+            type_file = type_dir / "0"
+            with type_file.open("wb") as fh:
+                fh.write(struct.pack("<I", len(sampled_points)))
+                for i in range(len(sampled_points)):
+                    fh.write(struct.pack("<Q", i))
+
+            # Write spatial index per chunk
+            spatial_dir = output_dir / "spatial_index"
+            spatial_dir.mkdir(parents=True, exist_ok=True)
+            for chunk_key, points in points_by_chunk.items():
+                chunk_filename = f"{chunk_key[0]}_{chunk_key[1]}_{chunk_key[2]}.gz"
+                path = spatial_dir / chunk_filename
+                try:
+                    with gzip.open(path, "wb") as fh:
+                        fh.write(struct.pack("<I", len(points)))
+                        packed_data = b"".join(
+                            struct.pack("<Qfff", pid, float(x), float(y), float(z))
+                            for pid, x, y, z in points
+                        )
+                        fh.write(packed_data)
+                except IOError as e:
+                    raise IOError(f"Failed to write spatial index file {path}: {e}")
+
+        out_dir = Path(annotations_dir, labels[0] + '.precomputed_ann1')
+        if os.path.exists(out_dir):
+            print(f'Removing existing directory {out_dir}')
+            shutil.rmtree(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
+        print(f'Creating precomputed annotations in {out_dir}')
+        # write_precomputed_annotations(sampled_points, out_dir)
+
+        sampled_points = [
+            (19498, 12953, 70),  # Example points (x, y, z) in voxel space
+            (19319, 12953, 70),
+            (19319, 15948, 70)
+        ]
+        write_simple_annotations(out_dir, sampled_points)
+    
+
+    def extract_predictions_precomputed(self):
+        #precomputed, segmentation volume - this works @ 6-MAY-2025
         labels = ['ML_POSITIVE']
         sampling = self.sampling
 
@@ -856,8 +1292,9 @@ class CellMaker(ParallelManager):
         h = int(self.sqlController.scan_run.height//SCALING_FACTOR)
         z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
 
+        print(f'DEBUG: {xy_resolution=}, {z_resolution=}, {w=}, {h=}, {z_length=}')
         #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
-        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
+        dfpath = os.path.join(self.cell_label_path, 'all_predictions.csv')
         if os.path.exists(self.cell_label_path):
             print(f'Parsing cell labels from {self.cell_label_path}')
         else:
@@ -991,7 +1428,7 @@ class CellMaker(ParallelManager):
         with open(prov_path, 'r') as f:
             prov = json.load(f)
         if self.sampling:
-            prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - SAMPLING ENABLED (n={sampling} of {final_df.height} TOTAL)"
+            prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - SAMPLING ENABLED (n={self.sampling} of {df.height} TOTAL)"
         else:
             prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - (n={df.height})"
         prov['sources'] = self.animal

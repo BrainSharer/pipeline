@@ -90,7 +90,7 @@ if __name__ == "__main__":
     function_mapping = {
         "create_features": pipeline.create_features,
         "detect": pipeline.create_detections,
-        "extract": pipeline.extract_predictions,
+        "extract": pipeline.extract_predictions_precomputed,
         "train": pipeline.train,
         "fix": pipeline.fix_coordinates,
         "precomputed": pipeline.create_precomputed_annotations #TODO: remove?
