@@ -521,9 +521,6 @@ class BrainStructureManager:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
             structure = Path(origin_file).stem
-            #if structure not in ['SC', 'IC']:
-            #    continue
-            #origin = np.loadtxt(os.path.join(origin_path, origin_file))
             volume = np.load(os.path.join(volume_path, volume_file))
             com = np.loadtxt(os.path.join(com_path, com_file))
             origin = self.get_start_positions(volume, com)

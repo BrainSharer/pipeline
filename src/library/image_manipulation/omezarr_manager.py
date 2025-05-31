@@ -63,7 +63,7 @@ class OmeZarrManager():
         else:
             zarrpath = os.path.join(self.fileLocationManager.neuroglancer_data, f'C{self.channel}.zarr', mip)
 
-        outpath = os.path.join( self.fileLocationManager.prep, 'C1', mip)
+        outpath = os.path.join( self.fileLocationManager.prep, f'C{self.channel}', mip)
         os.makedirs(outpath, exist_ok=True)
         if os.path.exists(zarrpath):
             print(f'Using existing {zarrpath}')

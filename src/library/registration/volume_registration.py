@@ -36,7 +36,7 @@ M_UM_SCALE = 1000000
 
 class VolumeRegistration:
 
-    def __init__(self, moving, channel=1, um=25, scaling_factor=SCALING_FACTOR, fixed=None, orientation='sagittal', bspline=False, debug=False):
+    def __init__(self, moving, channel=1, xy_um=16, z_um=16,  scaling_factor=SCALING_FACTOR, fixed=None, orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
@@ -47,28 +47,30 @@ class VolumeRegistration:
         self.animal = moving
         self.debug = debug
         self.fixed = fixed
-        self.um = um
+        self.xy_um = xy_um
+        self.z_um = z_um
         self.mask_color = 254
         self.channel = f'C{channel}'
         self.orientation = orientation
         self.bspline = bspline
-        self.output_dir = f'{moving}_{fixed}_{um}um_{orientation}'
+        self.output_dir = f'{moving}_{fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}'
         self.scaling_factor = scaling_factor # This is the downsampling factor used to create the aligned volume at 10um
         self.fileLocationManager = FileLocationManager(self.moving)
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
-        self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{um}um_{orientation}.tif' )
-        self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{um}um_{orientation}.tif' )
-        self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{um}um_{orientation}_changes.json' )
+        self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
+        self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
+        self.affine_matrix_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tfm' )
+        self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.moving_path, self.output_dir)
         self.elastix_output = os.path.join(self.registration_output, 'elastix_output')
         self.reverse_elastix_output = os.path.join(self.registration_output, 'reverse_elastix_output')
         
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
-        self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{um}um_{orientation}_unregistered.pts')
-        self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{self.um}um_{self.orientation}.pts')
-        self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{self.um}um_{self.orientation}.pts')
+        self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{z_um}x{xy_um}x{xy_um}um_{orientation}_unregistered.pts')
+        self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
+        self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
 
         self.number_of_sampling_attempts = "10"
         if self.debug:
@@ -82,11 +84,11 @@ class VolumeRegistration:
         if fixed is not None:
             self.fixed = fixed
             self.fixed_path = os.path.join(self.registration_path, fixed)
-            self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{um}um_{orientation}.tif' )
-            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{um}um')
+            self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
+            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um')
             os.makedirs(self.fixed_path, exist_ok=True)
         else:
-            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{um}um')
+            self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{z_um}x{xy_um}x{xy_um}um')
 
         self.report_status()
 
@@ -108,7 +110,8 @@ class VolumeRegistration:
         """
         print("Running volume registration with the following settings:")
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
-        print("\tum:".ljust(20), f"{str(self.um)}".ljust(20))
+        print("\tZ um:".ljust(20), f"{str(self.z_um)}".ljust(20))
+        print("\tXY um:".ljust(20), f"{str(self.xy_um)}".ljust(20))
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
         print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
@@ -187,7 +190,7 @@ class VolumeRegistration:
     def create_unregistered_pointfile(self):
         origin_dir = os.path.join(self.atlas_path, 'origin')
         origin_files = sorted(os.listdir(origin_dir))
-        pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.um}um_sagittal_registered.pts')
+        pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}_sagittal_registered.pts')
         with open(pointfile, 'w') as f:
             f.write('point\n')
             f.write(f'{len(origin_files)}\n')
@@ -231,7 +234,7 @@ class VolumeRegistration:
         transformixImageFilter.Execute()
 
     def transformix_coms(self):
-        formatted_registered_pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.um}um_sagittal_registered.pts')
+        formatted_registered_pointfile = os.path.join(self.registration_path, self.moving, '{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}_sagittal_registered.pts')
         moving_all = fetch_coms(self.moving, self.um)
         structures = sorted(moving_all.keys())
 
@@ -344,7 +347,7 @@ class VolumeRegistration:
         if not os.path.exists(self.reverse_elastix_output):
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
             sys.exit()
-        result_path = os.path.join(self.registration_output, f'Allen_{self.um}um_annotated.tif')
+        result_path = os.path.join(self.registration_output, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}_annotated.tif')
         if not os.path.exists(self.changes_path):
             print(f'{self.changes_path} does not exist, exiting.')
             sys.exit()
@@ -615,7 +618,7 @@ class VolumeRegistration:
         print(f'volume shape={volume.shape} dtype={volume.dtype}')
         #volume = np.concatenate((volume, np.zeros((volume.shape[0], volume.shape[1], pad)) ), axis=2)
         #print(f'volume shape={volume.shape} dtype={volume.dtype}')
-        outpath = os.path.join(self.registration_path, f'{self.fixed}_{self.um}um_{self.orientation}_padded.tif')
+        outpath = os.path.join(self.registration_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}_padded.tif')
         write_image(outpath, volume.astype(dtype))
 
     def create_precomputed(self):
@@ -707,8 +710,8 @@ class VolumeRegistration:
         os.makedirs(self.elastix_output, exist_ok=True)
         fixed_path = self.fixed_path
         moving_path = self.moving_path
-        fixed_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
-        moving_basename = f'{self.moving}_{self.um}um_{self.orientation}'
+        fixed_basename = f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}'
+        moving_basename = f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}'
         #fixed_path, moving_path, moving_point_path, fixed_point_path, fixed_basename, moving_basename
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
                                                      self.fiducial_moving_file_path, 
@@ -721,7 +724,24 @@ class VolumeRegistration:
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
         sitk.WriteImage(resultImage, self.registered_volume)
+        parameterMap = elastixImageFilter.GetTransformParameterMap()[0]
+        TransformParameters = parameterMap['TransformParameters']
+        center = parameterMap['CenterOfRotationPoint']
+        print(f'TransformParameters: {TransformParameters}')
+        print(f'Center of rotation point: {center}')
+        R = [float(x) for x in TransformParameters[:9]]
+        t = [float(x) for x in TransformParameters[9:]]
+        c = [float(x) for x in center]
+
+        affine_transform = sitk.AffineTransform(3)
+        affine_transform.SetMatrix(R)
+        affine_transform.SetTranslation(t)
+        affine_transform.SetCenter(c)
+
+        sitk.WriteTransform(affine_transform, self.affine_matrix_path)
+
         print(f'Saved img to {self.registered_volume}')
+        print(f'Saved affine matrix to {self.affine_matrix_path}')
 
     def reverse_register_volume(self):
         """This method also uses an affine and a bspline registration process, but it does 
@@ -733,8 +753,8 @@ class VolumeRegistration:
         # switch fixed and moving
         fixed_path = self.moving_path
         moving_path = self.fixed_path
-        fixed_basename = f'{self.moving}_{self.um}um_{self.orientation}'
-        moving_basename = f'{self.fixed}_{self.um}um_{self.orientation}'
+        fixed_basename = f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}'
+        moving_basename = f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}'
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
                                                      self.fiducial_fixed_file_path,
                                                      self.fiducial_moving_file_path, 
@@ -822,7 +842,7 @@ class VolumeRegistration:
 
         moving_volume = io.imread(self.moving_volume_path)
         moving_volume = moving_volume[:,MOVING_CROP:500, MOVING_CROP:725]
-        savepath = os.path.join(self.registration_path, f'Atlas_{self.um}um_{self.orientation}.tif')
+        savepath = os.path.join(self.registration_path, f'Atlas_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         print(f'Saving img to {savepath}')
         io.imsave(savepath, moving_volume)
 
@@ -858,7 +878,7 @@ class VolumeRegistration:
         base_com_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data'
         number_of_coms = {}
         for brain in tqdm(brains, desc='Validating brain coms'):
-            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
             brain_com_path = os.path.join(base_com_path, brain, 'com')
             comfiles = sorted(os.listdir(brain_com_path))
             nfiles = len(comfiles)
@@ -872,7 +892,7 @@ class VolumeRegistration:
 
 
         for brain in tqdm(brains, desc='Creating brain coms'):
-            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            brain_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
             brain_com_path = os.path.join(base_com_path, brain, 'com')
             comfiles = sorted(os.listdir(brain_com_path))
             with open(brain_point_path, 'w') as f:
@@ -929,7 +949,7 @@ class VolumeRegistration:
         volumes = {}
         moving_brains = ['MD585', 'MD594', 'MD589']
         for brain in tqdm(moving_brains, 'Adding registered volume'):
-            brainpath = os.path.join(self.registration_path, brain, f'{brain}_AtlasV8_{self.um}um_{self.orientation}.tif')
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 return
@@ -943,7 +963,7 @@ class VolumeRegistration:
         avg_array = np.mean(registered_images, axis=0)
         avg_array = gaussian(avg_array, sigma=1)
         savepath = os.path.join(self.registration_path, 'AtlasV8')
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, avg_array.astype(np.uint8))
 
@@ -975,23 +995,23 @@ class VolumeRegistration:
 
         volumes = {}
         for brain in moving_brains:
-            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.tif')
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 continue
             brainimg = read_image(brainpath)
             volumes[brain] = sitk.GetImageFromArray(brainimg.astype(np.float32))
 
-        fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
+        fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         if not os.path.exists(fixed_path):
             fixed_brain = 'MD589'
             print(f'{fixed_path} does not exist, using {fixed_brain}')
-            fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.tif')
+            fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         fixed_img = read_image(fixed_path)
         volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
         reference_image = volumes[fixed_brain]
         fixed_brain = 'AtlasV8'
-        fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
         fixed_brain = 'MD589'
         affineParameterMap = sitk.GetDefaultParameterMap('affine')
 
@@ -1023,7 +1043,7 @@ class VolumeRegistration:
             elastixImageFilter.SetFixedImage(reference_image)
             elastixImageFilter.SetMovingImage(image)
 
-            moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.pts')
+            moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
             if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
                 with open(fixed_point_path, 'r') as fp:
                     fixed_count = len(fp.readlines())
@@ -1073,7 +1093,7 @@ class VolumeRegistration:
         #avg_array = gaussian(avg_array, 1.0)
 
         os.makedirs(savepath, exist_ok=True)
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.um}um_{self.orientation}.tif')
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, avg_array.astype(np.uint8))
 
@@ -1083,7 +1103,7 @@ class VolumeRegistration:
         population = ['MD585', 'MD594', 'MD589']
         vectorOfImages = sitk.VectorOfImage()
         for brain in population:
-            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.um}um_{self.orientation}.tif')
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 sys.exit()
@@ -1101,7 +1121,7 @@ class VolumeRegistration:
 
         savepath = os.path.join(self.registration_path, 'AtlasV8')
         os.makedirs(savepath, exist_ok=True)
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_grouped_{self.um}um_{self.orientation}.tif')
+        save_atlas_path = os.path.join(savepath, f'AtlasV8_grouped_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, resultImage.astype(np.uint8))
 
@@ -1255,8 +1275,8 @@ class VolumeRegistration:
             status.append(f'\tPrecomputed data at: {self.neuroglancer_data_path}')
 
 
-        fixed_point_path = os.path.join(self.registration_path, f'{self.fixed}_{self.um}um_{self.orientation}.pts')
-        moving_point_path = os.path.join(self.registration_path, f'{self.moving}_{self.um}um_{self.orientation}.pts')
+        fixed_point_path = os.path.join(self.registration_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
+        moving_point_path = os.path.join(self.registration_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
 
         if os.path.exists(fixed_point_path):
             status.append(f'\tFixed points at: {fixed_point_path}')
@@ -1274,7 +1294,7 @@ class VolumeRegistration:
             print("These are the processes that have run:")
             print("\n".join(status))
         else:
-            print(f'Nothing has been run to register {self.moving} at {self.um}um.')
+            print(f'Nothing has been run to register {self.moving} at {self.z_um}x{self.xy_um}x{self.xy_um}.')
 
 
 def sort_from_center(polygon:list) -> list:

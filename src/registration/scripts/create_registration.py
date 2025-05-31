@@ -22,7 +22,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
-    parser.add_argument('--um', help="size of atlas in micrometers", required=False, default=25, type=int)
+    parser.add_argument('--xy_um', help="xy resolution in um", required=True, default=16, type=float)
+    parser.add_argument('--z_um', help="z resolution in um", required=True, default=16, type=float)
     parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, type=int)
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
@@ -33,14 +34,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
     moving = args.moving
     channel = args.channel
-    um = args.um
+    xy_um = args.xy_um
+    z_um = args.z_um
     scaling_factor = args.scaling_factor
     fixed = args.fixed
     orientation = args.orientation
     bspline = bool({"true": True, "false": False}[str(args.bspline).lower()])
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    volumeRegistration = VolumeRegistration(moving, channel, um, scaling_factor, fixed, orientation, bspline, debug)
+    volumeRegistration = VolumeRegistration(moving, channel, xy_um, z_um, scaling_factor, fixed, orientation, bspline, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,
