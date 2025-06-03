@@ -260,15 +260,76 @@ class AntsRegistration:
         print("Fixed image loaded")
 
         if not os.path.isfile(self.transform_filepath):
-            print("Starting inverse registration ...")
+            print("Starting registration ...")
+            registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
+            print("Registration completed")
+            print(registration.keys())
+            warped_moving = registration['warpedmovout']
+            shutil.copy(registration['fwdtransforms'][0], self.transform_filepath)            
+
+        else:
+            print(f"Transform file already exists at {self.transform_filepath}")
+            print("Applying registration ...")
+            warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
+                                        transformlist=self.transform_filepath, defaultvalue=0)
+
+
+        # Convert to numpy and save to disk
+        warped_np = warped_moving.numpy()
+        warped_np = np.swapaxes(warped_np, 0, 2)
+        print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
+        output_tifs_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}_{self.transformation}')
+        if os.path.exists(output_tifs_path):
+            print(f"Removing tiff files already exists at {output_tifs_path}")
+            shutil.rmtree(output_tifs_path)
+        os.makedirs(output_tifs_path, exist_ok=True)
+        print(f'Writing warped image slices to {output_tifs_path}')
+
+        for i in tqdm(range(warped_np.shape[0])):
+            slice_i = warped_np[i, ...]
+            slice_i = slice_i.astype(np.uint16)
+            outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
+            write_image(outpath_slice, slice_i)
+            del slice_i
+
+        outpath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.tif')
+        with TiffWriter(outpath, bigtiff=True) as tif:
+            for i in tqdm(range(warped_np.shape[0])):
+                slice_i = warped_np[i, ...]
+                slice_i = slice_i.astype(np.uint16)
+                tif.write(slice_i.astype(np.uint16), contiguous=True)
+        print(f'Wrote transformed volume to {outpath}')
+
+
+
+    def register_points(self):
+        if os.path.isfile(self.moving_filepath):
+            print(f"Moving image found at {self.moving_filepath}")
+        else:
+            print(f"Moving image not found at {self.moving_filepath}")
+            exit(1)
+        if os.path.isfile(self.fixed_filepath):
+            print(f"Fixed image found at {self.fixed_filepath}")
+        else:
+            print(f"Fixed image not found at {self.fixed_filepath}")
+            exit(1)
+
+
+        print(f'Reading moving image from {self.moving_filepath}')
+        moving = ants.image_read(self.moving_filepath)
+        print("Moving image loaded")
+        print(f'Reading fixed image from {self.fixed_filepath}')
+        fixed = ants.image_read(self.fixed_filepath)
+        print("Fixed image loaded")
+
+        if not os.path.isfile(self.transform_filepath):
+            print("Starting registration ...")
             registration = ants.registration(fixed=moving, moving=fixed, type_of_transform=self.transformation)
             warped_moving = registration['warpedmovout']
             shutil.copy(registration['fwdtransforms'][0], self.inverse_transform_filepath)            
         else:
             print(f"Transform file already exists at {self.transform_filepath}")
-            print("Applying registration ...")
-            #warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
-            #                            transformlist=self.transform_filepath, defaultvalue=0)
+            print("Applying registration to points")
 
         moving_points = np.array([
             [1119, 385, 517, 0],
@@ -294,32 +355,6 @@ class AntsRegistration:
         transformed_points = ants.apply_transforms_to_points( 3, pts, self.inverse_transform_filepath)
         print("Transformed points in reference space:\n", transformed_points[['x', 'y', 'z', 't']].values)
         return
-
-
-        # Convert to numpy and save to disk
-        warped_np = warped_moving.numpy()
-        warped_np = np.swapaxes(warped_np, 0, 2)
-        print(f'Warped image shape: {warped_np.shape} dtype: {warped_np.dtype}')
-        output_tifs_path = os.path.join(self.fileLocationManager.prep, 'C1', f'{self.xy_um}_{self.z_um}_{self.transformation}')
-        if os.path.exists(output_tifs_path):
-            print(f"Removing tiff files already exists at {output_tifs_path}")
-            shutil.rmtree(output_tifs_path)
-        os.makedirs(output_tifs_path, exist_ok=True)
-
-        for i in tqdm(range(warped_np.shape[0])):
-            slice_i = warped_np[i, ...]
-            slice_i = slice_i.astype(np.uint16)
-            outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
-            write_image(outpath_slice, slice_i)
-            del slice_i
-
-        outpath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.tif')
-        with TiffWriter(outpath, bigtiff=True) as tif:
-            for i in tqdm(range(warped_np.shape[0])):
-                slice_i = warped_np[i, ...]
-                slice_i = slice_i.astype(np.uint16)
-                tif.write(slice_i.astype(np.uint16), contiguous=True)
-
 
 
     def create_registration(self):

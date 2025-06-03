@@ -36,7 +36,7 @@ M_UM_SCALE = 1000000
 
 class VolumeRegistration:
 
-    def __init__(self, moving, channel=1, xy_um=16, z_um=16,  scaling_factor=SCALING_FACTOR, fixed=None, orientation='sagittal', bspline=False, debug=False):
+    def __init__(self, moving, channel=1, xy_um=16, z_um=16,  scaling_factor=SCALING_FACTOR, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
@@ -70,7 +70,9 @@ class VolumeRegistration:
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{z_um}x{xy_um}x{xy_um}um_{orientation}_unregistered.pts')
         self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
-        self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
+
+        if self.fixed is not None:
+            self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
 
         self.number_of_sampling_attempts = "10"
         if self.debug:
@@ -792,11 +794,11 @@ class VolumeRegistration:
 
         if self.bspline:
             bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-            bsplineParameterMap["MaximumNumberOfIterations"] = [self.bsplineIterations] # 250 works ok
+            bsplineParameterMap["MaximumNumberOfIterations"] = [self.iterations] # 250 works ok
             if not self.debug:
                 bsplineParameterMap["WriteResultImage"] = ["false"]
                 bsplineParameterMap["UseDirectionCosines"] = ["true"]
-                bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
+                bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.xy_um}"]
                 bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = [self.number_of_sampling_attempts]
                 bsplineParameterMap["NumberOfResolutions"]= ["6"]
                 bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
