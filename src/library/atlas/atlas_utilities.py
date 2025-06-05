@@ -260,14 +260,16 @@ def resample_image(image, reference_image):
     resampler.SetReferenceImage(reference_image)
     resampler.SetInterpolator(sitk.sitkLinear)  # Linear interpolation for resampling
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
-    return resampler.Execute(image)
+    resultImage = resampler.Execute(image)
+    return sitk.GetArrayFromImage(resultImage)
 
 def average_images(volumes, iterations="250", default_pixel_value="0"):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
     reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
     resampled_images = [resample_image(img, reference_image) for img in images]
-    registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
-    avg_array = np.mean(registered_images, axis=0)
+    #registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
+    
+    avg_array = np.mean(resampled_images, axis=0)
     return avg_array
 
 

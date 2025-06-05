@@ -89,9 +89,9 @@ class AtlasManager():
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
 
         # Note, for DK78, The C1 source is C1.v1
-        structures = ['TG_L', 'TG_R']
-        for structure in structures:
-            self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
+        #structures = ['TG_L', 'TG_R']
+        #for structure in structures:
+        #    self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=False):
             volumes = self.atlasMerger.volumes_to_merge[structure]

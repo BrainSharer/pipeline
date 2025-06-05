@@ -64,6 +64,90 @@ class AntsRegistration:
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
+    def demons_registration(self, fixed_points=None, moving_points=None):
+
+        if os.path.isfile(self.moving_filepath):
+            print(f"Moving image found at {self.moving_filepath}")
+        else:
+            print(f"Moving image not found at {self.moving_filepath}")
+            exit(1)
+        if os.path.isfile(self.fixed_filepath):
+            print(f"Fixed image found at {self.fixed_filepath}")
+        else:
+            print(f"Fixed image not found at {self.fixed_filepath}")
+            exit(1)
+
+        moving_image = sitk.ReadImage(self.moving_filepath, sitk.sitkFloat32)
+        fixed_image = sitk.ReadImage(self.fixed_filepath, sitk.sitkFloat32)
+
+        registration_method = sitk.ImageRegistrationMethod()
+
+        # Create initial identity transformation.
+        transform_to_displacment_field_filter = sitk.TransformToDisplacementFieldFilter()
+        transform_to_displacment_field_filter.SetReferenceImage(fixed_image)
+        # The image returned from the initial_transform_filter is transferred to the transform and cleared out.
+        initial_transform = sitk.DisplacementFieldTransform(
+            transform_to_displacment_field_filter.Execute(sitk.Transform())
+        )
+
+        # Regularization (update field - viscous, total field - elastic).
+        initial_transform.SetSmoothingGaussianOnUpdate(
+            varianceForUpdateField=0.0, varianceForTotalField=2.0
+        )
+
+        registration_method.SetInitialTransform(initial_transform)
+
+        registration_method.SetMetricAsDemons(
+            10
+        )  # intensities are equal if the difference is less than 10HU
+
+        # Multi-resolution framework.
+        registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+        registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[8, 4, 0])
+
+        registration_method.SetInterpolator(sitk.sitkLinear)
+        # If you have time, run this code as is, otherwise switch to the gradient descent optimizer
+        # registration_method.SetOptimizerAsConjugateGradientLineSearch(learningRate=1.0, numberOfIterations=20, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+        registration_method.SetOptimizerAsGradientDescent(
+            learningRate=1.0,
+            numberOfIterations=20,
+            convergenceMinimumValue=1e-6,
+            convergenceWindowSize=10,
+        )
+        registration_method.SetOptimizerScalesFromPhysicalShift()
+
+        # If corresponding points in the fixed and moving image are given then we display the similarity metric
+        # and the TRE during the registration.
+        """
+        if fixed_points and moving_points:
+            registration_method.AddCommand(
+                sitk.sitkStartEvent, rc.metric_and_reference_start_plot
+            )
+            registration_method.AddCommand(
+                sitk.sitkEndEvent, rc.metric_and_reference_end_plot
+            )
+            registration_method.AddCommand(
+                sitk.sitkIterationEvent,
+                lambda: rc.metric_and_reference_plot_values(
+                    registration_method, fixed_points, moving_points
+                ),
+            )
+        """
+        transform = registration_method.Execute(fixed_image, moving_image)
+
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(fixed_image)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        resampler.SetTransform(transform)
+
+        resampled = resampler.Execute(moving_image)
+
+
+        outpath = os.path.join(self.moving_path, f'demons_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.tif')
+        sitk.WriteImage(resampled, outpath)
+
+
+
     def zarr2tif(self):
         output_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.nii.gz')
         input_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
@@ -918,6 +1002,7 @@ if __name__ == '__main__':
                         'resize_volume': pipeline.resize_volume,
                         'zarr2tif': pipeline.zarr2tif,
                         'status': pipeline.check_registration,
+                        "demons" : pipeline.demons_registration
     }
 
     if task in function_mapping:

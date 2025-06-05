@@ -115,7 +115,6 @@ class BrainMerger():
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
             np.save(volume_filepath, volume)
-
             #mesh
             mesh_volume = adjust_volume(volume, 100)
             relative_origin = (origin_allen - origins_mean)
