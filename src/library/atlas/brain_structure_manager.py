@@ -939,7 +939,7 @@ class BrainStructureManager:
         print(
             f"Testing {len(origins)} origins and {len(volumes)} volumes from {self.volume_path}."
         )
-        errors = []
+        errors = ""
         for origin_file, volume_file in zip(origins, volumes):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(
@@ -953,8 +953,7 @@ class BrainStructureManager:
             com = center_of_mass(volume)
             nids, ncounts = np.unique(volume, return_counts=True)
             if len(nids) == 1:
-                error = f"{structure} has only one value {nids} {ncounts} {com}, please check\n"
-                errors.append(error)
+                errors += f"{structure} has only: IDs={nids} counts={ncounts} COM={com}, please check\n"
         if len(errors) > 0:
             print("There were errors:")
             print(errors)

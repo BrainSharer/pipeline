@@ -252,6 +252,49 @@ def get_umeyama(source_points, target_points, scaling=False):
 
     return transformation_matrix
 
+def center_images_to_largest_volume(images):
+    """
+    Centers a list of 3D SimpleITK images using the largest-volume image as the reference.
+
+    Parameters:
+        images (List[sitk.Image]): List of 3D SimpleITK Image objects.
+
+    Returns:
+        List[sitk.Image]: List of centered images (same order as input).
+    """
+    if not images:
+        raise ValueError("No images provided.")
+
+    # Compute volumes and find reference image
+    volumes = [img.GetSize()[0] * img.GetSize()[1] * img.GetSize()[2] * 
+               img.GetSpacing()[0] * img.GetSpacing()[1] * img.GetSpacing()[2] for img in images]
+    reference_index = volumes.index(max(volumes))
+    reference_image = images[reference_index]
+
+    centered_images = []
+    for i, img in enumerate(images):
+        if i == reference_index:
+            centered_images.append(img)
+            continue
+
+        # Calculate center transform
+        transform = sitk.CenteredTransformInitializer(reference_image, img,
+                                                      sitk.Euler3DTransform(), 
+                                                      sitk.CenteredTransformInitializerFilter.MOMENTS)
+
+        # Resample image
+        resampled = sitk.Resample(img,
+                                  reference_image,
+                                  transform,
+                                  sitk.sitkLinear,
+                                  0.0,
+                                  img.GetPixelID())
+
+        centered_images.append(resampled)
+
+    return centered_images
+
+
 def resample_image(image, reference_image):
     """
     Resamples an image to match the reference image in size, spacing, and direction.
@@ -261,17 +304,35 @@ def resample_image(image, reference_image):
     resampler.SetInterpolator(sitk.sitkLinear)  # Linear interpolation for resampling
     resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
     resultImage = resampler.Execute(image)
-    return sitk.GetArrayFromImage(resultImage)
+    #return sitk.GetArrayFromImage(resultImage)
+    return resultImage
 
 def average_images(volumes, iterations="250", default_pixel_value="0"):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
     reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
     resampled_images = [resample_image(img, reference_image) for img in images]
     #registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
-    
-    avg_array = np.mean(resampled_images, axis=0)
+    #registered_images = [translate_volume(img, reference_image) for img in resampled_images if img != reference_image]
+    resampled_images = center_images_to_largest_volume(resampled_images)
+
+    registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
+    avg_array = np.mean(registered_images, axis=0)
+    print(f"Average image shape: {avg_array.shape} min: {np.min(avg_array)} max: {np.max(avg_array)}")
     return avg_array
 
+def translate_volume(moving_image, reference_image):
+    # Initialize the registration method
+    elastixImageFilter = sitk.ElastixImageFilter()
+    elastixImageFilter.SetFixedImage(reference_image)
+    elastixImageFilter.SetMovingImage(moving_image)
+    genericMap = elastixImageFilter.GetDefaultParameterMap("translation")
+    elastixImageFilter.SetParameterMap(genericMap)
+    elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
+    elastixImageFilter.SetLogToFile(False)
+    elastixImageFilter.LogToConsoleOff()
+    result_image = elastixImageFilter.Execute()
+    return sitk.GetArrayFromImage(result_image)
+       
 
 def register_volume(movingImage, fixedImage, iterations="250", default_pixel_value="0"):
 
@@ -279,7 +340,7 @@ def register_volume(movingImage, fixedImage, iterations="250", default_pixel_val
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
 
-    rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("translation")
     rigid_params["AutomaticTransformInitialization"] = ["true"]
     rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
     rigid_params["FixedInternalImagePixelType"] = ["float"]
@@ -296,7 +357,7 @@ def register_volume(movingImage, fixedImage, iterations="250", default_pixel_val
 
     elastixImageFilter.SetParameterMap(rigid_params)
     elastixImageFilter.SetLogToFile(False)
-    elastixImageFilter.LogToConsoleOff()
+    elastixImageFilter.LogToConsoleOn()
 
     elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
     elastixImageFilter.SetOutputDirectory('/tmp')

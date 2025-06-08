@@ -93,7 +93,10 @@ class AtlasManager():
         #for structure in structures:
         #    self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
         
-        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=False):
+        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=True):
+            #if structure not in ['SC']:
+            #    continue
+            print(f'Merging {structure} origins and volumes', end=' ')
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
