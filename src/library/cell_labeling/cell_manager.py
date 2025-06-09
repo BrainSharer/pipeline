@@ -363,8 +363,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            # if section < 68 or section > 72: #Song-Mao testing filter
-            #     continue
+            if section != 71: #Song-Mao testing filter
+                continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -490,6 +490,9 @@ class CellMaker(ParallelManager):
         x_dim = org_img_shape[0][1]
         y_dim = org_img_shape[0][0]
 
+        if debug:
+            print(f'{org_img_shape=}, {x_dim=}, {y_dim=}')
+
         # Create a Dask array from the delayed tasks (NOTE: DELAYED)
         image_stack_virus = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_virus]
         image_stack_dye = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_dye]
@@ -523,7 +526,14 @@ class CellMaker(ParallelManager):
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
 
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
-                difference_ch3 = subtract_blurred_image(image_roi_virus, cuda_available) #calculate img difference for virus channel (e.g. fluorescence)
+                if debug:
+                    print('CALCULATE DIFFERENCE FOR CH3')
+                difference_ch3 = subtract_blurred_image(image_roi_virus, cuda_available, True, debug) #calculate img difference for virus channel (e.g. fluorescence)
+                
+                #CALC FOR SONG-MAO - REMOVE AFTER DEBUG (DUPLICATE CALCULATION IF CONNECTED SEGMENTS FOUND)
+                if debug:
+                    print('CALCULATE DIFFERENCE FOR CH1')
+                difference_ch1 = subtract_blurred_image(image_roi_dye, cuda_available, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
 
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
