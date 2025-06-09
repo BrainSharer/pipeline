@@ -528,12 +528,12 @@ class CellMaker(ParallelManager):
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
                 if debug:
                     print('CALCULATE DIFFERENCE FOR CH3')
-                difference_ch3 = subtract_blurred_image(image_roi_virus, cuda_available, True, debug) #calculate img difference for virus channel (e.g. fluorescence)
+                difference_ch3 = subtract_blurred_image(image_roi_virus, True, debug) #calculate img difference for virus channel (e.g. fluorescence)
                 
                 #CALC FOR SONG-MAO - REMOVE AFTER DEBUG (DUPLICATE CALCULATION IF CONNECTED SEGMENTS FOUND)
                 if debug:
                     print('CALCULATE DIFFERENCE FOR CH1')
-                difference_ch1 = subtract_blurred_image(image_roi_dye, cuda_available, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+                difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
 
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
@@ -542,7 +542,7 @@ class CellMaker(ParallelManager):
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
 
                     # found cell candidate (first element of tuple is count)
-                    difference_ch1 = subtract_blurred_image(image_roi_dye, cuda_available)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
                         animal,

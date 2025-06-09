@@ -28,48 +28,35 @@ def load_image(file: str):
         sys.exit(1)
 
 
-def subtract_blurred_image(image, cuda_available: bool = False, make_smaller: bool = True, debug: bool = False):
+def subtract_blurred_image(image, make_smaller: bool = True, debug: bool = False):
     '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean'''
-    if cuda_available:
-        if debug:
-            print('NOT CURRENTLY IMPLEMENTED FOR GPU')
-        # image_gpu = cp.asarray(image, dtype=cp.float32)
-        # if make_smaller:
-        #     image_reduction_final_percent_fx = 0.05 #Resize image to 5% of its original size in x dimension
-        #     image_reduction_final_percent_fy = 0.05 #Resize image to 5% of its original size in y dimension
-        #     small = cp.array(cv2.resize(cp.asnumpy(image_gpu), (0, 0), fx=image_reduction_final_percent_fx, fy=image_reduction_final_percent_fy, interpolation=cv2.INTER_AREA))
-        # else:
-        #     small = image_gpu.copy()
-        # blurred = gaussian_filter(small, sigma=10, mode='reflect')
-        # relarge = cp.array(cv2.resize(cp.asnumpy(blurred), image_gpu.T.shape, interpolation=cv2.INTER_AREA))
-        # difference = cp.asnumpy(image_gpu - relarge)
+
+    image = np.float32(image)
+    if make_smaller:
+        image_reduction_final_percent_fx = 0.05 #Resize image to 5% of its original size in x dimension
+        image_reduction_final_percent_fy = 0.05 #Resize image to 5% of its original size in y dimension
+        small = cv2.resize(image, (0, 0), fx=image_reduction_final_percent_fx, fy=image_reduction_final_percent_fy, interpolation=cv2.INTER_AREA)
     else:
-        image = np.float32(image)
-        if make_smaller:
-            image_reduction_final_percent_fx = 0.05 #Resize image to 5% of its original size in x dimension
-            image_reduction_final_percent_fy = 0.05 #Resize image to 5% of its original size in y dimension
-            small = cv2.resize(image, (0, 0), fx=image_reduction_final_percent_fx, fy=image_reduction_final_percent_fy, interpolation=cv2.INTER_AREA)
-        else:
-            small = image.copy()
+        small = image.copy()
 
-        # Gaussian blur applied to smaller image using Gaussian kernel of 21x21 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
-        # Larger kernel size leads to more blurring
-        # Higher s.d. leads to more blurring
-        kernel_size_pixels = (21, 21)
-        gaussian_blur_standard_deviation_sigmaX = 10
-        blurred = cv2.GaussianBlur(small, ksize=kernel_size_pixels, sigmaX=gaussian_blur_standard_deviation_sigmaX) # Blur the resized image
+    # Gaussian blur applied to smaller image using Gaussian kernel of 21x21 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
+    # Larger kernel size leads to more blurring
+    # Higher s.d. leads to more blurring
+    kernel_size_pixels = (21, 21)
+    gaussian_blur_standard_deviation_sigmaX = 10
+    blurred = cv2.GaussianBlur(small, ksize=kernel_size_pixels, sigmaX=gaussian_blur_standard_deviation_sigmaX) # Blur the resized image
 
-        relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
-        difference = image - relarge # Calculate the difference between the original and resized-blurred images
-        if debug:
-            print(f'DEBUG: -subtract_blurred_image- detail:')
-            print(f'DEBUG: {image_reduction_final_percent_fx=}')
-            print(f'DEBUG: {image_reduction_final_percent_fy=}')
-            print(f"DEBUG: Original image shape: {image.shape}")
-            print(f"DEBUG: Small image shape: {small.shape}")
-            print(f'DEBUG: Gaussian blur detail:')
-            print(f"DEBUG: {kernel_size_pixels=}")
-            print(f"DEBUG: {gaussian_blur_standard_deviation_sigmaX=}")
+    relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
+    difference = image - relarge # Calculate the difference between the original and resized-blurred images
+    if debug:
+        print(f'DEBUG: -subtract_blurred_image- detail:')
+        print(f'DEBUG: {image_reduction_final_percent_fx=}')
+        print(f'DEBUG: {image_reduction_final_percent_fy=}')
+        print(f"DEBUG: Original image shape: {image.shape}")
+        print(f"DEBUG: Small image shape: {small.shape}")
+        print(f'DEBUG: Gaussian blur detail:')
+        print(f"DEBUG: {kernel_size_pixels=}")
+        print(f"DEBUG: {gaussian_blur_standard_deviation_sigmaX=}")
     return difference
 
 
