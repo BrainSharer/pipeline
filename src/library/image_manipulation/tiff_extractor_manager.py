@@ -130,7 +130,6 @@ class TiffExtractor():
                 files_skipped += 1
                 continue
             scene = section.scene_index
-            file_keys.append([i, infile, outfile, checksum_filepath, scene, scale])
             
             scale = 0.01
 

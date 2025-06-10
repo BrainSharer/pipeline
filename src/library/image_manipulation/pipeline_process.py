@@ -179,7 +179,8 @@ class Pipeline(
 
     def clean(self):
         print(self.TASK_CLEAN)
-        self.check_ram()
+        print('SKIPPING RAM CHECK')
+        # self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
             self.set_max_width_and_height()

@@ -22,7 +22,7 @@ class CZIManager():
     """Methods to extract meta-data from czi files using AICSImage module (Allen Institute)
     """
     
-    def __init__(self, czi_file):
+    def __init__(self, czi_file, debug: bool = False):
         """Set up the class with the name of the file and the path to it's location.
 
         :param czi_file: string of the name of the CZI file
@@ -30,6 +30,8 @@ class CZIManager():
         
         self.czi_file = czi_file
         self.file = CziFile(czi_file)
+        self.debug = debug
+
 
     def extract_metadata_from_czi_file(self, czi_file, czi_file_path, debug: bool = False):
         """This will parse the xml metadata and return the relevant data.
