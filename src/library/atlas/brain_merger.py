@@ -8,7 +8,7 @@ into the database if given a layer name.
 import os
 import numpy as np
 from collections import defaultdict
-from scipy.ndimage import zoom
+from scipy.ndimage import center_of_mass
 
 from tqdm import tqdm
 
@@ -97,16 +97,17 @@ class BrainMerger():
             save_mesh(aligned_structure, mesh_filepath)
 
     def save_atlas_meshes_origins_volumes(self):
-        coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
+        #coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         desc = "Saving atlas meshes/origins/volumes"
         for structure in tqdm(self.volumes.keys(), desc=desc):
             origin_allen = origins[structure]
-            com_um = coms[structure]
-            
             volume = self.volumes[structure]
+            com = center_of_mass(volume)
+            com_um = (com + origin_allen) * 10
+            
             
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')

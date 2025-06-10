@@ -409,10 +409,12 @@ class BrainStructureManager:
                 volume = np.flip(volume, axis=0)
 
             volume = adjust_volume(volume, allen_id)
+            #x_start, y_start, z_start = self.get_start_positions(volume, com0)
 
             if self.affine:
                 com = affine_transform_point(com0, transformation_matrix)
                 origin = affine_transform_point(origin0, transformation_matrix)
+                #x_start, y_start, z_start = affine_transform_point((x_start, y_start, z_start), transformation_matrix)
             else:
                 com = com0
                 origin = origin0
@@ -423,9 +425,9 @@ class BrainStructureManager:
             x_start, y_start, z_start = self.get_start_positions(volume, com)
 
             # Using the origin makes the structures appear a bit too far up
-            #x_start = int(origin[0])
-            #y_start = int(origin[1])
-            #z_start = int(origin[2])
+            #x_start = int(round(origin[0]))
+            #y_start = int(round(origin[1]))
+            #z_start = int(round(origin[2]))
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
@@ -449,14 +451,6 @@ class BrainStructureManager:
                     print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}")
                     #sys.exit()
 
-            if self.affine:
-                # transform the origin to the new space
-                com_path = os.path.join(self.data_path, 'Allen', "com")
-                origin_path = os.path.join(self.data_path, 'Allen', "origin")
-                volume_path = os.path.join(self.data_path, 'Allen', "structure")
-                np.savetxt(os.path.join(com_path, f"{structure}.txt"), com)
-                np.savetxt(os.path.join(origin_path, f"{structure}.txt"), origin)
-                np.save(os.path.join(volume_path, f"{structure}.npy"), volume)
 
         if self.affine:        
             print(f"Transformation matrix\n {transformation_matrix}")

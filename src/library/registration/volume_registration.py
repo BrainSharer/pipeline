@@ -763,8 +763,8 @@ class VolumeRegistration:
         # switch fixed and moving
         fixed_path = self.moving_path
         moving_path = self.fixed_path
-        fixed_basename = f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}'
-        moving_basename = f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}'
+        fixed_basename = f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}'
+        moving_basename = f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}'
         elastixImageFilter = self.setup_registration(fixed_path, moving_path, 
                                                      self.fiducial_fixed_file_path,
                                                      self.fiducial_moving_file_path, 

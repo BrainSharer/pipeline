@@ -209,12 +209,12 @@ def compute_affine_transformation(source_points: np.ndarray, target_points: np.n
     
     # Solve for the affine transformation using least squares
     affine_matrix, _, _, _ = np.linalg.lstsq(source_h, target_points, rcond=None)
+    A, res, rank, s = np.linalg.lstsq(source_h, target_points, rcond=None)
+
+    # A is 4x3, so we transpose it and add a row for homogeneous coordinates
+    affine_matrix = np.vstack([A.T, [0, 0, 0, 1]])  # (4 x 4)
     
-    # Convert to 4x4 matrix
-    transformation_matrix = np.eye(4)
-    transformation_matrix[:3, :] = affine_matrix.T
-    
-    return transformation_matrix
+    return affine_matrix
 
 
 def get_affine_transformation(moving_name, fixed_name='Allen', scaling_factor=1):
@@ -307,32 +307,137 @@ def resample_image(image, reference_image):
     #return sitk.GetArrayFromImage(resultImage)
     return resultImage
 
-def average_images(volumes, iterations="250", default_pixel_value="0"):
+def resize_image(image, new_size):
+    """
+    Resamples an image to match the reference image in size, spacing, and direction.
+    """
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetSize(new_size)
+    resampler.SetInterpolator(sitk.sitkLinear)  # Linear interpolation for resampling
+    resampler.SetDefaultPixelValue(0)  # Fill with zero if needed
+    resultImage = resampler.Execute(image)
+    #return sitk.GetArrayFromImage(resultImage)
+    return resultImage
+
+
+def get_image_center(image):
+    """Compute the physical center of a SimpleITK image."""
+    size = np.array(image.GetSize())
+    spacing = np.array(image.GetSpacing())
+    origin = np.array(image.GetOrigin())
+    direction = np.array(image.GetDirection()).reshape(3, 3)
+    
+    center_index = (size - 1) / 2.0
+    center_physical = origin + direction @ (center_index * spacing)
+    
+    return center_physical
+
+def compute_translation_transform(from_center, to_center):
+    """Create a translation transform that moves from_center to to_center."""
+    translation_vector = to_center - from_center
+    return sitk.TranslationTransform(3, translation_vector)
+
+def align_images_to_common_center(images):
+    """
+    Given a list of SimpleITK 3D images, return a list of translated images
+    aligned to their common center.
+    """
+    centers = [get_image_center(img) for img in images]
+    common_center = np.mean(centers, axis=0)
+    print('common center via mean', common_center)
+    
+
+    aligned_images = []
+
+    for img, center in zip(images, centers):
+        transform = compute_translation_transform(center, common_center)
+        resampled = sitk.Resample(
+            img,
+            img.GetSize(),
+            transform,
+            sitk.sitkLinear,
+            img.GetOrigin(),
+            img.GetSpacing(),
+            img.GetDirection(),
+            0.0,  # default pixel value
+            img.GetPixelID()
+        )
+        aligned_images.append(resampled)
+    
+    return aligned_images
+
+
+def average_images(volumes):
     images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
+    """
     reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
     resampled_images = [resample_image(img, reference_image) for img in images]
     #registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
-    #registered_images = [translate_volume(img, reference_image) for img in resampled_images if img != reference_image]
     resampled_images = center_images_to_largest_volume(resampled_images)
 
     registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
     avg_array = np.mean(registered_images, axis=0)
     print(f"Average image shape: {avg_array.shape} min: {np.min(avg_array)} max: {np.max(avg_array)}")
-    return avg_array
+    """
 
-def translate_volume(moving_image, reference_image):
+    sizes = [img.GetSize() for img in images]
+    max_size = np.max(sizes, axis=0)
+        
+    resampled_images = [resize_image(img, max_size.tolist()) for img in images]
+    resampled_images = center_images_to_largest_volume(resampled_images)
+    resampled_images = align_images_to_common_center(resampled_images)
+    avg_volume = np.mean([sitk.GetArrayFromImage(vol) for vol in resampled_images], axis=0)
+    
+    return avg_volume
+
+
+
+def rigid_registration_get_matrix_translation(fixed_image, moving_image):
+    """
+    Perform rigid registration between two 3D images and extract the rotation matrix and translation vector.
+
+    Args:
+        fixed_image (sitk.Image): The reference image.
+        moving_image (sitk.Image): The image to be transformed.
+
+    Returns:
+        rotation_matrix (np.ndarray): A 3x3 rotation matrix.
+        translation_vector (np.ndarray): A 3x1 translation vector.
+    """
     # Initialize the registration method
-    elastixImageFilter = sitk.ElastixImageFilter()
-    elastixImageFilter.SetFixedImage(reference_image)
-    elastixImageFilter.SetMovingImage(moving_image)
-    genericMap = elastixImageFilter.GetDefaultParameterMap("translation")
-    elastixImageFilter.SetParameterMap(genericMap)
-    elastixImageFilter.SetParameter("MaximumNumberOfIterations", "250")
-    elastixImageFilter.SetLogToFile(False)
-    elastixImageFilter.LogToConsoleOff()
-    result_image = elastixImageFilter.Execute()
-    return sitk.GetArrayFromImage(result_image)
-       
+    registration_method = sitk.ImageRegistrationMethod()
+    
+    # Use Mutual Information for multi-modal or Mattes MI for mono-modal
+    registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+    registration_method.SetMetricSamplingPercentage(0.01)
+    
+    # Interpolator
+    registration_method.SetInterpolator(sitk.sitkLinear)
+    
+    # Optimizer
+    registration_method.SetOptimizerAsRegularStepGradientDescent(
+        learningRate=2.0,
+        minStep=1e-4,
+        numberOfIterations=200,
+        gradientMagnitudeTolerance=1e-8
+    )
+
+    # Set initial transform (rigid)
+    initial_transform = sitk.VersorRigid3DTransform()
+    initial_transform.SetCenter(fixed_image.TransformContinuousIndexToPhysicalPoint(np.array(fixed_image.GetSize()) / 2.0))
+    registration_method.SetInitialTransform(initial_transform, inPlace=False)
+
+    # Execute registration
+    final_transform = registration_method.Execute(fixed_image, moving_image)
+
+
+    # Extract matrix and translation
+    matrix = np.array(final_transform.GetMatrix()).reshape((3, 3))
+    translation = np.array(final_transform.GetTranslation()).reshape((3, 1))
+    print(f"Final transform matrix:\n{matrix}\nTranslation vector:\n{translation}")
+
+    return matrix, translation
 
 def register_volume(movingImage, fixedImage, iterations="250", default_pixel_value="0"):
 
