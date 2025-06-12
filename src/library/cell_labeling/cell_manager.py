@@ -1414,9 +1414,12 @@ class CellMaker(ParallelManager):
             x = int(row["x"] // SCALING_FACTOR)
             y = int(row["y"] // SCALING_FACTOR)
             z = int(row["section"])
+            
             if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
+                volume[z][y, x] = 1 # Set a single pixel to label value 1
+
                 # Draw a small circle to make the point more visible
-                cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
+                #cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
 
         out_dir = Path(annotations_dir, labels[0] + '.precomputed')
         if os.path.exists(out_dir):
