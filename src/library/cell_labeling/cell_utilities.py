@@ -33,16 +33,16 @@ def subtract_blurred_image(image, make_smaller: bool = True, debug: bool = False
 
     image = np.float32(image)
     if make_smaller:
-        image_reduction_final_percent_fx = 0.05 #Resize image to 5% of its original size in x dimension
-        image_reduction_final_percent_fy = 0.05 #Resize image to 5% of its original size in y dimension
+        image_reduction_final_percent_fx = 0.1 #Resize image to 10% of its original size in x dimension
+        image_reduction_final_percent_fy = 0.1 #Resize image to 10% of its original size in y dimension
         small = cv2.resize(image, (0, 0), fx=image_reduction_final_percent_fx, fy=image_reduction_final_percent_fy, interpolation=cv2.INTER_AREA)
     else:
         small = image.copy()
 
-    # Gaussian blur applied to smaller image using Gaussian kernel of 21x21 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
-    # Larger kernel size leads to more blurring
+    # Gaussian blur applied to smaller image using Gaussian kernel of 41x41 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
+    # Larger kernel size produces stronger blur effect
     # Higher s.d. leads to more blurring
-    kernel_size_pixels = (21, 21)
+    kernel_size_pixels = (41, 41)
     gaussian_blur_standard_deviation_sigmaX = 10
     blurred = cv2.GaussianBlur(small, ksize=kernel_size_pixels, sigmaX=gaussian_blur_standard_deviation_sigmaX) # Blur the resized image
 

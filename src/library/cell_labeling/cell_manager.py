@@ -352,7 +352,7 @@ class CellMaker(ParallelManager):
             sys.exit()
 
         if self.input_format == 'tif':
-            input_path_dye = input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
+            input_path_dye = self.fileLocationManager.get_full_aligned(channel=self.dye_channel)
             input_path_virus = self.fileLocationManager.get_full_aligned(channel=self.virus_marker_channel)
             self.section_count = self.capture_total_sections(self.input_format, input_path_dye) #Only need single/first channel to get total section count
         else:
@@ -363,8 +363,8 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            if section != 71: #Song-Mao testing filter
-                continue
+            # if section < 70 or section > 72: #Song-Mao testing filter
+            #     continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -417,8 +417,7 @@ class CellMaker(ParallelManager):
             cell_radius,
             max_segment_size,
             SCRATCH,
-            OUTPUT, _,
-            model_filename,
+            OUTPUT, _, _,
             input_format,
             input_path_dye,
             input_path_virus,
@@ -451,8 +450,11 @@ class CellMaker(ParallelManager):
 
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number is already string for legacy processing 'tif' (zfill)
+            if debug:
+                print(f'READING "tif" ALIGNED FORMAT')
             input_file_virus = Path(input_path_virus, str_section_number + '.tif')
             input_file_dye = Path(input_path_dye, str_section_number + '.tif')
+
         else:
             store = parse_url(input_path_virus, mode="r").store
             reader = Reader(parse_url(input_path_virus))
@@ -484,25 +486,36 @@ class CellMaker(ParallelManager):
         delayed_tasks_dye = [delayed(load_image)(path) for path in [input_file_dye]]
 
         # Get shape without computing
-        org_img_shape = dask.compute(delayed_tasks_virus[0].shape) 
+        org_virus_img_shape = dask.compute(delayed_tasks_virus[0].shape) 
+        org_dye_img_shape = dask.compute(delayed_tasks_dye[0].shape) 
 
-        # Shape will be same for both channels (stores as y-axis then x-axis)
-        x_dim = org_img_shape[0][1]
-        y_dim = org_img_shape[0][0]
+        # Shape should be same for both channels (stores as y-axis then x-axis)
+        y_dim = org_virus_img_shape[0][0]
+        x_dim = org_virus_img_shape[0][1]
+        dye_y_dim = org_dye_img_shape[0][0]
+        dye_x_dim = org_dye_img_shape[0][1]
 
         if debug:
-            print(f'{org_img_shape=}, {x_dim=}, {y_dim=}')
+            print(f'[VIRUS] {org_virus_img_shape=}: {y_dim=}, {x_dim=}')
+            print(f'[DYE] {org_dye_img_shape=}: {dye_y_dim=}, {dye_x_dim=}')
 
-        # Create a Dask array from the delayed tasks (NOTE: DELAYED)
-        image_stack_virus = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_virus]
-        image_stack_dye = [da.from_delayed(v, shape=(x_dim, y_dim), dtype='uint16') for v in delayed_tasks_dye]
+        # both channels must same dimensions; DO NOT PROCEED IF NOT TRUE!
+        assert (x_dim == dye_x_dim and y_dim == dye_y_dim), (
+            f"Dimension mismatch between virus and dye channels: "
+            f"virus=({y_dim}, {x_dim}), dye=({dye_y_dim}, {dye_x_dim})"
+        )
+
+        # Create a Dask array from the delayed tasks (NOTE: DELAYED); SHAPE IS y-axis then x-axis
+        image_stack_virus = [da.from_delayed(v, shape=(y_dim, x_dim), dtype='uint16') for v in delayed_tasks_virus]
+        image_stack_dye = [da.from_delayed(v, shape=(y_dim, x_dim), dtype='uint16') for v in delayed_tasks_dye]
+
         data_virus = dask.compute(image_stack_virus[0])[0] #FULL IMAGE
         data_dye = dask.compute(image_stack_dye[0])[0] #FULL IMAGE
 
         # Swap x and y axes (read in y-axis, then x-axis but we want x,y)
         data_virus = np.swapaxes(data_virus, 1, 0)
         data_dye = np.swapaxes(data_dye, 1, 0)
-
+    
         # FINAL VERSION BELOW:
         total_virtual_tile_rows = 5
         total_virtual_tile_columns = 2
@@ -510,38 +523,42 @@ class CellMaker(ParallelManager):
         y_window = int(math.ceil(y_dim / total_virtual_tile_columns))
 
         if debug:
-            print(f'dask array created with following parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
+            print(f'virus shape (x, y): {data_virus.shape=}')
+            print(f'dye shape (x, y): {data_dye.shape=}')
+            print(f'dask parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
         #cuda_available = cp.is_available()
         cuda_available = False
 
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
-                x_start = row*x_window
-                x_end = x_window*(row+1)
-                y_start = col*y_window
-                y_end = y_window*(col+1)
+            
+                x_start = row * x_window
+                x_end = x_window * (row+1)
+                y_start = col * y_window
+                y_end = y_window * (col+1)
 
                 image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS numpy array
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
 
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
                 if debug:
-                    print('CALCULATE DIFFERENCE FOR CH3')
+                    print('CALCULATING DIFFERENCE FOR CH3 (VIRUS)')
+                    print(f'ROI: {x_start=}, {x_end=}, {y_start=}, {y_end=}')
                 difference_ch3 = subtract_blurred_image(image_roi_virus, True, debug) #calculate img difference for virus channel (e.g. fluorescence)
                 
                 #CALC FOR SONG-MAO - REMOVE AFTER DEBUG (DUPLICATE CALCULATION IF CONNECTED SEGMENTS FOUND)
-                if debug:
-                    print('CALCULATE DIFFERENCE FOR CH1')
-                difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+                # if debug:
+                #     print('CALCULATE DIFFERENCE FOR CH1')
+                # difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
 
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
-                if connected_segments[0] > 2:
+                if connected_segments[0] > 2: # found cell candidate (first element of tuple is count)
+
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
-
-                    # found cell candidate (first element of tuple is count)
+                        print('CALCULATING DIFFERENCE FOR CH1 (DYE)')
                     difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
@@ -562,8 +579,6 @@ class CellMaker(ParallelManager):
         if len(cell_candidates) > 0:
             if debug:
                 print(f'Saving {len(cell_candidates)} Cell candidates TO {output_file}')
-            # if debug:
-            #     print(f'Raw cell_candidates: {cell_candidates=}')
             dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
 
         if debug:
@@ -1340,7 +1355,9 @@ class CellMaker(ParallelManager):
                 dfs.append(filtered.select([
                     pl.col("col").alias("x"),
                     pl.col("row").alias("y"),
-                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                    #(pl.col("section") - 0.5).cast(pl.Int32).alias("section")
+                    (pl.col("section") + 0.5).cast(pl.Int32).alias("section") #annotations were offset by 1 (perhaps due to round down)
+                    
                 ]))
             
             except Exception as e:
@@ -1399,7 +1416,7 @@ class CellMaker(ParallelManager):
             z = int(row["section"])
             if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
                 # Draw a small circle to make the point more visible
-                cv2.circle(volume[z], center=(x, y), radius=2, color=1, thickness=-1)  # label = 1
+                cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
 
         out_dir = Path(annotations_dir, labels[0] + '.precomputed')
         if os.path.exists(out_dir):

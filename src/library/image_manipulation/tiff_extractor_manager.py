@@ -40,7 +40,10 @@ class TiffExtractor():
             self.output = self.fileLocationManager.thumbnail_original
             scale_factor = DOWNSCALING_FACTOR
         else:
-            self.output = self.fileLocationManager.tif
+            # if str(self.channel) == '1':
+            #     self.output = self.fileLocationManager.tif
+            # else:
+
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi()
