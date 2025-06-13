@@ -30,6 +30,7 @@ from tqdm import tqdm
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
+from library.atlas.atlas_utilities import list_coms
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.utilities.utilities_process import SCALING_FACTOR
@@ -90,19 +91,24 @@ class AtlasManager():
 
         # Note, for DK78, The C1 source is C1.v1
         #structures = ['TG_L', 'TG_R']
-        #for structure in structures:
-        #    self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, structure, self.debug)
+        """
+        for animal in self.foundation_brains:
+            structure_coms = list_coms(animal)
+            structures = sorted(structure_coms.keys())
+            structures = ['SC']
+            for structure in structures:
+                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
+        """
         
-        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=True):
+        for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
             #if structure not in ['SC']:
             #    continue
-            print(f'Merging {structure} origins and volumes', end=' ')
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:
-            self.atlasMerger.save_atlas_meshes_origins_volumes()
+            self.atlasMerger.save_atlas_meshes_origins_volumes(self.um)
         else:
             print('No data to save')
 

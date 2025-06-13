@@ -102,9 +102,6 @@ def list_coms(animal, scaling_factor=1):
         com = [i* M_UM_SCALE/scaling_factor for i in v]
         coms[k] = com
 
-    if len(coms.keys()) == 0:
-        coms = fetch_coms(animal, scaling_factor=scaling_factor)
-
     return coms
 
 def list_raw_coms(animal, scaling_factor=1):
@@ -344,9 +341,7 @@ def align_images_to_common_center(images):
     """
     centers = [get_image_center(img) for img in images]
     common_center = np.mean(centers, axis=0)
-    print('common center via mean', common_center)
     
-
     aligned_images = []
 
     for img, center in zip(images, centers):
@@ -504,7 +499,7 @@ def adjust_volume(volume, allen_id):
     """
     The commands below produce really nice STLs
     """
-    upper = 150
+    upper = 100
     volume = gaussian(volume, 4.0)            
     volume[(volume > upper) ] = allen_id
     volume[(volume != allen_id)] = 0

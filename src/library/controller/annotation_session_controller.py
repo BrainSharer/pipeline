@@ -203,29 +203,28 @@ class AnnotationSessionController:
 
         return coms
 
+    @staticmethod
+    def convert_euler(animal, x, y, z):
+        params = {}
+        center = {}
+        params['MD585'] = [1.086267, 0.087124, 0.020623, -0.096527, 1.236928, -0.012186, 0.028797, -0.002925, 1.170771, -156.715823, -7.243461, 121.092594]
+        params['MD589'] = [1.084250, 0.155819, 0.014409, -0.321239, 1.221062, 0.078012, -0.012610, -0.041006, 1.133703, -196.347565, -134.130296, 114.142506]
+        params['MD594'] = [0.979148, -0.176800, 0.091638, 0.198827, 1.155553, 0.007687, -0.071885, 0.002762, 1.132444, -271.150036, -140.324929, 133.109973]
+        
+        center['MD585'] = np.array([862.5, 632.5, 445.50])
+        center['MD589'] = np.array([987.5, 732.0, 446.50])
+        center['MD594'] = np.array([1062.0, 526.0, 432.5])
+
+        if animal not in params:
+            return x, y, z
+        
+        t = np.array(params[animal][9:])
+        R = np.array(params[animal][:9]).reshape(3,3)
+        p = np.array([x, y, z])
+        x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
+        return int(round(x1)), int(round(y1)), int(round(z1))
 
     def get_annotation_volume(self, session_id: int, scaling_factor=1) -> dict:
-
-        def convert_euler(animal, x, y, z):
-            params = {}
-            center = {}
-            
-            params['DK78'] = [0.839732, -0.360354, -0.073608, 
-                              0.192520, 0.756523, -0.061689, 
-                              0.004791, 0.081561, 0.994510, 
-                              -245.611908, -198.648611, 29.966351]
-            
-            center['DK78'] = np.array([1166.5, 689.5, 436.5])
-            center['DK73'] = np.array([1321.5, 818.5, 423.5])
-
-            if animal not in params:
-                return x, y, z
-            
-            t = np.array(params[animal][9:])
-            R = np.array(params[animal][:9]).reshape(3,3)
-            p = np.array([x, y, z])
-            x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
-            return int(round(x1)), int(round(y1)), int(round(z1))
 
         """
         This returns data in micrometers divided by the scaling_factor provided.
@@ -257,9 +256,7 @@ class AnnotationSessionController:
                 x = int(np.round(x * M_UM_SCALE / scaling_factor))
                 y = int(np.round(y * M_UM_SCALE / scaling_factor))
                 section = int(np.round(z * M_UM_SCALE / scaling_factor))
-                x, y, section = convert_euler(animal, x, y, section)
-
-                #polygons[section].append((x,y))
+                #x, y, section = self.convert_euler(animal, x, y, section)
                 polygons[section].append((x,y))
 
         return polygons
