@@ -64,6 +64,116 @@ class AntsRegistration:
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
+    def apply_ants_transform_zarr(self):
+        """
+        Apply ANTs transform to a large 3D Zarr volume in chunks.
+
+        Parameters:
+        - input_zarr_path: path to the input Zarr array (3D).
+        - output_zarr_path: path to the output Zarr array.
+        - transform_list: list of ANTs transform files (e.g., from ants.registration).
+        - reference_image_path: path to reference image (defines output space).
+        - chunk_size: tuple defining the size of chunks to process at a time.
+        """
+        self.check_registration()
+
+        output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
+        if os.path.exists(output_zarr_path):
+            print(f"Removing zarr file already exists at {output_zarr_path}")
+            shutil.rmtree(output_zarr_path)
+        # Open Zarr arrays
+        #fixed_z = zarr.open(self.fixed_filepath_zarr, mode='r')
+        #moving_z = zarr.open(self.moving_filepath_zarr, mode='r')
+
+        moving_z, reference = pad_to_symmetric_shape(self.moving_filepath_zarr, self.fixed_filepath_zarr)
+
+        print(type(reference))
+
+        reference_ants = ants.from_numpy(np.array(reference))
+        moving_ants = ants.from_numpy(np.array(moving_z))
+        registration = ants.registration(fixed=reference_ants, moving=moving_ants, type_of_transform='Affine')
+
+        shape = moving_z.shape
+        dtype = moving_z.dtype
+
+        dask_container = da.empty_like(moving_z, dtype=dtype, shape=shape)
+        print(f'Creating Dask container with shape {shape} and dtype {dtype} {type(dask_container)=}')
+
+        # Create output zarr with same shape and dtype
+        #compressor = Blosc(cname='zstd', clevel=3)
+        #output_zarr = zarr.open(output_zarr_path, mode='w')
+        chunk_size = (moving_z.shape[0] // 5, moving_z.shape[1] // 1, moving_z.shape[2] // 2) # type: ignore
+        print(f'Creating output Zarr at {output_zarr_path}\n with shape {shape} and chunk size {chunk_size} dtype {dtype}')
+        #output_array = output_zarr.create('data', shape=shape, chunks=chunk_size, dtype=dtype, compressor=compressor)
+        #reference = ants.image_read(self.fixed_filepath)
+
+        chunk_count = 1
+        # Iterate through chunks
+        for z in range(0, shape[0], chunk_size[0]):
+            for y in range(0, shape[1], chunk_size[1]):
+                for x in range(0, shape[2], chunk_size[2]):
+                    z0, y0, x0 = z, y, x
+                    z1, y1, x1 = min(z+chunk_size[0], shape[0]), min(y+chunk_size[1], shape[1]), min(x+chunk_size[2], shape[2])
+                    
+                    # Load reference chunk
+                    reference_chunk = reference[z0:z1, y0:y1, x0:x1]
+                    reference_chunk_img = ants.from_numpy(reference_chunk.astype(np.float32), origin=(x0, y0, z0))
+                    # Load moving chunk
+                    moving_chunk = moving_z[z0:z1, y0:y1, x0:x1]
+                    moving_chunk_img = ants.from_numpy(moving_chunk.astype(np.float32), origin=(x0, y0, z0),
+                                                       spacing=reference_chunk_img.spacing, 
+                                                       direction=reference_chunk_img.direction)
+
+                    # Apply transform
+                    #warped_chunk = ants.apply_transforms(fixed=reference, moving=chunk_img, transformlist=transform_list, interpolator='linear')
+                    ids, counts = np.unique(moving_chunk_img.numpy(), return_counts=True)
+                    print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - Unique IDs: {len(ids)}, Counts: {len(counts)}")
+                    
+                    
+                    # Apply transform
+                    warped_chunk = ants.apply_transforms(fixed=reference_chunk_img, moving=moving_chunk_img, 
+                                                        transformlist=registration['fwdtransforms'], defaultvalue=0,
+                                                        interpolator='linear')
+
+                    # Write transformed chunk to output Zarr
+                    transformed_array = warped_chunk.numpy()
+                    #output_array[z0:z1, y0:y1, x0:x1] = transformed_array
+                    dask_container[z0:z1, y0:y1, x0:x1] = transformed_array
+                    chunk_count += 1
+
+                    #zoomed = da.from_array(transformed_array, chunks=chunk_size)
+                    #delayed = zoomed.to_zarr(outpath, compute=False, overwrite=True)
+                    #with ProgressBar():
+                    #    delayed.compute()
+
+        dask_container.to_zarr(output_zarr_path, compute=True, overwrite=True)
+
+        volume = zarr.open(output_zarr_path, 'r')
+        print(volume.info)
+        image_stack = []
+        for i in tqdm(range(int(volume.shape[0]))): # type: ignore
+            section = volume[i, ...]
+            if section.ndim > 2: # type: ignore
+                section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
+            image_stack.append(section)
+
+        print('Stacking images ...')
+        volume = np.stack(image_stack, axis=0)
+
+
+        outpath = os.path.join(self.moving_path, 'registered.tif')
+        if os.path.exists(outpath):
+            print(f"Removing tiff file already exists at {outpath}")
+            os.remove(outpath)
+        write_image(outpath, volume.astype(dtype))
+
+
+
+
+
+        print("Transformation complete.")
+
+
     def demons_registration(self, fixed_points=None, moving_points=None):
 
         if os.path.isfile(self.moving_filepath):
@@ -742,52 +852,6 @@ def zoom_large_3d_array(input_array, scale_factors, chunks=(100, 100, 100)):
     zoomed = input_array.map_blocks(zoom_block, dtype=input_array.dtype)
     return zoomed
 
-def apply_ants_transform_zarr(input_zarr_path, output_zarr_path, transform_list, reference_image_path, chunk_size=(64, 64, 64)):
-    """
-    Apply ANTs transform to a large 3D Zarr volume in chunks.
-
-    Parameters:
-    - input_zarr_path: path to the input Zarr array (3D).
-    - output_zarr_path: path to the output Zarr array.
-    - transform_list: list of ANTs transform files (e.g., from ants.registration).
-    - reference_image_path: path to reference image (defines output space).
-    - chunk_size: tuple defining the size of chunks to process at a time.
-    """
-
-    input_zarr = zarr.open(input_zarr_path, mode='r')
-    shape = input_zarr.shape
-    dtype = input_zarr.dtype
-
-    # Create output zarr with same shape and dtype
-    compressor = Blosc(cname='zstd', clevel=3)
-    output_zarr = zarr.open(output_zarr_path, mode='w')
-    output_array = output_zarr.create('data', shape=shape, chunks=chunk_size, dtype=dtype, compressor=compressor)
-
-    # Load reference image
-    reference = ants.image_read(reference_image_path)
-    reference = zarr.open(reference_image_path, mode='r')
-
-    # Iterate through chunks
-    for z in range(0, shape[0], chunk_size[0]):
-        for y in range(0, shape[1], chunk_size[1]):
-            for x in range(0, shape[2], chunk_size[2]):
-                z0, y0, x0 = z, y, x
-                z1, y1, x1 = min(z+chunk_size[0], shape[0]), min(y+chunk_size[1], shape[1]), min(x+chunk_size[2], shape[2])
-                
-                # Load chunk
-                chunk = input_zarr[z0:z1, y0:y1, x0:x1]
-                chunk_img = ants.from_numpy(chunk.astype(np.float32), origin=(x0, y0, z0), spacing=reference.spacing, direction=reference.direction)
-
-                # Apply transform
-                warped_chunk = ants.apply_transforms(fixed=reference, moving=chunk_img, transformlist=transform_list, interpolator='linear')
-                
-                # Write transformed chunk to output Zarr
-                transformed_array = warped_chunk.numpy()
-                output_array[z0:z1, y0:y1, x0:x1] = transformed_array
-
-                print(f"Processed chunk: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1}")
-
-    print("Transformation complete.")
 
 def scale_3d_volume_with_dask(input_array: da.Array, scale_factors: tuple, output_zarr_path: str, chunks: tuple = None):
     """
@@ -1002,7 +1066,8 @@ if __name__ == '__main__':
                         'resize_volume': pipeline.resize_volume,
                         'zarr2tif': pipeline.zarr2tif,
                         'status': pipeline.check_registration,
-                        "demons" : pipeline.demons_registration
+                        "demons" : pipeline.demons_registration,
+                        "ants_range": pipeline.apply_ants_transform_zarr
     }
 
     if task in function_mapping:
