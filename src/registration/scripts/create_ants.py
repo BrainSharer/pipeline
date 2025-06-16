@@ -84,36 +84,55 @@ class AntsRegistration:
         # Open Zarr arrays
         #fixed_z = zarr.open(self.fixed_filepath_zarr, mode='r')
         #moving_z = zarr.open(self.moving_filepath_zarr, mode='r')
-
         moving_z, reference = pad_to_symmetric_shape(self.moving_filepath_zarr, self.fixed_filepath_zarr)
-
-        print(type(reference))
 
         reference_ants = ants.from_numpy(np.array(reference))
         moving_ants = ants.from_numpy(np.array(moving_z))
-        registration = ants.registration(fixed=reference_ants, moving=moving_ants, type_of_transform='Affine')
+
+        if os.path.exists(self.transform_filepath):
+            print(f'Found transform at {self.transform_filepath}')
+        else:
+            print("Creating registration")
+            registration = ants.registration(fixed=reference_ants, moving=moving_ants, type_of_transform='Affine')
+            original_filepath = registration['fwdtransforms'][0]
+            shutil.move(original_filepath, self.transform_filepath)
+
+        transfo_dict = loadmat(self.transform_filepath)
+        lps2ras = np.diag([-1, -1, 1])
+
+        rot = transfo_dict['AffineTransform_float_3_3'][0:9].reshape((3, 3))
+        trans = transfo_dict['AffineTransform_float_3_3'][9:12]
+        offset = transfo_dict['fixed']
+        r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
+        print(r_trans)
 
         shape = moving_z.shape
         dtype = moving_z.dtype
 
         dask_container = da.empty_like(moving_z, dtype=dtype, shape=shape)
         print(f'Creating Dask container with shape {shape} and dtype {dtype} {type(dask_container)=}')
-
         # Create output zarr with same shape and dtype
-        #compressor = Blosc(cname='zstd', clevel=3)
-        #output_zarr = zarr.open(output_zarr_path, mode='w')
-        chunk_size = (moving_z.shape[0] // 5, moving_z.shape[1] // 1, moving_z.shape[2] // 2) # type: ignore
+        #chunk_size = (moving_z.shape[0] // 5, moving_z.shape[1] // 1, moving_z.shape[2] // 1) # type: ignore
+        chunk_size = (90, moving_z.shape[1] // 1, moving_z.shape[2] // 1) # type: ignore
         print(f'Creating output Zarr at {output_zarr_path}\n with shape {shape} and chunk size {chunk_size} dtype {dtype}')
-        #output_array = output_zarr.create('data', shape=shape, chunks=chunk_size, dtype=dtype, compressor=compressor)
-        #reference = ants.image_read(self.fixed_filepath)
-
         chunk_count = 1
+
+        # Apply map_overlap-like logic
+        """
+        for z0 in range(0, reference.shape[0], block_size[0] - overlap):
+            for y0 in range(0, reference.shape[1], block_size[1] - overlap):
+                for x0 in range(0, reference.shape[2], block_size[2] - overlap):
+        """
+
+        overlap = 15
         # Iterate through chunks
-        for z in range(0, shape[0], chunk_size[0]):
-            for y in range(0, shape[1], chunk_size[1]):
-                for x in range(0, shape[2], chunk_size[2]):
+        for z in range(0, shape[0], chunk_size[0] - overlap):
+            for y in range(0, shape[1], chunk_size[1] + 23):
+                for x in range(0, shape[2], chunk_size[2] -15):
                     z0, y0, x0 = z, y, x
-                    z1, y1, x1 = min(z+chunk_size[0], shape[0]), min(y+chunk_size[1], shape[1]), min(x+chunk_size[2], shape[2])
+                    z1 = min(z+chunk_size[0], shape[0])
+                    y1 = min(y+chunk_size[1], shape[1])
+                    x1 = min(x+chunk_size[2], shape[2])
                     
                     # Load reference chunk
                     reference_chunk = reference[z0:z1, y0:y1, x0:x1]
@@ -125,19 +144,15 @@ class AntsRegistration:
                                                        direction=reference_chunk_img.direction)
 
                     # Apply transform
-                    #warped_chunk = ants.apply_transforms(fixed=reference, moving=chunk_img, transformlist=transform_list, interpolator='linear')
-                    ids, counts = np.unique(moving_chunk_img.numpy(), return_counts=True)
-                    print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - Unique IDs: {len(ids)}, Counts: {len(counts)}")
-                    
-                    
-                    # Apply transform
+                    #ids, counts = np.unique(moving_chunk, return_counts=True)
+                    print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - shape={moving_chunk.shape} dtype={moving_chunk.dtype}")
+                    #registration = ants.registration(fixed=reference_chunk_img, moving=moving_chunk_img, type_of_transform='Affine')
                     warped_chunk = ants.apply_transforms(fixed=reference_chunk_img, moving=moving_chunk_img, 
-                                                        transformlist=registration['fwdtransforms'], defaultvalue=0,
+                                                        transformlist=self.transform_filepath, defaultvalue=0,
                                                         interpolator='linear')
 
                     # Write transformed chunk to output Zarr
                     transformed_array = warped_chunk.numpy()
-                    #output_array[z0:z1, y0:y1, x0:x1] = transformed_array
                     dask_container[z0:z1, y0:y1, x0:x1] = transformed_array
                     chunk_count += 1
 
@@ -145,7 +160,6 @@ class AntsRegistration:
                     #delayed = zoomed.to_zarr(outpath, compute=False, overwrite=True)
                     #with ProgressBar():
                     #    delayed.compute()
-
         dask_container.to_zarr(output_zarr_path, compute=True, overwrite=True)
 
         volume = zarr.open(output_zarr_path, 'r')
@@ -166,6 +180,20 @@ class AntsRegistration:
             print(f"Removing tiff file already exists at {outpath}")
             os.remove(outpath)
         write_image(outpath, volume.astype(dtype))
+
+        output_tifs_path = os.path.join(self.moving_path, 'registered_slices')
+        if os.path.exists(output_tifs_path):
+            print(f"Removing tiff files already exists at {output_tifs_path}")
+            shutil.rmtree(output_tifs_path)
+
+        os.makedirs(output_tifs_path, exist_ok=True)
+
+        for i in tqdm(range(volume.shape[0])):
+            slice_i = volume[i, ...]
+            slice_i = slice_i.astype(np.uint8)
+            outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
+            write_image(outpath_slice, slice_i)
+
 
 
 

@@ -154,7 +154,7 @@ def apply_affine_to_block(block, affine_matrix, origin):
     return sitk.GetArrayFromImage(resampled)
 
 
-def process_block(block, affine_matrix, offset, block_info=None):
+def process_block(block):
     """
     Apply affine transformation to a block.
     """
@@ -176,9 +176,9 @@ def register_large_zarr_datasets():
     # Helper: apply transform to a block
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
 
-    moving_image_path = os.path.join(reg_path, 'ALLEN771602', 'ALLEN771602_16.0x14.4x14.4um_sagittal.zarr')
-    fixed_image_path = os.path.join(reg_path, 'Allen', 'Allen_16.0x14.4x14.4um_sagittal.zarr')
-    outpath = os.path.join(reg_path, 'ALLEN771602', 'registered_16.0x14.4x14.4um_sagittal.zarr')
+    moving_image_path = os.path.join(reg_path, 'ALLEN771602', 'ALLEN771602_32.0x28.8x28.8um_sagittal.zarr')
+    fixed_image_path = os.path.join(reg_path, 'Allen', 'Allen_32.0x28.8x28.8um_sagittal.zarr')
+    outpath = os.path.join(reg_path, 'ALLEN771602', 'registered_32.0x28.8x28.8um_sagittal.zarr')
 
     if os.path.exists(outpath):
         print(f"Output file {outpath} already exists. removing")
@@ -196,18 +196,15 @@ def register_large_zarr_datasets():
         print(f"Fixed image {fixed_image_path} does not exist. Exiting.")
         sys.exit()
 
-    chunks = (64, 64, 64)  # choose based on available memory
-    OVERLAP = (8, 8, 8)  # overlap between chunks to avoid seams
-
-
-
     # Pad to symmetric shape
     moving_dask, fixed_dask = pad_to_symmetric_shape(moving_image_path, fixed_image_path)
     assert moving_dask.shape == fixed_dask.shape, "Source and target must have the same shape"
     #chunks = (fixed_dask.shape[0]//8, fixed_dask.shape[1]//8, fixed_dask.shape[2]//8) 
     #chunks = CHUNK_SIZE
-    moving_dask = moving_dask.rechunk(chunks) 
-    fixed_dask = fixed_dask.rechunk(chunks)
+    chunk_size = (moving_dask.shape[0] // 5, moving_dask.shape[1] // 1, moving_dask.shape[2] // 1)
+    OVERLAP = (8, 8, 8)  # overlap between chunks to avoid seams
+    moving_dask = moving_dask.rechunk(chunk_size) 
+    fixed_dask = fixed_dask.rechunk(chunk_size)
 
     print(f"Moving image shape: {moving_dask.shape} chunks: {moving_dask.chunksize}")
     print(f"Fixed image shape: {fixed_dask.shape} chunks: {fixed_dask.chunksize}")
@@ -215,22 +212,13 @@ def register_large_zarr_datasets():
     # Define affine transform using SimpleITK
     # Pad source array to handle overlap
     padded_source = da.overlap.overlap(moving_dask, depth=OVERLAP, boundary='nearest')
-    # Map affine transformation over blocks
-    matrix_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_sagittal.txt'
-    four_by_four = np.loadtxt(matrix_path, dtype=np.float64)
-    affine_matrix = four_by_four[:3, :3]  # Extract the 3x3 part
-    offset = four_by_four[:3, 3]  # Extract the translation part
-    scale = 2
-    offset = [o * scale for o in offset]  # Scale the offset
-    """
 
+    #process_block(block, affine_matrix, offset, block_info=None
     transformed = padded_source.map_overlap(
         process_block,
         depth=OVERLAP,
         dtype=moving_dask.dtype,
-        boundary='reflect',
-        affine_matrix=affine_matrix,
-        offset=offset
+        boundary='reflect'
     )
     """
 
@@ -242,7 +230,7 @@ def register_large_zarr_datasets():
             loc = block_info[None]['array-location']
             origin = [loc[i][0] for i in range(3)]
 
-            return apply_affine_to_block(block, four_by_four, origin)
+            return apply_ants_to_block(block, four_by_four, origin)
 
     print(f"Applying affine transform to blocks with shape {padded_source.shape} and chunks {padded_source.chunksize}...")
     # Map blocks with overlap and transform
@@ -252,11 +240,12 @@ def register_large_zarr_datasets():
         boundary='reflect',
         dtype=np.float32
     )
+    """
 
     print(f'Transformed shape: {transformed.shape} chunks: {transformed.chunksize}')
     # Trim the overlap to remove padded areas
     trimmed = da.overlap.trim_overlap(transformed, depth=OVERLAP, boundary='nearest')   
-    trimmed = trimmed.rechunk(chunks)  # Rechunk to desired size
+    trimmed = trimmed.rechunk(chunk_size)  # Rechunk to desired size
 
 
 
@@ -265,7 +254,6 @@ def register_large_zarr_datasets():
         print(f"Output file {outpath} already exists. removing")
         shutil.rmtree(outpath)
     print(f"Writing registered image to {outpath}")
-    trimmed = trimmed.rechunk(chunks)  # Rechunk to desired size
     print(f'trimmed {type(trimmed)=} trimmed shape: {trimmed.shape} chunks: {trimmed.chunksize}')
     # Save output to new Zarr store
     with ProgressBar():
@@ -273,19 +261,17 @@ def register_large_zarr_datasets():
         
     volume = zarr.open(outpath, mode='r')
     print(f'volume.info: {volume.info}')
-    output_tif_path = os.path.join(reg_path, 'ALLEN771602', 'registered_16.0x14.4x14.4um_sagittal')
+    output_tif_path = os.path.join(reg_path, 'ALLEN771602', 'registered_slices')
     if os.path.exists(output_tif_path):
         print(f"Output TIF {output_tif_path} already exists. removing")
         shutil.rmtree(output_tif_path)
     os.makedirs(output_tif_path, exist_ok=True)
     print(f"Writing registered TIF image to {output_tif_path}")
     end = volume.shape[0]
-    end = 100
     for i in tqdm(range(end)): # type: ignore
         section = volume[i, ...]
         if section.ndim > 2: # type: ignore
             section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
-        #print(f"Writing section {i} shape: {section.shape} dtype: {section.dtype} min: {section.min()} max: {section.max()}")
         fileoutpath = os.path.join(output_tif_path, f'{i:04d}.tif')
         write_image(fileoutpath, section.astype(np.uint8))
 
@@ -519,6 +505,6 @@ def apply_transform_to_large_image(large_moving, reference_image, transform):
     return resampler.Execute(large_moving)
 
 if __name__ == "__main__":
-    #register_large_zarr_datasets()
+    register_large_zarr_datasets()
     #rescale_transform()
-    create_re
+    
