@@ -9,7 +9,6 @@ from pathlib import Path
 from scipy.ndimage import zoom
 import numpy as np
 from tqdm import tqdm
-import dask.array as da
 from tifffile import TiffWriter
 import zarr
 from numcodecs import Blosc
@@ -22,6 +21,11 @@ import nibabel as nib
 from nibabel.orientations import axcodes2ornt, ornt_transform
 import pandas as pd
 from scipy.io import loadmat
+
+import dask.array as da
+import scipy.ndimage
+from dask import delayed
+
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -64,6 +68,174 @@ class AntsRegistration:
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
+    # Apply affine transform to Dask array in chunks
+    @staticmethod
+    def apply_affine_to_block(moving_block, reference_block, transform):
+        spacing = (1.0, 1.0, 1.0)
+        moving_img = sitk.GetImageFromArray(moving_block.astype(np.float32))
+        moving_img.SetSpacing(spacing)
+        resampled = sitk.Resample(moving_block, reference_block, transform,
+                                sitk.sitkLinear, 0.0, sitk.sitkFloat32)
+        return sitk.GetArrayFromImage(resampled)
+
+    @staticmethod
+    def create_affine_transform_from_matrix(matrix):
+        """
+        Creates a SimpleITK AffineTransform from a 4x4 transformation matrix.
+
+        Args:
+            matrix (numpy.ndarray): A 4x4 NumPy array representing the affine transformation.
+
+        Returns:
+            sitk.AffineTransform: The SimpleITK AffineTransform.
+        """
+        # Extract rotation and translation components
+        rotation_matrix = matrix[:3, :3]
+        rotation_matrix = np.rot90(rotation_matrix, k=2, axes=(1, 0))  # Adjust axes if needed
+        t = matrix[:3, 3]
+        translation_vector = np.array([t[2], t[1], t[0]])  # Adjust order if needed
+        print(f'translation_vector={translation_vector}')
+        #translation_vector = np.zeros(3)  # Assuming no translation for now, can be modified as needed
+
+        # Create an AffineTransform
+        transform = sitk.AffineTransform(3)  # 3D transformation
+        transform.SetMatrix(rotation_matrix.flatten())
+        transform.SetTranslation(translation_vector)
+
+        return transform
+
+    @staticmethod    
+    def cosine_weight(shape):
+        """
+        Create a 3D cosine window with the same shape as the chunk.
+        """
+        z = np.hanning(shape[0]) if shape[0] > 1 else np.ones(1)
+        y = np.hanning(shape[1]) if shape[1] > 1 else np.ones(1)
+        x = np.hanning(shape[2]) if shape[2] > 1 else np.ones(1)
+        w = np.outer(z, np.outer(y, x).reshape(len(y), len(x))).reshape(shape)
+        return w
+
+    def affine_transform_blockwise(self, reference, moving, affine_matrix, chunk_size=(64, 64, 64), overlap=16):
+        """
+        Apply an affine transformation blockwise to a large 3D moving image.
+        The transformed chunks are blended using cosine weights.
+        
+        Parameters:
+        - reference: dask.array (3D)
+        - moving: dask.array (3D)
+        - affine_matrix: 4x4 numpy array (homogeneous transform)
+        - chunk_size: tuple, size of each chunk
+        - overlap: int, size of overlap for blending
+        """
+        from scipy.ndimage import affine_transform
+
+        # Expand block with padding
+        pad = overlap // 2
+
+        # Output array and weight array (for blending)
+        shape = reference.shape
+        final = da.zeros(shape, chunks=chunk_size, dtype=np.float32)
+        weights = da.zeros(shape, chunks=chunk_size, dtype=np.float32)
+
+        # Create block grid
+        z_blocks = range(0, shape[0], chunk_size[0] - overlap)
+        y_blocks = range(0, shape[1], chunk_size[1] - overlap)
+        x_blocks = range(0, shape[2], chunk_size[2] - overlap)
+
+        results = []
+        weight_results = []
+
+        for z in z_blocks:
+            for y in y_blocks:
+                for x in x_blocks:
+                    def process_block(z=z, y=y, x=x):
+                        # Determine bounds with padding
+                        z0, z1 = max(0, z - pad), min(shape[0], z + chunk_size[0] + pad)
+                        y0, y1 = max(0, y - pad), min(shape[1], y + chunk_size[1] + pad)
+                        x0, x1 = max(0, x - pad), min(shape[2], x + chunk_size[2] + pad)
+
+                        block = moving[z0:z1, y0:y1, x0:x1].compute()
+
+                        # Calculate inverse affine transform (scipy applies inverse)
+                        inv_affine = np.linalg.inv(affine_matrix)
+
+                        # Output block shape
+                        output_shape = (z1 - z0, y1 - y0, x1 - x0)
+                        # Apply affine transformation
+                        transformed = affine_transform(
+                            block, 
+                            matrix=inv_affine[:3, :3], 
+                            offset=inv_affine[:3, 3], 
+                            output_shape=output_shape,
+                            order=1, 
+                            mode='constant', 
+                            cval=0.0
+                        )
+                        # Crop to central part (no overlap padding)
+                        cz0 = pad if z > 0 else 0
+                        cy0 = pad if y > 0 else 0
+                        cx0 = pad if x > 0 else 0
+
+                        cz1 = cz0 + chunk_size[0]
+                        cy1 = cy0 + chunk_size[1]
+                        cx1 = cx0 + chunk_size[2]
+
+                        transformed_crop = transformed[cz0:cz1, cy0:cy1, cx0:cx1]
+                        weight = self.cosine_weight(transformed_crop.shape)
+
+                        # Accumulate weighted block and weight
+                        out = da.zeros_like(reference, dtype=np.float32)
+                        w = da.zeros_like(reference, dtype=np.float32)
+
+                        out[z:z+chunk_size[0], y:y+chunk_size[1], x:x+chunk_size[2]] = transformed_crop * weight
+                        w[z:z+chunk_size[0], y:y+chunk_size[1], x:x+chunk_size[2]] = weight
+
+                        return out, w
+
+                    #result = delayed(process_block)()
+                    result = process_block()
+                    results.append(result[0])
+                    weight_results.append(result[1])
+
+        # Sum all blocks and weights
+        #transformed_sum = da.add(*results)
+        #weight_sum = da.add(*weight_results)
+        transformed_sum = results
+        weight_sum = weight_results
+
+        # Avoid division by zero
+        eps = 1e-8
+        final_image = transformed_sum / (weight_sum + eps)
+
+        return final_image
+
+
+    def blockwise(self):
+        # Load zarr-backed arrays
+
+        moving, reference = pad_to_symmetric_shape(self.moving_filepath_zarr, self.fixed_filepath_zarr)
+
+
+
+        # Define affine matrix (4x4)
+        affine = np.array([
+            [1, 0, 0, 5],
+            [0, 1, 0, -3],
+            [0, 0, 1, 10],
+            [0, 0, 0, 1]
+        ])
+
+        # Transform moving image
+        chunk_size = (moving.shape[0] // 5, moving.shape[1] // 1, moving.shape[2] // 1)  # Example chunk size
+        result = self.affine_transform_blockwise(reference, moving, affine, chunk_size=chunk_size, overlap=4)
+        output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
+        if os.path.exists(output_zarr_path):
+            print(f"Removing zarr file already exists at {output_zarr_path}")
+            shutil.rmtree(output_zarr_path)
+
+        # Save to zarr
+        result.to_zarr(output_zarr_path, overwrite=True)
+
     def apply_ants_transform_zarr(self):
         """
         Apply ANTs transform to a large 3D Zarr volume in chunks.
@@ -82,85 +254,89 @@ class AntsRegistration:
             print(f"Removing zarr file already exists at {output_zarr_path}")
             shutil.rmtree(output_zarr_path)
         # Open Zarr arrays
-        #fixed_z = zarr.open(self.fixed_filepath_zarr, mode='r')
-        #moving_z = zarr.open(self.moving_filepath_zarr, mode='r')
         moving_z, reference = pad_to_symmetric_shape(self.moving_filepath_zarr, self.fixed_filepath_zarr)
 
-        reference_ants = ants.from_numpy(np.array(reference))
-        moving_ants = ants.from_numpy(np.array(moving_z))
 
         if os.path.exists(self.transform_filepath):
             print(f'Found transform at {self.transform_filepath}')
         else:
             print("Creating registration")
-            registration = ants.registration(fixed=reference_ants, moving=moving_ants, type_of_transform='Affine')
-            original_filepath = registration['fwdtransforms'][0]
-            shutil.move(original_filepath, self.transform_filepath)
+            print("No registration found")
+            exit(1)
 
-        transfo_dict = loadmat(self.transform_filepath)
-        lps2ras = np.diag([-1, -1, 1])
+        affine_numpy = np.load(os.path.join(self.moving_path, 'ALLEN771602_Allen_32.0x28.8x28.8um_sagittal.npy'))
+        transform = self.create_affine_transform_from_matrix(affine_numpy)
+        
 
-        rot = transfo_dict['AffineTransform_float_3_3'][0:9].reshape((3, 3))
-        trans = transfo_dict['AffineTransform_float_3_3'][9:12]
-        offset = transfo_dict['fixed']
-        r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
-        print(r_trans)
+        output_shape = moving_z.shape
+        output_dtype = moving_z.dtype
+        output_chunks = (moving_z.shape[0] // 5, moving_z.shape[1] // 1, moving_z.shape[2] // 1) # type: ignore
+        #8.824575424194336 -18.33474349975586 47.231
+        z_overlap = 8
+        y_overlap = -18
+        x_overlap = 47
 
-        shape = moving_z.shape
-        dtype = moving_z.dtype
+        transformed = da.zeros(output_shape, dtype=output_dtype, chunks=output_chunks)
+        weights = da.zeros(output_shape, dtype=np.float32, chunks=output_chunks)
 
-        dask_container = da.empty_like(moving_z, dtype=dtype, shape=shape)
-        print(f'Creating Dask container with shape {shape} and dtype {dtype} {type(dask_container)=}')
-        # Create output zarr with same shape and dtype
-        #chunk_size = (moving_z.shape[0] // 5, moving_z.shape[1] // 1, moving_z.shape[2] // 1) # type: ignore
-        chunk_size = (90, moving_z.shape[1] // 1, moving_z.shape[2] // 1) # type: ignore
-        print(f'Creating output Zarr at {output_zarr_path}\n with shape {shape} and chunk size {chunk_size} dtype {dtype}')
+        print(f'Creating Dask container with shape {output_shape} and dtype {output_dtype} chunks={output_chunks} with overlap {z_overlap}, {y_overlap}, {x_overlap}')
         chunk_count = 1
+        overlap = 0
 
         # Apply map_overlap-like logic
-        """
-        for z0 in range(0, reference.shape[0], block_size[0] - overlap):
-            for y0 in range(0, reference.shape[1], block_size[1] - overlap):
-                for x0 in range(0, reference.shape[2], block_size[2] - overlap):
-        """
-
-        overlap = 15
         # Iterate through chunks
-        for z in range(0, shape[0], chunk_size[0] - overlap):
-            for y in range(0, shape[1], chunk_size[1] + 23):
-                for x in range(0, shape[2], chunk_size[2] -15):
+        for z in range(0, output_shape[0], output_chunks[0] - z_overlap):
+            for y in range(0, output_shape[1], output_chunks[1] - y_overlap):
+                for x in range(0, output_shape[2], output_chunks[2] - x_overlap):
                     z0, y0, x0 = z, y, x
-                    z1 = min(z+chunk_size[0], shape[0])
-                    y1 = min(y+chunk_size[1], shape[1])
-                    x1 = min(x+chunk_size[2], shape[2])
+                    z1 = min(z+output_chunks[0], output_shape[0])
+                    y1 = min(y+output_chunks[1], output_shape[1])
+                    x1 = min(x+output_chunks[2], output_shape[2])
                     
                     # Load reference chunk
                     reference_chunk = reference[z0:z1, y0:y1, x0:x1]
-                    reference_chunk_img = ants.from_numpy(reference_chunk.astype(np.float32), origin=(x0, y0, z0))
                     # Load moving chunk
                     moving_chunk = moving_z[z0:z1, y0:y1, x0:x1]
-                    moving_chunk_img = ants.from_numpy(moving_chunk.astype(np.float32), origin=(x0, y0, z0),
-                                                       spacing=reference_chunk_img.spacing, 
-                                                       direction=reference_chunk_img.direction)
-
-                    # Apply transform
-                    #ids, counts = np.unique(moving_chunk, return_counts=True)
                     print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - shape={moving_chunk.shape} dtype={moving_chunk.dtype}")
-                    #registration = ants.registration(fixed=reference_chunk_img, moving=moving_chunk_img, type_of_transform='Affine')
-                    warped_chunk = ants.apply_transforms(fixed=reference_chunk_img, moving=moving_chunk_img, 
-                                                        transformlist=self.transform_filepath, defaultvalue=0,
-                                                        interpolator='linear')
 
-                    # Write transformed chunk to output Zarr
-                    transformed_array = warped_chunk.numpy()
-                    dask_container[z0:z1, y0:y1, x0:x1] = transformed_array
+                    #transformed_block = self.process_block_with_itk(reference_chunk, moving_chunk)
+                    transformed_block = self.process_block_with_ants(reference_chunk, moving_chunk)
+                    transformed[z0:z1, y0:y1, x0:x1] += transformed_block
+                    w = np.ones_like(transformed_block, dtype=np.float32)
+                    weights[z0:z1, y0:y1, x0:x1] += w
+                    # Normalize by weights to resolve overlaps
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        output = da.where(weights > 0, transformed / weights, 0)
                     chunk_count += 1
 
-                    #zoomed = da.from_array(transformed_array, chunks=chunk_size)
-                    #delayed = zoomed.to_zarr(outpath, compute=False, overwrite=True)
-                    #with ProgressBar():
-                    #    delayed.compute()
-        dask_container.to_zarr(output_zarr_path, compute=True, overwrite=True)
+        output.to_zarr(output_zarr_path, compute=True, overwrite=True)
+
+        self.create_output(output_zarr_path)
+
+
+    def process_block_with_itk(self, reference_chunk, moving_chunk, transform):
+        moving_chunk_img = sitk.GetImageFromArray(moving_chunk.astype(np.float32))
+        reference_chunk_img = sitk.GetImageFromArray(reference_chunk.astype(np.float32))
+        transformed_block = sitk.Resample(moving_chunk_img,
+                                reference_chunk_img,
+                                transform,
+                                sitk.sitkLinear,
+                                0.0,
+                                moving_chunk_img.GetPixelID())
+        
+        transformed_block = sitk.GetArrayFromImage(transformed_block)
+        return transformed_block
+
+    def process_block_with_ants(self, reference_chunk, moving_chunk):
+        moving_chunk_img = ants.from_numpy(moving_chunk.astype(np.float32))
+        reference_chunk_img = ants.from_numpy(reference_chunk.astype(np.float32))
+        transformed_block = ants.apply_transforms(fixed=reference_chunk_img, moving=moving_chunk_img, transformlist=self.transform_filepath, 
+                                                  interpolator='linear', defaultvalue=0)
+        
+        return transformed_block.numpy()
+
+
+    def create_output(self, output_zarr_path):
 
         volume = zarr.open(output_zarr_path, 'r')
         print(volume.info)
@@ -177,9 +353,11 @@ class AntsRegistration:
 
         outpath = os.path.join(self.moving_path, 'registered.tif')
         if os.path.exists(outpath):
-            print(f"Removing tiff file already exists at {outpath}")
+            print(f"Removing tif file at {outpath}")
             os.remove(outpath)
-        write_image(outpath, volume.astype(dtype))
+        write_image(outpath, volume.astype(np.uint8))
+
+        exit(1)
 
         output_tifs_path = os.path.join(self.moving_path, 'registered_slices')
         if os.path.exists(output_tifs_path):
@@ -194,13 +372,7 @@ class AntsRegistration:
             outpath_slice = os.path.join(output_tifs_path, f'{str(i).zfill(4)}.tif')
             write_image(outpath_slice, slice_i)
 
-
-
-
-
-
-        print("Transformation complete.")
-
+        print("Transformation written.")
 
     def demons_registration(self, fixed_points=None, moving_points=None):
 
@@ -1095,7 +1267,8 @@ if __name__ == '__main__':
                         'zarr2tif': pipeline.zarr2tif,
                         'status': pipeline.check_registration,
                         "demons" : pipeline.demons_registration,
-                        "ants_range": pipeline.apply_ants_transform_zarr
+                        "ants_range": pipeline.apply_ants_transform_zarr,
+                        "blockwise": pipeline.blockwise,
     }
 
     if task in function_mapping:

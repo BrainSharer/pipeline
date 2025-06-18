@@ -2,6 +2,7 @@ import shutil
 import dask.array as da
 from dask import delayed
 from dask.array.overlap import overlap, trim_internal
+import scipy.ndimage
 
 import numpy as np
 import zarr
@@ -49,113 +50,85 @@ def pad_to_symmetric_shape(moving_path, fixed_path):
     fixed_arr_padded = da.pad(fixed_arr, pad_width=pad2, mode='constant', constant_values=0)
     return moving_arr_padded, fixed_arr_padded
 
+def cosine_window(shape):
+    """Create a cosine window for weighting a block."""
+    grids = np.meshgrid(*[np.linspace(-np.pi, np.pi, s) for s in shape], indexing='ij')
+    window = np.ones(shape)
+    for g in grids:
+        window *= 0.5 * (1 + np.cos(g))
+    return window
 
-def should_skip_block(block, threshold=1e-3):
-    if block.shape[0] == 0 or block.shape[1] == 0 or block.shape[2] == 0:
-        print(f'Skipping empty block with shape {block.shape}')
-        return True
-    return np.mean(block) < threshold
-
-def perform_ants_affine(moving_block_np, reference_block_np):
-    # Convert to ANTs images
-    moving_img = ants.from_numpy(moving_block_np)
-    reference_img = ants.from_numpy(reference_block_np)
-    transform_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.mat'
-
-    warped_img = ants.apply_transforms(fixed=reference_img, moving=moving_img, 
-                                        transformlist=transform_filepath, defaultvalue=0,
-                                        interpolator='linear')
-    warped_img = warped_img.numpy()
-    print(f'Warped image shape: {warped_img.shape} moving shape: {moving_block_np.shape} reference shape: {reference_block_np.shape}')
-    return warped_img
-
-
-# Helper to apply affine transform to each block
-def process_block(z0, y0, x0, output_shape, moving, affine_matrix, chunk_size):
-    z1 = min(z0 + chunk_size[0], output_shape[0])
-    y1 = min(y0 + chunk_size[1], output_shape[1])
-    x1 = min(x0 + chunk_size[2], output_shape[2])
-
-    block_shape = (z1 - z0, y1 - y0, x1 - x0)
-    # Inverse affine to map output to input
-    inv_affine = np.linalg.inv(affine_matrix)
-    # Apply affine_transform to corresponding region of moving
-    transformed_block = affine_transform(
-        input=moving,
-        matrix=inv_affine[:3, :3],
-        offset=inv_affine[:3, 3],
-        output_shape=block_shape,
-        mode='constant',
-        cval=0.0,
-        prefilter=True
-    )[z0:z1, y0:y1, x0:x1]  # slicing after transform to ensure proper bounds
+def apply_affine_block(moving_block, block_info=None, affine=None, window=None):
+    """
+    Apply affine transformation to a block.
+    `block_info` gives the location of the block in the full array.
+    `affine` is a global affine (4x4).
+    `window` is a precomputed cosine window.
+    """
+    # Get block location in global coordinates
+    loc = block_info[None]['array-location']
+    z0, y0, x0 = loc[0][0], loc[1][0], loc[2][0]
     
-    #transformed_block = moving[z0:z1, y0:y1, x0:x1]  # For testing without affine transform
-    # Create weights for blending
-    w = np.ones_like(transformed_block, dtype=np.float32)
-    print(f'Processing block at ({z0}, {y0}, {x0})')
+    # Compute the coordinate grid in reference space
+    shape = moving_block.shape
+    zz, yy, xx = np.meshgrid(
+        np.arange(shape[0]) + z0,
+        np.arange(shape[1]) + y0,
+        np.arange(shape[2]) + x0,
+        indexing='ij'
+    )
+    
+    coords = np.stack([zz, yy, xx, np.ones_like(zz)], axis=0).reshape(4, -1)
+    
+    # Transform coordinates using inverse affine (from output to input space)
+    inv_affine = np.linalg.inv(affine)
+    transformed_coords = inv_affine @ coords
+    zt, yt, xt = transformed_coords[:3].reshape(3, *shape)
 
-    return transformed_block, w, (z0, y0, x0)
+    # Interpolate from moving image using affine-transformed coordinates
+    transformed = scipy.ndimage.map_coordinates(moving_block, [zt, yt, xt], order=1, mode='nearest')
+    
+    # Apply cosine window
+    weighted = transformed * window
+    
+    return weighted
 
-
-def affine_transform_large_3d(
-    ref: da.core.Array,
-    moving: da.core.Array,
-    affine_matrix: np.ndarray,
-    output_zarr_path: str,
-    chunk_size: tuple,
-    overlap_size: int,
-    order: int = 1,
-):
+def affine_transform_dask(reference, moving, affine, block_size=(64, 64, 64), overlap=16):
     """
-    Applies affine transformation to a large 3D moving image in chunks using dask and zarr.
-
-    Args:
-        ref_zarr_path: Path to reference Zarr dataset (used for shape and alignment).
-        moving_zarr_path: Path to moving Zarr dataset to be transformed.
-        affine_matrix: 4x4 affine transformation matrix.
-        output_zarr_path: Path to store the output Zarr dataset.
-        chunk_size: Size of chunks to use for processing (z, y, x).
-        overlap_size: Number of overlapping voxels for blending.
-        order: Interpolation order for affine_transform (0=nearest, 1=linear, etc).
+    Apply affine transform to moving image in the space of reference image.
     """
+    # Define chunking with overlap
+    depth = {0: overlap, 1: overlap, 2: overlap}
+    
+    # Create a cosine window for blending
+    padded_block_shape = tuple(bs + 2 * overlap for bs in block_size)
+    window = cosine_window(padded_block_shape)
 
-    # Prepare output array shape and chunking
-    output_shape = ref.shape
-    output_chunks = chunk_size
-    transformed = da.zeros(output_shape, dtype=ref.dtype, chunks=output_chunks)
-    weights = da.zeros(output_shape, dtype=np.float32, chunks=output_chunks)
+    # Normalize weights to avoid intensity bias in overlaps
+    weight_array = da.map_overlap(
+        lambda x: window,
+        reference,
+        depth=depth,
+        boundary=0,
+        dtype=reference.dtype
+    )
 
-    """
-    for z in range(0, shape[0], chunk_size[0] - overlap):
-        for y in range(0, shape[1], chunk_size[1] + 23):
-            for x in range(0, shape[2], chunk_size[2] -15):
-    """
+    # Apply affine transformation block-wise with overlapping and weighting
+    transformed = da.map_overlap(
+        apply_affine_block,
+        moving,
+        depth=depth,
+        boundary='nearest',
+        dtype=moving.dtype,
+        affine=affine,
+        window=window
+    )
 
-    # Create a grid of block coordinates
-    z_blocks = range(0, output_shape[0], chunk_size[0] - overlap_size)
-    y_blocks = range(0, output_shape[1], chunk_size[1] - overlap_size)
-    x_blocks = range(0, output_shape[2], chunk_size[2] - overlap_size)
-    print(f'z_blocks: {list(z_blocks)}')
-    print(f'y_blocks: {list(y_blocks)}')
-    print(f'x_blocks: {list(x_blocks)}')
+    # Stitch by normalizing with weights
+    stitched = transformed / weight_array
 
+    return stitched
 
-    # Collect delayed tasks
-    for z0 in z_blocks:
-        for y0 in y_blocks:
-            for x0 in x_blocks:
-                transformed_block, w_block, (z0, y0, x0) = process_block(z0, y0, x0, output_shape, moving, affine_matrix, chunk_size)
-                z1, y1, x1 = z0 + transformed_block.shape[0], y0 + transformed_block.shape[1], x0 + transformed_block.shape[2]
-                transformed[z0:z1, y0:y1, x0:x1] += transformed_block
-                weights[z0:z1, y0:y1, x0:x1] += w_block
-
-    # Normalize by weights to resolve overlaps
-    with np.errstate(divide='ignore', invalid='ignore'):
-        output = da.where(weights > 0, transformed / weights, 0)
-
-    # Save to zarr
-    output.to_zarr(output_zarr_path, overwrite=True)
 
 
 # Example usage:
@@ -189,24 +162,25 @@ if __name__ == "__main__":
 
 
     # Register blockwise
-    chunk_size = (moving_dask.shape[0] // 2, moving_dask.shape[1] // 2, moving_dask.shape[2] // 2)  # Adjust chunk size as needed
+    chunk_size = (moving_dask.shape[0] // 8, moving_dask.shape[1] // 1, moving_dask.shape[2] // 1)  # Adjust chunk size as needed
     #affine_matrix = np.load(transform_filepath)
     print(f'Chunk size: {chunk_size}')
 
+    moving_dask = moving_dask.rechunk(chunk_size)
+    reference_dask = reference_dask.rechunk(chunk_size)
+
     affine_matrix = np.eye(4)  # Identity matrix for testing
+    affine = np.load(transform_filepath)
+    R = affine[:3,:3]
+    rotated = np.rot90(R, k=2, axes=(0,1))
+    t = affine[:3,3]
+    new_t = np.array([ t[2],t[1],t[0] ])
+    new_affine = np.eye(4)
+    new_affine[:3,:3] = rotated
+    new_affine[:3,3] = new_t
+    transformed = affine_transform_dask(reference_dask, moving_dask, new_affine, chunk_size, overlap=4)
 
-
-    affine_transform_large_3d(
-        ref = reference_dask,
-        moving = moving_dask,
-        affine_matrix=affine_matrix,
-        output_zarr_path=zarr_output_path,
-        chunk_size=chunk_size,
-        overlap_size=0
-    )
-
-
-
+    transformed.to_zarr(zarr_output_path, overwrite=True)
 
     volume = zarr.open(zarr_output_path, 'r')
     print(volume.info)

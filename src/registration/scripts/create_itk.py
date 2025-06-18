@@ -2,6 +2,7 @@ import shutil
 import dask.array as da
 from dask.diagnostics import ProgressBar
 from dask import delayed
+from dask.array import map_overlap
 import zarr
 import numpy as np
 import os
@@ -504,7 +505,211 @@ def apply_transform_to_large_image(large_moving, reference_image, transform):
     resampler.SetTransform(transform)
     return resampler.Execute(large_moving)
 
-if __name__ == "__main__":
-    register_large_zarr_datasets()
-    #rescale_transform()
+# Convert affine to sitk transform
+def sitk_transform_from_numpy(affine):
+    transform = sitk.AffineTransform(3)
+    matrix = affine[:3, :3].flatten()
+    translation = affine[:3, 3]
+    transform.SetMatrix(matrix)
+    transform.SetTranslation(translation)
+    return transform
+
+# Convert Dask array to SimpleITK image metadata (without loading full array)
+def make_sitk_image_metadata(shape, spacing, dtype):
+    img = sitk.Image(shape[::-1], sitk.sitkFloat32 if np.issubdtype(dtype, np.floating) else sitk.sitkUInt16)
+    img.SetSpacing(spacing[::-1])
+    return img
+
+def apply_affine_transform_to_large_zarr(
+    input_zarr_path,
+    output_zarr_path,
+    affine_matrix):
+    """
+    Apply an affine transformation to a very large 3D zarr volume using Dask and SimpleITK.
+
+    Parameters:
+        input_zarr_path (str): Path to the input Zarr volume.
+        output_zarr_path (str): Path to write the transformed Zarr volume.
+        affine_matrix (np.ndarray): 4x4 affine transformation matrix.
+        chunk_size (tuple): Size of chunks for Dask.
+        voxel_spacing (tuple): Spacing in physical units for each voxel.
+    """
+
+    # Load input volume using Dask + Zarr
+    z = zarr.open(input_zarr_path, mode='r')
+    volume_dask = da.from_zarr(z)
+    shape = volume_dask.shape
+    dtype = volume_dask.dtype
+    chunk_size = (volume_dask.shape[0]//5, volume_dask.shape[1]//1, volume_dask.shape[2]//1)  # Adjust chunk size as needed
+    volume_dask = volume_dask.rechunk(chunk_size)
+    print(f"Input volume shape: {shape}, dtype: {dtype}, chunks: {volume_dask.chunksize}")
+
+
+    sitk_tx = sitk_transform_from_numpy(affine_matrix)
+
+    # Read whole array lazily and compute transformed image in chunks
+    def transform_block(block, block_info=None):
+        # Get the location of the block in global coordinates
+        z0, y0, x0 = [s[0] for s in block_info[None]['array-location']]
+        z1, y1, x1 = [s[1] for s in block_info[None]['array-location']]
+
+        # Extract subvolume as SimpleITK image
+        subimage = sitk.GetImageFromArray(block.astype(np.float32))
+        subimage.SetSpacing(1.0, 1.0, 1.0)  # Adjust spacing if needed
+        subimage.SetOrigin((z0, y0, x0))
+        # Apply transformation
+        #resampled = sitk.Resample(subimage, reference_image[z0:z1, y0:y1, x0:x1], sitk_tx,
+        #                          sitk.sitkLinear, 0.0, subimage.GetPixelID())
+        resampled = sitk.Resample(subimage, subimage, sitk_tx,
+                                  sitk.sitkLinear, 0.0, subimage.GetPixelID())
+        
+        print(f"resampled at z: {z0}-{z1}, y: {y0}-{y1}, x: {x0}-{x1}, size: {resampled.GetSize()} origin: {resampled.GetOrigin()} spacing: {resampled.GetSpacing()}")
+        result = sitk.GetArrayFromImage(resampled).astype(dtype)
+        if result.shape != block.shape:
+            print(f"\tTransformed block shape {result.shape} does not match original block shape {block.shape}\n")
+            raise ValueError(
+                f"Transformed block shape {result.shape} does not match original block shape {block.shape}"
+            )
+
+        return result
+
+    # Apply transformation lazily across volume
+    transformed_dask = volume_dask.map_blocks(transform_block, dtype=dtype)
+    print(f"Transformed volume shape: {transformed_dask.shape}, dtype: {transformed_dask.dtype}, chunks: {transformed_dask.chunksize}")
+    # Save to Zarr
+    #with ProgressBar():
+    transformed_dask.to_zarr(output_zarr_path, overwrite=True)
+
+    volume = zarr.open(output_zarr_path, 'r')
+    print(volume.info)
+    image_stack = []
+    for i in tqdm(range(int(volume.shape[0]))): # type: ignore
+        section = volume[i, ...]
+        if section.ndim > 2: # type: ignore
+            section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
+        image_stack.append(section)
+
+    print('Stacking images ...')
+    volume = np.stack(image_stack, axis=0)
+
+
+    outpath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/registered.tif'
+    if os.path.exists(outpath):
+        print(f"Removing tif file at {outpath}")
+        os.remove(outpath)
+    write_image(outpath, volume.astype(np.uint8))
+
+
+def process_block_with_ants(reference_chunk, moving_chunk, transform_filepath):
+    moving_chunk_img = ants.from_numpy(moving_chunk.astype(np.float32))
+    reference_chunk_img = ants.from_numpy(reference_chunk.astype(np.float32))
+    transformed_block = ants.apply_transforms(fixed=reference_chunk_img, moving=moving_chunk_img, transformlist=transform_filepath, 
+                                                interpolator='linear', defaultvalue=0)
     
+    return transformed_block.numpy()
+
+
+def apply_affine_transform_zarr(
+    zarr_input_path: str,
+    zarr_output_path: str,
+    affine_matrix: np.ndarray):
+    """
+    Apply an affine transformation to a large 3D volume stored in Zarr using Dask and ANTs.
+
+    Parameters:
+        zarr_input_path (str): Path to the input Zarr volume.
+        zarr_output_path (str): Path to save the output Zarr volume.
+        affine_matrix (np.ndarray): 4x4 affine matrix.
+        chunk_size (tuple): Chunk size for Dask array.
+        overlap (int): Number of voxels to overlap between chunks.
+    """
+    
+    # Load the input Zarr store as a Dask array
+    zarr_input = zarr.open(zarr_input_path, mode='r')
+    dask_volume = da.from_zarr(zarr_input)
+    chunk_size = (dask_volume.shape[0] // 5, dask_volume.shape[1] // 1, dask_volume.shape[2] // 1)  # Adjust chunk size as needed
+    dask_volume = dask_volume.rechunk(chunk_size)
+    print(f"Input volume shape: {dask_volume.shape}, dtype: {dask_volume.dtype}, chunks: {dask_volume.chunksize}")
+
+    # Image spacing (assumed isotropic 1.0, change as needed)
+    spacing = (1.0, 1.0, 1.0)
+    origin = (0.0, 0.0, 0.0)
+    direction = np.eye(3)
+    dtype= dask_volume.dtype
+    overlap = 8
+
+    
+
+    def wrapper(block, block_info=None):
+        return process_block_with_ants(block, block_info, reference_chunk, transform_filepath)
+
+    # Apply affine with overlap
+    transformed = map_overlap(
+        wrapper,
+        dask_volume,
+        depth=overlap,
+        boundary='reflect',
+        dtype=dtype
+    )
+
+    # Save the result to a new Zarr store
+    transformed.to_zarr(zarr_output_path, overwrite=True, compute=False)
+
+    with ProgressBar():
+        transformed.compute()
+
+
+if __name__ == "__main__":
+    #register_large_zarr_datasets()
+    #rescale_transform()
+    from scipy.io import loadmat
+    
+    affine = np.array([
+        [1.0, 0.0, 0.0, 2],
+        [0.0, 1.0, 0.0, 5],
+        [0.0, 0.0, 1.0, 15],
+        [0.0, 0.0, 0.0, 1.0]
+    ])
+    affine = np.load('/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_sagittal.npy')
+    print(affine)
+    print()
+    new_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.mat'
+    transfo_dict = loadmat(new_filepath)
+    lps2ras = np.diag([-1, -1, 1])
+
+
+    rot = transfo_dict['AffineTransform_float_3_3'][0:9].reshape((3, 3))
+    trans = transfo_dict['AffineTransform_float_3_3'][9:12]
+    offset = transfo_dict['fixed']
+    r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
+
+
+    affine = np.eye(4)
+    affine[0:3, 3] = r_trans
+    affine[:3, :3] = np.dot(np.dot(lps2ras, rot), lps2ras)
+
+    print(affine)
+    
+
+
+
+    reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    moving_path = os.path.join(reg_path, 'ALLEN771602', 'ALLEN771602_32.0x28.8x28.8um_sagittal.zarr')
+    output_path = os.path.join(reg_path, 'ALLEN771602', 'transformed_large.zarr')
+
+    if os.path.exists(output_path):
+        print(f"Output file {output_path} already exists. removing")
+        shutil.rmtree(output_path)
+    print(f"Applying affine transform to large Zarr dataset from \n{moving_path} to \n{output_path}...")
+
+
+    #apply_affine_transform_to_large_zarr(
+    #    input_zarr_path=moving_path,
+    #    output_zarr_path=output_path,
+    #    affine_matrix=affine
+    #)
+        
+    apply_affine_transform_zarr(
+        zarr_input_path=moving_path,
+        zarr_output_path=output_path,
+        affine_matrix=affine)
