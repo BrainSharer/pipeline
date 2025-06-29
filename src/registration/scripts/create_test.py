@@ -1,17 +1,18 @@
 import shutil
-import dask.array as da
-from dask import delayed
-from dask.array.overlap import overlap, trim_internal
-import scipy.ndimage
 
 import numpy as np
+import dask.array as da
 import zarr
+import SimpleITK as sitk
+from dask.diagnostics import ProgressBar
+from dask import delayed
+import os
+
 import os
 import sys
 from tqdm import tqdm
 from pathlib import Path
 from scipy.ndimage import affine_transform
-import ants
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -36,7 +37,7 @@ def pad_to_symmetric_shape(moving_path, fixed_path):
     shape1 = moving_arr.shape
     shape2 = fixed_arr.shape
     max_shape = tuple(max(s1, s2) for s1, s2 in zip(shape1, shape2))
-    max_shape = process_tuple(max_shape)
+    #max_shape = process_tuple(max_shape)
 
     # Compute padding needed for each array
     def compute_padding(shape, target):
@@ -50,85 +51,43 @@ def pad_to_symmetric_shape(moving_path, fixed_path):
     fixed_arr_padded = da.pad(fixed_arr, pad_width=pad2, mode='constant', constant_values=0)
     return moving_arr_padded, fixed_arr_padded
 
-def cosine_window(shape):
-    """Create a cosine window for weighting a block."""
-    grids = np.meshgrid(*[np.linspace(-np.pi, np.pi, s) for s in shape], indexing='ij')
-    window = np.ones(shape)
-    for g in grids:
-        window *= 0.5 * (1 + np.cos(g))
-    return window
+# Define the affine transform (rotation + translation)
+def get_affine_transform():
+    transform = sitk.Euler3DTransform()
+    transform.SetRotation(np.deg2rad(10), np.deg2rad(5), np.deg2rad(15))
+    transform.SetTranslation((5, -5, 10))
+    return transform
 
-def apply_affine_block(moving_block, block_info=None, affine=None, window=None):
-    """
-    Apply affine transformation to a block.
-    `block_info` gives the location of the block in the full array.
-    `affine` is a global affine (4x4).
-    `window` is a precomputed cosine window.
-    """
-    # Get block location in global coordinates
-    loc = block_info[None]['array-location']
-    z0, y0, x0 = loc[0][0], loc[1][0], loc[2][0]
+#affine_transform = get_affine_transform()
+
+# Convert numpy block to SimpleITK image, apply transform, return block
+def transform_block(block, block_info=None):
+    block = np.squeeze(block)
+    # Get global position from block_info
+    start = tuple(block_info[None]['array-location'][0])
+    #global_shape = block_info[None]['array-shape']
+    # Pad block to avoid edge issues
+    pad_width = [(overlap, overlap)] * 3
+    padded = np.pad(block, pad_width, mode='reflect')
     
-    # Compute the coordinate grid in reference space
-    shape = moving_block.shape
-    zz, yy, xx = np.meshgrid(
-        np.arange(shape[0]) + z0,
-        np.arange(shape[1]) + y0,
-        np.arange(shape[2]) + x0,
-        indexing='ij'
-    )
+    # Create SimpleITK image
+    image = sitk.GetImageFromArray(padded)
+    image.SetSpacing((1.0, 1.0, 1.0))
+    print('start', start)
+    origin = [-start[i] - overlap for i in range(3)]
+    print('origin', origin)
+    image.SetOrigin([-start[i] - overlap for i in range(3)])
     
-    coords = np.stack([zz, yy, xx, np.ones_like(zz)], axis=0).reshape(4, -1)
-    
-    # Transform coordinates using inverse affine (from output to input space)
-    inv_affine = np.linalg.inv(affine)
-    transformed_coords = inv_affine @ coords
-    zt, yt, xt = transformed_coords[:3].reshape(3, *shape)
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(image)
+    resampler.SetTransform(affine_transform)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampled = resampler.Execute(image)
 
-    # Interpolate from moving image using affine-transformed coordinates
-    transformed = scipy.ndimage.map_coordinates(moving_block, [zt, yt, xt], order=1, mode='nearest')
-    
-    # Apply cosine window
-    weighted = transformed * window
-    
-    return weighted
-
-def affine_transform_dask(reference, moving, affine, block_size=(64, 64, 64), overlap=16):
-    """
-    Apply affine transform to moving image in the space of reference image.
-    """
-    # Define chunking with overlap
-    depth = {0: overlap, 1: overlap, 2: overlap}
-    
-    # Create a cosine window for blending
-    padded_block_shape = tuple(bs + 2 * overlap for bs in block_size)
-    window = cosine_window(padded_block_shape)
-
-    # Normalize weights to avoid intensity bias in overlaps
-    weight_array = da.map_overlap(
-        lambda x: window,
-        reference,
-        depth=depth,
-        boundary=0,
-        dtype=reference.dtype
-    )
-
-    # Apply affine transformation block-wise with overlapping and weighting
-    transformed = da.map_overlap(
-        apply_affine_block,
-        moving,
-        depth=depth,
-        boundary='nearest',
-        dtype=moving.dtype,
-        affine=affine,
-        window=window
-    )
-
-    # Stitch by normalizing with weights
-    stitched = transformed / weight_array
-
-    return stitched
-
+    result = sitk.GetArrayFromImage(resampled)
+    # Crop back to original block size
+    cropped = result[overlap:-overlap, overlap:-overlap, overlap:-overlap]
+    return np.expand_dims(cropped, 0)
 
 
 # Example usage:
@@ -136,7 +95,7 @@ if __name__ == "__main__":
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
     moving_filepath_zarr = os.path.join(reg_path, 'ALLEN771602/ALLEN771602_32.0x28.8x28.8um_sagittal.zarr')
     fixed_filepath_zarr = os.path.join(reg_path, 'Allen/Allen_32.0x28.8x28.8um_sagittal.zarr')
-    transform_filepath = os.path.join(reg_path, 'ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_sagittal.npy')
+    transform_filepath = os.path.join(reg_path, 'ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.txt')
 
     if not os.path.exists(transform_filepath):
         raise FileNotFoundError(f"Transform not found at {transform_filepath}")
@@ -144,8 +103,8 @@ if __name__ == "__main__":
     if not os.path.exists(moving_filepath_zarr):
         raise FileNotFoundError(f"Moving volume not found at {moving_filepath_zarr}")
     
-    if not os.path.exists(fixed_filepath_zarr):
-        raise FileNotFoundError(f"Fixed volume not found at {fixed_filepath_zarr}")
+    #if not os.path.exists(fixed_filepath_zarr):
+    #    raise FileNotFoundError(f"Fixed volume not found at {fixed_filepath_zarr}")
 
     zarr_output_path = os.path.join(reg_path, 'ALLEN771602/registered.zarr')
     if os.path.exists(zarr_output_path):
@@ -158,28 +117,33 @@ if __name__ == "__main__":
     assert moving_dask.shape == reference_dask.shape, "Source and target must have the same shape"
 
     print(f'Moving shape: {moving_dask.shape} type: {type(moving_dask)}')
-    print(f'Ref shape: {reference_dask.shape} type: {type(reference_dask)}')
+    #print(f'Ref shape: {reference_dask.shape} type: {type(reference_dask)}')
 
 
     # Register blockwise
-    chunk_size = (moving_dask.shape[0] // 8, moving_dask.shape[1] // 1, moving_dask.shape[2] // 1)  # Adjust chunk size as needed
+    chunk_size = (moving_dask.shape[0] // 2, moving_dask.shape[1] // 2, moving_dask.shape[2] // 2)  # Adjust chunk size as needed
     #affine_matrix = np.load(transform_filepath)
     print(f'Chunk size: {chunk_size}')
 
     moving_dask = moving_dask.rechunk(chunk_size)
     reference_dask = reference_dask.rechunk(chunk_size)
+    ##### start code 
 
-    affine_matrix = np.eye(4)  # Identity matrix for testing
-    affine = np.load(transform_filepath)
-    R = affine[:3,:3]
-    rotated = np.rot90(R, k=2, axes=(0,1))
-    t = affine[:3,3]
-    new_t = np.array([ t[2],t[1],t[0] ])
-    new_affine = np.eye(4)
-    new_affine[:3,:3] = rotated
-    new_affine[:3,3] = new_t
-    transformed = affine_transform_dask(reference_dask, moving_dask, new_affine, chunk_size, overlap=4)
+    overlap = 8
+    # Map the transform block-wise with overlap
+    transformed = moving_dask.map_overlap(
+        transform_block, 
+        depth=overlap, 
+        boundary='reflect',
+        dtype=np.float32
+    )
 
+
+    transformed = transformed.rechunk(chunk_size)  # Rechunk after transformation
+    ##### end code
+
+ 
+    # --- Step 5: Save to Zarr ---
     transformed.to_zarr(zarr_output_path, overwrite=True)
 
     volume = zarr.open(zarr_output_path, 'r')
@@ -201,6 +165,8 @@ if __name__ == "__main__":
         print(f"Removing tiff file already exists at {outpath}")
         os.remove(outpath)
     write_image(outpath, volume.astype(np.uint16))
+
+    exit(1)
 
     output_tifs_path = os.path.join(reg_path, 'ALLEN771602', 'registered_slices')
     if os.path.exists(output_tifs_path):

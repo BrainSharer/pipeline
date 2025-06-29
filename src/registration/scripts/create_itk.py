@@ -22,6 +22,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import read_image, write_image
 
+
 def pad_to_symmetric_shape(moving_path, fixed_path):
     # Load the Zarr arrays
     moving_arr = da.from_zarr(moving_path)
@@ -635,7 +636,7 @@ def apply_affine_transform_zarr(
     spacing = (1.0, 1.0, 1.0)
     origin = (0.0, 0.0, 0.0)
     direction = np.eye(3)
-    dtype= dask_volume.dtype
+    dtype = dask_volume.dtype
     overlap = 8
 
     
@@ -659,6 +660,163 @@ def apply_affine_transform_zarr(
         transformed.compute()
 
 
+
+def elastix_to_affine_matrix(filepath):
+    def parse_line(line):
+        if line.startswith('(TransformParameters'):
+            line = line.replace('(TransformParameters ', '').replace(')', '')
+            parameters = list(map(float, line.split()))
+        if line.startswith('(CenterOfRotationPoint'):
+            line = line.replace('(CenterOfRotationPoint ', '').replace(')', '')
+            parameters = list(map(float, line.split()))
+        return parameters
+
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+
+    transform_params = None
+    center_of_rotation = None
+
+    for line in lines:
+        if line.startswith('(TransformParameters'):
+            values = parse_line(line)
+            transform_params = list(map(float, values))
+        elif line.startswith('(CenterOfRotationPoint'):
+            values = parse_line(line)
+            center_of_rotation = np.array(list(map(float, values)))
+
+    if transform_params is None or center_of_rotation is None:
+        raise ValueError("Required parameters not found in the file.")
+
+    matrix_3x3 = np.array(transform_params[:9]).reshape((3, 3))
+    translation = np.array(transform_params[9:])
+
+    # Apply: x' = M @ (x - c) + c + t = Mx + (t - M @ c + c)
+    adjusted_translation = translation + center_of_rotation - matrix_3x3 @ center_of_rotation
+
+    # Construct the 4x4 matrix
+    affine_4x4 = np.eye(4)
+    affine_4x4[:3, :3] = matrix_3x3
+    affine_4x4[:3, 3] = adjusted_translation
+
+    return affine_4x4
+
+def elastix_to_affine_4x4(filepath):
+    """
+    Converts an Elastix TransformParameters.0.txt affine file into a 4x4 numpy matrix in ZYX order.
+    """
+    import re
+    with open(filepath, 'r') as f:
+        content = f.read()
+
+    # Extract TransformParameters
+    params_match = re.search(r'\(TransformParameters\s+(.*?)\)', content, re.DOTALL)
+    if not params_match:
+        raise ValueError("TransformParameters not found in the file.")
+    params = list(map(float, params_match.group(1).split()))
+
+    if len(params) != 12:
+        raise ValueError(f"Expected 12 TransformParameters, got {len(params)}")
+
+    # Extract CenterOfRotationPoint
+    center_match = re.search(r'\(CenterOfRotationPoint\s+(.*?)\)', content)
+    if not center_match:
+        raise ValueError("CenterOfRotationPoint not found in the file.")
+    center = np.array(list(map(float, center_match.group(1).split())))
+
+    # Build the affine matrix A and translation vector t
+    A = np.array(params[:9]).reshape(3, 3)
+    t = np.array(params[9:])
+
+    # Apply the formula: M = A·(x - c) + t + c  => Full affine:
+    # M = A x + (t - A·c + c) = A x + offset
+    offset = t - A @ center + center
+
+    # Compose into 4x4 affine matrix
+    affine = np.eye(4)
+    affine[:3, :3] = A
+    affine[:3, 3] = offset
+
+    # Reorder from XYZ to ZYX by permuting rows and columns
+    reorder = [2, 1, 0]  # Z, Y, X
+    affine_zyx = np.eye(4)
+    affine_zyx[:3, :3] = affine[:3, :3][reorder, :][:, reorder]
+    affine_zyx[:3, 3] = affine[:3, 3][reorder]
+
+    return affine_zyx
+
+def apply_affine_transform_to_volume(volume: sitk.Image, affine_matrix: np.ndarray) -> sitk.Image:
+    """
+    Apply a 4x4 affine transformation to a 3D SimpleITK volume.
+
+    Parameters:
+        volume (sitk.Image): The input 3D volume.
+        affine_matrix (np.ndarray): A 4x4 affine transformation matrix.
+
+    Returns:
+        sitk.Image: The transformed volume.
+    """
+    if affine_matrix.shape != (4, 4):
+        raise ValueError("Affine matrix must be 4x4")
+
+    # Extract the 3x3 matrix (rotation + scale + shear) and the translation vector
+    matrix_3x3 = affine_matrix[:3, :3].flatten().tolist()
+    translation = affine_matrix[:3, 3].tolist()
+
+    # Create the affine transform
+    transform = sitk.AffineTransform(3)
+    transform.SetMatrix(matrix_3x3)
+    transform.SetTranslation(translation)
+
+    # Set the center of the transform to the center of the image
+    center = np.array(volume.GetSize()) / 2.0
+    center_physical = volume.TransformContinuousIndexToPhysicalPoint(center.tolist())
+    transform.SetCenter(center_physical)
+
+    # Resample the volume using the transform
+    resampled = sitk.Resample(
+        volume,
+        volume,  # Use same reference image
+        transform,
+        sitk.sitkLinear,
+        0.0,  # Default pixel value for out-of-bounds
+        volume.GetPixelID()
+    )
+
+    return resampled
+
+
+def read_ants_affine_transform(file_path):
+    """
+    Reads an ANTs .mat affine transform file and returns a 4x4 numpy affine matrix.
+
+    Args:
+        file_path (str): Path to the .mat file.
+
+    Returns:
+        np.ndarray: A 4x4 affine transformation matrix.
+    """
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+
+    # Parse parameters
+    params_line = next(line for line in lines if line.startswith("Parameters:"))
+    fixed_params_line = next(line for line in lines if line.startswith("FixedParameters:"))
+
+    params = list(map(float, params_line.strip().split()[1:]))
+    fixed_params = list(map(float, fixed_params_line.strip().split()[1:]))
+
+    matrix = np.array(params[:9]).reshape(3, 3)
+    translation = np.array(params[9:12])
+    center = np.array(fixed_params)
+
+    # Build the affine transform with rotation center
+    affine = np.eye(4)
+    affine[:3, :3] = matrix
+    affine[:3, 3] = translation + center - matrix @ center
+
+    return affine
+
 if __name__ == "__main__":
     #register_large_zarr_datasets()
     #rescale_transform()
@@ -671,28 +829,65 @@ if __name__ == "__main__":
         [0.0, 0.0, 0.0, 1.0]
     ])
     affine = np.load('/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_sagittal.npy')
+    rot = affine[:3, :3]
+    rot = np.rot90(rot, k=2, axes=(0, 1))
+    affine[:3, :3] = rot
+    print("Affine matrix from elastix numpy")
     print(affine)
     print()
-    new_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.mat'
-    transfo_dict = loadmat(new_filepath)
+    transform_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.mat'
+    transfo_dict = loadmat(transform_filepath)
     lps2ras = np.diag([-1, -1, 1])
-
 
     rot = transfo_dict['AffineTransform_float_3_3'][0:9].reshape((3, 3))
     trans = transfo_dict['AffineTransform_float_3_3'][9:12]
     offset = transfo_dict['fixed']
+    print("Ants offset")
+    print(offset)
+    print()
     r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
-
 
     affine = np.eye(4)
     affine[0:3, 3] = r_trans
     affine[:3, :3] = np.dot(np.dot(lps2ras, rot), lps2ras)
 
+    print("Affine matrix from ants mat")
     print(affine)
+    print()
+
+
+    print("Affine matrix from ants mat transformed to 4x4")
+    transform_filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_Affine.mat'
+    affine = read_ants_affine_transform(transform_filepath)
+    print(affine)
+    print()
+
+
+    filepath = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_Allen_32.0x28.8x28.8um_sagittal/elastix_output/TransformParameters.0.txt'
+    affine_elastix = elastix_to_affine_4x4(filepath)
+    print("Affine matrix from elastix TransformParameters.0.txt")
+    print(affine_elastix)
+
+    moving_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/ALLEN771602_32.0x28.8x28.8um_sagittal.tif'
+    moving = read_image(moving_path)
+    reference_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/Allen_32.0x28.8x28.8um_sagittal.tif'
+    reference = read_image(reference_path)
+
+    output_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/ALLEN771602/transformed.tif'
+    if os.path.exists(output_path):
+        print(f"Output file {output_path} already exists. removing")
+        os.remove(output_path)
+    transformed = apply_affine_transform_to_volume(sitk.GetImageFromArray(moving),  affine)
+    sitk.WriteImage(transformed, output_path)
+    """
+    ants_img = process_block_with_ants(reference, moving, transform_filepath)
+    write_image(output_path, ants_img)
+    """
+    print(f"Transformed image saved to {output_path}")
+
+
+    exit(1)
     
-
-
-
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
     moving_path = os.path.join(reg_path, 'ALLEN771602', 'ALLEN771602_32.0x28.8x28.8um_sagittal.zarr')
     output_path = os.path.join(reg_path, 'ALLEN771602', 'transformed_large.zarr')
