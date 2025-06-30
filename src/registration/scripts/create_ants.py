@@ -26,12 +26,38 @@ import dask.array as da
 import scipy.ndimage
 from dask import delayed
 
+OVERLAP = (0,0,50)
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import read_image, write_image
+
+def make_weight(shape, depth):
+    """Creates an N-D weight array that tapers at the edges."""
+    ndim = len(shape)
+    weight = 1
+    for i in range(ndim):
+        axis_len = shape[i]
+        taper = np.ones(axis_len)
+        d = depth[i] if isinstance(depth, (list, tuple)) else depth
+
+        if d > 0:
+            ramp = np.linspace(0, 1, d, endpoint=False)
+            taper[:d] = ramp
+            taper[-d:] = ramp[::-1]
+        weight = weight * taper.reshape([-1 if j == i else 1 for j in range(ndim)])
+    return weight
+
+def weighted_chunk_function(block):
+
+    weight = make_weight(block.shape, OVERLAP)
+    weighted = block * weight
+    # Now trim off the depth since the overlap is not needed anymore
+    slices = tuple(slice(d, -d if d != 0 else None) for d in OVERLAP)
+    return weighted[slices]
+
 
 def normalize16(img):
     if img.dtype == np.uint32:
@@ -288,6 +314,45 @@ class AntsRegistration:
         # Save to zarr
         result.to_zarr(output_zarr_path, overwrite=True)
 
+    def stitch_images(self, image1, image2, affine, origin):
+        import cv2
+        """
+        Stitches two images together after applying an affine transformation.
+
+        Args:
+            image1: The first image (NumPy array).
+            image2: The second image (NumPy array).
+            transform_matrix: A 2x3 transformation matrix.
+
+        Returns:
+            A stitched image (NumPy array), or None if an error occurs.
+        """
+        image1 = image1.compute()
+        image2 = image2.compute()
+        print(f"Stitching images with shapes {image1.shape} and {image2.shape} {type(image2)}")
+        try:
+            # Apply the affine transformation to image2
+            height, width = image1.shape[:2]
+            #transformed_image2 = cv2.warpAffine(image2, transform_matrix, (width, height))
+            transformed_image2 = image2.copy()
+            # Create a mask for the transformed image
+            mask = np.ones_like(image2)
+            #transformed_mask = cv2.warpAffine(mask, transform_matrix, (width, height), flags=cv2.INTER_NEAREST)
+            #transformed_mask = mask.copy()
+            transformed_mask = self.process_block_with_minimal_itk(image1, origin, affine)
+            # Blend the images using the mask
+            stitched_image = image1.copy()
+            for c in range(image1.shape[2]):
+                stitched_image[:,:,c] = np.where(transformed_mask[:,:,0] == 1, transformed_image2[:,:,c], image1[:,:,c])
+
+            print(f'stitched_image shape: {stitched_image.shape} dtype: {stitched_image.dtype}')
+            return stitched_image
+
+        except Exception as e:
+            print(f"Error during image stitching: {e}")
+            return None
+
+
     def apply_ants_transform_zarr(self):
         """no chunks with overlap and using minimal aligns well but gets truncated in the x and y
         using the padded moving gives better results.
@@ -315,19 +380,17 @@ class AntsRegistration:
         affine, translation = self.read_ants_affine_transform()
         print(f'1 translation:\t{translation}')
 
-
-
         input_shape = moving.shape
-        output_shape = reference.shape
+        output_shape = moving.shape
         output_dtype = moving.dtype
-        output_chunks = (moving.shape[0] // 1, moving.shape[1] // 1, moving.shape[2] // 2) # type: ignore
+        output_chunks = (moving.shape[0] // 1, moving.shape[1] // 1, moving.shape[2] // 2)
         z_overlap = int(round(translation[0]))
         y_overlap = int(round(translation[1]))
         x_overlap = int(round(translation[2]))
 
-        z_overlap = 0
-        y_overlap = 0
-        x_overlap = 0
+        #z_overlap = 0
+        #y_overlap = 0
+        #x_overlap = 0
         transformed = da.zeros(output_shape, dtype=output_dtype, chunks=output_chunks)
         weights = da.zeros(output_shape, dtype=np.float32, chunks=output_chunks)
 
@@ -345,7 +408,7 @@ class AntsRegistration:
                     x1 = min(x+output_chunks[2], output_shape[2])
                     
                     # Load reference chunk
-                    #reference_chunk = reference[z0:z1, y0:y1, x0:x1]
+                    reference_chunk = reference[z0:z1, y0:y1, x0:x1]
                     # Load moving chunk
                     moving_chunk = moving[z0:z1, y0:y1, x0:x1]
                     print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - shape={moving_chunk.shape} dtype={moving_chunk.dtype}")
@@ -353,14 +416,17 @@ class AntsRegistration:
                     transformed_block = self.process_block_with_minimal_itk(moving_chunk, (z0, y0, x0), affine)
                     #transformed_block = self.process_block_with_ants(moving_chunk, moving_chunk)
                     transformed[z0:z1, y0:y1, x0:x1] += transformed_block
-                    w = np.ones_like(transformed_block, dtype=np.float32)
-                    weights[z0:z1, y0:y1, x0:x1] += w
+                    #w = np.ones_like(transformed_block, dtype=np.float32)
+                    #weights[z0:z1, y0:y1, x0:x1] += w
                     # Normalize by weights to resolve overlaps
                     #with np.errstate(divide='ignore', invalid='ignore'):
                     #    output = da.where(weights > 0, transformed / weights, 0)
                     # transformed without the weights below has large gaps and artifacts
-                    transformed[z0:z1, y0:y1, x0:x1] /= (weights[z0:z1, y0:y1, x0:x1] + 1e-8)  # Avoid division by zero
+                    #transformed[z0:z1, y0:y1, x0:x1] /= (weights[z0:z1, y0:y1, x0:x1] + 1e-8)  # Avoid division by zero
                     chunk_count += 1
+
+
+
 
         transformed.to_zarr(output_zarr_path, compute=True, overwrite=True)
 
@@ -424,7 +490,6 @@ class AntsRegistration:
             # If transform is a numpy array, convert it to SimpleITK AffineTransform
             transform = self.create_affine_transform_from_matrix(transform)
         z0, y0, x0 = origin
-        print(f'Processing block with origin {origin} moving_chunk shape {moving_chunk.shape} dtype {moving_chunk.dtype}')
         moving_chunk_img = sitk.GetImageFromArray(moving_chunk.astype(np.float32))
         moving_chunk_img.SetSpacing((1.0, 1.0, 1.0))
         moving_chunk_img.SetOrigin((z0, y0, x0))
@@ -435,8 +500,11 @@ class AntsRegistration:
                                 0.0,
                                 moving_chunk_img.GetPixelID())
         
-        transformed_block = sitk.GetArrayFromImage(transformed_block)
-        return transformed_block
+        transformed = sitk.GetArrayFromImage(transformed_block)
+        # Crop the transformed result back to original block shape
+        z, y, x = origin
+        dz, dy, dx = moving_chunk.shape
+        return transformed[0:dz, 0:dy, 0:dx]        
 
     def process_block_with_ants(self, reference_chunk, moving_chunk):
         moving_chunk_img = ants.from_numpy(moving_chunk.astype(np.float32))
@@ -1265,7 +1333,7 @@ def scale_3d_volume_with_dask(input_array: da.Array, scale_factors: tuple, outpu
         chunks = input_array.chunks
 
     # Wrap zoom to be Dask-compatible via map_blocks
-    def zoom_block(block, zoom_factors):
+    def loczoom_block(block, zoom_factors):
         return zoom(block, zoom_factors, order=1)
 
     zoomed = input_array.map_blocks(
