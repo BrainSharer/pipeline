@@ -34,6 +34,26 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.utilities.utilities_process import read_image, write_image
 
+def find_largest_proper_divisor(n):
+    """
+    Finds the largest integer divisor of a number n, excluding n itself.
+
+    Args:
+        n: An integer for which to find the largest proper divisor.
+
+    Returns:
+        The largest proper divisor of n, or 1 if n is prime.
+    """
+    if n <= 1:
+        return 0  # Or handle as an error, as proper divisors are typically for n > 1
+
+    # Iterate downwards from n // 2 (integer division)
+    for i in range(n // 2, 0, -1):
+        if n % i == 0:
+            print(f"Found divisor: {i} for number {n}")
+            #return i  # Found the largest divisor
+    return 1  # If no divisor found other than 1, the number is prime
+
 def make_weight(shape, depth):
     """Creates an N-D weight array that tapers at the edges."""
     ndim = len(shape)
@@ -182,7 +202,7 @@ class AntsRegistration:
         metric = ants.image_similarity(moving, reference,metric_type='MattesMutualInformation', sampling_percentage=0.5)
         print(f"Correlation between registered and fixed: {metric}")
 
-    def affine_transform_blockwise(self, reference, moving, affine_matrix, output_chunks=(64, 64, 64), overlap=16):
+    def affine_transform_blockwise(self, reference, moving, affine_matrix, output_chunks=(64, 64, 64), overlap=16, output_shape=None):
         """
         Apply an affine transformation blockwise to a large 3D moving image.
         The transformed chunks are blended using cosine weights.
@@ -214,6 +234,7 @@ class AntsRegistration:
         for z in z_blocks:
             for y in y_blocks:
                 for x in x_blocks:
+
                     def process_block(z=z, y=y, x=x):
                         # Determine bounds with padding
                         z0, z1 = max(0, z - pad), min(shape[0], z + output_chunks[0] + pad)
@@ -259,12 +280,12 @@ class AntsRegistration:
                         return out, w
 
                     result = delayed(process_block)()
+                    
                     #result = process_block()
                     results.append(result[0])
                     weight_results.append(result[1])
 
         # Sum all blocks and weights
-        print(type(results), len(results))
         transformed_sum = []
         weight_sum = []
         for result in results:
@@ -272,18 +293,19 @@ class AntsRegistration:
             transformed_sum.append(result.compute())
 
 
-        print(f'type transformed_sum0 {transformed_sum[0]}')
+        print(f'type transformed_sum {type(transformed_sum)}')
         exit(1)
-        for weight_result in weight_results:
-            print(f"Weight result shape: {weight_result.shape}, dtype: {weight_result.dtype}")
-            weight_sum.append(weight_result.compute())
-
-        #transformed_sum = da.add(*results)
-        #weight_sum = da.add(*weight_results)
+        return transformed_sum
+        #for weight_result in weight_results:
+        #    print(f"Weight result shape: {weight_result.shape}, dtype: {weight_result.dtype}")
+        #    weight_sum.append(weight_result.compute())
+        exit(1)
+        transformed_sum = da.add(*results)
+        weight_sum = da.add(*weight_results)
 
         # Avoid division by zero
         eps = 1e-8
-        final_image = transformed_sum / (weight_sum + eps)
+        final_image = transformed_sum / (weight_sum)
 
         return final_image
 
@@ -305,7 +327,8 @@ class AntsRegistration:
 
         # Transform moving image
         output_chunks = (moving.shape[0] // 1, moving.shape[1] // 1, moving.shape[2] // 1)  # Example chunk size
-        result = self.affine_transform_blockwise(reference, moving, affine, output_chunks=output_chunks, overlap=4)
+        output_shape = reference.shape
+        result = self.affine_transform_blockwise(reference, moving, affine, output_chunks=output_chunks, overlap=4, output_shape=output_shape)
         output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
         if os.path.exists(output_zarr_path):
             print(f"Removing zarr file already exists at {output_zarr_path}")
@@ -313,6 +336,8 @@ class AntsRegistration:
 
         # Save to zarr
         result.to_zarr(output_zarr_path, overwrite=True)
+
+        self.create_output(output_zarr_path)
 
     def stitch_images(self, image1, image2, affine, origin):
         import cv2
@@ -357,7 +382,6 @@ class AntsRegistration:
         """no chunks with overlap and using minimal aligns well but gets truncated in the x and y
         using the padded moving gives better results.
         """
-        self.check_registration()
 
         output_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal_registered.zarr')
         if os.path.exists(output_zarr_path):
@@ -366,9 +390,9 @@ class AntsRegistration:
         # Open Zarr arrays
         #moving_z, reference = pad_to_symmetric_shape(self.moving_filepath_zarr, self.fixed_filepath_zarr)
 
-        moving = da.from_zarr(self.moving_filepath_zarr) # type: ignore
+        moving = da.from_zarr(self.moving_filepath_zarr) 
         print(f'Moving shape: {moving.shape} type: {type(moving)}')
-        reference = da.from_zarr(self.fixed_filepath_zarr) # type: ignore
+        reference = da.from_zarr(self.fixed_filepath_zarr) 
         print(f'Reference shape: {reference.shape} type: {type(reference)}')
 
         if os.path.exists(self.transform_filepath):
@@ -381,51 +405,66 @@ class AntsRegistration:
         print(f'1 translation:\t{translation}')
 
         input_shape = moving.shape
-        output_shape = moving.shape
+        output_shape = reference.shape
         output_dtype = moving.dtype
-        output_chunks = (moving.shape[0] // 1, moving.shape[1] // 1, moving.shape[2] // 2)
+        #divisor = find_largest_proper_divisor(input_shape[1])
+        #print(f'Largest divisor of {input_shape[1]} is {divisor}')
+        
+        output_chunks = (moving.shape[0] // 1, moving.shape[1] // 8, moving.shape[2] // 8)
+        #output_chunks = (64,64,64)
         z_overlap = int(round(translation[0]))
         y_overlap = int(round(translation[1]))
         x_overlap = int(round(translation[2]))
 
-        #z_overlap = 0
-        #y_overlap = 0
-        #x_overlap = 0
+        z_overlap = 0
+        y_overlap = 16
+        x_overlap = 16
         transformed = da.zeros(output_shape, dtype=output_dtype, chunks=output_chunks)
         weights = da.zeros(output_shape, dtype=np.float32, chunks=output_chunks)
+        #affine_matrix = np.eye(4, dtype=np.float32)
 
-        print(f'Creating Dask container with shape {output_shape} and dtype {output_dtype} chunks={output_chunks} with overlap {z_overlap}, {y_overlap}, {x_overlap}')
         chunk_count = 1
+        print(f'Creating Dask container with shape {output_shape} and dtype {output_dtype} chunks={output_chunks}')
+
+        # Output array and weight array (for blending)
 
         # Apply map_overlap-like logic
         # Iterate through chunks
         for z in range(0, input_shape[0], output_chunks[0] - z_overlap):
             for y in range(0, input_shape[1], output_chunks[1] - y_overlap):
                 for x in range(0, input_shape[2], output_chunks[2] - x_overlap):
+
+                    """
+                    transformed_block = self.process_block_with_itk(moving_chunk, reference_chunk, affine)
+                    #transformed_block = self.process_block_with_ants(moving_chunk, moving_chunk)
+                    transformed[z0:z1, y0:y1, x0:x1] += transformed_block
+                    w = np.ones_like(transformed_block, dtype=np.float32)
+                    weights[z0:z1, y0:y1, x0:x1] += w
+                    # Normalize by weights to resolve overlaps
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        output = da.where(weights > 0, transformed / weights, 0)
+                    # transformed without the weights below has large gaps and artifacts
+                    #transformed[z0:z1, y0:y1, x0:x1] /= (weights[z0:z1, y0:y1, x0:x1] + 1e-8)  # Avoid division by zero
+                    """
+                    chunk_count += 1
                     z0, y0, x0 = z, y, x
                     z1 = min(z+output_chunks[0], output_shape[0])
                     y1 = min(y+output_chunks[1], output_shape[1])
-                    x1 = min(x+output_chunks[2], output_shape[2])
-                    
-                    # Load reference chunk
-                    reference_chunk = reference[z0:z1, y0:y1, x0:x1]
-                    # Load moving chunk
+                    x1 = min(x+output_chunks[2], output_shape[2])                    
+
                     moving_chunk = moving[z0:z1, y0:y1, x0:x1]
+                    reference_chunk = reference[z0:z1, y0:y1, x0:x1]
                     print(f"Processing chunk {chunk_count}: z={z0}:{z1}, y={y0}:{y1}, x={x0}:{x1} - shape={moving_chunk.shape} dtype={moving_chunk.dtype}")
-                    #transformed_block = self.process_block_with_itk(moving_chunk, (z0, y0, x0), affine)
-                    transformed_block = self.process_block_with_minimal_itk(moving_chunk, (z0, y0, x0), affine)
-                    #transformed_block = self.process_block_with_ants(moving_chunk, moving_chunk)
-                    transformed[z0:z1, y0:y1, x0:x1] += transformed_block
+
+                    transformed_block = self.process_block_with_ants(reference_chunk, moving_chunk)
+                    weight = self.cosine_weight(transformed_block.shape)
+
+                    transformed[z0:z1, y0:y1, x0:x1] += transformed_block * weight
                     #w = np.ones_like(transformed_block, dtype=np.float32)
                     #weights[z0:z1, y0:y1, x0:x1] += w
                     # Normalize by weights to resolve overlaps
                     #with np.errstate(divide='ignore', invalid='ignore'):
                     #    output = da.where(weights > 0, transformed / weights, 0)
-                    # transformed without the weights below has large gaps and artifacts
-                    #transformed[z0:z1, y0:y1, x0:x1] /= (weights[z0:z1, y0:y1, x0:x1] + 1e-8)  # Avoid division by zero
-                    chunk_count += 1
-
-
 
 
         transformed.to_zarr(output_zarr_path, compute=True, overwrite=True)
@@ -433,7 +472,7 @@ class AntsRegistration:
         self.create_output(output_zarr_path)
 
 
-    def process_block_with_itk(self, moving_chunk, origin, transform):
+    def process_block_with_itk(self, moving_chunk, reference_chunk, transform):
         
         if isinstance(transform, np.ndarray):
             # If transform is a numpy array, convert it to SimpleITK AffineTransform
@@ -443,46 +482,33 @@ class AntsRegistration:
         pad_width = 10
         #padded = np.pad(moving_chunk, pad_width=pad_width, mode='constant', constant_values=0)
 
-        block = np.squeeze(moving_chunk)
+        #block = np.squeeze(moving_chunk)
         # Get global position from block_info
         #start = tuple(block_info[None]['array-location'][0])
         #global_shape = block_info[None]['array-shape']
         overlap = (8,0,47)
         #pad_width = [ (v,v) for v in overlap]
         # Pad block to avoid edge issues
-        padded = np.pad(block, pad_width, mode='reflect')
-        image = sitk.GetImageFromArray(padded.astype(np.float32))
-        image.SetSpacing((1.0, 1.0, 1.0))
+        #padded = np.pad(block, pad_width=pad_width, mode='constant', constant_values=0)        
+        moving_image = sitk.GetImageFromArray(moving_chunk.astype(np.float32))
+        reference_image = sitk.GetImageFromArray(reference_chunk.astype(np.float32))
+        moving_image.SetSpacing((1.0, 1.0, 1.0))
         #image.SetOrigin([-origin[i] - overlap for i in range(3)])
-        image.SetOrigin((origin))
+        #image.SetOrigin((origin))
         resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(image)
+        resampler.SetReferenceImage(reference_image)
         resampler.SetTransform(transform)
         resampler.SetInterpolator(sitk.sitkLinear)
-        resampled = resampler.Execute(image)
+        resampled = resampler.Execute(moving_image)
 
         result = sitk.GetArrayFromImage(resampled)
-        start = [(padded.shape[i] - original_shape[i]) // 2 for i in range(3)]
-        end = [start[i] + original_shape[i] for i in range(3)]
-        transformed_cropped = result[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
-        # Crop back to original block size
-        #cropped = result[overlap[0]:-overlap[0], overlap[1]:-overlap[1], overlap[2]:-overlap[2]]
-        #return np.expand_dims(cropped, 0)
-        return transformed_cropped
-        transformed_block = sitk.Resample(moving_chunk_img,
-                                moving_chunk_img,
-                                transform,
-                                sitk.sitkLinear,
-                                0.0,
-                                moving_chunk_img.GetPixelID())
-        
-        transformed_block = sitk.GetArrayFromImage(transformed_block)
-        start = [(padded.shape[i] - original_shape[i]) // 2 for i in range(3)]
-        end = [start[i] + original_shape[i] for i in range(3)]
-        transformed_cropped = transformed_block[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
-        return transformed_cropped
+        return result
+        # Crop back to original size
+        #start = [(padded.shape[i] - original_shape[i]) // 2 for i in range(3)]
+        #end = [start[i] + original_shape[i] for i in range(3)]
+        #transformed_cropped = result[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
 
-
+        #return transformed_cropped
 
     def process_block_with_minimal_itk(self, moving_chunk, origin, transform):
         
@@ -1455,7 +1481,10 @@ def pad_to_symmetric_shape(moving_path, fixed_path):
 
     # Compute padding needed for each array
     def compute_padding(shape, target):
-        return [(0, t - s) for s, t in zip(shape, target)]
+        pads = []
+        for s, t in zip(shape, target):
+            pads.append((0, t - s))  # (before, after) padding
+        return pads
 
     pad1 = compute_padding(shape1, max_shape)
     pad2 = compute_padding(shape2, max_shape)
