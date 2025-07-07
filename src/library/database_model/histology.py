@@ -31,6 +31,7 @@ class Histology(Base, AtlasModel):
     mounting = Column(Enum("every section", "2nd", "3rd", "4th", "5ft", "6th"))
     counterstain = Column(Enum("thionin","NtB","NtFR","DAPI","Giemsa","Syto41","NTB/thionin", "NTB/PRV-eGFP", "NTB/PRV", "NTB/ChAT/ΔGRV", "NTB/ChAT/Ai14"))
     comments = Column(String)
+    FK_lab_id = Column("FK_lab_id", Integer, ForeignKey('auth_lab.id'), nullable=False)
 
     #def __repr__(self):
     #    return "Histology(prep_id='%s')" % (self.prep_id)

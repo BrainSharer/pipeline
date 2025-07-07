@@ -93,7 +93,8 @@ if __name__ == "__main__":
         "extract": pipeline.extract_predictions_precomputed,
         "train": pipeline.train,
         "fix": pipeline.fix_coordinates,
-        "precomputed": pipeline.create_precomputed_annotations #TODO: remove?
+        "neuroglancer": pipeline.neuroglancer,
+        "precomputed": pipeline.create_precomputed_annotations, #TODO: remove?
     }
     
 

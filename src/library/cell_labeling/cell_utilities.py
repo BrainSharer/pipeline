@@ -3,6 +3,10 @@ import sys
 import cv2
 import imageio
 import numpy as np
+import dask_image.ndfilters
+import dask.array as da
+import subprocess
+from pathlib import Path
 
 try:
     import cupy as cp
@@ -28,35 +32,56 @@ def load_image(file: str):
         sys.exit(1)
 
 
-def subtract_blurred_image(image, make_smaller: bool = True, debug: bool = False):
-    '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean'''
+def subtract_blurred_image(image: np.ndarray, gaussian_blur_standard_deviation_sigmaX: int, kernel_size_pixels: tuple, make_smaller: bool = True, debug: bool = False):
+    '''PART OF STEP 2. Identify cell candidates: average the image by subtracting gaussian blurred mean
+    Gaussian blur applied to smaller image using Gaussian kernel of 41x41 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
+    Larger kernel size produces stronger blur effect
+    Higher s.d. leads to more blurring
 
-    image = np.float32(image)
+    Args:
+        image: Input image (converted to float32 if not already)
+        gaussian_blur_standard_deviation_sigmaX: Standard deviation for Gaussian blur
+        kernel_size_pixels: Kernel size for Gaussian blur
+        make_smaller: If True, process at lower resolution for speed/memory
+        debug: Print debug information
+        scale_factor: Downscaling factor when make_smaller is True (default 0.1)
+    '''
+    scale_factor = 0.1
+
+    if image.dtype != np.float32:
+        image = image.astype(np.float32, copy=False)
+    
     if make_smaller:
-        image_reduction_final_percent_fx = 0.1 #Resize image to 10% of its original size in x dimension
-        image_reduction_final_percent_fy = 0.1 #Resize image to 10% of its original size in y dimension
-        small = cv2.resize(image, (0, 0), fx=image_reduction_final_percent_fx, fy=image_reduction_final_percent_fy, interpolation=cv2.INTER_AREA)
+        # Calculate target size once instead of using resize with fx/fy
+        h, w = image.shape[:2]
+        small_size = (max(1, int(w * scale_factor)), max(1, int(h * scale_factor))) # Ensure size is at least 1x1 to avoid errors
+
+        # Resize and blur
+        small = cv2.resize(image, small_size, interpolation=cv2.INTER_AREA)
+        blurred = cv2.GaussianBlur(small, ksize=kernel_size_pixels, 
+                                 sigmaX=gaussian_blur_standard_deviation_sigmaX)
+        
+        # Resize back using linear interpolation (faster than INTER_AREA for upscaling)
+        relarge = cv2.resize(blurred, (w, h), interpolation=cv2.INTER_LINEAR)
+        
+        difference = image - relarge
     else:
-        small = image.copy()
+        # Apply blur directly and subtract in-place
+        blurred = cv2.GaussianBlur(image, ksize=kernel_size_pixels, 
+                                 sigmaX=gaussian_blur_standard_deviation_sigmaX)
+        
+        difference = image - blurred
+        
+    #3-JUL-2025 Song-Mao change
+    difference = np.clip(difference, 0, None)  # Ensure no negative
 
-    # Gaussian blur applied to smaller image using Gaussian kernel of 41x41 pixels and standard deviation (s.d.) of the Gaussian distribution is 10
-    # Larger kernel size produces stronger blur effect
-    # Higher s.d. leads to more blurring
-    kernel_size_pixels = (41, 41)
-    gaussian_blur_standard_deviation_sigmaX = 10
-    blurred = cv2.GaussianBlur(small, ksize=kernel_size_pixels, sigmaX=gaussian_blur_standard_deviation_sigmaX) # Blur the resized image
-
-    relarge = cv2.resize(blurred, image.T.shape, interpolation=cv2.INTER_AREA) # Resize the blurred image back to the original size
-    difference = image - relarge # Calculate the difference between the original and resized-blurred images
     if debug:
         print(f'DEBUG: -subtract_blurred_image- detail:')
-        print(f'DEBUG: {image_reduction_final_percent_fx=}')
-        print(f'DEBUG: {image_reduction_final_percent_fy=}')
         print(f"DEBUG: Original image shape: {image.shape}")
-        print(f"DEBUG: Small image shape: {small.shape}")
         print(f'DEBUG: Gaussian blur detail:')
         print(f"DEBUG: {kernel_size_pixels=}")
         print(f"DEBUG: {gaussian_blur_standard_deviation_sigmaX=}")
+    
     return difference
 
 
@@ -79,6 +104,7 @@ def find_connected_segments(image, segmentation_threshold, cuda_available: bool 
 
         n_segments, segment_masks, segment_stats, segment_location = (int(n_segments), cp.asnumpy(segment_masks), cp.asnumpy(segment_stats), cp.asnumpy(segment_location))
     else:
+        #CREATE BINARY MASK FROM PIXEL INTENSITY > THRESHOLD
         n_segments, segment_masks, segment_stats, segment_location = cv2.connectedComponentsWithStats(np.int8(image > segmentation_threshold))
     
         if segment_location.size > 0:
@@ -468,3 +494,39 @@ def sobel(img):
     sobel_x = (sobel_x - _mean) / (_std + eps)
     sobel_y = (sobel_y - _mean) / (_std + eps)
     return sobel_x, sobel_y
+
+
+def copy_with_rclone(temp_output_path: str, OUTPUT_DIR: str) -> None:
+    """
+    Copies all files from temp_output_path to OUTPUT_DIR using rclone.
+    
+    Args:
+        temp_output_path (str): Source directory path.
+        OUTPUT_DIR (str): Destination directory path.
+    """
+    # Ensure paths are absolute and properly formatted
+    temp_output_path = Path(temp_output_path).resolve()
+    OUTPUT_DIR = Path(OUTPUT_DIR).resolve()
+
+    if not temp_output_path.exists():
+        raise FileNotFoundError(f"Source directory not found: {temp_output_path}")
+    if not OUTPUT_DIR.exists():
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Construct the rclone command
+    rclone_cmd = [
+        "rclone",
+        "copy",
+        "--progress",  # Show progress (optional)
+        str(temp_output_path) + "/",  # Ensure trailing slash for directory copy
+        str(OUTPUT_DIR) + "/",
+    ]
+
+    try:
+        print(f"Copying files from {temp_output_path} to {OUTPUT_DIR} using rclone...")
+        subprocess.run(rclone_cmd, check=True)
+        print("Copy completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during rclone copy: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")

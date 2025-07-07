@@ -20,6 +20,7 @@ from tqdm import tqdm
 import xgboost as xgb
 import psutil
 import warnings
+import tifffile
 try:
     import cupy as cp
 except ImportError as ie:
@@ -33,10 +34,15 @@ from library.cell_labeling.cell_utilities import (
     load_image,
     subtract_blurred_image,
     features_using_center_connected_components,
-    find_available_backup_filename
+    find_available_backup_filename, 
+    copy_with_rclone
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
+from library.image_manipulation.histogram_maker import make_histogram_full_RAM, make_single_histogram_full, make_combined_histogram_full
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
+from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
@@ -83,12 +89,17 @@ class CellMaker(ParallelManager):
         self.virus_channel = 0
         self.annotation_id = annotation_id
 
+        #SEGMENTATION PARAMETERS
         #TODO: MOVE CONSTANTS TO SETTINGS?
         self.max_segment_size = 100000
-        self.segmentation_threshold = 2000 
+        self.segmentation_threshold = 5000 
+        self.gaussian_blur_standard_deviation_sigmaX = 350
+        self.kernel_size_pixels = (401, 401)
         self.cell_radius = 40
+        self.segmentation_make_smaller = False
         self.ground_truth_filename = 'ground_truth.csv'
         self.sampling = sampling
+        self.save_output_with_hostname = False
 
 
     def report_status(self):
@@ -363,7 +374,7 @@ class CellMaker(ParallelManager):
 
         file_keys = []
         for section in range(self.section_count):
-            # if section < 70 or section > 72: #Song-Mao testing filter
+            # if section < 30: # or section > 72: #Song-Mao testing filter
             #     continue
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
@@ -408,6 +419,8 @@ class CellMaker(ParallelManager):
 
            NOTE: '*_' (unpacking file_keys tuple will discard vars after debug if set); must modify if file_keys is changed
            :return: a list of cell candidates (dictionaries) for each section
+
+           N.B.: If full-resolution, single image is used, generate single histogram while image still in RAM
         '''
         (
             animal,
@@ -417,7 +430,7 @@ class CellMaker(ParallelManager):
             cell_radius,
             max_segment_size,
             SCRATCH,
-            OUTPUT, _, _,
+            _, _, _,
             input_format,
             input_path_dye,
             input_path_virus,
@@ -436,6 +449,14 @@ class CellMaker(ParallelManager):
         output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates')
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
+        
+        output_file_diff_path = Path(self.fileLocationManager.prep, 'CH3_DIFF')
+        output_file_diff_path.mkdir(parents=True, exist_ok=True)
+        output_file_diff3 = Path(output_file_diff_path, f'{str_section_number}.tif')
+        
+        output_path_histogram = Path(self.fileLocationManager.www, 'histogram', 'C3_DIFF', f'{str_section_number}.png')
+        output_path_histogram.parent.mkdir(parents=True, exist_ok=True)
+        mask_path = Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', f'{str_section_number}.tif')
 
         #TODO check if candidates already extracted
         if os.path.exists(output_file):
@@ -517,8 +538,8 @@ class CellMaker(ParallelManager):
         data_dye = np.swapaxes(data_dye, 1, 0)
     
         # FINAL VERSION BELOW:
-        total_virtual_tile_rows = 5
-        total_virtual_tile_columns = 2
+        total_virtual_tile_rows = 1
+        total_virtual_tile_columns = 1
         x_window = int(math.ceil(x_dim / total_virtual_tile_rows))
         y_window = int(math.ceil(y_dim / total_virtual_tile_columns))
 
@@ -529,37 +550,59 @@ class CellMaker(ParallelManager):
 
         #cuda_available = cp.is_available()
         cuda_available = False
+        overlap_pixels = self.cell_radius * 1.5
+        full_difference_ch3 = np.zeros(data_virus.shape, dtype=np.uint16)
 
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
             
-                x_start = row * x_window
-                x_end = x_window * (row+1)
-                y_start = col * y_window
-                y_end = y_window * (col+1)
+                # MODS FOR VIRTUAL TILE OVERLAP (TO CAPTURE CELL AT EDGES)
+                if row == 0:
+                    x_start = 0
+                else:
+                    x_start = int(row * x_window - overlap_pixels)
+                
+                if col == 0:
+                    y_start = 0
+                else:
+                    y_start = int(col * y_window - overlap_pixels)
+
+                x_end = int(x_window * (row + 1))
+                y_end = int(y_window * (col + 1))
+
+                # Ensure we don't go beyond image boundaries
+                x_start = max(0, x_start)
+                y_start = max(0, y_start)
+                x_end = min(data_virus.shape[0], x_end)
+                y_end = min(data_virus.shape[1], y_end)
+
+                #ORG. CODE ###################
+                # x_start = row * x_window
+                # x_end = x_window * (row+1)
+                # y_start = col * y_window
+                # y_end = y_window * (col+1)
+                ##############################
 
                 image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS numpy array
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
 
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
+
                 if debug:
                     print('CALCULATING DIFFERENCE FOR CH3 (VIRUS)')
                     print(f'ROI: {x_start=}, {x_end=}, {y_start=}, {y_end=}')
-                difference_ch3 = subtract_blurred_image(image_roi_virus, True, debug) #calculate img difference for virus channel (e.g. fluorescence)
-                
-                #CALC FOR SONG-MAO - REMOVE AFTER DEBUG (DUPLICATE CALCULATION IF CONNECTED SEGMENTS FOUND)
-                # if debug:
-                #     print('CALCULATE DIFFERENCE FOR CH1')
-                # difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+
+                difference_ch3 = subtract_blurred_image(image_roi_virus, self.gaussian_blur_standard_deviation_sigmaX, self.kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
+                full_difference_ch3[x_start:x_end, y_start:y_end] = difference_ch3
 
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
                 if connected_segments[0] > 2: # found cell candidate (first element of tuple is count)
-
+                    
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
                         print('CALCULATING DIFFERENCE FOR CH1 (DYE)')
-                    difference_ch1 = subtract_blurred_image(image_roi_dye, True, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
                         animal,
@@ -573,13 +616,39 @@ class CellMaker(ParallelManager):
                         difference_ch1,
                         difference_ch3,
                     )
-                    
-                    cell_candidates.extend(cell_candidate)  # Must use extend!
+
+                    # For overlapping regions, we need to filter duplicates
+                    # Only keep cells whose centers are in the non-overlapping part of the tile
+                    if row > 0 or col > 0:  # Not the first row or column
+                        non_overlap_x_start = int(row * x_window)
+                        non_overlap_y_start = int(col * y_window)
+                        
+                        filtered_candidates = []
+                        for candidate in cell_candidate:
+                            # Get absolute coordinates (note: stored as Y,X in absolute_coordinates_YX)
+                            abs_y, abs_x = candidate["absolute_coordinates_YX"]
+                            
+                            # Check if cell center is in non-overlapping region
+                            if (abs_x >= non_overlap_x_start and 
+                                abs_y >= non_overlap_y_start):
+                                filtered_candidates.append(candidate)
+                            elif debug:
+                                print(f"Excluding candidate at ({abs_x}, {abs_y}) - outside non-overlap region")
+                        
+                        cell_candidates.extend(filtered_candidates)
+                    else:
+                        cell_candidates.extend(cell_candidate)
         
         if len(cell_candidates) > 0:
             if debug:
-                print(f'Saving {len(cell_candidates)} Cell candidates TO {output_file}')
+                print(f'Saving {len(cell_candidates)} Cell candidates to {output_file}')
+                print(f'Saving ch3_diff images to {output_file_diff3}')
             dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
+
+            full_difference_ch3_corrected = np.swapaxes(full_difference_ch3, 0, 1)
+            tifffile.imwrite(str(output_file_diff3), full_difference_ch3_corrected)
+            #Make histogram for full-resolution image [while still in RAM]
+            make_histogram_full_RAM(full_difference_ch3_corrected, output_path_histogram, mask_path, debug)
 
         if debug:
             print('Completed identify_cell_candidates')
@@ -620,8 +689,16 @@ class CellMaker(ParallelManager):
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'cell_features_{str_section_number}.csv')
 
+        #TODO check if features already extracted
+        if os.path.exists(output_file):
+            print(f'Cell features already extracted. Using: {output_file}')
+            df_features = pl.read_csv(output_file)
+            return df_features
+        else:
+            output_spreadsheet = []
+
         # STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **Now passed as parameter**
-        output_spreadsheet = []
+        # output_spreadsheet = []
         for idx, cell in enumerate(cell_candidate_data):
             
             # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
@@ -791,6 +868,9 @@ class CellMaker(ParallelManager):
                 pl.Series("predictions", get_prediction_and_label(mean_scores))
             ])
 
+        if self.save_output_with_hostname:
+            OUTPUT = str(Path(f"{OUTPUT}_{self.hostname}")) #TESTING OUTPUT TO HOST-SPECIFIC LOCATION
+            
         # STEP 4-2-2) Stores dataframe as csv file
         if debug:
             print(f'Cell labels output dir: {OUTPUT}')
@@ -1307,10 +1387,11 @@ class CellMaker(ParallelManager):
     
 
     def extract_predictions_precomputed(self):
-        #precomputed, segmentation volume - this works @ 6-MAY-2025
+        #precomputed, segmentation volume - this works @ 16-JUN-2025
         labels = ['ML_POSITIVE']
         sampling = self.sampling
 
+        performance_lab = self.sqlController.histology.FK_lab_id
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         w = int(self.sqlController.scan_run.width//SCALING_FACTOR)
@@ -1461,14 +1542,26 @@ class CellMaker(ParallelManager):
             prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - SAMPLING ENABLED (n={self.sampling} of {df.height} TOTAL)"
         else:
             prov['description'] = f"SEGMENTATION VOL OF ANNOTATIONS - (n={df.height})"
-        prov['sources'] = self.animal
+        subject = self.animal
+        prov['sources'] = {
+            "subject": subject, 
+            "ML_segmentation": {
+                "max_segment_size": self.max_segment_size,
+                "segmentation_threshold": self.segmentation_threshold,
+                "cell_radius": self.cell_radius,
+                "gaussian_blur_standard_deviation_sigmaX": self.gaussian_blur_standard_deviation_sigmaX,
+                "kernel_size_pixels": self.kernel_size_pixels
+            }
+        }
+
+        prov['owners'] = [f'PERFORMANCE LAB: {performance_lab}']
         with open(prov_path, 'w') as f:
             json.dump(prov, f, indent=2)
 
         # SETUP COLOR MAP IN NEUROGLANCER (POINT FORMATTING FOR INCREASED VISIBILITY)
         # requires creating 'preview' ng state
         
-
+                
     def extract_predictions_WIP(self):
             labels = ['ML_POSITIVE']
             sampling = self.sampling
@@ -2461,6 +2554,87 @@ class CellMaker(ParallelManager):
         trainer = CellDetectorTrainer(self.animal, step=self.step + 1) # Be careful when saving the model. The model path is only relevant to 'step'. 
         # You need to use a new step to save the model, otherwise the previous models would be overwritten.
         trainer.save_models(new_models, model_filename, local_scratch)
+
+    def neuroglancer(self):
+        '''
+        #WIP 3-JUL-2025
+        CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
+        ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
+        '''
+        INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
+        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
+        temp_output_path.mkdir(parents=True, exist_ok=True)
+        progress_dir = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_progress')
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+        print(f'{INPUT_DIR=}')
+        print(f'TEMP Output: {temp_output_path}')
+        print(f'FINAL Output: {OUTPUT_DIR}')
+
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            workers = 1    
+        else:
+            workers = self.get_nworkers()
+
+        image_manager = ImageManager(INPUT_DIR)
+        chunks = [image_manager.height//16, image_manager.width//16, 1]
+        image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
+        
+        #################################################
+        #PRECOMPUTED FORMAT CREATION
+        #################################################
+        precompute = NgPrecomputedMaker(self.sqlController)
+        scales = precompute.get_scales()
+        ng = NumpyToNeuroglancer(
+            self.animal,
+            None,
+            scales,
+            "image",
+            image_manager.dtype,
+            num_channels=1,
+            chunk_size=chunks,
+        )
+        ng.init_precomputed(temp_output_path, image_manager.volume_size)
+        file_keys = []
+        orientation = self.sqlController.histology.orientation
+        for i, f in enumerate(image_manager.files):
+            filepath = Path(INPUT_DIR, f)
+            file_keys.append([i, filepath, orientation, progress_dir])
+        if self.debug:
+            for file_key in file_keys:
+                ng.process_image(file_key=file_key)
+        else:
+            self.run_commands_concurrently(ng.process_image, file_keys, workers)
+        ng.precomputed_vol.cache.flush()
+
+        #MOVE PRECOMPUTED FILES TO FINAL LOCATION
+        copy_with_rclone(temp_output_path, OUTPUT_DIR)
+
+        #################################################
+        #HISTOGRAM CREATION - SINGLE
+        #################################################
+        OUTPUT_DIR = Path(self.fileLocationManager.histogram, 'C3_DIFF')
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        print(f'Creating histogram for {OUTPUT_DIR}')
+        
+        file_keys = []
+        for i, file in enumerate(image_files):
+            filename = str(i).zfill(3) + ".tif"
+            input_path = str(Path(INPUT_DIR, filename))
+            mask_path = str(Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', filename))
+            output_path = str(Path(OUTPUT_DIR, filename).with_suffix('.png'))
+
+            file_keys.append(
+                    [input_path, mask_path, 'CH3_DIFF', file, output_path, self.debug]
+                )
+
+        self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
+
+        make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
 
 
     def create_features(self):
