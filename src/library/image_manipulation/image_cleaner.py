@@ -83,9 +83,8 @@ class ImageCleaner:
         debris
         1. Set up the mask, input and output directories
         2. clean images
-        3. Crop images if mask is set to FULL_MASK
-        4. Get biggest box size from all contours from all files and update DB with that info
-        5. Place images in new cropped image size with correct background color
+        3. Get biggest box size from all contours from all files and update DB with that info
+        4. Place images in image size with correct background color
         """
 
         if self.downsample:

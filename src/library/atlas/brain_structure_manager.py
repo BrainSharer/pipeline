@@ -14,6 +14,7 @@ from scipy.ndimage import center_of_mass, zoom
 from skimage.filters import gaussian
 from cloudvolume import CloudVolume
 import sqlalchemy
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 
@@ -160,64 +161,58 @@ class BrainStructureManager:
 
         return label_ids
 
-    def create_brains_origin_volume_from_polygons(self, brainMerger, structure, debug=False):
+    def create_brains_origin_volume_from_polygons(self, brainMerger, animal, structure, debug=False):
 
         label_ids = self.get_label_ids(structure)
+        annotator_id = 1 # hard coded to Edward
 
-        annotation_sessions = (
+        annotation_session = (
             self.sqlController.session.query(AnnotationSession)
             .filter(AnnotationSession.active == True)
+            .filter(AnnotationSession.FK_user_id == annotator_id)
+            .filter(AnnotationSession.FK_prep_id == animal)
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-            .all()
+            .one_or_none()
         )
 
-        if len(annotation_sessions) == 0:
-            print(f"No annotation sessions found for {animal} {structure}")
+        if annotation_session is None:
+            print(f'Did not find any data for {animal} {structure}')
             return
 
-        for annotation_session in annotation_sessions:
-            animal = annotation_session.FK_prep_id
+        # polygons are in micrometers
+        polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
+        if len(polygons) == 0:
+            print(f'Found data for {animal} {structure}, but the data is empty')
+            return
+        
 
-            #if annotation_session.id not in [8113, 7387]:
-            #    continue
-            if animal not in ['DK78XXX']:
-                continue
+        origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+        # we want to keep the origin in micrometers, so we multiply by the allen um
+        #####origin = origin * self.um
 
-            # polygons are in micrometers
-            polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
-            if len(polygons) < 10:
-                continue
+        if origin is None or volume is None:
+            print(f"{animal} {structure} has no volumes to merge")
+            return None
+        
+        volume = np.swapaxes(volume, 0, 2)
+        volume = gaussian(volume, 1.0)
+        volume[volume != 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+        volume = volume.astype(np.uint8)
+        #com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.um + (origin * self.um)
+        com = (np.array( center_of_mass(volume) ))  + origin
+        
+        if debug:
+            if structure == 'SC':
+                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
+        else:
+            brainMerger.coms_to_merge[structure].append(com)
+            brainMerger.origins_to_merge[structure].append(origin)
+            brainMerger.volumes_to_merge[structure].append(volume)
 
-            origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
-            # we want to keep the origin in micrometers, so we multiply by the allen um
-            #####origin = origin * self.um
+            structure_path = os.path.join(self.data_path, animal, "structure2allen")
+            os.makedirs(structure_path, exist_ok=True)
+            np.save(os.path.join(structure_path, f"{structure}.npy"), volume)
 
-            if origin is None or volume is None:
-                print(f"{structure} {annotation_session.FK_prep_id} has no volumes to merge")
-                return None
-            
-            volume = np.swapaxes(volume, 0, 2)
-            volume = gaussian(volume, 1.0)
-            volume[volume > 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
-            volume = volume.astype(np.uint8)
-            com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.um + (origin * self.um)
-            print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
-
-            if not debug:
-                brainMerger.coms_to_merge[structure].append(com)
-                brainMerger.origins_to_merge[structure].append(origin)
-                brainMerger.volumes_to_merge[structure].append(volume)
-
-                structure_name = f"{structure}_{annotation_session.id}"
-                brain_com_path = os.path.join(self.data_path, animal, "com")
-                brain_origin_path = os.path.join(self.data_path, animal, "origin")
-                brain_structure_path = os.path.join(self.data_path, animal, "structure")
-                os.makedirs(brain_com_path, exist_ok=True)
-                os.makedirs(brain_origin_path, exist_ok=True)
-                os.makedirs(brain_structure_path, exist_ok=True)
-                np.savetxt(os.path.join(brain_com_path, f"{structure_name}.txt"), com)
-                np.savetxt(os.path.join(brain_origin_path, f"{structure_name}.txt"), origin)
-                np.save(os.path.join(brain_structure_path, f"{structure_name}.npy"), volume)
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, no calculations, only saving!"""
@@ -422,12 +417,12 @@ class BrainStructureManager:
             #if 'TG' in structure:
             #    com = com0
 
-            x_start, y_start, z_start = self.get_start_positions(volume, com)
+            #x_start, y_start, z_start = self.get_start_positions(volume, com)
 
             # Using the origin makes the structures appear a bit too far up
-            #x_start = int(round(origin[0]))
-            #y_start = int(round(origin[1]))
-            #z_start = int(round(origin[2]))
+            x_start = int(round(origin[0]))
+            y_start = int(round(origin[1]))
+            z_start = int(round(origin[2]))
 
             x_end = x_start + volume.shape[0]
             y_end = y_start + volume.shape[1]
@@ -1040,6 +1035,7 @@ class BrainStructureManager:
         xlength = max_x - min_x
         ylength = max_y - min_y
         slice_size = (int(round(ylength)), int(round(xlength)))
+        print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=}', end=" ")
         volume = []
         # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
         sections = []
@@ -1053,8 +1049,9 @@ class BrainStructureManager:
 
         volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
          # pad the volume in the z axis
-        volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
+        #volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
         min_z = min(sections)
+        print(f"mean z = {np.mean(sections)}")
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
         return origin, volume
 
@@ -1070,7 +1067,7 @@ class BrainStructureManager:
         
         structures = list(aligned_dict.keys())
         desc = f"Create {self.animal} polygons"
-        for structure in structures:
+        for structure in tqdm(structures, desc=desc):
             polygons = aligned_dict[structure]
             self.create_polygons_from_one_structure(structure, polygons)
 
@@ -1395,9 +1392,6 @@ class BrainStructureManager:
         json_entry["childJsons"] = reformatted_polygons
         json_entry["description"] = f"{description}"   
 
-
-
-
         if self.debug:
             centroid = json_entry["centroid"]
             pixel_point = [round(v * M_UM_SCALE / self.um) for v in centroid]
@@ -1426,15 +1420,20 @@ class BrainStructureManager:
             annotator_id = 1 # hard coded to Edward 
             label_ids = self.get_label_ids(structure)
 
-            annotation_session = (
-                self.sqlController.session.query(AnnotationSession)
-                .filter(AnnotationSession.active == True)
-                .filter(AnnotationSession.FK_prep_id == self.animal)
-                .filter(AnnotationSession.FK_user_id == annotator_id)
-                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-                .filter(AnnotationSession.annotation["type"] == "volume")
-                .one_or_none()
-            )
+            try:
+                annotation_session = (
+                    self.sqlController.session.query(AnnotationSession)
+                    .filter(AnnotationSession.active == True)
+                    .filter(AnnotationSession.FK_prep_id == self.animal)
+                    .filter(AnnotationSession.FK_user_id == annotator_id)
+                    .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                    .filter(AnnotationSession.annotation["type"] == "volume")
+                    .one_or_none()
+                )
+            except MultipleResultsFound as mrf:
+                print(f'Error, multiple results found for {structure}')
+                print(mrf)
+                return
 
             if annotation_session is None:
                 print(f"Inserting {structure}")

@@ -740,11 +740,14 @@ class VolumeRegistration:
         affine_transform.SetTranslation(t)
         affine_transform.SetCenter(c)
 
-        matrix = np.array(R).reshape((3, 3))
-        translation = np.array(t)
+        R = np.array(R).reshape((3, 3))
+        t = np.array(t)
         affine = np.eye(4)
-        affine[:3, :3] = matrix
-        affine[:3, 3] = translation + c - matrix @ c
+        affine[:3, :3] = R
+        r_trans = (np.dot(R, c) - c - t).T * [1, 1, -1]
+
+        affine[:3, 3] = r_trans
+
 
 
         sitk.WriteTransform(affine_transform, self.affine_matrix_path)
@@ -838,6 +841,8 @@ class VolumeRegistration:
         elastixImageFilter.SetParameter("ResultImageFormat", "tif")
         elastixImageFilter.SetParameter("NumberOfResolutions", self.number_of_resolutions) #### Very important, less than 6 gives lousy results.
         elastixImageFilter.SetParameter("DefaultPixelValue", "0")
+        elastixImageFilter.SetParameter("ComputeZYX", "true")
+        
         elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()

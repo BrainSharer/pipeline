@@ -96,7 +96,7 @@ class BrainMerger():
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
             save_mesh(aligned_structure, mesh_filepath)
 
-    def save_atlas_meshes_origins_volumes(self):
+    def save_atlas_meshes_origins_volumes(self, um):
         #coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
         origins = {structure: self.get_mean_coordinates(origin) for structure, origin in self.origins_to_merge.items()}
         origins_array = np.array(list(origins.values()))
@@ -106,9 +106,8 @@ class BrainMerger():
             origin_allen = origins[structure]
             volume = self.volumes[structure]
             com = center_of_mass(volume)
-            com_um = (com + origin_allen) * 10
-            
-            
+            com_um = (com + origin_allen) * um # get COM in um
+                        
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
