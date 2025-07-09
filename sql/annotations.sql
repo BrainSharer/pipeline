@@ -10,8 +10,8 @@ where 1=1
 -- and as2.FK_prep_id in ('DK55')
 -- and as2.active = 1
 and al.label = 'SC'
-and as2.id = 8306
-and as2.FK_prep_id  = 'Allen'
+and as2.id >= 8306
+-- and as2.FK_prep_id  = 'Allen'
 order by as2.created desc, as2.FK_prep_id, au.username, al.label;
 -- coms
 select as2.FK_prep_id, au.username, al.label, JSON_EXTRACT(as2.annotation, '$.point')
