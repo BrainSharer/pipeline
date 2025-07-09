@@ -28,7 +28,7 @@ from distributed import progress
 # from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
 from library.omezarr.builder_image_utils import TiffManager3d
-from library.utilities.dask_utilities import get_pyramid, get_store, mean_dtype
+from library.utilities.dask_utilities import mean_dtype
 
 class BuilderMultiscaleGenerator:
 
@@ -37,7 +37,11 @@ class BuilderMultiscaleGenerator:
         resolution_0_path = os.path.join(self.output, '0')
         if os.path.exists(resolution_0_path):
             print(f'Resolution 0 already exists at {resolution_0_path}')                
-
+            if self.debug:
+                store = store = zarr.storage.NestedDirectoryStore(resolution_0_path)
+                volume = zarr.open(store, 'r')
+                print(volume.info)
+                print(f'volume.shape={volume.shape}')
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
@@ -68,9 +72,10 @@ class BuilderMultiscaleGenerator:
         print(f'len(stack)={len(stacks)}')
         stack = da.stack(stacks, axis=0)
 
-        print()
-        self.originalChunkSize = (1, *self.originalChunkSize)
-        print(f'stack shape={stack.shape} stack chunks={stack.chunksize} at originalChunkSize={self.originalChunkSize}')
+        print(f'stack type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
+        stack = stack[None,...] # this creates the time dimension
+        self.originalChunkSize = (1, 1, *self.originalChunkSize)
+        print(f'Final stack shape={stack.shape} stack chunks={stack.chunksize} at originalChunkSize={self.originalChunkSize}')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,
@@ -100,6 +105,10 @@ class BuilderMultiscaleGenerator:
         read_storepath = os.path.join(self.output, str(mip-1))
         if os.path.exists(read_storepath):
             print(f'Resolution {mip-1} exists at {read_storepath} loading ...')
+        else:
+            print(f'Resolution {mip-1} does not exist at {read_storepath}')
+            exit(1)
+
         write_storepath = os.path.join(self.output, str(mip))
         if os.path.exists(write_storepath):
             print(f'Resolution {mip} exists at {write_storepath}')
@@ -108,20 +117,21 @@ class BuilderMultiscaleGenerator:
                 volume = zarr.open(store, 'r')
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
-
             return
 
+        print(f'Creating resolution {mip} from {read_storepath}')
         previous_stack = da.from_zarr(url=read_storepath)
         print(f'Creating new store from previous shape={previous_stack.shape} chunks={previous_stack.chunksize}')
-        axis_scales = [1, 1, 2, 2]
+        axis_scales = [1, 1, 1, 2, 2]
         axis_dict = {
             0: axis_scales[0],
             1: axis_scales[1],
             2: axis_scales[2],
             3: axis_scales[3],
+            4: axis_scales[4],
         }
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        chunks = (1, ) + self.pyramidMap[mip]['chunk']
+        chunks = (1, 1, ) + self.pyramidMap[mip]['chunk'] # add extra dimenision at the beginning for time and channel
         print(f'chunks = {chunks}')
         scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')

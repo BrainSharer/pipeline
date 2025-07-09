@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-degrees = 270
+degrees = 180
 theta = math.radians(degrees)
 
 #theta = np.pi * 3/4
@@ -48,3 +48,4 @@ k = (M1[1,0]-M1[0,1])/(4*r)
 print(f"\"crossSectionOrientation\": [{i},{j},{k},{r}],")
 print("For zarr")
 print(f"\"crossSectionOrientation\": [0, 0, 0, -1],")
+print("Put dimensions at x,y,z,t")

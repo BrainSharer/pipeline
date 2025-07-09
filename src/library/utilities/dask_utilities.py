@@ -198,7 +198,7 @@ def open_store(storepath, res, mode="a"):
         print(ex)
 
 def get_store(storepath, res, mode="a"):
-    return get_store_from_path(os.path.join(storepath, f'scale{res}'), mode=mode)
+    return get_store_from_path(os.path.join(storepath, str(res)), mode=mode)
 
 def get_store_from_path(path, mode="a"):
     store = zarr.storage.NestedDirectoryStore(path)
