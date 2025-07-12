@@ -53,6 +53,7 @@ class ImageManager:
         self.midfile = self.files[self.midpoint] 
         midfilepath = os.path.join(directory, self.midfile)
         self.img = read_image(midfilepath)
+        self.img = np.squeeze(self.img)  # Remove single-dimensional entries from the shape of the array
         self.dtype = self.img.dtype
         self.ndim = self.img.ndim
         self.shape = self.img.shape
