@@ -119,6 +119,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
+    rigid_params["ResultImageFormat"] = ["tif"]
     if debug:
         rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
