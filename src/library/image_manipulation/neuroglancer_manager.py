@@ -325,6 +325,7 @@ class NumpyToNeuroglancer():
         #img = read_image(infile)
         #img = tifffile.imread(infile)
         if img.ndim > 2:
+            img = np.squeeze(img)
             img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
             img = np.rot90(img, 1)
             img = np.flipud(img)
