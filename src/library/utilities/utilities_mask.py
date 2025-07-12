@@ -68,6 +68,7 @@ def place_image(img, file: str, max_width, max_height, bgcolor):
             print(f'Error: {e}')
             sys.exit()
     elif (img.ndim == 3 and img.shape[2] == 3):  # Color (RGB)
+        bgcolor = tuple([bgcolor] * 3) if isinstance(bgcolor, int) else bgcolor
         r, g, b = (np.full((max_height, max_width), bg, dtype=dtype) for bg in bgcolor)
         try:
             r[startr:endr, startc:endc] = img[... , 0]
@@ -340,9 +341,9 @@ def clean_and_rotate_image(file_key):
         r = cleaned[:,:,0]
         g = cleaned[:,:,1]
         b = cleaned[:,:,2]
-        r[r == 0] = bgcolor[0]
-        g[g == 0] = bgcolor[1]
-        b[b == 0] = bgcolor[2]
+        r[r == 0] = bgcolor
+        g[g == 0] = bgcolor
+        b[b == 0] = bgcolor
         cleaned = cv2.merge((b,g,r)) # put them back in the correct order for cv2
 
     if (channel == 1 and not (cleaned.dtype == np.uint8 and cleaned.ndim == 3)):    

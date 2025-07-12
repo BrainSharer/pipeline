@@ -108,11 +108,6 @@ class ImageCleaner:
             print(f'Removing {CLEANED}')
             shutil.rmtree(CLEANED)        
         os.makedirs(CLEANED, exist_ok=True)
-        image_manager = ImageManager(INPUT)
-        if self.mask_image > 0: 
-            self.bgcolor = image_manager.get_bgcolor()
-        else:
-            self.bgcolor = 0
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
 
@@ -124,8 +119,6 @@ class ImageCleaner:
         :param MASKS: str of file location of masks
         """
         
-        image_manager = ImageManager(INPUT)
-        bgcolor = image_manager.get_bgcolor()
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height
         if self.downsample:
@@ -154,7 +147,7 @@ class ImageCleaner:
                     max_width,
                     max_height,
                     self.channel,
-                    bgcolor
+                    self.bgcolor
                 ]
             )
 
