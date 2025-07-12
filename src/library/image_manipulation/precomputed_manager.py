@@ -73,6 +73,7 @@ class NgPrecomputedMaker:
         num_channels = image_manager.num_channels
         print(image_manager.width, image_manager.height, image_manager.len_files, image_manager.shape)
         print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels} and size={image_manager.size}')
+        
         ng = NumpyToNeuroglancer(
             self.animal,
             None,

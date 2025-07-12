@@ -61,15 +61,17 @@ class ImageManager:
         if self.ndim == 4:
             self.width = self.shape[-1]
             self.height = self.shape[-2]
+            self.num_channels = self.shape[-1]
         elif self.ndim == 3:
             self.width = self.shape[1]
             self.height = self.shape[0]
+            self.num_channels = self.shape[-1]
         else:
             self.width = self.shape[1]
             self.height = self.shape[0]
+            self.num_channels = 1
         self.center = np.array([self.width, self.height]) / 2
         self.volume_size = (self.width, self.height, self.len_files)
-        self.num_channels = self.img.shape[1] if len(self.img.shape) > 2 else 1
         self.size = self.img.size
 
     def get_bgcolor(self, maskpath=None):
