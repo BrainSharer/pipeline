@@ -316,11 +316,11 @@ class NumpyToNeuroglancer():
         #return
 
         # try:
-        with Image.open(infile) as img:
-            img_array = np.array(img, dtype=self.precomputed_vol.dtype)
+        #with Image.open(infile) as img:
+        #    img_array = np.array(img, dtype=self.precomputed_vol.dtype)
 
-        # img = read_image(infile)
-        img=img_array
+        img = read_image(infile)
+        #img=img_array
 
         #img = read_image(infile)
         #img = tifffile.imread(infile)
