@@ -125,17 +125,18 @@ class OmeZarrManager():
             scaling_factor = SCALING_FACTOR
             image_manager = ImageManager(input)
             mips = 3
+            originalChunkSize = [1, image_manager.shape[0], image_manager.shape[0]] # 1796x984
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
             image_manager = ImageManager(input)
             mips = 8
+            target = 3000
+            chunk_y = closest_divisors_to_target(image_manager.height, target)
+            chunk_x = closest_divisors_to_target(image_manager.width, target)
+            originalChunkSize = [1, chunk_y, chunk_x] # 1796x984
         # vars from stack to multi
 
-        target = 1024
-        chunk_y = closest_divisors_to_target(image_manager.height, target)
-        chunk_x = closest_divisors_to_target(image_manager.width, target)
-        originalChunkSize = [1, chunk_y, chunk_x] # 1796x984
         files = []
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)
