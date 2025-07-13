@@ -132,6 +132,7 @@ def get_pyramid(initial_shape, initial_chunk, initial_resolution, mips) -> dict:
 
     transformations = {}
     transformations[0] = {'shape': initial_shape, 'chunk': initial_chunk, 'resolution': initial_resolution, 'downsample': (1, 1, 1)}
+    z_chunk = closest_divisors_to_target(initial_shape[0], 64)
     for mip in range(1, mips + 1):
         previous_chunks = transformations[mip-1]['chunk']
         previous_shape = transformations[mip-1]['shape']
@@ -139,11 +140,10 @@ def get_pyramid(initial_shape, initial_chunk, initial_resolution, mips) -> dict:
         shape = (initial_shape[0], previous_shape[1] // 2, previous_shape[2] // 2)
 
         if mip < 3:
-            chunks = (64, previous_chunks[1]//2, previous_chunks[2]//2)
+            chunks = (z_chunk, previous_chunks[1]//2, previous_chunks[2]//2)
         else:
             chunks = (64, 64, 64)
 
-        print(f'previous resolution={previous_resolution}')
         resolution = (initial_resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
         transformations[mip] = {'shape': shape, 'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
     return transformations
@@ -218,3 +218,18 @@ def get_size_GB(shape,dtype):
         current_size *=8
     
     return current_size
+
+
+def closest_divisors_to_target(number, target):
+    def find_divisors(n):
+        divisors = set()
+        for i in range(1, int(n**0.5)+1):
+            if n % i == 0:
+                divisors.add(i)
+                divisors.add(n // i)
+        return divisors
+
+    divisors = find_divisors(number)
+    closest = min(divisors, key=lambda x: abs(x - target))
+
+    return closest

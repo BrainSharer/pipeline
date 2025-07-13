@@ -22,6 +22,7 @@ from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
+from library.utilities.dask_utilities import closest_divisors_to_target
 from library.utilities.utilities_process import SCALING_FACTOR, write_image
 
 
@@ -123,15 +124,18 @@ class OmeZarrManager():
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
             image_manager = ImageManager(input)
-            originalChunkSize = [1, image_manager.height, image_manager.width] # 1796x984
             mips = 3
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
             image_manager = ImageManager(input)
-            originalChunkSize = [1, image_manager.height//16, image_manager.width//16] # 1796x984
             mips = 8
         # vars from stack to multi
+
+        target = 1024
+        chunk_y = closest_divisors_to_target(image_manager.height, target)
+        chunk_x = closest_divisors_to_target(image_manager.width, target)
+        originalChunkSize = [1, chunk_y, chunk_x] # 1796x984
         files = []
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)
@@ -178,9 +182,7 @@ class OmeZarrManager():
             threads_per_worker=omezarr.sim_jobs,
             memory_limit=mem_per_worker)
 
-        dask.config.set(temporary_directory=self.scratch_space)
-        """
-        """
+        dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         with Client(cluster) as client:
             omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):

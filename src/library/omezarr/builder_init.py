@@ -77,8 +77,6 @@ class builder(BuilderDownsample,
         out_shape = self.shape_3d
         initial_chunk = self.originalChunkSize
 
-        print(f'initial chunk = {initial_chunk}')
-        print(f'resolution = {self.resolution}')
 
         self.pyramidMap = get_pyramid(out_shape, initial_chunk, resolution,  self.mips)
         for k, v in self.pyramidMap.items():

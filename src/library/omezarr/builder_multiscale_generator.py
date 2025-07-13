@@ -22,15 +22,16 @@ from timeit import default_timer as timer
 import zarr
 from dask.delayed import delayed
 import dask.array as da
+import dask
+import skimage.io
 from distributed import progress
 
 # Project specific imports
-# from library.omezarr.builder_image_utils import TiffManager3d
 from library.omezarr import utils
-from library.omezarr.builder_image_utils import TiffManager3d
 from library.utilities.dask_utilities import mean_dtype
 
 class BuilderMultiscaleGenerator:
+
 
     def write_resolution_0(self, client):
         start_time = timer()
@@ -45,41 +46,35 @@ class BuilderMultiscaleGenerator:
             return
 
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
-        print(f'Stack has {self.channels} channels and {len(self.files)} files')
-        stacks = []
+        imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
+        lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
+        sample = lazy_images[0].compute()  # load the first image (assume rest are same shape/dtype)
+        arrays = [da.from_delayed(lazy_image,           # Construct a small Dask array
+                                dtype=sample.dtype,   # for every lazy value
+                                shape=sample.shape)
+                for lazy_image in lazy_images]
 
-        for channel in range(0, self.channels):
-            s = sorted([[x] for x in self.files])
-            #s = sorted(self.files)
-            test_image = TiffManager3d(s, channel)
-            print(f'\nchannel={channel} test_image shape={test_image.shape} chunks={test_image.chunks}')
-            optimum_chunks = utils.optimize_chunk_shape_3d_2(
-                test_image.shape,
-                test_image.chunks,
-                self.originalChunkSize,
-                test_image.dtype,
-                self.res0_chunk_limit_GB
-            )
-            test_image.chunks = optimum_chunks
-            print(f'Using optimum chunks={optimum_chunks} for resolution 0')
-            print(f'test_image shape={test_image.shape} chunks={test_image.chunks}')
-            s = [test_image.clone_manager_new_file_list(x) for x in s]
-            s = [da.from_array(x, chunks=x.chunks, name=False, asarray=False) for x in s]
-            print(f's[0] type={type(s[0])} shape={s[0].shape} chunksize={s[0].chunksize}')
-            s = da.concatenate(s)
-            stacks.append(s)
+        stack = da.stack(arrays, axis=0)
 
-        print(f'len(stack)={len(stacks)}')
-        stack = da.stack(stacks, axis=0)
+        if sample.ndim == 2:
+            stack = stack[None, None, ...]  # Add time and channel dimensions
+        elif sample.ndim == 3:
+            stack = da.moveaxis(stack, source=[3, 0], destination=[0, 1])
+            stack = stack[None, ...]  # Add time dimension
+        else:
+            print(f'Unexpected sample.ndim={sample.ndim} for stack {stack}')
+            print(f'sample shape={sample.shape} dtype={sample.dtype}')
+            print(f'stack shape={stack.shape} chunksize={stack.chunksize} dtype={stack.dtype}')
+            print('This is not a 2D or 3D image stack, exiting')
+            sys.exit(1)
 
-        print(f'stack type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-        stack = stack[None,...] # this creates the time dimension
-        self.originalChunkSize = (1, 1, *self.originalChunkSize)
-        print(f'Final stack shape={stack.shape} stack chunks={stack.chunksize} at originalChunkSize={self.originalChunkSize}')
+        chunks = (1, 1, ) + self.pyramidMap[0]['chunk']        
+        stack = stack.rechunk(chunks)  # Rechunk to original chunk size
+        print(f'Stack type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}\n')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,
-            chunks=self.originalChunkSize,
+            chunks=chunks,
             store=store,
             overwrite=True,
             compressor=self.compressor,
@@ -99,6 +94,8 @@ class BuilderMultiscaleGenerator:
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Resolution 0 completed in {total_elapsed_time} seconds")
+
+
 
     def write_mips(self, mip, client):
         print()
@@ -494,6 +491,4 @@ class BuilderMultiscaleGenerator:
         
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir)
-
-
 
