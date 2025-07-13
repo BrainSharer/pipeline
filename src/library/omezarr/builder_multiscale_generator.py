@@ -48,29 +48,31 @@ class BuilderMultiscaleGenerator:
         print(f"Building zarr store for resolution 0 at {resolution_0_path}")
         imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
         lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
-        sample = lazy_images[0].compute()  # load the first image (assume rest are same shape/dtype)
+
         arrays = [da.from_delayed(lazy_image,           # Construct a small Dask array
-                                dtype=sample.dtype,   # for every lazy value
-                                shape=sample.shape)
+                                dtype=self.dtype,   # for every lazy value
+                                shape=self.img_shape)
                 for lazy_image in lazy_images]
 
         stack = da.stack(arrays, axis=0)
+        print(f'Stack after stacking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
 
-        if sample.ndim == 2:
+        if self.ndim == 2:
             stack = stack[None, None, ...]  # Add time and channel dimensions
-        elif sample.ndim == 3:
+        elif self.ndim == 3:
             stack = da.moveaxis(stack, source=[3, 0], destination=[0, 1])
             stack = stack[None, ...]  # Add time dimension
         else:
-            print(f'Unexpected sample.ndim={sample.ndim} for stack {stack}')
-            print(f'sample shape={sample.shape} dtype={sample.dtype}')
+            print(f'Unexpected sample.ndim={self.ndim} for stack {stack}')
+            print(f'sample shape={self.img_shape} dtype={self.dtype}')
             print(f'stack shape={stack.shape} chunksize={stack.chunksize} dtype={stack.dtype}')
             print('This is not a 2D or 3D image stack, exiting')
             sys.exit(1)
 
+        print(f'Stack after reshaping type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         chunks = (1, 1, ) + self.pyramidMap[0]['chunk']        
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
-        print(f'Stack type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}\n')
+        print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         store = self.get_store(0)
         z = zarr.zeros(
             stack.shape,

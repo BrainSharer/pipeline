@@ -73,6 +73,7 @@ class builder(BuilderDownsample,
         self.dtype = image_manager.dtype
         self.ndim = image_manager.ndim
         self.channels = image_manager.num_channels
+        self.img_shape = image_manager.shape
         self.shape_3d = (len(self.files),*image_manager.shape)
         out_shape = self.shape_3d
         initial_chunk = self.originalChunkSize
