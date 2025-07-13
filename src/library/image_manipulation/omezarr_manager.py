@@ -175,13 +175,7 @@ class OmeZarrManager():
             mips=mips,
             available_memory=self.available_memory
         )
-        client = None
-        omezarr.write_resolution_0(client)
-        for mip in range(1, len(omezarr.pyramidMap)):
-            omezarr.write_mips(mip, client)
-            omezarr.cleanup()
-
-        exit(1)
+        
         mem_per_worker = round(omezarr.available_memory / omezarr.workers)
         print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
