@@ -107,7 +107,6 @@ class OmeZarrManager():
     def create_omezarr(self):
         """Create OME-Zarr (NGFF) data store. WIP
         """
-        start_time = timer()
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
@@ -189,9 +188,6 @@ class OmeZarrManager():
                 omezarr.write_mips(mip, client)
                 omezarr.cleanup()
 
-        #end_time = timer()
-        #total_elapsed_time = round((end_time - start_time), 2)
-        #print(f'Creating omezarr completed in {total_elapsed_time} seconds"')
 
             
 

@@ -50,6 +50,7 @@ class SlideCziTif(Base, AtlasModel):
     comments = Column(String)
     channel = Column(Integer)
     scene_index = Column(Integer)
+    scene_order = Column(Integer)
     processing_duration = Column(Float, nullable=False)
     
 

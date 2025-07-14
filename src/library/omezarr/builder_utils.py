@@ -28,7 +28,7 @@ class BuilderUtils:
     def get_store(self,res, mode='a'):
         return self.get_store_from_path(self.scale_name(res), mode=mode)
 
-    def get_store_from_path(self,path, mode='a'):
+    def get_store_from_path(self, path, mode='a'):
         # Add custom methods for each store type, if available.
         try:
             if self.zarr_store_type == H5_Nested_Store:
