@@ -57,9 +57,11 @@ class BuilderMultiscaleGenerator:
 
         if self.ndim == 2:
             stack = stack[None, None, ...]  # Add time and channel dimensions
+            chunks = self.pyramidMap[0]['chunk']        
         elif self.ndim == 3:
             stack = da.moveaxis(stack, source=[3, 0], destination=[0, 1])
             stack = stack[None, ...]  # Add time dimension
+            chunks = self.pyramidMap[0]['chunk']        
         else:
             print(f'Unexpected sample.ndim={self.ndim} for stack {stack}')
             print(f'sample shape={self.img_shape} dtype={self.dtype}')
@@ -67,8 +69,7 @@ class BuilderMultiscaleGenerator:
             print('This is not a 2D or 3D image stack, exiting')
             sys.exit(1)
 
-        print(f'Stack after reshaping type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-        chunks = (1, 1, ) + self.pyramidMap[0]['chunk']        
+        print(f'Stack after reshaping and rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         store = self.get_store(0)
@@ -129,7 +130,7 @@ class BuilderMultiscaleGenerator:
             4: axis_scales[4],
         }
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
-        chunks = (1, 1, ) + self.pyramidMap[mip]['chunk'] # add extra dimenision at the beginning for time and channel
+        chunks = self.pyramidMap[mip]['chunk'] # add extra dimenision at the beginning for time and channel
         print(f'chunks = {chunks}')
         scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')

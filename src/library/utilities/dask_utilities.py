@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import dask.array as da
 import numpy as np
-import psutil
 import tifffile
 import toolz as tz
 from skimage.io import imread
@@ -128,25 +127,6 @@ def get_transformations(axes, n_levels) -> tuple[dict,dict]:
         transformations.append({"scale": scales, "type": "scale"})
     return transformations
 
-def get_pyramid(initial_shape, initial_chunk, initial_resolution, mips) -> dict:
-
-    transformations = {}
-    transformations[0] = {'shape': initial_shape, 'chunk': initial_chunk, 'resolution': initial_resolution, 'downsample': (1, 1, 1)}
-    z_chunk = closest_divisors_to_target(initial_shape[0], 64)
-    for mip in range(1, mips + 1):
-        previous_chunks = transformations[mip-1]['chunk']
-        previous_shape = transformations[mip-1]['shape']
-        previous_resolution = transformations[mip-1]['resolution']
-        shape = (initial_shape[0], previous_shape[1] // 2, previous_shape[2] // 2)
-
-        if mip < 3:
-            chunks = (z_chunk, previous_chunks[1]//2, previous_chunks[2]//2)
-        else:
-            chunks = (64, 64, 64)
-
-        resolution = (initial_resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
-        transformations[mip] = {'shape': shape, 'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
-    return transformations
 
 
 

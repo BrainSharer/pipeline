@@ -16,7 +16,7 @@ from library.omezarr.builder_img_processing import BuilderDownsample
 from library.omezarr.builder_utils import BuilderUtils
 from library.omezarr.builder_ome_zarr_utils import BuilderOmeZarrUtils
 from library.omezarr.builder_multiscale_generator import BuilderMultiscaleGenerator
-from library.utilities.dask_utilities import get_pyramid
+from library.utilities.dask_utilities import closest_divisors_to_target
 
 class builder(BuilderDownsample,
             BuilderUtils,
@@ -75,12 +75,24 @@ class builder(BuilderDownsample,
         self.channels = image_manager.num_channels
         self.img_shape = image_manager.shape
         self.shape_3d = (len(self.files),*image_manager.shape)
-        out_shape = self.shape_3d
-        initial_chunk = self.originalChunkSize
+
+        self.pyramidMap = {}
+        self.pyramidMap[0] = {'chunk': self.originalChunkSize, 'resolution': resolution, 'downsample': (1, 1, 1)}
+        z_chunk = closest_divisors_to_target(image_manager.len_files, 64)
+        for mip in range(1, mips + 1):
+            previous_chunks = self.pyramidMap[mip-1]['chunk']
+            previous_resolution = self.pyramidMap[mip-1]['resolution']
+
+            if mip < 3:
+                chunks = (1, self.channels, z_chunk, previous_chunks[-2]//2, previous_chunks[-1]//2)
+            else:
+                chunks = (1, self.channels, 64, 64, 64)
+
+            resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
+            self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
 
 
-        self.pyramidMap = get_pyramid(out_shape, initial_chunk, resolution,  self.mips)
+
         for k, v in self.pyramidMap.items():
             print(k,v)
-        
         self.build_zattrs()

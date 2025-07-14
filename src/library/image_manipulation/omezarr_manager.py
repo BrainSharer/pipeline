@@ -107,6 +107,7 @@ class OmeZarrManager():
     def create_omezarr(self):
         """Create OME-Zarr (NGFF) data store. WIP
         """
+        start_time = timer()
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
@@ -125,7 +126,7 @@ class OmeZarrManager():
             scaling_factor = SCALING_FACTOR
             image_manager = ImageManager(input)
             mips = 3
-            originalChunkSize = [1, image_manager.shape[0], image_manager.shape[0]] # 1796x984
+            originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # 1796x984
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
@@ -134,7 +135,7 @@ class OmeZarrManager():
             target = 3000
             chunk_y = closest_divisors_to_target(image_manager.height, target)
             chunk_x = closest_divisors_to_target(image_manager.width, target)
-            originalChunkSize = [1, chunk_y, chunk_x] # 1796x984
+            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
         # vars from stack to multi
 
         files = []
@@ -157,9 +158,7 @@ class OmeZarrManager():
         omero_dict = omero
 
 
-        storepath = os.path.join(
-            self.fileLocationManager.www, "neuroglancer_data", storefile
-        )
+        storepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", storefile)
         xy = xy_resolution * scaling_factor
         resolution = (z_resolution, xy, xy)
 
@@ -175,7 +174,7 @@ class OmeZarrManager():
             mips=mips,
             available_memory=self.available_memory
         )
-        
+
         mem_per_worker = round(omezarr.available_memory / omezarr.workers)
         print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
@@ -189,5 +188,10 @@ class OmeZarrManager():
             for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
                 omezarr.cleanup()
+
+        #end_time = timer()
+        #total_elapsed_time = round((end_time - start_time), 2)
+        #print(f'Creating omezarr completed in {total_elapsed_time} seconds"')
+
             
 
