@@ -110,7 +110,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["Resampler"] = ["DefaultResampler"]
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
-    rigid_params["NumberOfResolutions"] = ["5"]
+    rigid_params["NumberOfResolutions"] = ["6"]
     rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
     rigid_params["Transform"] = ["EulerTransform"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
@@ -121,7 +121,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["SampleRegionSize"] = ["50"]
     rigid_params["ResultImageFormat"] = ["tif"]
     if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["150"]
+        rigid_params["MaximumNumberOfIterations"] = ["250"]
     else:
         rigid_params["MaximumNumberOfIterations"] = ["1500"]
 

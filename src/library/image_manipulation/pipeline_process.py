@@ -290,6 +290,19 @@ class Pipeline(
 
 
     def omezarr(self):
+        """Note for RGB ndim=3 images!!!!
+        The omezarr proess here works but you will need to adjust neuroglancer when you load it:
+        1. Open up the JSON data in neuroglancer (Edit JSON state icon top right). Add
+        "crossSectionOrientation": [0, 0, 0, -1] to the JSON state. right above crossSectionScale.
+        2. Adjust the dimensions so x is at top, then y,z,t, click 'Apply changes
+        3. The position will now be wrong, so adjust the x,y,z to mid positions in the x,y,z top left. 
+        4. Set z to 0 and
+        5. Rename the c' channel to c^ :
+        From the developer https://github.com/google/neuroglancer/issues/298
+        To make a dimension available as a "channel" dimension to the shader, you need to rename the dimension to end with "^", e.g. "c^". 
+        You can do that by double clicking the dimension name in the top bar, or using the "Transform" widget on the "Source" tab of the 
+        layer. However, this is currently only supported if that dimension is not chunked, i.e. the chunk size must be 3 in your case.
+        """
         print(self.TASK_OMEZARR)
         self.check_ram()
 
