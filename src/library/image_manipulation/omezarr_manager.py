@@ -13,8 +13,11 @@ distributed:
 """
 import os
 import inspect
+import shutil
+from time import sleep
 import dask
 
+import dask.config
 from dask.distributed import Client
 from distributed import LocalCluster
 from timeit import default_timer as timer
@@ -174,6 +177,7 @@ class OmeZarrManager():
             available_memory=self.available_memory
         )
 
+        dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         mem_per_worker = round(omezarr.available_memory / omezarr.workers)
         print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
         mem_per_worker = str(mem_per_worker) + 'GB'
@@ -181,13 +185,11 @@ class OmeZarrManager():
             threads_per_worker=omezarr.sim_jobs,
             memory_limit=mem_per_worker)
 
-        dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
+
         with Client(cluster) as client:
             omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):
-                omezarr.write_mips(mip, client)
-                omezarr.cleanup()
+                omezarr.write_mips(mip, client)                    
 
-
-            
-
+        cluster.close()
+        omezarr.cleanup()

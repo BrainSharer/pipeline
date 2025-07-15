@@ -167,7 +167,6 @@ class BuilderMultiscaleGenerator:
                 Exception: If an error occurs during the cleanup process.
             """
         print(f'\nCleaning up {self.tmp_dir} and orphaned lock files')
-        sleep(1) # give the system time to finish writing
         
         countKeyboardInterrupt = 0
         countException = 0

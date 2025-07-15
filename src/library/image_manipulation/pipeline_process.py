@@ -8,6 +8,7 @@ All imports are listed by the order in which they are used in the
 """
 
 import os
+import shutil
 import SimpleITK as sitk
 import sys
 import psutil
@@ -28,7 +29,6 @@ from library.image_manipulation.parallel_manager import ParallelManager
 from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
-
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.database_model.scan_run import IMAGE_MASK
 
@@ -317,6 +317,12 @@ class Pipeline(
             os.makedirs(self.scratch_space, exist_ok=True)
     
         self.create_omezarr()
+        scratch_parent = os.path.dirname(self.scratch_space)
+        if os.path.exists(scratch_parent) and os.path.isdir(scratch_parent):
+            print(f'Removing scratch space: {scratch_parent}')
+            shutil.rmtree(scratch_parent)
+        else:
+            print(f'Scratch space {scratch_parent} does not exist or is not a directory, skipping removal.')
         print(f'Finished {self.TASK_OMEZARR}.')
 
     def omezarr_info(self):
