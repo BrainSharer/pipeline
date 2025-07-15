@@ -58,7 +58,7 @@ class ElastixManager():
         
         self.fileLogger.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
         
-        for i in range(1, nfiles):
+        for i in tqdm(range(1, nfiles), desc="Creating within stack transformations"):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
