@@ -66,9 +66,17 @@ if __name__ == "__main__":
     parser.add_argument("--y", help="Enter y", required=False, default=0, type=int)
     parser.add_argument("--sampling", help="Random sampling qty", required=False, default=0, type=int)
 
+    #SEGMENTATION ARGUMENTS [USED WITH 'detect' TASK]
+    parser.add_argument("--kernel", help="Kernel size for Gaussian blurring [SEGMENTATION]", required=False, default=401, type=int)
+    parser.add_argument("--sigma", help="Sigma for Gaussian blurring [SEGMENTATION]", required=False, default=350, type=int)
+    parser.add_argument("--min-segment", help="Minimum segmentation size (pixels)", required=False, default=100, type=int)
+    parser.add_argument("--max-segment", help="Maximum segmentation size (pixels)", required=False, default=100000, type=int)
+    parser.add_argument("--segment-threshold", help="Segmentation threshold (pixels)", required=False, default=2000, type=int)
+    parser.add_argument("--cell-radius", help="cell radius (pixels) [SEGMENTATION]", required=False, default=40, type=int)
+
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: detect|extract_predictions|train",
+        help="Enter the task you want to perform: create_features|detect|extract|train",
         required=True,
         type=str,
     )
@@ -84,8 +92,14 @@ if __name__ == "__main__":
     y = args.y
     annotation_id = args.annotation
     sampling = args.sampling #Note: only used in conjunction with 'extract' task
-    
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, debug=debug)
+    segment_size_min = args.min_segment
+    segment_size_max = args.max_segment
+    segment_gaussian_sigma = args.sigma
+    segment_gaussian_kernel = args.kernel
+    segment_threshold = args.segment_threshold
+    cell_radius = args.cell_radius
+
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius,debug=debug)
 
     function_mapping = {
         "create_features": pipeline.create_features,

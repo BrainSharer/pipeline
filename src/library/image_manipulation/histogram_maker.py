@@ -356,7 +356,7 @@ def make_single_histogram_full(file_key: tuple[str, str, str, str, str]) -> None
             traceback.print_exc()
 
 
-def make_combined_histogram_full(image_manager, OUTPUT_DIR, animal, mask_path) -> None:
+def make_combined_histogram_full(image_manager, OUTPUT_DIR: Path, animal: str, mask_path: Path) -> None:
     #######################################
     #COMBINED HISTOGRAM - FULL RESOLUTION
     #######################################

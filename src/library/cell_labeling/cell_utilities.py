@@ -104,7 +104,7 @@ def find_connected_segments(image, segmentation_threshold, cuda_available: bool 
 
         n_segments, segment_masks, segment_stats, segment_location = (int(n_segments), cp.asnumpy(segment_masks), cp.asnumpy(segment_stats), cp.asnumpy(segment_location))
     else:
-        #CREATE BINARY MASK FROM PIXEL INTENSITY > THRESHOLD
+        #CREATE BINARY MASK FROM PIXEL INTENSITY > THRESHOLD (segment_location is centroid of each segment)
         n_segments, segment_masks, segment_stats, segment_location = cv2.connectedComponentsWithStats(np.int8(image > segmentation_threshold))
     
         if segment_location.size > 0:
@@ -165,89 +165,13 @@ def filter_segments_kernel(
     output_mask[segmenti] = 1
 
 
-def filter_cell_candidates_gpu(
-    animal,
-    section_number,
-    connected_segments,
-    max_segment_size,
-    cell_radius,
-    x_window,
-    y_window,
-    absolute_coordinates,
-    difference_ch1,
-    difference_ch3,
-):
-    """GPU-accelerated cell candidate filtering"""
-    n_segments, segment_masks, segment_stats, segment_location = connected_segments
-    
-    # Transfer data to GPU
-    d_segment_stats = cp.asarray(segment_stats)
-    d_segment_location = cp.asarray(segment_location)
-    d_segment_masks = cp.asarray(segment_masks)
-    d_diff_ch1 = cp.asarray(difference_ch1)
-    d_diff_ch3 = cp.asarray(difference_ch3)
-    
-    # Create output mask on GPU
-    d_output_mask = cp.zeros(n_segments, dtype=cp.uint8)
-    
-    # Launch CUDA kernel
-    threadsperblock = 256
-    blockspergrid = (n_segments + (threadsperblock - 1)) // threadsperblock
-    filter_segments_kernel[blockspergrid, threadsperblock](
-        d_segment_stats,
-        d_segment_location,
-        d_segment_masks,
-        d_diff_ch1,
-        d_diff_ch3,
-        max_segment_size,
-        cell_radius,
-        x_window,
-        y_window,
-        d_output_mask
-    )
-    
-    # Get valid segment indices
-    valid_segments = cp.where(d_output_mask == 1)[0]
-    cell_candidates = []
-    
-    # Process only valid segments on CPU
-    for segmenti in valid_segments.get():  # Bring only indices back to CPU
-        segment_row, segment_col = segment_location[segmenti]
-        row_start = int(segment_row - cell_radius)
-        col_start = int(segment_col - cell_radius)
-        row_end = int(segment_row + cell_radius)
-        col_end = int(segment_col + cell_radius)
-        
-        # Get ROI slices (still on GPU)
-        roi_mask = (d_segment_masks[row_start:row_end, col_start:col_end] == segmenti)
-        roi_ch1 = d_diff_ch1[row_start:row_end, col_start:col_end].T
-        roi_ch3 = d_diff_ch3[row_start:row_end, col_start:col_end].T
-        
-        # Transfer only needed ROIs to CPU
-        cell = {
-            "animal": animal,
-            "section": section_number,
-            "area": segment_stats[segmenti, 4],
-            "absolute_coordinates_YX": (
-                absolute_coordinates[2] + segment_col,
-                absolute_coordinates[0] + segment_row,
-            ),
-            "cell_shape_XY": (segment_stats[segmenti, 3], segment_stats[segmenti, 2]),
-            "image_CH3": roi_ch3.get(),
-            "image_CH1": roi_ch1.get(),
-            "mask": roi_mask.T.get(),
-        }
-        cell_candidates.append(cell)
-    
-    return cell_candidates
-
-
 #POSSIBLE DEPRECATION, IF GPU VERSION (filter_cell_candidates_gpu) WORKS
 def filter_cell_candidates(
     animal,
     section_number,
     connected_segments,
-    max_segment_size,
+    segment_size_min,
+    segment_size_max,
     cell_radius,
     x_window,
     y_window,
@@ -261,7 +185,7 @@ def filter_cell_candidates(
     cell_candidates = []
     for segmenti in range(n_segments):
         _, _, width, height, object_area = segment_stats[segmenti, :]
-        if object_area > max_segment_size:
+        if object_area > segment_size_max or object_area < segment_size_min:
             continue
         segment_row, segment_col = segment_location[segmenti, :]
 

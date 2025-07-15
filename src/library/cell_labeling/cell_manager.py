@@ -41,7 +41,7 @@ from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.histogram_maker import make_histogram_full_RAM, make_single_histogram_full, make_combined_histogram_full
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker, XY_CHUNK, Z_CHUNK
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -64,7 +64,7 @@ except ImportError:
 
 class CellMaker(ParallelManager):
 
-    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, debug: bool = False):
+    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -90,12 +90,13 @@ class CellMaker(ParallelManager):
         self.annotation_id = annotation_id
 
         #SEGMENTATION PARAMETERS
-        #TODO: MOVE CONSTANTS TO SETTINGS?
-        self.max_segment_size = 100000
-        self.segmentation_threshold = 5000 
-        self.gaussian_blur_standard_deviation_sigmaX = 350
-        self.kernel_size_pixels = (401, 401)
-        self.cell_radius = 40
+        self.segment_size_min = segment_size_min
+        self.segment_size_max = segment_size_max
+        self.gaussian_blur_standard_deviation_sigmaX = segment_gaussian_sigma
+        self.gaussian_blur_kernel_size_pixels = (segment_gaussian_kernel, segment_gaussian_kernel) #in pixels
+        self.segmentation_threshold = segment_threshold #in pixels
+        self.cell_radius = cell_radius #in pixels
+
         self.segmentation_make_smaller = False
         self.ground_truth_filename = 'ground_truth.csv'
         self.sampling = sampling
@@ -387,7 +388,10 @@ class CellMaker(ParallelManager):
                     str_section_number,
                     self.segmentation_threshold,
                     self.cell_radius,
-                    self.max_segment_size,
+                    self.segment_size_min,
+                    self.segment_size_max,
+                    self.gaussian_blur_standard_deviation_sigmaX,
+                    self.gaussian_blur_kernel_size_pixels,
                     self.SCRATCH,
                     self.OUTPUT,
                     avg_cell_img,
@@ -428,7 +432,10 @@ class CellMaker(ParallelManager):
             str_section_number,
             segmentation_threshold,
             cell_radius,
-            max_segment_size,
+            segment_size_min,
+            segment_size_max,
+            gaussian_blur_standard_deviation_sigmaX,
+            gaussian_blur_kernel_size_pixels,
             SCRATCH,
             _, _, _,
             input_format,
@@ -468,6 +475,13 @@ class CellMaker(ParallelManager):
 
         if debug:
             print(f'Starting identify_cell_candidates on section: {str_section_number}')
+            print(f'SEGMENTATION PARAMETERS:')
+            print(f'\tsegment_size_min: {segment_size_min}')
+            print(f'\tsegment_size_max: {segment_size_max}')
+            print(f'\tgaussian_blur_standard_deviation_sigmaX: {gaussian_blur_standard_deviation_sigmaX}')
+            print(f'\tgaussian_blur_kernel_size_pixels: {gaussian_blur_kernel_size_pixels}')
+            print(f'\tsegmentation_threshold: {segmentation_threshold}')
+            print(f'\tcell_radius: {cell_radius}')
 
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number is already string for legacy processing 'tif' (zfill)
@@ -592,7 +606,7 @@ class CellMaker(ParallelManager):
                     print('CALCULATING DIFFERENCE FOR CH3 (VIRUS)')
                     print(f'ROI: {x_start=}, {x_end=}, {y_start=}, {y_end=}')
 
-                difference_ch3 = subtract_blurred_image(image_roi_virus, self.gaussian_blur_standard_deviation_sigmaX, self.kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
+                difference_ch3 = subtract_blurred_image(image_roi_virus, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
                 full_difference_ch3[x_start:x_end, y_start:y_end] = difference_ch3
 
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
@@ -602,13 +616,14 @@ class CellMaker(ParallelManager):
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
                         print('CALCULATING DIFFERENCE FOR CH1 (DYE)')
-                    difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
                         animal,
                         section,
                         connected_segments,
-                        max_segment_size,
+                        segment_size_min,
+                        segment_size_max,
                         cell_radius,
                         x_window,
                         y_window,
@@ -679,7 +694,7 @@ class CellMaker(ParallelManager):
 
         '''
 
-        animal, section, str_section_number, _, _, _, SCRATCH, _, avg_cell_img, _, _, _, _, _, debug = file_keys
+        animal, section, str_section_number, _, _, _, _, _, _,  SCRATCH, _, avg_cell_img, _, _, _, _, _, debug = file_keys
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
 
@@ -766,7 +781,7 @@ class CellMaker(ParallelManager):
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        _, section, str_section_number, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
 
         #TODO: test if retraining or init model creating
         if model_filename:
@@ -1546,11 +1561,12 @@ class CellMaker(ParallelManager):
         prov['sources'] = {
             "subject": subject, 
             "ML_segmentation": {
+                "min_segment_size": self.min_segment_size,
                 "max_segment_size": self.max_segment_size,
-                "segmentation_threshold": self.segmentation_threshold,
-                "cell_radius": self.cell_radius,
                 "gaussian_blur_standard_deviation_sigmaX": self.gaussian_blur_standard_deviation_sigmaX,
-                "kernel_size_pixels": self.kernel_size_pixels
+                "gaussian_blur_kernel_size_pixels": self.gaussian_blur_kernel_size_pixels,
+                "segmentation_threshold": self.segmentation_threshold,
+                "cell_radius": self.cell_radius
             }
         }
 
@@ -2557,7 +2573,7 @@ class CellMaker(ParallelManager):
 
     def neuroglancer(self):
         '''
-        #WIP 3-JUL-2025
+        #WIP 15-JUL-2025
         CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
         ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
         '''
@@ -2585,7 +2601,7 @@ class CellMaker(ParallelManager):
         image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
         
         #################################################
-        #PRECOMPUTED FORMAT CREATION
+        # PRECOMPUTED FORMAT CREATION 
         #################################################
         precompute = NgPrecomputedMaker(self.sqlController)
         scales = precompute.get_scales()
@@ -2598,7 +2614,10 @@ class CellMaker(ParallelManager):
             num_channels=1,
             chunk_size=chunks,
         )
+
+        # Initialize precomputed volume
         ng.init_precomputed(temp_output_path, image_manager.volume_size)
+
         file_keys = []
         orientation = self.sqlController.histology.orientation
         for i, f in enumerate(image_manager.files):
@@ -2609,13 +2628,77 @@ class CellMaker(ParallelManager):
                 ng.process_image(file_key=file_key)
         else:
             self.run_commands_concurrently(ng.process_image, file_keys, workers)
+        
+        #################################################
+        # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) START
+        #################################################
+        if len(image_files) < 100:
+            z_chunk = int(XY_CHUNK)//2
+            chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
+        else:
+            chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
+
+        if image_manager.size < 100000000:
+            mips = 4
+        else:
+            mips = 7
+
+        # Create temporary directory for pyramid generation
+        pyramid_temp_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_pyramid')
+        pyramid_temp_path.mkdir(parents=True, exist_ok=True)
+
+        # Set up paths for downsampling
+        outpath = f"file://{pyramid_temp_path}"
+        cloudpath  = f"file://{temp_output_path}"
+
+        # Create task queue
+        tq = LocalTaskQueue(parallel=workers)
+        print(f'Creating sharded transfer tasks with chunks={chunks}')
+        tasks = tc.create_image_shard_transfer_tasks(
+            cloudpath, 
+            outpath, 
+            mip=0, 
+            chunk_size=chunks
+        )
+        tq.insert(tasks)
+        tq.execute()
+        print('Finished transfer tasks')
+
+        # Create downsampling tasks for each mip level
+        for mip in range(0, mips):
+            cv = CloudVolume(outpath, mip)
+            if image_manager.num_channels > 2:
+                print(f'Creating downsample tasks at mip={mip}')
+                tasks = tc.create_downsampling_tasks(
+                    cv.layer_cloudpath, 
+                    mip=mip, 
+                    num_mips=1, 
+                    compress=True
+                )
+            else:
+                print(f'Creating sharded downsample tasks at mip={mip}')
+                tasks = tc.create_image_shard_downsample_tasks(
+                    cv.layer_cloudpath, 
+                    mip=mip, 
+                    chunk_size=chunks
+                )
+            tq.insert(tasks)
+            tq.execute()
+
+        print('Finished all downsampling tasks')
+        #################################################
+        # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) END
+        #################################################
         ng.precomputed_vol.cache.flush()
+        final_vol = CloudVolume(outpath)
+        final_vol.cache.flush()
 
         #MOVE PRECOMPUTED FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
+        copy_with_rclone(pyramid_temp_path, OUTPUT_DIR)
 
         #################################################
-        #HISTOGRAM CREATION - SINGLE
+        # HISTOGRAM CREATION - SINGLE AND COMBINED
         #################################################
         OUTPUT_DIR = Path(self.fileLocationManager.histogram, 'C3_DIFF')
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -2626,12 +2709,13 @@ class CellMaker(ParallelManager):
             filename = str(i).zfill(3) + ".tif"
             input_path = str(Path(INPUT_DIR, filename))
             mask_path = str(Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', filename))
-            output_path = str(Path(OUTPUT_DIR, filename).with_suffix('.png'))
+            output_path = str(Path(OUTPUT_DIR, f"{i}.png")) 
 
             file_keys.append(
                     [input_path, mask_path, 'CH3_DIFF', file, output_path, self.debug]
                 )
 
+        # Process single histograms in parallel
         self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
 
         make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
@@ -2845,7 +2929,7 @@ class CellMaker(ParallelManager):
         animal, *_ = file_keys
         cellmaker = CellMaker(animal, task=None)
         if file_keys[-1]: #Last element of tuple is debug
-            print(f"DEBUG: auto_cell_labels - STEP 1 & 2 (Identify cell candidates)")
+            print(f"DEBUG: auto_cell_labels - STEP 1 & 2 (Identify cell candidates a.k.a. cell segmentation)")
 
         cell_candidates = cellmaker.identify_cell_candidates(file_keys) #STEPS 1 & 2. virtual tiling and cell candidate identification
 
