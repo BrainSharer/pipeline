@@ -39,7 +39,7 @@ class ImageManager:
 
 
     Methods:
-        get_bgcolor(maskpath): Returns the background color of the image based on the provided mask.
+        get_bgcolor(maskpath): Returns the background color of the image based on a sample image
 
     """
 
@@ -74,19 +74,27 @@ class ImageManager:
         self.volume_size = (self.width, self.height, self.len_files)
         self.size = self.img.size
 
-    def get_bgcolor(self, maskpath=None):
+    def get_bgcolor(self):
         """align needs either an integer or a tuple of integers for the fill color
         Get the background color of the image based on the the 10th row and 10th column of the image.
         This is usually the background color in the image.
         """
-        if self.img.ndim == 2:
-            return 0
 
-        bgcolor = self.img[10, 10]
-        if isinstance(bgcolor, (list, np.ndarray)):
-            bgcolor = tuple(bgcolor)
-        else:
+
+        unique_values, counts = np.unique(self.img, return_counts=True)
+        max_count_index = np.argmax(counts)
+        bgcolor = unique_values[max_count_index]
+
+        if self.img.ndim == 3 and self.img.shape[-1] > 1:
+            # If the image has multiple channels, return the background color as a tuple
+            bgcolor = (bgcolor,) * self.img.shape[-1]
+        elif self.img.ndim == 3 and self.img.shape[-1] == 1:
+            # If the image has a single channel, return the background color as an integer
             bgcolor = int(bgcolor)
+        else:
+            # If the image is grayscale, return the background color as an integer
+            bgcolor = int(bgcolor)
+
         return bgcolor
 
     def get_reference_image(self, maskpath):

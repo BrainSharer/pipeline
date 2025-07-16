@@ -88,7 +88,6 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32.0, type=float)
-    parser.add_argument("--bgcolor", help="Enter background color", required=False, default=0, type=int)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument(
         "--task",
@@ -106,7 +105,6 @@ if __name__ == "__main__":
     zarrlevel = args.zarrlevel
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     scaling_factor = args.scaling_factor
-    bgcolor = args.bgcolor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
 
@@ -116,7 +114,6 @@ if __name__ == "__main__":
         zarrlevel=zarrlevel,
         downsample=downsample,
         scaling_factor=scaling_factor,
-        bgcolor=bgcolor,
         task=task,
         debug=debug,
     )
