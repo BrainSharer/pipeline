@@ -60,7 +60,7 @@ class BuilderMultiscaleGenerator:
             chunks = self.pyramidMap[0]['chunk']        
         elif self.ndim == 3:
             stack = da.moveaxis(stack, source=[3, 0], destination=[0, 1])
-            stack = stack[None, ...]  # Add time dimension
+            #stack = stack[None, ...]  # Add time dimension
             chunks = self.pyramidMap[0]['chunk']        
         else:
             print(f'Unexpected sample.ndim={self.ndim} for stack {stack}')
@@ -187,7 +187,7 @@ class BuilderMultiscaleGenerator:
 
                 locks = glob.glob(os.path.join(self.storepath, "**/*.lock"), recursive=True)
                 for lock in locks:
-                    try:
+                    try:   
                         if os.path.isfile(lock):
                             os.remove(lock)
                         elif os.path.isdir(lock):

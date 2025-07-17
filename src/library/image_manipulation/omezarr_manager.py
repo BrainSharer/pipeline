@@ -134,10 +134,12 @@ class OmeZarrManager():
             scaling_factor = 1
             image_manager = ImageManager(input)
             mips = 8
-            target = 3000
-            chunk_y = closest_divisors_to_target(image_manager.height, target)
-            chunk_x = closest_divisors_to_target(image_manager.width, target)
-            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
+            #target = 2000
+            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
+            chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // 4)
+            originalChunkSize = [image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
+            #originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # 1796x984
+            #originalChunkSize = [1, 3, 1, 29312, 156] # 1796x984
         # vars from stack to multi
 
         files = []

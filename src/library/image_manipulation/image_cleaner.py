@@ -85,7 +85,7 @@ class ImageCleaner:
         """
         image_manager = ImageManager(INPUT)
         self.bgcolor = image_manager.get_bgcolor()
-        print(f'Parallel create clean Using bgcolor={self.bgcolor} for cleaning images')
+        print(f'Background color for cleaning is {self.bgcolor} for animal {self.animal} channel {self.channel} downsample={self.downsample}')
 
         max_width = self.sqlController.scan_run.width
         max_height = self.sqlController.scan_run.height

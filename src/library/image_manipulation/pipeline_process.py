@@ -304,7 +304,7 @@ class Pipeline(
         layer. However, this is currently only supported if that dimension is not chunked, i.e. the chunk size must be 3 in your case.
         """
         print(self.TASK_OMEZARR)
-        self.check_ram()
+        #self.check_ram()
 
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)     
         use_scratch = use_scratch_dir(self.input)
