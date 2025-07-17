@@ -79,11 +79,33 @@ class ImageManager:
         Get the background color of the image based on the the 10th row and 10th column of the image.
         This is usually the background color in the image.
         """
+        debug = False
 
+        if self.img.ndim == 2:
+            # If the image is grayscale, return the background color as an integer
+            bgcolor = int(self.img[10, 10])
+            return bgcolor
 
-        unique_values, counts = np.unique(self.img, return_counts=True)
+        rows = self.img.shape[0]
+        cols = self.img.shape[1]
+        row_buffer = int(rows * 0.2)  # 10% of the rows
+        col_buffer = int(cols * 0.2)  # 10% of the columns
+        top  = row_buffer
+        bottom = rows - row_buffer
+        left = col_buffer
+        right = cols - col_buffer
+        test_image = self.img[top:bottom, left:right]  # Get the pixel value at (10, 10)
+
+        unique_values, counts = np.unique(test_image, return_counts=True)
         max_count_index = np.argmax(counts)
         bgcolor = unique_values[max_count_index]
+        if debug:
+            print(f'rows: {rows}, cols: {cols}')
+            print(f'row_buffer: {row_buffer}, col_buffer: {col_buffer}')
+            print(f'top: {top}, bottom: {bottom}, left: {left}, right: {right}')
+            print(f'self.img shape: {self.img.shape}, dtype: {self.img.dtype}')
+            print(f'Test image shape: {test_image.shape}, dtype: {test_image.dtype}')
+            print(f'Most common value: {bgcolor}')
 
         if self.img.ndim == 3 and self.img.shape[-1] > 1:
             # If the image has multiple channels, return the background color as a tuple
