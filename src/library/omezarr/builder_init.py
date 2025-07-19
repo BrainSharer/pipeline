@@ -78,22 +78,25 @@ class builder(BuilderDownsample,
         self.pyramidMap = {}
         self.pyramidMap[0] = {'chunk': self.originalChunkSize, 'resolution': resolution, 'downsample': (1, 1, 1)}
         z_chunk = closest_divisors_to_target(image_manager.len_files, 64)
+        divisor = 8
         for mip in range(1, mips + 1):
             previous_chunks = self.pyramidMap[mip-1]['chunk']
             previous_resolution = self.pyramidMap[mip-1]['resolution']
 
             if mip < 3:
-                x_chunk = closest_divisors_to_target(previous_chunks[-1], previous_chunks[-1] // 8)
-                y_chunk = closest_divisors_to_target(previous_chunks[-2], previous_chunks[-2] // 8)
+                print(f'Using divisor {divisor} for mip {mip}')
+                x_chunk = closest_divisors_to_target(previous_chunks[-1], previous_chunks[-1] // divisor)
+                y_chunk = closest_divisors_to_target(previous_chunks[-2], previous_chunks[-2] // divisor)
                 chunks = (1, self.channels, z_chunk, y_chunk, x_chunk)
+                divisor -= 2
             else:
                 chunks = (1, self.channels, 64, 64, 64)
 
             resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
             self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
 
-
-
         for k, v in self.pyramidMap.items():
             print(k,v)
+        if self.debug:
+            exit(1)
         self.build_zattrs()
