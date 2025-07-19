@@ -46,7 +46,7 @@ class builder(BuilderDownsample,
         self.resolution = resolution
         self.originalChunkSize = tuple(originalChunkSize)
         self.cpu_cores = os.cpu_count()
-        self.sim_jobs = self.cpu_cores - 2 
+        self.sim_jobs = self.cpu_cores // 2 
         self.workers = 1
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
@@ -63,8 +63,7 @@ class builder(BuilderDownsample,
         # workers = 1 sim=2 complains about ram
         # workers = 2, seems each worker uses about 20%ram
         # workers = 8, complains
-        # Makes store location and initial group
-        # do not make a class attribute because it may not pickle when computing over dask
+        # workers = 2, sim=14 dies on high res
 
         #####store = self.get_store_from_path(self.output) # location: _builder_utils
 
@@ -84,7 +83,9 @@ class builder(BuilderDownsample,
             previous_resolution = self.pyramidMap[mip-1]['resolution']
 
             if mip < 3:
-                chunks = (1, self.channels, z_chunk, previous_chunks[-2]//2, previous_chunks[-1]//2)
+                x_chunk = closest_divisors_to_target(previous_chunks[-1], previous_chunks[-1] // 8)
+                y_chunk = closest_divisors_to_target(previous_chunks[-2], previous_chunks[-2] // 8)
+                chunks = (1, self.channels, z_chunk, y_chunk, x_chunk)
             else:
                 chunks = (1, self.channels, 64, 64, 64)
 

@@ -21,6 +21,7 @@ import dask.config
 from dask.distributed import Client
 from distributed import LocalCluster
 from timeit import default_timer as timer
+import psutil
 from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
@@ -137,8 +138,8 @@ class OmeZarrManager():
             #target = 2000
             chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
             chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // 4)
-            originalChunkSize = [image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
-            #originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # 1796x984
+            #originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
+            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # 1796x984
             #originalChunkSize = [1, 3, 1, 29312, 156] # 1796x984
         # vars from stack to multi
 
@@ -165,6 +166,10 @@ class OmeZarrManager():
         storepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", storefile)
         xy = xy_resolution * scaling_factor
         resolution = (z_resolution, xy, xy)
+        total_mem = psutil.virtual_memory().total
+        self.available_memory = int(total_mem * 0.85)
+
+    
 
         omezarr = builder(
             input,
@@ -180,18 +185,35 @@ class OmeZarrManager():
         )
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
-        mem_per_worker = round(omezarr.available_memory / omezarr.workers)
-        print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
-        mem_per_worker = str(mem_per_worker) + 'GB'
-        cluster = LocalCluster(n_workers=omezarr.workers,
-            threads_per_worker=omezarr.sim_jobs,
-            memory_limit=mem_per_worker)
+        #mem_per_worker = round(omezarr.available_memory / omezarr.workers)
+        #print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
+        #mem_per_worker = str(mem_per_worker) + 'GB'
+        nworkers = 1
+        threads_per_worker = 8
 
+        """
+        cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        client = Client(cluster)
+        print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        print(f"Dask dashboard: {client.dashboard_link}")
+        omezarr.write_resolution_0(client)
+        cluster.close()
+        omezarr.cleanup()
+        """
+        
+
+        cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        #client = Client(cluster)
+        #print(f"Dask dashboard: {client.dashboard_link}")
+        #omezarr.write_resolution_0(client)
+        #client.close()
 
         with Client(cluster) as client:
+            print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_resolution_0(client)
             for mip in range(1, len(omezarr.pyramidMap)):
-                omezarr.write_mips(mip, client)                    
+                omezarr.write_mips(mip, client)
 
         cluster.close()
         omezarr.cleanup()

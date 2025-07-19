@@ -37,7 +37,7 @@ class BuilderMultiscaleGenerator:
         if os.path.exists(resolution_0_path):
             print(f'Resolution 0 already exists at {resolution_0_path}')                
             if self.debug:
-                store = store = zarr.storage.NestedDirectoryStore(resolution_0_path)
+                store = zarr.storage.NestedDirectoryStore(resolution_0_path)
                 volume = zarr.open(store, 'r')
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
@@ -60,7 +60,7 @@ class BuilderMultiscaleGenerator:
             chunks = self.pyramidMap[0]['chunk']        
         elif self.ndim == 3:
             stack = da.moveaxis(stack, source=[3, 0], destination=[0, 1])
-            #stack = stack[None, ...]  # Add time dimension
+            stack = stack[None, ...]  # Add time dimension
             chunks = self.pyramidMap[0]['chunk']        
         else:
             print(f'Unexpected sample.ndim={self.ndim} for stack {stack}')
