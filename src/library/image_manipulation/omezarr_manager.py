@@ -178,8 +178,8 @@ class OmeZarrManager():
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
-            omezarr.write_resolution_0(client)
-            for mip in range(1, len(omezarr.pyramidMap)):
+            #omezarr.write_resolution_initial(client)
+            for mip in range(0, len(omezarr.pyramidMap) - 1):
                 omezarr.write_mips(mip, client)
 
         cluster.close()

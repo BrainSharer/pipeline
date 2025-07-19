@@ -35,11 +35,14 @@ class BuilderOmeZarrUtils:
             ]
             
         datasets = [] 
-        for res in self.pyramidMap:
-            scale = {}
-            scale["path"] = str(res)
+        for mip in self.pyramidMap:
+            if mip == 0:
+                continue
 
-            z,y,x = self.pyramidMap[res]['resolution']
+            scale = {}
+            scale["path"] = str(mip)
+
+            z,y,x = self.pyramidMap[mip]['resolution']
                 
             scale["coordinateTransformations"] = [{
                 "type": "scale",

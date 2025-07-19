@@ -17,19 +17,19 @@ from library.utilities.dask_utilities import get_store_from_path, mean_dtype
 class BuilderMultiscaleGenerator:
 
 
-    def write_resolution_0(self, client):
+    def write_resolution_initial(self, client):
         start_time = timer()
-        resolution_0_path = os.path.join(self.output, '0')
-        if os.path.exists(resolution_0_path):
-            print(f'Resolution 0 already exists at {resolution_0_path}')                
+        resolution_initial_path = os.path.join(self.output, self.initial_resolution)
+        if os.path.exists(resolution_initial_path):
+            print(f'Resolution {self.initial_resolution} already exists at {resolution_initial_path}')                
             if self.debug:
-                store = zarr.storage.NestedDirectoryStore(resolution_0_path)
+                store = zarr.storage.NestedDirectoryStore(resolution_initial_path)
                 volume = zarr.open(store, 'r')
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
             return
 
-        print(f"Building zarr store for resolution 0 at {resolution_0_path}")
+        print(f"Building zarr store for resolution 0 at {resolution_initial_path}")
         imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
         lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
 
@@ -58,7 +58,7 @@ class BuilderMultiscaleGenerator:
         print(f'Stack after reshaping and rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-        store = get_store_from_path(resolution_0_path)
+        store = get_store_from_path(resolution_initial_path)
         z = zarr.zeros(
             stack.shape,
             chunks=chunks,
@@ -81,22 +81,26 @@ class BuilderMultiscaleGenerator:
 
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Resolution 0 completed in {total_elapsed_time} seconds")
+        print(f"Initial resolution completed in {total_elapsed_time} seconds")
 
 
 
     def write_mips(self, mip, client):
         print()
-        read_storepath = os.path.join(self.output, str(mip-1))
+        mip_directory = str(mip - 1)
+        if mip == 0:
+            mip_directory = self.initial_resolution
+
+        read_storepath = os.path.join(self.output, mip_directory)
         if os.path.exists(read_storepath):
-            print(f'Resolution {mip-1} exists at {read_storepath} loading ...')
+            print(f'Resolution {mip_directory} exists at {read_storepath} loading ...')
         else:
-            print(f'Resolution {mip-1} does not exist at {read_storepath}')
+            print(f'Resolution {mip_directory} does not exist at {read_storepath}')
             exit(1)
 
         write_storepath = os.path.join(self.output, str(mip))
         if os.path.exists(write_storepath):
-            print(f'Resolution {mip} exists at {write_storepath}')
+            print(f'Resolution {mip_directory} exists at {write_storepath}')
             if self.debug:
                 store = store = zarr.storage.NestedDirectoryStore(write_storepath)
                 volume = zarr.open(store, 'r')
@@ -115,7 +119,11 @@ class BuilderMultiscaleGenerator:
             3: axis_scales[3],
             4: axis_scales[4],
         }
-        scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
+        if mip == 0:
+            scaled_stack = previous_stack.copy()
+            del previous_stack
+        else:
+            scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         chunks = self.pyramidMap[mip]['chunk'] # add extra dimenision at the beginning for time and channel
         print(f'chunks = {chunks}')
         scaled_stack = scaled_stack.rechunk(chunks)
