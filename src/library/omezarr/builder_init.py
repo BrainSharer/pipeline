@@ -60,7 +60,9 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
 
         self.pyramidMap = {}
         z_chunk = closest_divisors_to_target(image_manager.len_files, 64)
-        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, 512, 512), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        x_chunk = closest_divisors_to_target(image_manager.width, 512)
+        y_chunk = closest_divisors_to_target(image_manager.height, 512)
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, y_chunk, x_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
 
