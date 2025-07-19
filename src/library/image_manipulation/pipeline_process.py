@@ -320,10 +320,8 @@ class Pipeline(
         self.create_omezarr()
         scratch_parent = os.path.dirname(self.scratch_space)
         if os.path.exists(scratch_parent) and os.path.isdir(scratch_parent):
-            print(f'Removing scratch space: {scratch_parent}')
-            shutil.rmtree(scratch_parent)
-        else:
-            print(f'Scratch space {scratch_parent} does not exist or is not a directory, skipping removal.')
+            print(f'You should remove scratch space: {scratch_parent}')
+            
         print(f'Finished {self.TASK_OMEZARR}.')
 
     def omezarr_info(self):

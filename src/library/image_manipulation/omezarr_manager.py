@@ -160,7 +160,7 @@ class OmeZarrManager():
             files,
             resolution,
             originalChunkSize=originalChunkSize,
-            tmp_dir=self.scratch_space,
+            scratch_space=self.scratch_space,
             debug=self.debug,
             omero_dict=omero_dict,
             mips=mips,
@@ -178,8 +178,9 @@ class OmeZarrManager():
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
-            #omezarr.write_resolution_initial(client)
-            for mip in range(0, len(omezarr.pyramidMap) - 1):
+            omezarr.write_transfer(client)
+            omezarr.write_rechunk_transfer(client)
+            for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
 
         cluster.close()

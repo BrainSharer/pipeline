@@ -24,7 +24,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         files,
         resolution,
         originalChunkSize,
-        tmp_dir,
+        scratch_space,
         debug,
         omero_dict,
         mips,
@@ -41,7 +41,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.workers = 1
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
-        self.tmp_dir = tmp_dir
+        self.scratch_space = scratch_space
         self.debug = debug
         self.omero_dict = omero_dict
         self.downSampType = "mean"
@@ -53,32 +53,27 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.channels = image_manager.num_channels
         self.img_shape = image_manager.shape
         self.shape_3d = (len(self.files),*image_manager.shape)
+        scratch_parent = os.path.dirname(self.scratch_space)
         self.initial_resolution = "rechunkme"
+        self.transfer_path = os.path.join(scratch_parent, self.initial_resolution)
+
 
         self.pyramidMap = {}
-        self.pyramidMap[self.initial_resolution] = {'chunk': self.originalChunkSize, 'resolution': resolution, 'downsample': (1, 1, 1)}
         z_chunk = closest_divisors_to_target(image_manager.len_files, 64)
-        for mip in range(0, mips + 1):
-            if mip == 0:
-                chunks = (1, self.channels, z_chunk, 512, 512)
-                previous_resolution = self.pyramidMap[self.initial_resolution]['resolution']
-            elif mip == 1:
-                chunks = (1, self.channels, z_chunk, 256, 256)
-                previous_resolution = self.pyramidMap[mip - 1]['resolution']
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, 512, 512), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        for mip in range(1, mips):
+            previous_resolution = self.pyramidMap[mip-1]['resolution']            
+
+            if mip < 3:
+                chunks = (1, self.channels, z_chunk, 128, 128)
             else:
-                chunks = (1, self.channels, z_chunk, 64, 64)
-                previous_resolution = self.pyramidMap[mip - 1]['resolution']
+                chunks = (1, self.channels, 64, 64, 64)
 
             if downsample:
                 chunks = (1, self.channels, 64, 64, 64)
 
-            if mip == 0:
-                resolution = (previous_resolution[0], previous_resolution[1], previous_resolution[2])
-                downsample = (1, 1, 1)
-            else:
-                resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
-                downsample = (1, 2, 2)
-            self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': downsample}
+            resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
+            self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
 
         for k, v in self.pyramidMap.items():
             print(k,v)
