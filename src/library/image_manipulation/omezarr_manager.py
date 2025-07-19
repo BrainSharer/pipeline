@@ -169,7 +169,7 @@ class OmeZarrManager():
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         nworkers = 1
-        threads_per_worker = 8
+        threads_per_worker = 6
 
         
 
