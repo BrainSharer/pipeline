@@ -308,20 +308,14 @@ class Pipeline(
         self.check_ram()
 
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)     
-        use_scratch = use_scratch_dir(self.input)
-        
-        self.scratch_space = os.path.join('/tmp', 'pipeline_tmp', self.animal, 'dask-scratch-space')
-        if use_scratch:
-            self.scratch_space = os.path.join(get_scratch_dir(), 'pipeline_tmp', self.animal, 'dask-scratch-space')
-            if os.path.exists(self.scratch_space):
-                delete_in_background(self.scratch_space)
-            os.makedirs(self.scratch_space, exist_ok=True)
+        self.scratch_space = os.path.join(get_scratch_dir(), 'pipeline_tmp', self.animal, 'dask-scratch-space')
+        os.makedirs(self.scratch_space, exist_ok=True)
     
         self.create_omezarr()
         scratch_parent = os.path.dirname(self.scratch_space)
         if os.path.exists(scratch_parent) and os.path.isdir(scratch_parent):
             print(f'You should remove scratch space: {scratch_parent}')
-            
+
         print(f'Finished {self.TASK_OMEZARR}.')
 
     def omezarr_info(self):
