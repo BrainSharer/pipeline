@@ -6,22 +6,19 @@ distributed:
     # Fractions of worker memory at which we take action to avoid memory blowup
     # Set any of the lower three values to False to turn off the behavior entirely
     memory:
-      target: 0.50  # target fraction to stay below
-      spill: 0.60  # fraction at which we spill to disk
-      pause: 0.70  # fraction at which we pause worker threads
-      terminate: False  # fraction at which we terminate the worker
+      target: 0.85  # target fraction to stay below
+      spill: 0.86  # fraction at which we spill to disk
+      pause: 0.87  # fraction at which we pause worker threads
+      terminate: 0.9  # fraction at which we terminate the worker
 """
 import os
 import inspect
-import shutil
-from time import sleep
 import dask
 
 import dask.config
 from dask.distributed import Client
 from distributed import LocalCluster
 from timeit import default_timer as timer
-import psutil
 from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
@@ -76,13 +73,9 @@ class OmeZarrManager():
             print(f'No zarr: {zarrpath}')
             return
 
+        os.makedirs(outpath, exist_ok=True)
         store = store = zarr.storage.NestedDirectoryStore(zarrpath)
         volume = zarr.open(store, 'r')
-        if self.debug:
-            print(volume.info)
-
-
-        os.makedirs(outpath, exist_ok=True)
 
         if self.debug:
             print(f'Volume type ={type(volume)}')
@@ -136,7 +129,7 @@ class OmeZarrManager():
             image_manager = ImageManager(input)
             mips = 8
             chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
-            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # 1796x984
+            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # t,c,z,y,x
 
         files = []
         for file in sorted(os.listdir(input)):
@@ -171,7 +164,7 @@ class OmeZarrManager():
             debug=self.debug,
             omero_dict=omero_dict,
             mips=mips,
-            available_memory=self.available_memory
+            downsample=self.downsample
         )
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})

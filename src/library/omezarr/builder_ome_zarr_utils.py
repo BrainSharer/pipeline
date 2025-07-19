@@ -14,11 +14,13 @@ These classes are designed to be inherited by the builder class (builder.py)
 import zarr
 import numpy as np
 
+from library.utilities.dask_utilities import get_store_from_path
+
 class BuilderOmeZarrUtils:
     
     def build_zattrs(self):
         
-        store = self.get_store_from_path(self.output)
+        store = get_store_from_path(self.output)
         r = zarr.open(store)
         
         multiscales = {}
@@ -125,62 +127,3 @@ class BuilderOmeZarrUtils:
         r.attrs['omero'] = omero
         
         return
-
-    def build_zarr_json(self):
-        """TODO: Implement this function to build the zarr json file
-        """
-        
-        store = self.get_store_from_path(self.output)
-        r = zarr.open(store)
-        
-        multiscales = {}
-        return
-
-
-
-    def edit_omero_channels(self,channel_num,attr_name,new_value):
-        # store = self.zarr_store_type(self.output,verbose=1)
-        store = self.get_store_from_path(self.output)
-        r = zarr.open(store)
-        
-        omero = r.attrs['omero']
-        
-        channels = omero['channels']
-        
-        channels[channel_num][attr_name] = new_value
-        
-        omero['channels'] = channels
-        
-        r.attrs['omero'] = omero
-        
-    
-    def get_omero_attr(self,attr_name):
-        store = self.get_store_from_path(self.output)
-        # if self.zarr_store_type == H5_Shard_Store:
-        #     store = self.zarr_store_type(self.output,verbose=1)
-        # else:
-        #     store = self.zarr_store_type(self.output)
-        r = zarr.open(store)
-        
-        omero = r.attrs['omero']
-        
-        return omero[attr_name]
-    
-    
-    def set_omero_window(self):
-        
-        channels = self.get_omero_attr('channels')
-        for ch in range(self.channels):
-            #set in write_resolution()
-            #print(ch)
-            channel_dict = channels[ch]
-            #print(channel_dict)
-            window = channel_dict['window']
-            #print(window)
-            window['start'] = self.min[ch]
-            window['end'] = self.max[ch]
-            #print(window)
-            self.edit_omero_channels(channel_num=ch,attr_name='window',new_value=window)
-        
-
-

@@ -10,22 +10,13 @@ import os
 from numcodecs import Blosc
 
 
-## Import mix-in classes
 from library.image_manipulation.image_manager import ImageManager
-from library.omezarr.builder_img_processing import BuilderDownsample
-from library.omezarr.builder_utils import BuilderUtils
 from library.omezarr.builder_ome_zarr_utils import BuilderOmeZarrUtils
 from library.omezarr.builder_multiscale_generator import BuilderMultiscaleGenerator
 from library.utilities.dask_utilities import closest_divisors_to_target
 
-class builder(BuilderDownsample,
-            BuilderUtils,
-            BuilderOmeZarrUtils,
-     #####       BuilderImageUtils,
-            BuilderMultiscaleGenerator):
-    '''
-    A mix-in class for builder.py
-    '''
+class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
+
     def __init__(
         self,
         in_location,
@@ -37,7 +28,7 @@ class builder(BuilderDownsample,
         debug,
         omero_dict,
         mips,
-        available_memory
+        downsample
     ):
 
         self.input = in_location
@@ -55,18 +46,6 @@ class builder(BuilderDownsample,
         self.omero_dict = omero_dict
         self.downSampType = "mean"
         self.mips = mips
-        self.available_memory = available_memory
-        self.res0_chunk_limit_GB = self.available_memory / self.cpu_cores / 8 #Fudge factor for maximizing data being processed with available memory during res0 conversion phase
-        self.res_chunk_limit_GB = self.available_memory / self.cpu_cores / 24 #Fudge factor for maximizing data being processed with available memory during downsample phase
-        # workers = cpu_count, sim=1 died right away
-        # workers = 1 sim=1 worker uses about 20%ram
-        # workers = 1 sim=2 complains about ram
-        # workers = 2, seems each worker uses about 20%ram
-        # workers = 8, complains
-        # workers = 2, sim=14 dies on high res
-
-        #####store = self.get_store_from_path(self.output) # location: _builder_utils
-
 
         image_manager = ImageManager(self.input)
         self.dtype = image_manager.dtype
@@ -84,12 +63,14 @@ class builder(BuilderDownsample,
             previous_resolution = self.pyramidMap[mip-1]['resolution']
 
             if mip < 3:
-                print(f'Using divisor {divisor} for mip {mip}')
                 x_chunk = closest_divisors_to_target(previous_chunks[-1], previous_chunks[-1] // divisor)
                 y_chunk = closest_divisors_to_target(previous_chunks[-2], previous_chunks[-2] // divisor)
                 chunks = (1, self.channels, z_chunk, y_chunk, x_chunk)
                 divisor -= 2
             else:
+                chunks = (1, self.channels, 64, 64, 64)
+
+            if downsample:
                 chunks = (1, self.channels, 64, 64, 64)
 
             resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)

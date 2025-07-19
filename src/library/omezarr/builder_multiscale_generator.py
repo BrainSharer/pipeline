@@ -1,20 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb  1 12:46:17 2023
-
-@author: awatson
-"""
-
-'''
-Store mix-in classes for utilities
-
-These classes are designed to be inherited by the builder class (builder.py)
-'''
-
 import glob
 import os
 import sys
-from time import sleep
 import shutil
 from timeit import default_timer as timer
 import zarr
@@ -26,7 +12,7 @@ import skimage.io
 from distributed import progress
 
 # Project specific imports
-from library.utilities.dask_utilities import mean_dtype
+from library.utilities.dask_utilities import get_store_from_path, mean_dtype
 
 class BuilderMultiscaleGenerator:
 
@@ -72,7 +58,7 @@ class BuilderMultiscaleGenerator:
         print(f'Stack after reshaping and rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-        store = self.get_store(0)
+        store = get_store_from_path(resolution_0_path)
         z = zarr.zeros(
             stack.shape,
             chunks=chunks,
@@ -135,7 +121,7 @@ class BuilderMultiscaleGenerator:
         scaled_stack = scaled_stack.rechunk(chunks)
         print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
 
-        store = self.get_store(mip)
+        store = get_store_from_path(write_storepath)
         z = zarr.zeros(
             scaled_stack.shape,
             chunks=chunks,
