@@ -30,7 +30,6 @@ class BuilderMultiscaleGenerator:
             return
         chunks = self.originalChunkSize
         print(f"Transferring data from image stack to zarr to {self.transfer_path}")
-        print(f'Using chunks of {chunks}')
         imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
         lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
 
@@ -66,8 +65,6 @@ class BuilderMultiscaleGenerator:
             compressor=self.compressor,
             dtype=stack.dtype,
         )
-        print('Stacked z info')
-        print(z.info)
 
         if client is None:
             with ProgressBar():
@@ -78,21 +75,22 @@ class BuilderMultiscaleGenerator:
             progress(to_store)
             to_store = client.gather(to_store)
 
+        volume = zarr.open(store, 'r')
+        print(volume.info)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Transfer from TIF stack to zarr completed in {total_elapsed_time} seconds")
 
-    def write_rechunk_transfer(self, client):
+    def write_rechunk_transfer(self, client, chunks, input_path, write_storepath):
         print()
         start_time = timer()
         
-        if not os.path.exists(self.transfer_path):
-            print(f'Transferred data does not exist at {self.transfer_path} exiting')
+        if not os.path.exists(input_path):
+            print(f'Transferred data does not exist at {input_path} exiting')
             exit(1)
         
         mip = 0
         chunks = self.pyramidMap[mip]['chunk']
-        write_storepath = os.path.join(self.output, str(mip))
         if os.path.exists(write_storepath):
             print(f'Rechunked data exists at {write_storepath}')
             if self.debug:
@@ -105,11 +103,9 @@ class BuilderMultiscaleGenerator:
         print(f"Building rechunked zarr store:")
         print(f"\tfrom {self.transfer_path}")
         print(f"\tto {write_storepath}")
-        print(f'Using chunks of {chunks}')
 
         stack = da.from_zarr(url=self.transfer_path)
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
-        print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         store = get_store_from_path(write_storepath)
         z = zarr.zeros(
             stack.shape,
@@ -119,8 +115,6 @@ class BuilderMultiscaleGenerator:
             compressor=self.compressor,
             dtype=stack.dtype,
         )
-        print('Stacked z info')
-        print(z.info)
 
         if client is None:
             with ProgressBar():
@@ -131,10 +125,11 @@ class BuilderMultiscaleGenerator:
             progress(to_store)
             to_store = client.gather(to_store)
 
+        volume = zarr.open(store, 'r')
+        print(volume.info)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Initial resolution completed in {total_elapsed_time} seconds")
-
+        print(f"Rechunkin completed in {total_elapsed_time} seconds")
 
 
     def write_mips(self, mip, client):
@@ -171,7 +166,7 @@ class BuilderMultiscaleGenerator:
         }
         scaled_stack = da.coarsen(mean_dtype, previous_stack, axis_dict, trim_excess=True)
         scaled_stack = scaled_stack.rechunk(chunks)
-        print(f'New store with shape={scaled_stack.shape} chunks={chunks}')
+        print(f'\tNew store with shape={scaled_stack.shape} chunks={chunks}')
 
         store = get_store_from_path(write_storepath)
         z = zarr.zeros(

@@ -179,7 +179,19 @@ class OmeZarrManager():
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
-            omezarr.write_rechunk_transfer(client)
+            
+            # pass 1
+            chunks = omezarr.originalChunkSize
+            input_path = omezarr.transfer_path
+            output_path = omezarr.rechunkme_path
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+
+            # pass 2
+            chunks = omezarr.pyramidMap[0]['chunk']
+            input_path = omezarr.rechunkme_path
+            output_path = os.path.join(omezarr.output, str(0))
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            
             for mip in range(1, len(omezarr.pyramidMap)):
                 omezarr.write_mips(mip, client)
 

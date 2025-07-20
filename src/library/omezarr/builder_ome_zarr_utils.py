@@ -36,8 +36,6 @@ class BuilderOmeZarrUtils:
             
         datasets = [] 
         for mip in self.pyramidMap:
-            if mip == 0:
-                continue
 
             scale = {}
             scale["path"] = str(mip)
