@@ -169,7 +169,7 @@ class OmeZarrManager():
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         nworkers = 1
-        threads_per_worker = 8
+        threads_per_worker = omezarr.sim_jobs
 
         
 
@@ -179,16 +179,28 @@ class OmeZarrManager():
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
+
             
             # pass 1
             chunks = omezarr.originalChunkSize
             input_path = omezarr.transfer_path
-            output_path = omezarr.rechunkme_path
+            output_path = omezarr.rechunkme1_path
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
 
             # pass 2
+            z_chunk = 128 if len(files) >= 128 else len(files)
+            y_chunk = closest_divisors_to_target(image_manager.height, 2048)
+            x_chunk = closest_divisors_to_target(image_manager.width, 2048)
+            chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
+            print(f'chunks for pass 2: {chunks}')
+            input_path = omezarr.rechunkme1_path
+            output_path = omezarr.rechunkme2_path
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+
+
+            # pass 3
             chunks = omezarr.pyramidMap[0]['chunk']
-            input_path = omezarr.rechunkme_path
+            input_path = omezarr.rechunkme2_path
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
             

@@ -53,9 +53,7 @@ class BuilderMultiscaleGenerator:
             print('This is not a 2D or 3D image stack, exiting')
             sys.exit(1)
 
-        print(f'Stack after reshaping and rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
-        print(f'Stack after rechunking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
         store = get_store_from_path(self.transfer_path)
         z = zarr.zeros(
             stack.shape,
@@ -98,7 +96,7 @@ class BuilderMultiscaleGenerator:
                 print(f'volume.shape={volume.shape}')
             return
 
-        print(f"Building rechunked zarr store:")
+        print(f"Building rechunked zarr store with {chunks=}:")
         print(f"\tfrom {input_path}")
         print(f"\tto {write_storepath}")
 
