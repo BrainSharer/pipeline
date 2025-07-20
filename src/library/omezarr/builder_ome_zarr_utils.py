@@ -35,7 +35,7 @@ class BuilderOmeZarrUtils:
             ]
             
         datasets = [] 
-        for mip in self.pyramidMap:
+        for mip in range(0, len(self.pyramidMap) - 1):
 
             scale = {}
             scale["path"] = str(mip)
@@ -60,7 +60,7 @@ class BuilderOmeZarrUtils:
 
         # Define down sampling methods for inclusion in zattrs
         description = '2x downsample of in up to 3 dimensions calculated using the local mean'
-        details = 'stack_to_multiscale_ngff._builder_img_processing.local_mean_downsample'
+        details = 'stack to 2x downsampled version'
 
 
         multiscales["metadata"] = {

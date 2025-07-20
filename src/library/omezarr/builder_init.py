@@ -55,11 +55,15 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.shape_3d = (len(self.files),*image_manager.shape)
         scratch_parent = os.path.dirname(self.scratch_space)
         self.transfer_path = os.path.join(scratch_parent, "transfer")
-        self.rechunkme1_path = os.path.join(scratch_parent, "rechunkme1")
-        self.rechunkme2_path = os.path.join(scratch_parent, "rechunkme2")
-
+        self.rechunkme_path = os.path.join(scratch_parent, "rechunkme")
 
         self.pyramidMap = {}
+        z_chunk = 128 if len(files) >= 128 else len(self.files)
+        y_chunk = closest_divisors_to_target(image_manager.height, 2048)
+        x_chunk = closest_divisors_to_target(image_manager.width, 2048)
+        chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
+        self.pyramidMap[-1] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 1, 1)}
+
         z_chunk = 64
         if len(self.files) < 64:
             z_chunk = len(self.files)
