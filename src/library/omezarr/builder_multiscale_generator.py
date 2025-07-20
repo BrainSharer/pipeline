@@ -89,8 +89,6 @@ class BuilderMultiscaleGenerator:
             print(f'Transferred data does not exist at {input_path} exiting')
             exit(1)
         
-        mip = 0
-        chunks = self.pyramidMap[mip]['chunk']
         if os.path.exists(write_storepath):
             print(f'Rechunked data exists at {write_storepath}')
             if self.debug:
@@ -101,10 +99,10 @@ class BuilderMultiscaleGenerator:
             return
 
         print(f"Building rechunked zarr store:")
-        print(f"\tfrom {self.transfer_path}")
+        print(f"\tfrom {input_path}")
         print(f"\tto {write_storepath}")
 
-        stack = da.from_zarr(url=self.transfer_path)
+        stack = da.from_zarr(url=input_path)
         stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         store = get_store_from_path(write_storepath)
         z = zarr.zeros(
