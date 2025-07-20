@@ -189,15 +189,19 @@ class OmeZarrManager():
             input_path = omezarr.transfer_path
             output_path = omezarr.rechunkme_path
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            omezarr.cleanup()
 
             # pass 2
             chunks = omezarr.pyramidMap[0]['chunk']
             input_path = omezarr.rechunkme_path
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
-            
-            for mip in range(1, len(omezarr.pyramidMap) - 1):
+            omezarr.cleanup()
+        
+            pyramids = len(omezarr.pyramidMap) - 1
+            for mip in range(1, pyramids):
                 omezarr.write_mips(mip, client)
+                omezarr.cleanup()
 
         cluster.close()
-        omezarr.cleanup()
+ 
