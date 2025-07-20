@@ -6,7 +6,6 @@ from timeit import default_timer as timer
 import zarr
 import dask.array as da
 import dask
-from dask.diagnostics import ProgressBar
 
 import skimage.io
 from distributed import progress
@@ -64,14 +63,11 @@ class BuilderMultiscaleGenerator:
             dtype=stack.dtype,
         )
 
-        if client is None:
-            with ProgressBar():
-                da.store(stack, z, lock=True, compute=True)
-        else:
-            to_store = da.store(stack, z, lock=False, compute=False)
-            to_store = client.compute(to_store)
-            progress(to_store)
-            to_store = client.gather(to_store)
+        to_store = da.store(stack, z, lock=False, compute=False)
+        to_store = client.compute(to_store)
+        progress(to_store)
+        to_store = client.gather(to_store)
+        client.wait_for_workers(1)
 
         volume = zarr.open(store, 'r')
         print(volume.info)
@@ -112,14 +108,11 @@ class BuilderMultiscaleGenerator:
             dtype=stack.dtype,
         )
 
-        if client is None:
-            with ProgressBar():
-                da.store(stack, z, lock=True, compute=True)
-        else:
-            to_store = da.store(stack, z, lock=False, compute=False)
-            to_store = client.compute(to_store)
-            progress(to_store)
-            to_store = client.gather(to_store)
+        to_store = da.store(stack, z, lock=False, compute=False)
+        to_store = client.compute(to_store)
+        progress(to_store)
+        to_store = client.gather(to_store)
+        client.wait_for_workers(1)
 
         volume = zarr.open(store, 'r')
         print(volume.info)
@@ -174,14 +167,11 @@ class BuilderMultiscaleGenerator:
             dtype=scaled_stack.dtype,
         )
 
-        if client is None:
-            with ProgressBar():
-                da.store(scaled_stack, z, lock=True, compute=True)
-        else:
-            to_store = da.store(scaled_stack, z, lock=False, compute=False)
-            to_store = client.compute(to_store)
-            progress(to_store)
-            to_store = client.gather(to_store)
+        to_store = da.store(scaled_stack, z, lock=False, compute=False)
+        to_store = client.compute(to_store)
+        progress(to_store)
+        to_store = client.gather(to_store)
+        client.wait_for_workers(1)
 
 
     def cleanup(self):
