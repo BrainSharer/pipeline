@@ -48,7 +48,7 @@ def use_scratch_dir(directory: str) -> bool:
     BUFFER_FACTOR = 1.25
     dir_size = get_directory_size(directory)
     dir_size = dir_size * BUFFER_FACTOR
-    total, used, free = shutil.disk_usage("/scratch")
+    total, used, free = shutil.disk_usage("/data")
 
     if free > dir_size:
         return True
@@ -199,7 +199,7 @@ def get_cpus():
 
 def get_scratch_dir():
     """Helper method to return the scratch dir
-    Ratto can't use /scratch as it is not big enough
+    /scratch is not big enough on any of the workstations. Use /data instead
     """
 
     # usedir = {}

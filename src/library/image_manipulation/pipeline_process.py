@@ -71,7 +71,7 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, bgcolor=0, task='status', debug=False):
+    def __init__(self, animal, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -107,10 +107,11 @@ class Pipeline(
         self.channel = channel
         self.zarrlevel = zarrlevel
         self.scaling_factor = scaling_factor
-        self.bgcolor = bgcolor
+        self.bgcolor = 0
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
-        self.available_memory = int((psutil.virtual_memory().free / 1024**3) * 0.8)
+        total_mem = psutil.virtual_memory().total
+        self.available_memory = int(total_mem * 0.85) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
         self.section_count = self.get_section_count()
 
         #self.mips = 7 
@@ -294,10 +295,10 @@ class Pipeline(
         The omezarr proess here works but you will need to adjust neuroglancer when you load it:
         1. Open up the JSON data in neuroglancer (Edit JSON state icon top right). Add
         "crossSectionOrientation": [0, 0, 0, -1] to the JSON state. right above crossSectionScale.
-        2. Adjust the dimensions so x is at top, then y,z,t, click 'Apply changes
+        2. Adjust the dimensions so it is x,y,z,t, click 'Apply changes.
         3. The position will now be wrong, so adjust the x,y,z to mid positions in the x,y,z top left. 
         4. Set z to 0 and
-        5. Rename the c' channel to c^ :
+        5. If the data is RGB, rename the c' channel to c^ :
         From the developer https://github.com/google/neuroglancer/issues/298
         To make a dimension available as a "channel" dimension to the shader, you need to rename the dimension to end with "^", e.g. "c^". 
         You can do that by double clicking the dimension name in the top bar, or using the "Transform" widget on the "Source" tab of the 
@@ -306,23 +307,17 @@ class Pipeline(
         print(self.TASK_OMEZARR)
         self.check_ram()
 
-        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)     
-        use_scratch = use_scratch_dir(self.input)
-        
-        self.scratch_space = os.path.join('/tmp', 'pipeline_tmp', self.animal, 'dask-scratch-space')
-        if use_scratch:
-            self.scratch_space = os.path.join(get_scratch_dir(), 'pipeline_tmp', self.animal, 'dask-scratch-space')
-            if os.path.exists(self.scratch_space):
-                delete_in_background(self.scratch_space)
-            os.makedirs(self.scratch_space, exist_ok=True)
-    
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample) 
+        self.scratch_space = os.path.join('/data', 'pipeline_tmp', self.animal, 'dask-scratch-space')
+        if os.path.exists(self.scratch_space):
+            shutil.rmtree(self.scratch_space)
+        os.makedirs(self.scratch_space, exist_ok=True)
+        print(f'Scratch space: {self.scratch_space}')
         self.create_omezarr()
         scratch_parent = os.path.dirname(self.scratch_space)
         if os.path.exists(scratch_parent) and os.path.isdir(scratch_parent):
-            print(f'Removing scratch space: {scratch_parent}')
-            shutil.rmtree(scratch_parent)
-        else:
-            print(f'Scratch space {scratch_parent} does not exist or is not a directory, skipping removal.')
+            print(f'You should remove scratch space: {scratch_parent}')
+
         print(f'Finished {self.TASK_OMEZARR}.')
 
     def omezarr_info(self):

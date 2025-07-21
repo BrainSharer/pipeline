@@ -6,15 +6,13 @@ distributed:
     # Fractions of worker memory at which we take action to avoid memory blowup
     # Set any of the lower three values to False to turn off the behavior entirely
     memory:
-      target: 0.50  # target fraction to stay below
-      spill: 0.60  # fraction at which we spill to disk
-      pause: 0.70  # fraction at which we pause worker threads
-      terminate: False  # fraction at which we terminate the worker
+      target: 0.85  # target fraction to stay below
+      spill: 0.86  # fraction at which we spill to disk
+      pause: 0.87  # fraction at which we pause worker threads
+      terminate: 0.9  # fraction at which we terminate the worker
 """
 import os
 import inspect
-import shutil
-from time import sleep
 import dask
 
 import dask.config
@@ -75,13 +73,9 @@ class OmeZarrManager():
             print(f'No zarr: {zarrpath}')
             return
 
+        os.makedirs(outpath, exist_ok=True)
         store = store = zarr.storage.NestedDirectoryStore(zarrpath)
         volume = zarr.open(store, 'r')
-        if self.debug:
-            print(volume.info)
-
-
-        os.makedirs(outpath, exist_ok=True)
 
         if self.debug:
             print(f'Volume type ={type(volume)}')
@@ -134,11 +128,8 @@ class OmeZarrManager():
             scaling_factor = 1
             image_manager = ImageManager(input)
             mips = 8
-            target = 3000
-            chunk_y = closest_divisors_to_target(image_manager.height, target)
-            chunk_x = closest_divisors_to_target(image_manager.width, target)
-            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, chunk_x] # 1796x984
-        # vars from stack to multi
+            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
+            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # t,c,z,y,x
 
         files = []
         for file in sorted(os.listdir(input)):
@@ -159,7 +150,6 @@ class OmeZarrManager():
         omero['rdefs']['defaultZ'] = len(files) // 2
         omero_dict = omero
 
-
         storepath = os.path.join(self.fileLocationManager.www, "neuroglancer_data", storefile)
         xy = xy_resolution * scaling_factor
         resolution = (z_resolution, xy, xy)
@@ -170,26 +160,45 @@ class OmeZarrManager():
             files,
             resolution,
             originalChunkSize=originalChunkSize,
-            tmp_dir=self.scratch_space,
+            scratch_space=self.scratch_space,
             debug=self.debug,
             omero_dict=omero_dict,
             mips=mips,
-            available_memory=self.available_memory
+            downsample=self.downsample,
+            channel=self.channel,
         )
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
-        mem_per_worker = round(omezarr.available_memory / omezarr.workers)
-        print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
-        mem_per_worker = str(mem_per_worker) + 'GB'
-        cluster = LocalCluster(n_workers=omezarr.workers,
-            threads_per_worker=omezarr.sim_jobs,
-            memory_limit=mem_per_worker)
+        nworkers = 1
+        threads_per_worker = omezarr.sim_jobs
 
+        
+
+        cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
 
         with Client(cluster) as client:
-            omezarr.write_resolution_0(client)
-            for mip in range(1, len(omezarr.pyramidMap)):
-                omezarr.write_mips(mip, client)                    
+            print(f"Client dashboard: {client.dashboard_link}")
+            omezarr.write_transfer(client)
+            
+            # pass 1
+            #chunks = omezarr.pyramidMap[-1]['chunk']
+            #input_path = omezarr.transfer_path
+            #output_path = omezarr.rechunkme_path
+            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+
+            # pass 2
+            chunks = omezarr.pyramidMap[0]['chunk']
+            #input_path = omezarr.rechunkme_path
+            input_path = omezarr.transfer_path
+            output_path = os.path.join(omezarr.output, str(0))
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+        
+            pyramids = len(omezarr.pyramidMap) - 1
+            for mip in range(1, pyramids):
+                omezarr.write_mips(mip, client)
 
         cluster.close()
         omezarr.cleanup()
+
+ 

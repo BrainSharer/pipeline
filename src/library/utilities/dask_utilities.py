@@ -170,15 +170,15 @@ def get_tiff_zarr_array(filepaths):
     with tifffile.imread(filepaths, aszarr=True) as store:
         return zarr.open(store)
 
-def open_store(storepath, res, mode="a"):
+def open_store(storepath, mip, mode="a"):
     try:
-        return zarr.open(get_store(storepath, res, mode=mode))
+        return zarr.open(get_store(storepath, mip, mode=mode))
     except Exception as ex:
         print('Exception opening zarr store')
         print(ex)
 
-def get_store(storepath, res, mode="a"):
-    return get_store_from_path(os.path.join(storepath, str(res)), mode=mode)
+def get_store(storepath, mip, mode="a"):
+    return get_store_from_path(os.path.join(storepath, str(mip)), mode=mode)
 
 def get_store_from_path(path, mode="a"):
     store = zarr.storage.NestedDirectoryStore(path)
