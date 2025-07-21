@@ -67,7 +67,6 @@ class BuilderMultiscaleGenerator:
         to_store = client.compute(to_store)
         progress(to_store)
         to_store = client.gather(to_store)
-        client.wait_for_workers(1)
 
         volume = zarr.open(store, 'r')
         print(volume.info)
@@ -112,7 +111,6 @@ class BuilderMultiscaleGenerator:
         to_store = client.compute(to_store)
         progress(to_store)
         to_store = client.gather(to_store)
-        client.wait_for_workers(1)
 
         volume = zarr.open(store, 'r')
         print(volume.info)
@@ -171,7 +169,6 @@ class BuilderMultiscaleGenerator:
         to_store = client.compute(to_store)
         progress(to_store)
         to_store = client.gather(to_store)
-        client.wait_for_workers(1)
 
 
     def cleanup(self):

@@ -182,18 +182,15 @@ class OmeZarrManager():
             omezarr.write_transfer(client)
             
             # pass 1
-            #z_chunk = 128 if len(files) >= 128 else len(files)
-            #y_chunk = closest_divisors_to_target(image_manager.height, 2048)
-            #x_chunk = closest_divisors_to_target(image_manager.width, 2048)
-            #chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
-            chunks = omezarr.pyramidMap[-1]['chunk']
-            input_path = omezarr.transfer_path
-            output_path = omezarr.rechunkme_path
-            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            #chunks = omezarr.pyramidMap[-1]['chunk']
+            #input_path = omezarr.transfer_path
+            #output_path = omezarr.rechunkme_path
+            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
 
             # pass 2
             chunks = omezarr.pyramidMap[0]['chunk']
-            input_path = omezarr.rechunkme_path
+            #input_path = omezarr.rechunkme_path
+            input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
         
