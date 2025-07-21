@@ -46,7 +46,11 @@ from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.parallel_manager import ParallelManager
-from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, random_string, read_image, get_hostname
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, random_string, read_image, get_hostname, delete_in_background
+from library.utilities.dask_utilities import closest_divisors_to_target
+from library.omezarr.builder_init import builder
+from distributed import LocalCluster
+from dask.distributed import Client
 
 from cloudvolume import CloudVolume
 from taskqueue import LocalTaskQueue
@@ -190,10 +194,10 @@ class CellMaker(ParallelManager):
             # CHECK IF meta_data_info['Neuroanatomical_tracing'] CONTAINS A DYE AND VIRUS CHANNEL
             modes = [channel.get('mode') for channel in meta_data_info['Neuroanatomical_tracing'].values()]
             
-            if 'dye' in modes and ('virus' in modes or 'ctb' in modes) :
-                msg = "Neuroanatomical_tracing contains a dye channel and either virus or ctb channel."
+            if ('dye' in modes or 'counterstain' in modes) and ('virus' in modes or 'ctb' in modes or 'counterstain' in modes or 'label_of_interest' in modes):
+                msg = "Neuroanatomical_tracing contains a dye/counterstain channel and either virus, ctb or label_of_interest channel."
             else:
-                msg = "Neuroanatomical_tracing is missing either dye, virus or ctb channel."
+                msg = "Neuroanatomical_tracing is missing either dye/counterstain, and either virus, ctb or label_of_interest channel."
                 if self.debug:
                     print(msg)
                 self.fileLogger.logevent(msg)
@@ -202,9 +206,9 @@ class CellMaker(ParallelManager):
         # check for full-resolution images (tiff or ome-zarr)
         # checks tiff directory first, then ome-zarr [but must have at least 1 to proceed]
         for key, value in self.meta_channel_mapping.items():
-            if value['mode'] == 'dye':
+            if value['mode'] == 'dye' or value['mode'] == 'counterstain':
                 dye_channel = value.get('channel_name')
-            elif value['mode'] == 'virus' or value['mode'] == 'ctb':
+            elif value['mode'] == 'virus' or value['mode'] == 'ctb' or value['mode'] == 'label_of_interest':
                 virus_marker_channel = value.get('channel_name')
 
         self.dye_channel = dye_channel[1]
@@ -340,16 +344,18 @@ class CellMaker(ParallelManager):
         # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
         # SPINAL CORD WILL HAVE C1 (DYE) AND C2 (CTB) CHANNELS
         for channel_number, channel_data in self.meta_channel_mapping.items():
-            if channel_data['mode'] == 'dye':
+            if channel_data['mode'] == 'dye' or channel_data['mode'] == 'counterstain':
                 self.dye_channel = channel_number
-                self.fileLogger.logevent(f'Dye channel detected: {self.dye_channel}')
-            elif channel_data['mode'] == 'virus' or channel_data['mode'] == 'ctb':
+                print(f'Dye or counterstain channel detected: {self.dye_channel}')
+                self.fileLogger.logevent(f'Dye or counterstain channel detected: {self.dye_channel}')
+            elif channel_data['mode'] == 'virus' or channel_data['mode'] == 'ctb' or channel_data['mode'] == 'label_of_interest': 
                 self.virus_marker_channel = channel_number
-                self.fileLogger.logevent(f'Virus or CTB channel detected: {self.virus_marker_channel}')
+                print(f'Virus, CTB or label_of_interest channel detected: {self.virus_marker_channel}')
+                self.fileLogger.logevent(f'Virus, CTB or label_of_interest channel detected: {self.virus_marker_channel}')
             elif channel_data['mode'] == 'unknown':
                 continue
             else:
-                msg = "Neuroanatomical_tracing is missing either dye or virus channel."
+                msg = "Neuroanatomical_tracing is missing either dye, virus or label_of_interest channel."
                 if self.debug:
                     print(msg)
                 self.fileLogger.logevent(msg)
@@ -374,9 +380,13 @@ class CellMaker(ParallelManager):
             # OME-ZARR Section count may be extracted from meta-data in folder or from meta-data in file [do not use database]
 
         file_keys = []
-        for section in range(self.section_count):
-            # if section < 30: # or section > 72: #Song-Mao testing filter
-            #     continue
+        if self.process_sections:
+            self.process_sections = self.process_sections
+        else:
+            self.process_sections = range(self.section_count)
+        print(f'Processing sections: {self.process_sections}')
+
+        for section in self.process_sections:
             if self.section_count > 1000:
                 str_section_number = str(section).zfill(4)
             else:
@@ -531,13 +541,13 @@ class CellMaker(ParallelManager):
         dye_x_dim = org_dye_img_shape[0][1]
 
         if debug:
-            print(f'[VIRUS] {org_virus_img_shape=}: {y_dim=}, {x_dim=}')
-            print(f'[DYE] {org_dye_img_shape=}: {dye_y_dim=}, {dye_x_dim=}')
+            print(f'[LABEL_OF_INTEREST] {org_virus_img_shape=}: {y_dim=}, {x_dim=}')
+            print(f'[COUNTERSTAIN/DYE] {org_dye_img_shape=}: {dye_y_dim=}, {dye_x_dim=}')
 
         # both channels must same dimensions; DO NOT PROCEED IF NOT TRUE!
         assert (x_dim == dye_x_dim and y_dim == dye_y_dim), (
             f"Dimension mismatch between virus and dye channels: "
-            f"virus=({y_dim}, {x_dim}), dye=({dye_y_dim}, {dye_x_dim})"
+            f"label_of_interest/ctb/virus=({y_dim}, {x_dim}), counterstain/dye=({dye_y_dim}, {dye_x_dim})"
         )
 
         # Create a Dask array from the delayed tasks (NOTE: DELAYED); SHAPE IS y-axis then x-axis
@@ -558,8 +568,8 @@ class CellMaker(ParallelManager):
         y_window = int(math.ceil(y_dim / total_virtual_tile_columns))
 
         if debug:
-            print(f'virus shape (x, y): {data_virus.shape=}')
-            print(f'dye shape (x, y): {data_dye.shape=}')
+            print(f'label_of_interest/ctb/virus shape (x, y): {data_virus.shape=}')
+            print(f'counterstain/dye shape (x, y): {data_dye.shape=}')
             print(f'dask parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
         #cuda_available = cp.is_available()
@@ -590,13 +600,6 @@ class CellMaker(ParallelManager):
                 x_end = min(data_virus.shape[0], x_end)
                 y_end = min(data_virus.shape[1], y_end)
 
-                #ORG. CODE ###################
-                # x_start = row * x_window
-                # x_end = x_window * (row+1)
-                # y_start = col * y_window
-                # y_end = y_window * (col+1)
-                ##############################
-
                 image_roi_virus = data_virus[x_start:x_end, y_start:y_end] #image_roi IS numpy array
                 image_roi_dye = data_dye[x_start:x_end, y_start:y_end] #image_roi IS numpy array
 
@@ -615,7 +618,7 @@ class CellMaker(ParallelManager):
                     
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
-                        print('CALCULATING DIFFERENCE FOR CH1 (DYE)')
+                        print('CALCULATING DIFFERENCE FOR CH1 (COUNTERSTAIN/DYE)')
                     difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
@@ -2369,6 +2372,11 @@ class CellMaker(ParallelManager):
         Used for automated cell labeling - final output for cells detected
         """
         print("Starting cell detections")
+        self.process_sections = list(range(70, 80))
+        if self.process_sections:
+            print(f'Processing sections: {self.process_sections}')
+        else:
+            print('Processing all sections')
         self.report_status()
         scratch_tmp = get_scratch_dir()
         self.check_prerequisites(scratch_tmp)
@@ -2571,24 +2579,8 @@ class CellMaker(ParallelManager):
         # You need to use a new step to save the model, otherwise the previous models would be overwritten.
         trainer.save_models(new_models, model_filename, local_scratch)
 
-    def neuroglancer(self):
-        '''
-        #WIP 15-JUL-2025
-        CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
-        ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
-        '''
-        INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
-        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
-        temp_output_path.mkdir(parents=True, exist_ok=True)
-        progress_dir = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_progress')
-        progress_dir.mkdir(parents=True, exist_ok=True)
-        OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        print(f'{INPUT_DIR=}')
-        print(f'TEMP Output: {temp_output_path}')
-        print(f'FINAL Output: {OUTPUT_DIR}')
-
+    def omezarr(self):
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
@@ -2596,10 +2588,154 @@ class CellMaker(ParallelManager):
         else:
             workers = self.get_nworkers()
 
+        INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
+        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_tmp_zarr')
+        temp_output_path.mkdir(parents=True, exist_ok=True)
+        progress_dir = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_progress')
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+        use_scratch = use_scratch_dir(INPUT_DIR)
+        if use_scratch:
+            self.scratch_space = os.path.join(get_scratch_dir(), 'pipeline_tmp', self.animal, 'dask-scratch-space')
+            if os.path.exists(self.scratch_space):
+                delete_in_background(self.scratch_space)
+            os.makedirs(self.scratch_space, exist_ok=True)
+
+        print(f'{INPUT_DIR=}')
+        # print(f'TEMP Output: {temp_output_path}')
+        print(f'FINAL Output: {OUTPUT_DIR}')
+
+        files = []
+        for file in sorted(os.listdir(INPUT_DIR)):
+            filepath = os.path.join(INPUT_DIR, file)
+            files.append(filepath)
+
+        image_manager = ImageManager(INPUT_DIR)
+        target_chunk_size = 3000
+        chunk_y = closest_divisors_to_target(image_manager.height, target_chunk_size)
+        chunk_x = closest_divisors_to_target(image_manager.width, target_chunk_size)
+        concurrent_slice_processing = 2 # Number of slices to process in parallel (but requires more RAM)
+        originalChunkSize = [concurrent_slice_processing, image_manager.num_channels, concurrent_slice_processing, chunk_y, chunk_x] # 1796x984
+
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
+
+        print(f'Creating OME-Zarr from {INPUT_DIR}')
+        storefile = f'CH3_DIFF.zarr'
+        scaling_factor = 1
+        
+        mips = 7
+        
+        if self.debug:
+            print(f'INPUT FOLDER: {INPUT_DIR}')
+            print(f'INPUT FILES COUNT: {len(files)}')
+
+        omero = {}
+        omero['channels'] = {}
+        omero['channels']['color'] = None
+        omero['channels']['label'] = None
+        omero['channels']['window'] = None
+        omero['name'] = self.animal
+        omero['rdefs'] = {}
+        omero['rdefs']['defaultZ'] = len(files) // 2
+        omero_dict = omero
+
+        # storepath = Path(self.fileLocationManager.www, "neuroglancer_data", storefile)
+        xy = xy_resolution * scaling_factor
+        resolution = (z_resolution, xy, xy)
+
+        omezarr = builder(
+            INPUT_DIR,
+            str(temp_output_path),
+            files,
+            resolution,
+            originalChunkSize=originalChunkSize,
+            tmp_dir=str(self.scratch_space),
+            debug=self.debug,
+            omero_dict=omero_dict,
+            mips=mips,  # Limit pyramid levels to reduce memory
+            available_memory=self.available_memory * 0.9  # Leave 10% headroom
+        )
+        dask.config.set({
+            'temporary_directory': str(self.scratch_space),
+            'distributed.worker.memory.target': 0.8,  # Target fraction to stay under
+            'distributed.worker.memory.spill': 0.9,   # Spill to disk at 90%
+            'distributed.worker.memory.pause': 0.95,   # Pause at 95%
+            'distributed.worker.memory.terminate': 0.98  # Terminate at 98%
+        })
+        mem_per_worker = max(2, round((self.available_memory * 0.9) / workers)) # Minimum 2GB per worker
+        print(f'Starting omezarr with {omezarr.workers} workers and {omezarr.sim_jobs} sim_jobs with free memory/worker={mem_per_worker}GB')
+
+        mem_per_worker = str(mem_per_worker) + 'GB'
+        cluster = LocalCluster(
+            n_workers=workers,
+            threads_per_worker=1, 
+            memory_limit=mem_per_worker,
+            local_directory=str(self.scratch_space),
+            processes=True # Use processes instead of threads for memory isolation
+        )
+
+        with Client(cluster) as client:
+            omezarr.write_resolution_0(client)
+            for mip in range(1, len(omezarr.pyramidMap)):
+                omezarr.write_mips(mip, client)                    
+
+        cluster.close()
+
+        print("Processing complete - transferring to network storage")
+        copy_with_rclone(temp_output_path, OUTPUT_DIR)
+        omezarr.cleanup()
+
+
+    def neuroglancer(self):
+        '''
+        #WIP 21-JUL-2025
+        CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
+        ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
+        '''
+        
+        INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
+        skip_section = 5 #substitute every n sections with blank (to reduce processing time) [0=process all sections]
+        if skip_section > 0:
+            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_' + str(skip_section))
+            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py_' + str(skip_section))
+            progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF_' + str(skip_section))
+            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF_' + str(skip_section))
+        else:
+            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
+            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py')
+            progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF')
+            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+        temp_output_path.mkdir(parents=True, exist_ok=True)
+        temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            workers = 1    
+        else:
+            workers = self.get_nworkers()
+
+        self.report_status()
+        print("\tINPUT_DIR:".ljust(20), f"{INPUT_DIR}".ljust(20))
+        print("\tTEMP Output:".ljust(20), f"{temp_output_path}".ljust(20))
+        print("\tTEMP DOWNSAMPLED PRECOMPUTED Output:".ljust(20), f"{temp_output_path_pyramid}".ljust(20))
+        print("\tFINAL Output:".ljust(20), f"{OUTPUT_DIR}".ljust(20))
+
         image_manager = ImageManager(INPUT_DIR)
         chunks = [image_manager.height//16, image_manager.width//16, 1]
         image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
         
+        per_worker_memory = self.available_memory // workers
+        memory_target = per_worker_memory if workers == 1 else (per_worker_memory // workers)
+
+        print(f'\t{workers=}')
+        print(f'\tUsing memory target per worker: {memory_target:.2f} GB')
+
         #################################################
         # PRECOMPUTED FORMAT CREATION 
         #################################################
@@ -2612,7 +2748,7 @@ class CellMaker(ParallelManager):
             "image",
             image_manager.dtype,
             num_channels=1,
-            chunk_size=chunks,
+            chunk_size=chunks
         )
 
         # Initialize precomputed volume
@@ -2622,43 +2758,41 @@ class CellMaker(ParallelManager):
         orientation = self.sqlController.histology.orientation
         for i, f in enumerate(image_manager.files):
             filepath = Path(INPUT_DIR, f)
-            file_keys.append([i, filepath, orientation, progress_dir])
+            is_blank = (skip_section > 0) and (i % skip_section == skip_section - 1)
+            if is_blank:
+                filepath = None
+            file_keys.append([i, filepath, orientation, progress_dir, is_blank, image_manager.height, image_manager.width])
+        
         if self.debug:
             for file_key in file_keys:
-                ng.process_image(file_key=file_key)
+                ng.process_image(file_key)
         else:
             self.run_commands_concurrently(ng.process_image, file_keys, workers)
-        
+
         #################################################
         # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) START
         #################################################
-        if len(image_files) < 100:
-            z_chunk = int(XY_CHUNK)//2
-            chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
-        else:
-            chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
+        chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
+        mips = 7
+        fill_missing = True
+        compress = None
+        encoding="raw"
 
-        if image_manager.size < 100000000:
-            mips = 4
-        else:
-            mips = 7
-
-        # Create temporary directory for pyramid generation
-        pyramid_temp_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_pyramid')
-        pyramid_temp_path.mkdir(parents=True, exist_ok=True)
-
-        # Set up paths for downsampling
-        outpath = f"file://{pyramid_temp_path}"
-        cloudpath  = f"file://{temp_output_path}"
+        # Use the same temp_output_path for both initial volume and pyramid
+        cloudpath = f"file://{temp_output_path}"
+        outpath = f"file://{temp_output_path_pyramid}"
 
         # Create task queue
         tq = LocalTaskQueue(parallel=workers)
-        print(f'Creating sharded transfer tasks with chunks={chunks}')
         tasks = tc.create_image_shard_transfer_tasks(
-            cloudpath, 
+            cloudpath,
             outpath, 
+            fill_missing=fill_missing,
+            compress=compress,
             mip=0, 
-            chunk_size=chunks
+            chunk_size=chunks,
+            memory_target=memory_target,
+            encoding=encoding,
         )
         tq.insert(tasks)
         tq.execute()
@@ -2666,22 +2800,18 @@ class CellMaker(ParallelManager):
 
         # Create downsampling tasks for each mip level
         for mip in range(0, mips):
-            cv = CloudVolume(outpath, mip)
-            if image_manager.num_channels > 2:
-                print(f'Creating downsample tasks at mip={mip}')
-                tasks = tc.create_downsampling_tasks(
-                    cv.layer_cloudpath, 
-                    mip=mip, 
-                    num_mips=1, 
-                    compress=True
-                )
-            else:
-                print(f'Creating sharded downsample tasks at mip={mip}')
-                tasks = tc.create_image_shard_downsample_tasks(
-                    cv.layer_cloudpath, 
-                    mip=mip, 
-                    chunk_size=chunks
-                )
+            tasks = tc.create_image_shard_downsample_tasks(
+                cloudpath,
+                fill_missing=fill_missing,
+                compress=compress,
+                mip=mip,
+                chunk_size=chunks,
+                memory_target=memory_target,
+                encoding=encoding,
+                factor=(2,2,1),  # Explicit downsampling factor
+                sparse=True,
+                preserve_chunk_size=False
+            )
             tq.insert(tasks)
             tq.execute()
 
@@ -2689,14 +2819,43 @@ class CellMaker(ParallelManager):
         #################################################
         # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) END
         #################################################
-        ng.precomputed_vol.cache.flush()
-        final_vol = CloudVolume(outpath)
-        final_vol.cache.flush()
+        cv = CloudVolume(cloudpath)
+        cv.cache.flush()
+
+        # Verify all mip levels exist
+        for mip in range(0, mips+1):
+            assert cv.mip_available(mip), f"MIP {mip} not generated properly"
+
+        #################################################
+        # MODIFY PROVENANCE FILE WITH META-DATA
+        #################################################
+        prov_path = Path(temp_output_path, 'provenance')
+        with open(prov_path, 'r') as f:
+            prov = json.load(f)
+        
+        prov['description'] = f"CH3_DIFF"
+        subject = self.animal
+        prov['sources'] = {
+            "subject": subject, 
+            "PRECOMPUTED_SETTINGS": {
+                "INPUT_DIR": str(INPUT_DIR),
+                "volume_size": image_manager.volume_size,
+                "fill_missing": fill_missing,
+                "image_manager.dtype": image_manager.dtype,
+                "compress": compress,
+                "encoding": encoding,
+                "chunk_size": chunks,
+                "skip_section": skip_section
+            }
+        }
+
+        with open(prov_path, 'w') as f:
+            json.dump(prov, f, indent=2)
 
         #MOVE PRECOMPUTED FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
-        copy_with_rclone(pyramid_temp_path, OUTPUT_DIR)
-
+        copy_with_rclone(temp_output_path_pyramid, OUTPUT_DIR)
+        
         #################################################
         # HISTOGRAM CREATION - SINGLE AND COMBINED
         #################################################

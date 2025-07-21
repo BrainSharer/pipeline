@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--sigma", help="Sigma for Gaussian blurring [SEGMENTATION]", required=False, default=350, type=int)
     parser.add_argument("--min-segment", help="Minimum segmentation size (pixels)", required=False, default=100, type=int)
     parser.add_argument("--max-segment", help="Maximum segmentation size (pixels)", required=False, default=100000, type=int)
-    parser.add_argument("--segment-threshold", help="Segmentation threshold (pixels)", required=False, default=2000, type=int)
+    parser.add_argument("--segment-threshold", help="Intensity threshold (0 to 65535) [SEGMENTATION]", required=False, default=2000, type=int)
     parser.add_argument("--cell-radius", help="cell radius (pixels) [SEGMENTATION]", required=False, default=40, type=int)
 
     parser.add_argument(
@@ -108,6 +108,7 @@ if __name__ == "__main__":
         "train": pipeline.train,
         "fix": pipeline.fix_coordinates,
         "neuroglancer": pipeline.neuroglancer,
+        "omezarr": pipeline.omezarr, #replace 'neuroglancer' task?
         "precomputed": pipeline.create_precomputed_annotations, #TODO: remove?
     }
     

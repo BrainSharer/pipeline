@@ -297,20 +297,24 @@ class NumpyToNeuroglancer():
         tq.execute()
 
 
-    def process_image(self, file_key: tuple[int, str, any, str]) -> None:
+    def process_image(self, file_key: tuple[int, str, any, str, bool, int, int]) -> None:
         """
-        This reads the image and starts the precomputed data
+        Processes image or creates blank section for precomputed volume.
 
         :param file_key: file_key: tuple
         """
 
-        index, infile, _, progress_dir = file_key
-        progress_file = os.path.join(progress_dir, os.path.basename(infile))
+        index, infile, _, progress_dir, is_blank, height, width = file_key
+
+        if is_blank and infile is None:
+            img = np.zeros((height, width), dtype=np.uint8)
+        else:
+            progress_file = os.path.join(progress_dir, os.path.basename(infile))
         
-        if os.path.exists(progress_file):
-             print(f"Section {index} has already been processed, skipping.")
-             return
-        
+            if os.path.exists(progress_file):
+                print(f"Section {index} has already been processed, skipping.")
+                return
+            
         #test_img = read_image(infile)
         #print(f'{os.path.basename(infile)} shape={test_img.shape} dtype={test_img.dtype} ndim={test_img.ndim}')
         #return
@@ -319,37 +323,37 @@ class NumpyToNeuroglancer():
         #with Image.open(infile) as img:
         #    img_array = np.array(img, dtype=self.precomputed_vol.dtype)
 
-        img = read_image(infile)
-        #img=img_array
+            img = read_image(infile)
+            #img=img_array
 
-        #img = read_image(infile)
-        #img = tifffile.imread(infile)
-        if img.ndim > 2:
-            img = np.squeeze(img)
-            img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
-            img = np.rot90(img, 1)
-            img = np.flipud(img)
-        else:
+            #img = read_image(infile)
+            #img = tifffile.imread(infile)
+            if img.ndim > 2:
+                img = np.squeeze(img)
+                img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])
+                img = np.rot90(img, 1)
+                img = np.flipud(img)
+            else:
+                try:
+                    img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
+                except Exception as e:
+                    print(f'could not reshape {infile}')
+                    print(f'img shape={img.shape} with img dims={img.ndim}')
+                    print(f'precomputed volume shape={self.precomputed_vol.shape} dims={self.precomputed_vol.ndim}')
+                    print(e)
+                    sys.exit()
+
             try:
-                img = img.reshape(self.num_channels, img.shape[0], img.shape[1]).T
+                self.precomputed_vol[:, :, index] = img
             except Exception as e:
-                print(f'could not reshape {infile}')
+                print(f'Error putting image into volume:{infile}')
                 print(f'img shape={img.shape} with img dims={img.ndim}')
                 print(f'precomputed volume shape={self.precomputed_vol.shape} dims={self.precomputed_vol.ndim}')
                 print(e)
                 sys.exit()
 
-        try:
-            self.precomputed_vol[:, :, index] = img
-        except Exception as e:
-            print(f'Error putting image into volume:{infile}')
-            print(f'img shape={img.shape} with img dims={img.ndim}')
-            print(f'precomputed volume shape={self.precomputed_vol.shape} dims={self.precomputed_vol.ndim}')
-            print(e)
-            sys.exit()
-
-        touch(progress_file)
-        return
+            touch(progress_file)
+            return
 
 
     def process_image_mesh(self, file_key):
@@ -463,6 +467,3 @@ class NumpyToNeuroglancer():
         touch(progress_file)
         del img
         return
-
-
-

@@ -82,7 +82,7 @@ def create_shard(animal, debug):
     # index, infile, orientation, progress_dir
     for index, file in enumerate(files):
         infile = os.path.join(INPUT, file)
-        file_keys.append([index, infile, None, PROGRESS_DIR])
+        file_keys.append([index, infile, None, PROGRESS_DIR, False, 0, 0]) #added is_blank, height, width
 
     _, cpus = get_cpus()
     print(f'Working on {len(file_keys)} files with {cpus} cpus')

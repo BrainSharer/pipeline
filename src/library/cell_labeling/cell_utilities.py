@@ -420,34 +420,34 @@ def sobel(img):
     return sobel_x, sobel_y
 
 
-def copy_with_rclone(temp_output_path: str, OUTPUT_DIR: str) -> None:
+def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
     """
-    Copies all files from temp_output_path to OUTPUT_DIR using rclone.
+    Copies all files from src_dir to dest_dir using rclone.
     
     Args:
-        temp_output_path (str): Source directory path.
-        OUTPUT_DIR (str): Destination directory path.
+        src_dir (str): Source directory path.
+        dest_dir (str): Destination directory path.
     """
     # Ensure paths are absolute and properly formatted
-    temp_output_path = Path(temp_output_path).resolve()
-    OUTPUT_DIR = Path(OUTPUT_DIR).resolve()
+    src_dir = Path(src_dir).resolve()
+    dest_dir = Path(dest_dir).resolve()
 
-    if not temp_output_path.exists():
-        raise FileNotFoundError(f"Source directory not found: {temp_output_path}")
-    if not OUTPUT_DIR.exists():
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    if not src_dir.exists():
+        raise FileNotFoundError(f"Source directory not found: {src_dir}")
+    if not dest_dir.exists():
+        dest_dir.mkdir(parents=True, exist_ok=True)
 
     # Construct the rclone command
     rclone_cmd = [
         "rclone",
         "copy",
         "--progress",  # Show progress (optional)
-        str(temp_output_path) + "/",  # Ensure trailing slash for directory copy
-        str(OUTPUT_DIR) + "/",
+        str(src_dir) + "/",  # Ensure trailing slash for directory copy
+        str(dest_dir) + "/",
     ]
 
     try:
-        print(f"Copying files from {temp_output_path} to {OUTPUT_DIR} using rclone...")
+        print(f"Copying files from {src_dir} to {dest_dir} using rclone...")
         subprocess.run(rclone_cmd, check=True)
         print("Copy completed successfully.")
     except subprocess.CalledProcessError as e:
