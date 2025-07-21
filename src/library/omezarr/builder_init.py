@@ -28,7 +28,8 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         debug,
         omero_dict,
         mips,
-        downsample
+        downsample,
+        channel=1
     ):
 
         self.input = in_location
@@ -54,8 +55,11 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.img_shape = image_manager.shape
         self.shape_3d = (len(self.files),*image_manager.shape)
         scratch_parent = os.path.dirname(self.scratch_space)
-        self.transfer_path = os.path.join(scratch_parent, "transfer")
-        self.rechunkme_path = os.path.join(scratch_parent, "rechunkme")
+        self.transfer_path = os.path.join(scratch_parent, f"C{channel}_transfer")
+        self.rechunkme_path = os.path.join(scratch_parent, f"C{channel}_rechunkme")
+        if downsample:
+            self.transfer_path = os.path.join(scratch_parent, f"C{channel}T_transfer")
+            self.rechunkme_path = os.path.join(scratch_parent, f"C{channel}T_rechunkme")
 
         self.pyramidMap = {}
 

@@ -164,7 +164,8 @@ class OmeZarrManager():
             debug=self.debug,
             omero_dict=omero_dict,
             mips=mips,
-            downsample=self.downsample
+            downsample=self.downsample,
+            channel=self.channel,
         )
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
