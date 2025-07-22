@@ -422,6 +422,7 @@ class CellMaker(ParallelManager):
             print(f'running in parallel with {workers} workers; {len(file_keys)} sections to process, out: {self.SCRATCH}')
         self.run_commands_concurrently(self.detect_cells_all_sections, file_keys, workers)
 
+
     def identify_cell_candidates(self, file_keys: tuple) -> list:
         '''2. Identify cell candidates - PREV: find_examples()
                 -Requires image tiling or dask virtual tiles prior to running
@@ -451,7 +452,7 @@ class CellMaker(ParallelManager):
             input_format,
             input_path_dye,
             input_path_virus,
-            step,
+            _,
             debug,
             *_,
         ) = file_keys
@@ -1564,8 +1565,8 @@ class CellMaker(ParallelManager):
         prov['sources'] = {
             "subject": subject, 
             "ML_segmentation": {
-                "min_segment_size": self.min_segment_size,
-                "max_segment_size": self.max_segment_size,
+                "min_segment_size": self.segment_size_min,
+                "max_segment_size": self.segment_size_max,
                 "gaussian_blur_standard_deviation_sigmaX": self.gaussian_blur_standard_deviation_sigmaX,
                 "gaussian_blur_kernel_size_pixels": self.gaussian_blur_kernel_size_pixels,
                 "segmentation_threshold": self.segmentation_threshold,
@@ -2372,6 +2373,7 @@ class CellMaker(ParallelManager):
         Used for automated cell labeling - final output for cells detected
         """
         print("Starting cell detections")
+        # self.process_sections = []  # all sections
         self.process_sections = list(range(70, 80))
         if self.process_sections:
             print(f'Processing sections: {self.process_sections}')
@@ -2697,7 +2699,7 @@ class CellMaker(ParallelManager):
         '''
         
         INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
-        skip_section = 5 #substitute every n sections with blank (to reduce processing time) [0=process all sections]
+        skip_section = 0 #substitute every n sections with blank (to reduce processing time) [0=process all sections]
         if skip_section > 0:
             temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_' + str(skip_section))
             temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py_' + str(skip_section))
@@ -2724,6 +2726,7 @@ class CellMaker(ParallelManager):
         print("\tINPUT_DIR:".ljust(20), f"{INPUT_DIR}".ljust(20))
         print("\tTEMP Output:".ljust(20), f"{temp_output_path}".ljust(20))
         print("\tTEMP DOWNSAMPLED PRECOMPUTED Output:".ljust(20), f"{temp_output_path_pyramid}".ljust(20))
+        print("\tTEMP Progress:".ljust(20), f"{progress_dir}".ljust(20))
         print("\tFINAL Output:".ljust(20), f"{OUTPUT_DIR}".ljust(20))
 
         image_manager = ImageManager(INPUT_DIR)
@@ -2775,7 +2778,6 @@ class CellMaker(ParallelManager):
         chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
         mips = 7
         fill_missing = True
-        compress = None
         encoding="raw"
 
         # Use the same temp_output_path for both initial volume and pyramid
@@ -2788,7 +2790,6 @@ class CellMaker(ParallelManager):
             cloudpath,
             outpath, 
             fill_missing=fill_missing,
-            compress=compress,
             mip=0, 
             chunk_size=chunks,
             memory_target=memory_target,
@@ -2803,7 +2804,6 @@ class CellMaker(ParallelManager):
             tasks = tc.create_image_shard_downsample_tasks(
                 cloudpath,
                 fill_missing=fill_missing,
-                compress=compress,
                 mip=mip,
                 chunk_size=chunks,
                 memory_target=memory_target,
