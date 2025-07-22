@@ -161,6 +161,7 @@ class Pipeline(
         self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
         self.correct_multiples()
         self.extract_tiffs_from_czi()
+        self.reorder_scenes()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
             self.create_previews()

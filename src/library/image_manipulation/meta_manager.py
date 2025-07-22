@@ -294,6 +294,7 @@ class MetaUtilities:
         self.session.begin()
         self.session.add(slide)
         self.session.commit()
+
     
         """Add entry to the table that prepares the user Quality Control interface"""
         for series_index in range(slide.scenes):
@@ -352,3 +353,44 @@ class MetaUtilities:
                 print(f"DEBUG: MODIFYING {slide_physical_id=}, {self.sqlController.scan_run.id=}, {slide_physical_id=}")
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id, self.debug)
             self.fileLogger.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
+
+    def reorder_scenes(self):
+        """
+        This method will order the scenes in the database by their scene number.
+        It will also update the file names to reflect the correct order.
+        """
+
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+
+        # get unique channels for all slides
+        channels = self.sqlController.session.query(SlideCziTif.channel)\
+            .join(Slide)\
+            .filter(Slide.scan_run_id == self.sqlController.scan_run.id)\
+            .filter(Slide.active == 1)\
+            .filter(SlideCziTif.active == 1)\
+            .distinct()
+        channels = [channel[0] for channel in channels]
+        print(f"DEBUG: Reordering scenes for channels: {channels}")
+
+        for channel in channels:
+            scenes = self.sqlController.session.query(SlideCziTif)\
+                .join(Slide)\
+                .filter(Slide.scan_run_id == self.sqlController.scan_run.id)\
+                .filter(Slide.active == 1)\
+                .filter(SlideCziTif.active == 1)\
+                .filter(SlideCziTif.channel == channel)\
+                .order_by(Slide.slide_physical_id)\
+                .order_by(SlideCziTif.scene_number)\
+                .order_by(SlideCziTif.channel)\
+                    .all()
+
+            for scene_order, scene in enumerate(scenes):
+                channel = scene.channel
+                scene.scene_order = scene_order
+                self.session.add(scene)
+                if self.debug:
+                    print(f"DEBUG: Scene {scene.scene_number} - File Name: {scene.file_name}")
+
+        self.session.commit()

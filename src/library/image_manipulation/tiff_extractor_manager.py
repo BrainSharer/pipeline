@@ -66,6 +66,7 @@ class TiffExtractor():
             print('\nError, no sections found, exiting.')
             print("Were the CZI file names correct on birdstore?")
             print("File names should be in the format: DK123_slideXXX_anything.czi")
+            print("Are there slides in the database but no tifs? Check the database for existing slides and missing tifs")
             sys.exit()
 
         for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
