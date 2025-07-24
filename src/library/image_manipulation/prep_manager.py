@@ -137,6 +137,16 @@ class PrepCreater:
             print('CALLED FROM CELL MANAGER')
             self.downsample = False
 
+            #FIND ANNOTATION SETS TO INCLUDE        
+            annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
+            pattern = re.compile(r'^ML_POS(_\d+)?\.precomputed$')
+            matching_ml_pos_folders = [
+                f for f in annotations_dir.iterdir()
+                if f.is_dir() and pattern.match(f.name)
+            ]
+            print('INCLUDING ANNOTATIONS PRECOMPUTED FOLDERS')
+            print([f.name for f in matching_ml_pos_folders])
+
         # GET CHANNEL NAMES FROM meta-data.json
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
@@ -180,7 +190,9 @@ class PrepCreater:
                 pattern4.match(os.path.basename(f)))
         ]
 
+        ng_layers = []
         img_layers = {}
+        segmentation_layers = {}
         for channel_name in channel_names:
             ome_zarr_path = os.path.join(self.fileLocationManager.neuroglancer_data, channel_name + ".zarr")
             if self.downsample:
@@ -195,10 +207,10 @@ class PrepCreater:
                 img_layers[channel_name] = {'src': ome_zarr_path, 'src_type': 'zarr2', 'folder_name': folder_name}
             elif precomputed_path1 in ng_folders:
                 img_layers[channel_name] = {'src': precomputed_path1, 'src_type': 'precomputed', 'folder_name': channel_name}
-                print(f"USING PRECOMPUTED DIR: {precomputed_path1}")
+                print(f"USING IMG PRECOMPUTED DIR: {precomputed_path1}")
             elif precomputed_path2 in ng_folders:
                 img_layers[channel_name] = {'src': precomputed_path2, 'src_type': 'precomputed', 'folder_name': channel_name}
-                print(f"USING PRECOMPUTED DIR: {precomputed_path2}")
+                print(f"USING IMG PRECOMPUTED DIR: {precomputed_path2}")
             else:
                 print(f"ERROR: NEUROGLANCER DATA NOT FOUND FOR {channel_name}")
                 continue
@@ -212,6 +224,23 @@ class PrepCreater:
                 c3_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
                 img_layers['C3_DIFF'] = {'src': c3_path, 'src_type': 'precomputed', 'folder_name': 'C3_DIFF'}
 
+        if src == 'cell_manager':
+            #ADD ANNOTATION LAYERS
+            base_url = f"https://imageserv.dk.ucsd.edu/data/{self.animal}/neuroglancer_data/"
+            for folder in matching_ml_pos_folders:
+                folder_name = folder.name
+                if folder_name.endswith('.precomputed'):
+                    annotation_name = folder_name[:-len('.precomputed')]
+                    src = 'precomputed://' + base_url + 'annotations' + '/' + str(folder_name)
+                    seg_layer = {
+                        'source': str(src),
+                        'type': 'segmentation',
+                        "tab": "source",
+                        "segments": [],
+                        'name': str(annotation_name)
+                    }
+                    ng_layers.append(seg_layer)
+                    
         ##################################################################################
         #define initial view field (x,y,z) - center on image and across stack
         if self.downsample:
@@ -243,7 +272,6 @@ class PrepCreater:
         #COMPILE IMG SRC FOR LAYERS
         base_url = f"https://imageserv.dk.ucsd.edu/data/{self.animal}/neuroglancer_data/"
         
-        ng_layers = []
         for channel_name, channel_attributes in img_layers.items():
             layer = {
                 "type": "image",
@@ -252,7 +280,7 @@ class PrepCreater:
                 "name": channel_name
             }
             ng_layers.append(layer)
-
+        
         dimensions_json = {"dimensions": dimensions}
         layers_json = {"layers": ng_layers}
 

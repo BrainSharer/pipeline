@@ -1413,8 +1413,8 @@ class CellMaker(
     
 
     def extract_predictions_precomputed(self):
-        #precomputed, segmentation volume - this works @ 16-JUN-2025
-        labels = ['ML_POSITIVE']
+        #precomputed, segmentation volume - this works @ 24-JUL-2025
+        labels = ['ML_POS']
         sampling = self.sampling
 
         performance_lab = self.sqlController.histology.FK_lab_id
@@ -1437,6 +1437,42 @@ class CellMaker(
         if len(detection_files) == 0:
             print(f'Error: no csv files found in {self.cell_label_path}')
             sys.exit(1)
+
+        #NAMING CONVENTION FOR ANNOTATION FOLDERS
+        # e.g. ML_POS_0, ML_POS_1, ML_POS_2
+        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
+        annotations_dir.mkdir(parents=True, exist_ok=True)
+        prefix = labels[0]
+
+        # Regex pattern to match folder names starting with prefix and ending with _{int}, e.g. ML_POS_0, ML_POS_12
+        pattern_template = r'^{}(?:_(\d+))?$'  # group 1 captures optional suffix number
+        pattern = re.compile(pattern_template.format(re.escape(prefix)))
+
+        max_suffix = -1
+        found_any = False
+
+        for folder in annotations_dir.iterdir():
+            if folder.is_dir():
+                m = pattern.match(folder.name)
+                if m:
+                    found_any = True
+                    if m.group(1) is None:
+                        # Folder has prefix but no number suffix
+                        max_suffix = max(max_suffix, -1)
+                    else:
+                        num = int(m.group(1))
+                        if num > max_suffix:
+                            max_suffix = num
+
+        if not found_any:
+            # Directory empty of matching prefix folders
+            ann_out_folder_name = prefix
+        else:
+            # We found matching folders, get next suffix number
+            next_number = max_suffix + 1
+            ann_out_folder_name = f"{prefix}_{next_number}"
+
+        print(f"New annotations output: {ann_out_folder_name}")
 
         dfs = []
         for file_path in detection_files:
@@ -1462,7 +1498,6 @@ class CellMaker(
                 dfs.append(filtered.select([
                     pl.col("col").alias("x"),
                     pl.col("row").alias("y"),
-                    #(pl.col("section") - 0.5).cast(pl.Int32).alias("section")
                     (pl.col("section") + 0.5).cast(pl.Int32).alias("section") #annotations were offset by 1 (perhaps due to round down)
                     
                 ]))
@@ -1496,22 +1531,21 @@ class CellMaker(
         # SAVE OUTPUTS
         ###############################################
         # SAVE CSV FORMAT (x,y,z POINTS IN CSV) *SAMPLED DATA
-        if not df.is_empty():
-            df.write_csv(dfpath)
+        # if not df.is_empty():
+        #     df.write_csv(dfpath)
 
-        # SAVE JSON FORMAT *SAMPLED DATA
-        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
-        annotations_dir.mkdir(parents=True, exist_ok=True)
-        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
-        # Populate points variable after sampling
-        sampled_points = (
-            df.sort("section")
-            .select(["x", "y", "section"])
-            .to_numpy()
-            .tolist()
-        )
-        with open(annotations_file, 'w') as fh:
-            json.dump(sampled_points, fh)
+        # # SAVE JSON FORMAT *SAMPLED DATA
+        # annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
+
+        # # Populate points variable after sampling
+        # sampled_points = (
+        #     df.sort("section")
+        #     .select(["x", "y", "section"])
+        #     .to_numpy()
+        #     .tolist()
+        # )
+        # with open(annotations_file, 'w') as fh:
+        #     json.dump(sampled_points, fh)
 
         # SAVE PRECOMPUTED [SEGMENTATION] FORMAT *SAMPLED DATA
         shape = (w, h, z_length)
@@ -1528,11 +1562,11 @@ class CellMaker(
                 # Draw a small circle to make the point more visible
                 #cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
 
-        out_dir = Path(annotations_dir, labels[0] + '.precomputed')
-        if os.path.exists(out_dir):
-            print(f'Removing existing directory {out_dir}')
-            shutil.rmtree(out_dir)
-        os.makedirs(out_dir, exist_ok=True)
+        out_dir = Path(annotations_dir, ann_out_folder_name + '.precomputed')
+        # if os.path.exists(out_dir):
+        #     print(f'Removing existing directory {out_dir}')
+        #     delete_in_background(out_dir)
+        # os.makedirs(out_dir, exist_ok=True)
         
         print(f'Creating precomputed annotations in {out_dir}')
         resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
