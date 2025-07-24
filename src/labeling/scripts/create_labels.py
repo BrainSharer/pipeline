@@ -8,9 +8,10 @@ The program can be run with the following commands:
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task create_features
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task detect
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task extract
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task neuroglancer
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task train
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task fix
-- python srs/labeling/scripts/create_labels.py --animal DKXX --task precomputed
+
 
 Explanation for the tasks:
 
@@ -74,9 +75,13 @@ if __name__ == "__main__":
     parser.add_argument("--segment-threshold", help="Intensity threshold (0 to 65535) [SEGMENTATION]", required=False, default=2000, type=int)
     parser.add_argument("--cell-radius", help="cell radius (pixels) [SEGMENTATION]", required=False, default=40, type=int)
 
+    #NEUROGLANCER ARGUMENTS [USED WITH 'neuroglancer' TASK]
+    #Note: ng-id should be id of full-resolution (all channels); this task will add CH3_DIFF and ML_POSITIVE point detections
+    parser.add_argument("--ng-id", help="Brainsharer id", required=False, default="", type=str)
+
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: create_features|detect|extract|train",
+        help="Enter the task you want to perform: create_features|detect|extract|neuroglancer|train",
         required=True,
         type=str,
     )
@@ -98,18 +103,18 @@ if __name__ == "__main__":
     segment_gaussian_kernel = args.kernel
     segment_threshold = args.segment_threshold
     cell_radius = args.cell_radius
+    ng_id = args.ng_id
 
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius,debug=debug)
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius, ng_id=ng_id, debug=debug)
 
     function_mapping = {
         "create_features": pipeline.create_features,
         "detect": pipeline.create_detections,
         "extract": pipeline.extract_predictions_precomputed,
+        "neuroglancer": pipeline.neuroglancer,
         "train": pipeline.train,
         "fix": pipeline.fix_coordinates,
-        "neuroglancer": pipeline.neuroglancer,
         "omezarr": pipeline.omezarr, #replace 'neuroglancer' task?
-        "precomputed": pipeline.create_precomputed_annotations, #TODO: remove?
     }
     
 

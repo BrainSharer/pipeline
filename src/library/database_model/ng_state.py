@@ -13,7 +13,6 @@ class NeoroglancerState(Base, AtlasModel):
     neuroglancer_state = Column(String, nullable=False)  # Maps to 'longtext'
     created = Column(Date, nullable=False)
     updated = Column(Date, nullable=False)
-    user_date = Column(String(25), nullable=True)  # Maps to 'varchar(25)'
     comments = Column(String(255), nullable=False)  # Maps to 'varchar(255)'
     description = Column(String(2048), nullable=True)  # Maps to 'varchar(2048)'
     readonly = Column(Boolean, nullable=False)  # Maps to 'tinyint(1)'

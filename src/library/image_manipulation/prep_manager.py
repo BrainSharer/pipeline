@@ -1,5 +1,6 @@
 import os, re
 import inspect
+import sys
 import json
 import glob
 import paramiko
@@ -93,6 +94,9 @@ class PrepCreater:
                 
 
     def create_symbolic_link(self, target_path: str, link_path: str):
+        '''
+        Create symbolic link remotely on image server via RPC
+        '''
         if self.debug:
             print(f"Creating symbolic link from {target_path} to {link_path}")
         ssh = paramiko.SSHClient()
@@ -123,11 +127,15 @@ class PrepCreater:
             ssh.close()
 
 
-    def gen_ng_preview(self):
+    def gen_ng_preview(self, src: str = None, ng_id: int = None):
 
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+
+        if src == 'cell_manager':
+            print('CALLED FROM CELL MANAGER')
+            self.downsample = False
 
         # GET CHANNEL NAMES FROM meta-data.json
         meta_data_file = 'meta-data.json'
@@ -159,6 +167,7 @@ class PrepCreater:
         pattern1 = re.compile(r'.*_(re)?aligned$')
         pattern2 = re.compile(r'.*\.zarr$')
         pattern3 = re.compile(r'^C\d+$')  # starts with 'C' and then only digits
+        pattern4 = re.compile(r'^C3_DIFF$')  # specific C3_DIFF pattern
         pattern_rechunkme = re.compile(r'rechunkme')   
 
         ng_folders = [
@@ -167,10 +176,10 @@ class PrepCreater:
                 not pattern_rechunkme.search(os.path.basename(f)) and 
                 (pattern1.match(os.path.basename(f)) or
                 pattern2.match(os.path.basename(f)) or
-                (pattern3.match(os.path.basename(f)) and not pattern1.match(os.path.basename(f)))
-            )
+                pattern3.match(os.path.basename(f)) or
+                pattern4.match(os.path.basename(f)))
         ]
-        
+
         img_layers = {}
         for channel_name in channel_names:
             ome_zarr_path = os.path.join(self.fileLocationManager.neuroglancer_data, channel_name + ".zarr")
@@ -194,6 +203,15 @@ class PrepCreater:
                 print(f"ERROR: NEUROGLANCER DATA NOT FOUND FOR {channel_name}")
                 continue
 
+            #FOR cell_manager USAGE, ONLY ADD C3_DIFF LAYER
+            if src == 'cell_manager':
+                ng_folders = [f for f in ng_folders if not os.path.basename(f) == 'C3_DIFF.zarr']
+                c3_diff_dir = [f for f in ng_folders if os.path.basename(f) == 'C3_DIFF']
+                if c3_diff_dir:
+                    print(f' FOLDERS: {ng_folders}')
+                c3_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+                img_layers['C3_DIFF'] = {'src': c3_path, 'src_type': 'precomputed', 'folder_name': 'C3_DIFF'}
+
         ##################################################################################
         #define initial view field (x,y,z) - center on image and across stack
         if self.downsample:
@@ -205,6 +223,12 @@ class PrepCreater:
 
         ##################################################################################
 
+        print(f'GENERATING NG PREVIEW FOR {self.animal} WITH LAYERS: {list(img_layers.keys())}')
+        if ng_id:
+            print(f'ADDING TO EXISTING NG STATE {ng_id}')
+        else:
+            print(f'CREATING NEW NG STATE')
+        
         #TODO: CREATE WITH LAYERS WE HAVE
         # RAM: ?
         # ann_layer: name, rendering
@@ -338,14 +362,14 @@ class PrepCreater:
             }}
 
         combined_json = {**dimensions_json, **view_field, **other_stuff, **layers_json, **annotations_json, **gen_settings}
-        #print(json.dumps(combined_json, indent=2))
 
         combined_json_str = json.dumps(combined_json)
         comments = self.animal + ' auto preview'
-        active_query = self.sqlController.insert_ng_state(combined_json_str, comments=comments, readonly=True, public=False, active=True)
+        active_query = self.sqlController.insert_ng_state(combined_json_str, comments=comments, readonly=True, public=False, ng_id=ng_id, active=True)
         
         if active_query:
-            print(f"preview state created: {active_query}")
+            # print(f"preview state created: {active_query}")
+            print(f"\nhttps://brainsharer.org/ng/?id={active_query.id}\n")
         else:
             print("error; no preview state created")
 

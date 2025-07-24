@@ -7,13 +7,13 @@ the only required argument.
 All imports are listed by the order in which they are used in the 
 """
 
-import os
+import os, sys
 import shutil
 import SimpleITK as sitk
-import sys
 import psutil
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from pathlib import Path
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.image_manipulation.file_logger import FileLogger
@@ -166,6 +166,12 @@ class Pipeline(
             self.create_web_friendly_image()
             self.create_previews()
             self.create_checksums()
+            
+            #ADD SYMLINKS TO EXTRACTED THUMBNAIL IMAGES
+            target_path = str(self.fileLocationManager.www)
+            link_path = str(Path('/', 'srv', self.animal))
+            self.create_symbolic_link(target_path, link_path)
+
         print(f'Finished {self.TASK_EXTRACT}.')
 
     def mask(self):

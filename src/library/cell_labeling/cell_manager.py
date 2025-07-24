@@ -21,6 +21,7 @@ import xgboost as xgb
 import psutil
 import warnings
 import tifffile
+from datetime import datetime
 try:
     import cupy as cp
 except ImportError as ie:
@@ -35,13 +36,15 @@ from library.cell_labeling.cell_utilities import (
     subtract_blurred_image,
     features_using_center_connected_components,
     find_available_backup_filename, 
-    copy_with_rclone
+    copy_with_rclone,
+    clean_provenance
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.histogram_maker import make_histogram_full_RAM, make_single_histogram_full, make_combined_histogram_full
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker, XY_CHUNK, Z_CHUNK
+from library.image_manipulation.prep_manager import PrepCreater
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.file_logger import FileLogger
 from library.image_manipulation.filelocation_manager import FileLocationManager
@@ -66,9 +69,12 @@ except ImportError:
     schema = "brainsharer"
 
 
-class CellMaker(ParallelManager):
+class CellMaker(
+    ParallelManager,
+    PrepCreater):
+    TASK_NG_PREVIEW = "Creating neuroglancer preview"
 
-    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, debug: bool = False):
+    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, ng_id: str = "", debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -92,6 +98,7 @@ class CellMaker(ParallelManager):
         self.dye_channel = 0
         self.virus_channel = 0
         self.annotation_id = annotation_id
+        self.ng_id = ng_id
 
         #SEGMENTATION PARAMETERS
         self.segment_size_min = segment_size_min
@@ -1580,388 +1587,10 @@ class CellMaker(ParallelManager):
 
         # SETUP COLOR MAP IN NEUROGLANCER (POINT FORMATTING FOR INCREASED VISIBILITY)
         # requires creating 'preview' ng state
+
         
-                
-    def extract_predictions_WIP(self):
-            labels = ['ML_POSITIVE']
-            sampling = self.sampling
-
-            xy_resolution = self.sqlController.scan_run.resolution
-            z_resolution = self.sqlController.scan_run.zresolution
-            w = int(self.sqlController.scan_run.width//SCALING_FACTOR)
-            h = int(self.sqlController.scan_run.height//SCALING_FACTOR)
-            z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
-
-            #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
-            dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
-            if os.path.exists(self.cell_label_path):
-                print(f'Parsing cell labels from {self.cell_label_path}')
-            else:
-                print(f'ERROR: {self.cell_label_path} not found')
-                sys.exit(1)
-            
-            detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
-            if len(detection_files) == 0:
-                print(f'Error: no csv files found in {self.cell_label_path}')
-                sys.exit(1)
-
-            dfs = []
-            for file_path in detection_files:
-                # Read CSV with Polars (much faster than pandas)
-                try:
-                    df = pl.read_csv(file_path)
-                    if df.is_empty():
-                        continue
-                        
-                    # Filter and process in one go
-                    filtered = df.filter(
-                    (pl.col("predictions").cast(pl.Float32) > 0))
-                    
-                    if filtered.is_empty():
-                        continue
-                        
-                    # Process all rows at once
-                    x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
-                    y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
-                    sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
-                    
-                    # Append to dataframe data
-                    dfs.append(filtered.select([
-                        pl.col("col").alias("x"),
-                        pl.col("row").alias("y"),
-                        (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
-                    ]))
-                
-                except Exception as e:
-                    print(f"Error processing {file_path}: {e}")
-                    continue
-
-            # Concatenate all dataframes at once
-            final_df = pl.concat(dfs) if dfs else pl.DataFrame()
-
-            #random sampling for model training, if selected
-            # Choose between full dataset or sampled subset
-            if self.sampling:
-                sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
-                df = sampled_df
-                print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
-            else:
-                df = final_df
-                print(f"No sampling - using all {df.height} points")
-            
-            if len(df) == 0:
-                print('No neurons found')
-                sys.exit()
-
-            ###############################################
-            #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
-            ###############################################
-
-            ###############################################
-            # SAVE OUTPUTS
-            ###############################################
-            # SAVE CSV FORMAT (x,y,z POINTS IN CSV) *SAMPLED DATA
-            if not df.is_empty():
-                df.write_csv(dfpath)
-
-            # SAVE JSON FORMAT *SAMPLED DATA
-            annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations') #ref 'drawn_directory
-            annotations_dir.mkdir(parents=True, exist_ok=True)
-            annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
-            # Populate points variable after sampling
-            sampled_points = (
-                df.sort("section")
-                .select(["x", "y", "section"])
-                .to_numpy()
-                .tolist()
-            )
-            with open(annotations_file, 'w') as fh:
-                json.dump(sampled_points, fh)
-
-            # SAVE PRECOMPUTED [IMG] FORMAT *SAMPLED DATA
-            # shape = (w, h, z_length)
-            # volume = np.zeros((z_length, h, w), dtype=np.uint8)
-            # desc = f"Drawing on {self.animal} volume={volume.shape}"
-            # for row in tqdm(df.iter_rows(named=True), desc=desc):
-            #     x = int(row["x"] // SCALING_FACTOR)
-            #     y = int(row["y"] // SCALING_FACTOR)
-            #     z = int(row["section"])
-            #     if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
-            #         volume[z, y, x] = 255
-
-            # volume = np.transpose(volume, (2, 1, 0))  # Convert from (Z, H, W) to (W, H, Z)
-            # volume = volume[..., np.newaxis]  # Add channel dimension: (W, H, Z, 1)
-
-            # out_dir = Path(annotations_dir, labels[0] + '.precomputed')
-            # if os.path.exists(out_dir):
-            #     print(f'Removing existing directory {out_dir}')
-            #     shutil.rmtree(out_dir)
-            # os.makedirs(out_dir, exist_ok=True)
-            # print(f'Creating precomputed annotations in {out_dir}')
-            # resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
-            # scales = (resolution, resolution, int(z_resolution * 1000))
-
-            # info = CloudVolume.create_new_info(
-            #     num_channels=1,
-            #     layer_type='image', 
-            #     data_type=np.uint8,
-            #     encoding='raw',
-            #     resolution=scales,
-            #     voxel_offset=(0, 0, 0),
-            #     chunk_size=(32, 32, 32),
-            #     volume_size=shape,  # x, y, z
-            # )
-
-            # vol = CloudVolume(f'file://{out_dir}', info=info)
-            # vol.commit_info()
-            # vol[:, :, :] = volume
-
-            # tq = LocalTaskQueue(parallel=1)
-            # tasks = tc.create_downsampling_tasks(f'file://{out_dir}', mip=0, num_mips=2, compress=True)
-            # tq.insert(tasks)
-            # tq.execute()
-
-            # SAVE PRECOMPUTED [SEGMENTATION] FORMAT *SAMPLED DATA
-            shape = (w, h, z_length)
-            volume = np.zeros((z_length, h, w), dtype=np.uint8)
-            desc = f"Drawing on {self.animal} volume={volume.shape}"
-            radius = 2  # adjust as needed
-            for row in tqdm(df.iter_rows(named=True), desc=desc):
-                x = int(row["x"] // SCALING_FACTOR)
-                y = int(row["y"] // SCALING_FACTOR)
-                z = int(row["section"])
-                if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
-                    # Draw a small square (e.g., 5x5) for visibility
-                    for dx in range(-radius, radius + 1):
-                        for dy in range(-radius, radius + 1):
-                            xx, yy = x + dx, y + dy
-                            if 0 <= xx < w and 0 <= yy < h:
-                                volume[z, yy, xx] = 1  # label ID = 1
-
-            volume = np.transpose(volume, (2, 1, 0))  # Convert from (Z, H, W) to (W, H, Z)
-            volume = volume[..., np.newaxis]  # Add channel dimension: (W, H, Z, 1)
-
-            out_dir = Path(annotations_dir, labels[0] + '.precomputed')
-            if os.path.exists(out_dir):
-                print(f'Removing existing directory {out_dir}')
-                shutil.rmtree(out_dir)
-            os.makedirs(out_dir, exist_ok=True)
-            print(f'Creating precomputed annotations in {out_dir}')
-            resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
-            scales = (resolution, resolution, int(z_resolution * 1000))
-
-            info = CloudVolume.create_new_info(
-                num_channels=1,
-                layer_type='segmentation', 
-                data_type=np.uint8,
-                encoding='raw',
-                resolution=scales,
-                voxel_offset=(0, 0, 0),
-                chunk_size=(32, 32, 32),
-                volume_size=shape,  # x, y, z
-            )
-
-            vol = CloudVolume(f'file://{out_dir}', info=info)
-            vol.commit_info()
-            vol[:, :, :] = volume
-
-            tq = LocalTaskQueue(parallel=1)
-            tasks = tc.create_downsampling_tasks(f'file://{out_dir}', mip=0, num_mips=2, compress=True)
-            tq.insert(tasks)
-            tq.execute()
-
-
-    def extract_predictions1(self):
-        """
-        Note, the point information from the CSV must be converted to 
-        meters. 
-        Parses cell label data from CSV files and inserts annotations with labels into the database.
-        This method performs the following steps:
-        1. Sets default properties for cell annotations.
-        2. Initializes empty lists for points and child JSON objects.
-        3. Generates a unique parent ID for the annotation session.
-        4. Retrieves the XY and Z resolutions from the SQL controller.
-        5. Constructs the path to the directory containing cell label CSV files.
-        6. Checks if the CSV directory exists and exits if not found.
-        7. Retrieves and sorts all CSV files in the directory.
-        8. Parses each CSV file and extracts cell data if the file name contains 'detections_057'.
-        9. Converts cell coordinates and predictions, and creates JSON objects for each detected cell.
-        10. Aggregates the cell points and creates a cloud point annotation.
-        11. Inserts the annotation with labels into the database if not in debug mode.
-        Raises:
-            SystemExit: If the CSV directory or files are not found.
-            Exception: If there is an error inserting data into the database.
-        Prints:
-            Status messages indicating the progress and results of the parsing and insertion process.
-        """
-
-        # default_props = ["#ffff00", 1, 1, 5, 3, 1]
-        # parent_id = f"{random_string()}"
-        # FK_user_id = 1
-        labels = ['ML_POSITIVE']
-
-        xy_resolution = self.sqlController.scan_run.resolution
-        z_resolution = self.sqlController.scan_run.zresolution
-        sampling = self.sampling
-        # found = 0
-
-        dfpath = os.path.join(self.fileLocationManager.prep, 'cell_labels', 'all_predictions.csv')
-        if os.path.exists(self.cell_label_path):
-            print(f'Parsing cell labels from {self.cell_label_path}')
-        else:
-            print(f'ERROR: {self.cell_label_path} not found')
-            sys.exit(1)
-        
-        detection_files = sorted(glob.glob(os.path.join(self.cell_label_path, f'detections_*.csv') ))
-        if len(detection_files) == 0:
-            print(f'Error: no csv files found in {self.cell_label_path}')
-            sys.exit(1)
-
-        dfs = []
-        for file_path in detection_files:
-            # Read CSV with Polars (much faster than pandas)
-            try:
-                df = pl.read_csv(file_path)
-                if df.is_empty():
-                    continue
-                    
-                # Filter and process in one go
-                filtered = df.filter(
-                (pl.col("predictions").cast(pl.Float32) > 0))
-                
-                if filtered.is_empty():
-                    continue
-                    
-                # Process all rows at once
-                x_vals = (filtered["col"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
-                y_vals = (filtered["row"].cast(pl.Float32) / M_UM_SCALE * xy_resolution).to_list()
-                sections = ((filtered["section"].cast(pl.Float32) + 0.5) * z_resolution / M_UM_SCALE).to_list()
-                
-                # Append to dataframe data
-                dfs.append(filtered.select([
-                    pl.col("col").alias("x"),
-                    pl.col("row").alias("y"),
-                    (pl.col("section") - 0.5).cast(pl.Int32).alias("section")
-                ]))
-            
-            except Exception as e:
-                print(f"Error processing {file_path}: {e}")
-                continue
-
-        # Concatenate all dataframes at once
-        final_df = pl.concat(dfs) if dfs else pl.DataFrame()
-
-        #random sampling for model training, if selected
-        # Choose between full dataset or sampled subset
-        if self.sampling:
-            sampled_df = final_df.sample(n=sampling, seed=42) if final_df.height > sampling else final_df
-            df = sampled_df
-            print(f"Sampling enabled - randomly sampled neuron count: {len(df)}")
-        else:
-            df = final_df
-            print(f"No sampling - using all {df.height} points")
-        
-        if len(df) == 0:
-            print('No neurons found')
-            sys.exit()
-        
-        ################################
-        #ALL ANNOTATION POINTS ARE STORED IN df VARIABLE AT THIS POINT
-        ################################
-
-        # Populate points variable after sampling
-        sampled_points = (
-            df.sort("section")
-            .select(["x", "y", "section"])
-            .to_numpy()
-            .tolist()
-        )
-        #ng_dir = Path(self.fileLocationManager.neuroglancer_data)
-        z_length = 108
-        # w=35500
-        # h=68500
-        scaling_factor=32
-        w = self.sqlController.scan_run.width//scaling_factor
-        h = self.sqlController.scan_run.height//scaling_factor
-        
-        shape = (w, h, z_length)
-
-        ###############################################
-        # SAVE OUTPUTS
-        ###############################################
-        # SAVE CSV FORMAT (x,y,z POINTS IN CSV)
-        if not df.is_empty():
-            df.write_csv(dfpath)
-        
-        ###############################################
-        # 'workaround' for db timeout [save to file and then sql insert from file]
-        # long-term store in www folder for direct import
-        # SAVE JSON FORMAT
-        annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
-        annotations_dir.mkdir(parents=True, exist_ok=True)
-        annotations_file = str(Path(annotations_dir, labels[0]+'.json'))
-        with open(annotations_file, 'w') as fh:
-            json.dump(sampled_points, fh)
-            
-        # SAVE PRECOMPUTED EXPORT
-        info_dir = Path(annotations_dir, labels[0] + '.precomputed')
-        spatial_dir = Path(info_dir, 'spatial0')
-        if info_dir.exists():
-            shutil.rmtree(info_dir)
-        os.makedirs(info_dir)
-        os.makedirs(spatial_dir)
-        point_filename = Path(spatial_dir, '0_0_0.gz')
-        info_filename = Path(info_dir, 'info')
-        with open(point_filename,'wb') as outfile:
-            total_count=len(sampled_points) # coordinates is a list of tuples (x,y,z) 
-            buf = struct.pack('<Q',total_count)
-            
-            for (x,y,z) in sampled_points:
-                pt_buf = struct.pack('<3f',x,y,z)
-                buf += pt_buf
-
-            # write the ids at the end of the buffer as increasing integers 
-            id_buf = struct.pack('<%sQ' % len(sampled_points), *range(len(sampled_points)))
-            buf += id_buf
-            bufout = gzip.compress(buf)
-            outfile.write(bufout)
-            
-        info = {}
-        spatial = {}
-        properties = {}
-        spatial["chunk_size"] = shape
-        spatial["grid_shape"] = [1, 1, 1]
-        spatial["key"] = "spatial0"
-        spatial["limit"] = 10000
-        properties["id"] = "color"
-        properties["type"] = "rgb"
-        properties["default"] = "red"
-        properties["id"] = "size"
-        properties["type"] = "float32"
-        properties["default"] = "10"
-        properties["id"] = "p_uint8"
-        properties["type"] = "int8"
-        properties["default"] = "10"
-
-        info["@type"] = "neuroglancer_annotations_v1"
-        info["annotation_type"] = "POINT"
-        info["by_id"] = {"key":"by_id"}
-        info["dimensions"] = {"x":[str(xy_resolution/scaling_factor*1000),"um"],
-                            "y":[str(xy_resolution/scaling_factor*1000),"um"],
-                            "z":[str(int(z_resolution)),"um"]}
-        info["lower_bound"] = [0,0,0]
-        info["upper_bound"] = shape
-        info["properties"] = [properties]
-        info["relationships"] = []
-        info["spatial"] = [spatial]    
-
-        with open(info_filename, 'w') as infofile:
-            json.dump(info, infofile, indent=2)
-            print('Info')
-            print(info)
-            print(info_filename)
-       
-
+    # LIKELY DEPRECATED (PROCESSES TEXT-BASED ANNOTATIONS, AND FREQUENTLY HAS TOO MANY) - BETTER TO USE extract_predictions_precomputed
+    # TODO: remove                 
     def extract_predictions2(self):
         """
         Note, the point information from the CSV must be converted to 
@@ -2693,23 +2322,17 @@ class CellMaker(ParallelManager):
 
     def neuroglancer(self):
         '''
-        #WIP 21-JUL-2025
+        #WIP 24-JUL-2025
         CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
         ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
         '''
         
         INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
-        skip_section = 0 #substitute every n sections with blank (to reduce processing time) [0=process all sections]
-        if skip_section > 0:
-            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_' + str(skip_section))
-            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py_' + str(skip_section))
-            progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF_' + str(skip_section))
-            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF_' + str(skip_section))
-        else:
-            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
-            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py')
-            progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF')
-            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+        
+        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
+        temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py')
+        progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF')
+        OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
         temp_output_path.mkdir(parents=True, exist_ok=True)
         temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
         progress_dir.mkdir(parents=True, exist_ok=True)
@@ -2728,133 +2351,160 @@ class CellMaker(ParallelManager):
         print("\tTEMP DOWNSAMPLED PRECOMPUTED Output:".ljust(20), f"{temp_output_path_pyramid}".ljust(20))
         print("\tTEMP Progress:".ljust(20), f"{progress_dir}".ljust(20))
         print("\tFINAL Output:".ljust(20), f"{OUTPUT_DIR}".ljust(20))
+        if self.ng_id:
+            print("\tWILL APPEND LAYERS TO NEUROGLANCER ID: ".ljust(20), f"{self.ng_id}".ljust(20))
+        else:
+            print("\tNEW NEUROGLANCER WILL BE CREATED".ljust(20))
 
         image_manager = ImageManager(INPUT_DIR)
         chunks = [image_manager.height//16, image_manager.width//16, 1]
         image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
-        
-        per_worker_memory = self.available_memory // workers
-        memory_target = per_worker_memory if workers == 1 else (per_worker_memory // workers)
 
-        print(f'\t{workers=}')
-        print(f'\tUsing memory target per worker: {memory_target:.2f} GB')
+        if not OUTPUT_DIR.exists():
+            per_worker_memory = self.available_memory // workers
+            memory_target = per_worker_memory if workers == 1 else (per_worker_memory // workers)
 
-        #################################################
-        # PRECOMPUTED FORMAT CREATION 
-        #################################################
-        precompute = NgPrecomputedMaker(self.sqlController)
-        scales = precompute.get_scales()
-        ng = NumpyToNeuroglancer(
-            self.animal,
-            None,
-            scales,
-            "image",
-            image_manager.dtype,
-            num_channels=1,
-            chunk_size=chunks
-        )
+            print(f'\t{workers=}')
+            print(f'\tUsing memory target per worker: {memory_target:.2f} GB')
 
-        # Initialize precomputed volume
-        ng.init_precomputed(temp_output_path, image_manager.volume_size)
+            ################################################
+            # PRECOMPUTED FORMAT CREATION 
+            ################################################
+            precompute = NgPrecomputedMaker(self.sqlController)
+            scales = precompute.get_scales()
+            ng = NumpyToNeuroglancer(
+                self.animal,
+                None,
+                scales,
+                "image",
+                image_manager.dtype,
+                num_channels=1,
+                chunk_size=chunks
+            )
 
-        file_keys = []
-        orientation = self.sqlController.histology.orientation
-        for i, f in enumerate(image_manager.files):
-            filepath = Path(INPUT_DIR, f)
-            is_blank = (skip_section > 0) and (i % skip_section == skip_section - 1)
-            if is_blank:
-                filepath = None
-            file_keys.append([i, filepath, orientation, progress_dir, is_blank, image_manager.height, image_manager.width])
-        
-        if self.debug:
-            for file_key in file_keys:
-                ng.process_image(file_key)
-        else:
-            self.run_commands_concurrently(ng.process_image, file_keys, workers)
+            # Initialize precomputed volume
+            ng.init_precomputed(temp_output_path, image_manager.volume_size)
 
-        #################################################
-        # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) START
-        #################################################
-        chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
-        mips = 7
-        fill_missing = True
-        encoding="raw"
+            file_keys = []
+            orientation = self.sqlController.histology.orientation
+            is_blank = False
+            for i, f in enumerate(image_manager.files):
+                filepath = Path(INPUT_DIR, f)
+                if is_blank:
+                    filepath = None
+                file_keys.append([i, filepath, orientation, progress_dir, is_blank, image_manager.height, image_manager.width])
+            
+            if self.debug:
+                for file_key in file_keys:
+                    ng.process_image(file_key)
+            else:
+                self.run_commands_concurrently(ng.process_image, file_keys, workers)
 
-        # Use the same temp_output_path for both initial volume and pyramid
-        cloudpath = f"file://{temp_output_path}"
-        outpath = f"file://{temp_output_path_pyramid}"
+            #################################################
+            # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) START
+            #################################################
+            chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
+            mips = 7
+            fill_missing = True
+            encoding="raw"
+            print('CREATING PYRAMID DOWNSAMPLED PRECOMPUTED FORMAT')
 
-        # Create task queue
-        tq = LocalTaskQueue(parallel=workers)
-        tasks = tc.create_image_shard_transfer_tasks(
-            cloudpath,
-            outpath, 
-            fill_missing=fill_missing,
-            mip=0, 
-            chunk_size=chunks,
-            memory_target=memory_target,
-            encoding=encoding,
-        )
-        tq.insert(tasks)
-        tq.execute()
-        print('Finished transfer tasks')
+            # Use the same temp_output_path for both initial volume and pyramid
+            cloudpath = f"file://{temp_output_path}" #full-resolution (already generated)
+            # outpath = f"file://{temp_output_path}"
+            outpath = f"file://{temp_output_path_pyramid}"
 
-        # Create downsampling tasks for each mip level
-        for mip in range(0, mips):
-            tasks = tc.create_image_shard_downsample_tasks(
+            # Create task queue
+            tq = LocalTaskQueue(parallel=workers)
+            tasks = tc.create_image_shard_transfer_tasks(
                 cloudpath,
-                fill_missing=fill_missing,
-                mip=mip,
-                chunk_size=chunks,
-                memory_target=memory_target,
-                encoding=encoding,
-                factor=(2,2,1),  # Explicit downsampling factor
-                sparse=True,
-                preserve_chunk_size=False
+                outpath, 
+                mip=0, 
+                chunk_size=chunks
+                # memory_target=memory_target,
+                # encoding=encoding,
+                # compress=False
             )
             tq.insert(tasks)
             tq.execute()
 
-        print('Finished all downsampling tasks')
-        #################################################
-        # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) END
-        #################################################
-        cv = CloudVolume(cloudpath)
-        cv.cache.flush()
+            # Create downsampling tasks for each mip level
+            for mip in range(0, mips):
+                cv = CloudVolume(outpath, mip)
+                print(f'Creating sharded downsample tasks at mip={mip}')
+                tasks = tc.create_image_shard_downsample_tasks(
+                    cv.layer_cloudpath,
+                    mip=mip,
+                    chunk_size=chunks
+                    # memory_target=memory_target,
+                    # encoding=encoding,
+                    # factor=(2,2,1),  # Explicit downsampling factor
+                    # sparse=False,
+                    # preserve_chunk_size=True
+                )
+                tq.insert(tasks)
+                tq.execute()
 
-        # Verify all mip levels exist
-        for mip in range(0, mips+1):
-            assert cv.mip_available(mip), f"MIP {mip} not generated properly"
+                cv = CloudVolume(outpath, mip=mip+1)
+                if not cv.info['scales'][mip+1]:  # Alternative way to check MIP existence
+                    raise Exception(f"MIP {mip+1} not properly generated")
 
-        #################################################
-        # MODIFY PROVENANCE FILE WITH META-DATA
-        #################################################
-        prov_path = Path(temp_output_path, 'provenance')
-        with open(prov_path, 'r') as f:
-            prov = json.load(f)
-        
-        prov['description'] = f"CH3_DIFF"
-        subject = self.animal
-        prov['sources'] = {
-            "subject": subject, 
-            "PRECOMPUTED_SETTINGS": {
-                "INPUT_DIR": str(INPUT_DIR),
-                "volume_size": image_manager.volume_size,
-                "fill_missing": fill_missing,
-                "image_manager.dtype": image_manager.dtype,
-                "compress": compress,
-                "encoding": encoding,
-                "chunk_size": chunks,
-                "skip_section": skip_section
+            print('Finished all downsampling tasks')
+            #################################################
+            # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) END
+            #################################################
+            cv = CloudVolume(cloudpath)
+            cv.cache.flush()
+
+            # Verify all mip levels exist
+            for mip in range(0, mips+1):
+                assert cv.mip_available(mip), f"MIP {mip} not generated properly"
+
+            ################################################
+            # MODIFY PROVENANCE FILE WITH META-DATA
+            ################################################
+            prov_path = Path(temp_output_path_pyramid, 'provenance')
+            try:
+                if prov_path.exists():
+                    with open(prov_path, 'r') as f:
+                        prov = clean_provenance(json.load(f))
+                else:
+                    prov = {'description': "", 'owners': [], 'processing': [], 'sources': {}}
+            except json.JSONDecodeError:
+                prov = {'description': "", 'owners': [], 'processing': [], 'sources': {}}
+            
+            current_processing = {
+                'by': 'automated_pipeline@ucsd.edu',
+                'date': datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
+                'method': {
+                    'task': 'PyramidGeneration',
+                    'mips': mips,
+                    'chunk_size': [int(x) for x in chunks],
+                    'encoding': encoding
+                }
             }
-        }
+            prov['processing'].append(current_processing)
 
-        with open(prov_path, 'w') as f:
-            json.dump(prov, f, indent=2)
+            prov.update({
+                'description': "CH3_DIFF",
+                'sources': {
+                    'subject': self.animal,
+                    'PRECOMPUTED_SETTINGS': {
+                        'INPUT_DIR': str(INPUT_DIR),
+                        'volume_size': [int(x) for x in image_manager.volume_size],
+                        'dtype': str(image_manager.dtype),
+                        'encoding': encoding,
+                        'chunk_size': [int(x) for x in chunks]
+                    }
+                }
+            })
 
-        #MOVE PRECOMPUTED FILES TO FINAL LOCATION
-        copy_with_rclone(temp_output_path, OUTPUT_DIR)
-        copy_with_rclone(temp_output_path_pyramid, OUTPUT_DIR)
+            with open(prov_path, 'w') as f:
+                json.dump(prov, f, indent=2, ensure_ascii=False)
+
+            #MOVE PRECOMPUTED FILES TO FINAL LOCATION
+            copy_with_rclone(temp_output_path, OUTPUT_DIR)
+            copy_with_rclone(temp_output_path_pyramid, OUTPUT_DIR)
         
         #################################################
         # HISTOGRAM CREATION - SINGLE AND COMBINED
@@ -2870,14 +2520,18 @@ class CellMaker(ParallelManager):
             mask_path = str(Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', filename))
             output_path = str(Path(OUTPUT_DIR, f"{i}.png")) 
 
-            file_keys.append(
+            if not output_path:
+                file_keys.append(
                     [input_path, mask_path, 'CH3_DIFF', file, output_path, self.debug]
                 )
-
         # Process single histograms in parallel
         self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
+        if not Path(OUTPUT_DIR, self.animal + '.png').exists():
+            make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
 
-        make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
+        #CREATE NG_PREVIEW (APPENDS TO EXISTING IF ng_id PROVIDED)
+        print(self.TASK_NG_PREVIEW)
+        self.gen_ng_preview(src = 'cell_manager', ng_id = self.ng_id)
 
 
     def create_features(self):

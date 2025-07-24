@@ -126,46 +126,6 @@ def find_connected_segments(image, segmentation_threshold, cuda_available: bool 
     return (n_segments, segment_masks, segment_stats, segment_location)
 
 
-#NOTE USED FOR GPU-ACCELERATION OF filter_cell_candidate_gpu
-@cuda.jit
-def filter_segments_kernel(
-    segment_stats,
-    segment_location,
-    segment_masks,
-    difference_ch1,
-    difference_ch3,
-    max_segment_size,
-    cell_radius,
-    x_window,
-    y_window,
-    output_mask
-):
-    segmenti = cuda.grid(1)
-    if segmenti >= segment_stats.shape[0]:
-        return
-    
-    _, _, width, height, object_area = segment_stats[segmenti]
-    if object_area > max_segment_size:
-        return
-    
-    segment_row, segment_col = segment_location[segmenti]
-    
-    # Bounds checking
-    row_start = int(segment_row - cell_radius)
-    col_start = int(segment_col - cell_radius)
-    if row_start < 0 or col_start < 0:
-        return
-        
-    row_end = int(segment_row + cell_radius)
-    col_end = int(segment_col + cell_radius)
-    if row_end > x_window or col_end > y_window:
-        return
-    
-    # Mark valid segments
-    output_mask[segmenti] = 1
-
-
-#POSSIBLE DEPRECATION, IF GPU VERSION (filter_cell_candidates_gpu) WORKS
 def filter_cell_candidates(
     animal,
     section_number,
@@ -226,40 +186,6 @@ def filter_cell_candidates(
         }                                        
         cell_candidates.append(cell)
     return cell_candidates
-
-
-#POSSIBLE DEPRECATION, IF GPU VERSION (calculate_correlation_and_energy_gpu) WORKS
-# def calculate_correlation_and_energy(avg_cell_img, cell_candidate_img):  
-#     '''part of step 3. 
-#     calculate cell features; calculate correlation [between cell_candidate_img 
-#     and avg_cell_img] and and energy for cell canididate
-#     NOTE: avg_cell_img and cell_candidate_img contain respective channels prior to passing in arguments
-#     '''
-    
-#     if avg_cell_img is None or avg_cell_img.size == 0:
-#         print(f'DEBUG: avg_cell_img={avg_cell_img.size}, cell_candidate_img={cell_candidate_img.size}')
-#         raise ValueError(f"Error: 'avg_cell_img' is empty or not loaded properly.")
-    
-#     # Ensure image arrays to same size
-#     cell_candidate_img, avg_cell_img = equalize_array_size_by_trimming(cell_candidate_img, avg_cell_img)
-#     # print(f'DEBUG2: {avg_cell_img.size}')
-#     # print(f'DEBUGA2: {cell_candidate_img.size}')
-#     # print('*'*40)
-#     if avg_cell_img is None or avg_cell_img.size == 0:
-#         raise ValueError(f"Error2: 'avg_cell_img' is empty or not loaded properly.")
-
-#     # Compute normalized sobel edge magnitudes using gradients of candidate image vs. gradients of the example image
-#     avg_cell_img_x, avg_cell_img_y = sobel(avg_cell_img)
-#     cell_candidate_img_x, cell_candidate_img_y = sobel(cell_candidate_img)
-
-#     # corr = the mean correlation between the dot products at each pixel location
-#     dot_prod = (avg_cell_img_x * cell_candidate_img_x) + (avg_cell_img_y * cell_candidate_img_y)
-#     corr = np.mean(dot_prod.flatten())      
-
-#     # energy: the mean of the norm of the image gradients at each pixel location
-#     mag = np.sqrt(cell_candidate_img_x **2 + cell_candidate_img_y **2)
-#     energy = np.mean((mag * avg_cell_img).flatten())  
-#     return corr, energy
 
 
 def equalize_array_size_by_trimming(array1, array2):
@@ -454,3 +380,25 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
         print(f"Error during rclone copy: {e}")
     except Exception as e:
         print(f"Unexpected error: {e}")
+
+
+def clean_provenance(prov_data):
+    """Clean and normalize provenance data"""
+    # Convert byte strings to regular strings
+    if 'processing' in prov_data:
+        for entry in prov_data['processing']:
+            if isinstance(entry['by'], bytes):
+                entry['by'] = entry['by'].decode('utf-8')
+    
+    # Remove duplicate processing entries
+    if 'processing' in prov_data:
+        unique_entries = []
+        seen = set()
+        for entry in prov_data['processing']:
+            entry_str = json.dumps(entry, sort_keys=True)
+            if entry_str not in seen:
+                seen.add(entry_str)
+                unique_entries.append(entry)
+        prov_data['processing'] = unique_entries
+    
+    return prov_data
