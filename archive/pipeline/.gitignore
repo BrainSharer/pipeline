@@ -1,6 +1,0 @@
-*.yaml
-settings.py
-create_pipeline_script.py
-session.pkl
-TransformParameters.0.txt
-parallel_settings.yaml

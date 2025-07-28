@@ -73,6 +73,7 @@ class CellMaker(
     ParallelManager,
     PrepCreater):
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
+    TASK_SEGMENT = "Creating cell segmentation"
 
     def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, ng_id: str = "", debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
@@ -349,20 +350,19 @@ class CellMaker(
             print(f"DEBUG: steps 1 & 2 (revised); Start on image segmentation")
 
         # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
-        # SPINAL CORD WILL HAVE C1 (DYE) AND C2 (CTB) CHANNELS
         for channel_number, channel_data in self.meta_channel_mapping.items():
-            if channel_data['mode'] == 'dye' or channel_data['mode'] == 'counterstain':
+            if channel_data['mode'] == 'counterstain' or channel_data['mode'] == 'dye':
                 self.dye_channel = channel_number
-                print(f'Dye or counterstain channel detected: {self.dye_channel}')
-                self.fileLogger.logevent(f'Dye or counterstain channel detected: {self.dye_channel}')
-            elif channel_data['mode'] == 'virus' or channel_data['mode'] == 'ctb' or channel_data['mode'] == 'label_of_interest': 
+                print(f'counterstain channel (ex. dye, ntb) detected: {self.dye_channel}')
+                self.fileLogger.logevent(f'counterstain channel (ex. dye, ntb) detected: {self.dye_channel}')
+            elif channel_data['mode'] == 'label_of_interest' or channel_data['mode'] == 'virus' or channel_data['mode'] == 'ctb': 
                 self.virus_marker_channel = channel_number
-                print(f'Virus, CTB or label_of_interest channel detected: {self.virus_marker_channel}')
-                self.fileLogger.logevent(f'Virus, CTB or label_of_interest channel detected: {self.virus_marker_channel}')
+                print(f'label_of_interest channel (ex. virus, CTB) detected: {self.virus_marker_channel}')
+                self.fileLogger.logevent(f'label_of_interest channel (ex. virus, ctb) detected: {self.virus_marker_channel}')
             elif channel_data['mode'] == 'unknown':
                 continue
             else:
-                msg = "Neuroanatomical_tracing is missing either dye, virus or label_of_interest channel."
+                msg = "Neuroanatomical_tracing is missing either counterstain (ex. dye, ntb) or label_of_interest (ex. virus, ctb) channels."
                 if self.debug:
                     print(msg)
                 self.fileLogger.logevent(msg)
@@ -417,6 +417,7 @@ class CellMaker(
                     input_path_dye,
                     input_path_virus,
                     self.step,
+                    self.task,
                     self.debug,
                 ]
             )
@@ -460,6 +461,7 @@ class CellMaker(
             input_path_dye,
             input_path_virus,
             _,
+            task,
             debug,
             *_,
         ) = file_keys
@@ -576,14 +578,15 @@ class CellMaker(
         y_window = int(math.ceil(y_dim / total_virtual_tile_columns))
 
         if debug:
-            print(f'label_of_interest/ctb/virus shape (x, y): {data_virus.shape=}')
-            print(f'counterstain/dye shape (x, y): {data_dye.shape=}')
+            print(f'label_of_interest (ex. virus, ctb) shape (x, y): {data_virus.shape=}')
+            print(f'counterstain (ex. dye, ntb) shape (x, y): {data_dye.shape=}')
             print(f'dask parameters: {x_window=}, {y_window=}; {total_virtual_tile_rows=}, {total_virtual_tile_columns=}')
 
         #cuda_available = cp.is_available()
         cuda_available = False
         overlap_pixels = self.cell_radius * 1.5
         full_difference_ch3 = np.zeros(data_virus.shape, dtype=np.uint16)
+        difference_ch1 = []
 
         for row in range(total_virtual_tile_rows):
             for col in range(total_virtual_tile_columns):
@@ -614,7 +617,7 @@ class CellMaker(
                 absolute_coordinates = (x_start, x_end, y_start, y_end)
 
                 if debug:
-                    print('CALCULATING DIFFERENCE FOR CH3 (VIRUS)')
+                    print('CALCULATING DIFFERENCE FOR LABEL OF INTEREST (A.K.A. VIRUS, CTB, CH3)')
                     print(f'ROI: {x_start=}, {x_end=}, {y_start=}, {y_end=}')
 
                 difference_ch3 = subtract_blurred_image(image_roi_virus, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
@@ -623,11 +626,12 @@ class CellMaker(
                 connected_segments = find_connected_segments(difference_ch3, segmentation_threshold, cuda_available)
 
                 if connected_segments[0] > 2: # found cell candidate (first element of tuple is count)
-                    
                     if debug:
                         print(f'FOUND CELL CANDIDATE: COM-{absolute_coordinates=}, {cell_radius=}, {str_section_number=}')
-                        print('CALCULATING DIFFERENCE FOR CH1 (COUNTERSTAIN/DYE)')
-                    difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+                    if task != 'segment':
+                        if debug:
+                            print('CALCULATING DIFFERENCE FOR COUNTERSTAIN (A.K.A. DYE, NTB, CH1)')
+                        difference_ch1 = subtract_blurred_image(image_roi_dye, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
                     
                     cell_candidate = filter_cell_candidates(
                         animal,
@@ -641,6 +645,7 @@ class CellMaker(
                         absolute_coordinates,
                         difference_ch1,
                         difference_ch3,
+                        task
                     )
 
                     # For overlapping regions, we need to filter duplicates
@@ -667,8 +672,8 @@ class CellMaker(
         
         if len(cell_candidates) > 0:
             if debug:
-                print(f'Saving {len(cell_candidates)} Cell candidates to {output_file}')
-                print(f'Saving ch3_diff images to {output_file_diff3}')
+                print(f'Saving {len(cell_candidates)} cell candidates to {output_file}')
+                print(f'Saving label_of_interest (ch3_diff) images to {output_file_diff3}')
             dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
 
             full_difference_ch3_corrected = np.swapaxes(full_difference_ch3, 0, 1)
@@ -705,7 +710,7 @@ class CellMaker(
 
         '''
 
-        animal, section, str_section_number, _, _, _, _, _, _,  SCRATCH, _, avg_cell_img, _, _, _, _, _, debug = file_keys
+        animal, section, str_section_number, _, _, _, _, _, _,  SCRATCH, _, avg_cell_img, _, _, _, _, _, task, debug = file_keys
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
 
@@ -723,17 +728,19 @@ class CellMaker(
         else:
             output_spreadsheet = []
 
+
         # STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **Now passed as parameter**
-        # output_spreadsheet = []
         for idx, cell in enumerate(cell_candidate_data):
-            
             # STEP 3-C1, 3-C2) calculate_correlation_and_energy FOR CHANNELS 1 & 3 (ORG. FeatureFinder.py; calculate_features())
             results = {}
-            results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
-            results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(avg_cell_img["CH3"], cell['image_CH3'])
-            results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = features_using_center_connected_components(cell, debug=debug)
+            results['ch1_corr'] = results['ch1_energy'] = results['ch3_corr'] = results['ch3_energy'] =  results['ch1_contrast'] = results['ch3_contrast'] = 0.0
+            if task != 'segment': #no feature calc for segment task
+                results['ch1_corr'], results['ch1_energy'] = calculate_correlation_and_energy(avg_cell_img["CH1"], cell['image_CH1'])
+                results['ch3_corr'], results['ch3_energy'] = calculate_correlation_and_energy(avg_cell_img["CH3"], cell['image_CH3'])
+                results['ch1_contrast'], results['ch3_contrast'], results['moments_data'] = features_using_center_connected_components(cell, debug=debug)
 
             #CONVEX HULL FILTER ()
+            #REQUIRES BRAIN IMAGE REGISTRATION TO ATLAS PRIOR TO CALCS  
             #Song-Mao filter
             # if cell["absolute_coordinates_YX"][1] <= 15000 or cell["absolute_coordinates_YX"][1] >= 24000:
             #     continue
@@ -757,8 +764,9 @@ class CellMaker(
                 "contrast1": results['ch1_contrast'],
                 "contrast3": results['ch3_contrast']
             }
-            spreadsheet_row.update(results['moments_data'][0])  # Regular moments
-            spreadsheet_row.update(results['moments_data'][1])  # Hu moments
+            if task != 'segment':
+                spreadsheet_row.update(results['moments_data'][0])  # Regular moments
+                spreadsheet_row.update(results['moments_data'][1])  # Hu moments
             output_spreadsheet.append(spreadsheet_row)
 
             #TODO: EXPLORE IF HARD-CODED VARIABLES MAKE ANY DIFFERENCE HERE
@@ -792,18 +800,21 @@ class CellMaker(
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, task, debug = file_keys
 
-        #TODO: test if retraining or init model creating
-        if model_filename:
-            model_file = load(model_filename)
-            model_msg = f'Training model: {model_filename}'
-        else:
-            model_msg = 'Training model creation mode; no scoring'
+        if task == 'segment':
+            print(f'WARNING: Task is "segment"; no cell scoring/detection will be performed')
+        else:        
+            #TODO: test if retraining or init model creating
+            if model_filename:
+                model_file = load(model_filename)
+                model_msg = f'Training model: {model_filename}'
+            else:
+                model_msg = 'Training model creation mode; no scoring'
             
-        if debug:
-            print(model_msg)
-            print(f'Starting function score_and_detect_cell on section {section}')
+            if debug:
+                print(model_msg)
+                print(f'Starting function score_and_detect_cell on section {section}')
 
         def calculate_scores(features: pl.DataFrame, model):
             """
@@ -872,7 +883,6 @@ class CellMaker(
                 elif -threshold <= mean_score <= threshold:
                     classification = 0  # UNKNOWN/UNSURE
 
-                classification = 2 #Song-Mao filter
                 predictions.append(classification)
 
             return predictions
@@ -885,13 +895,21 @@ class CellMaker(
             print(cell_features.columns)
             sys.exit(1)
 
-        # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
-        if model_filename: #IF MODEL FILE EXISTS, USE TO SCORE
-            mean_scores, std_scores = calculate_scores(cell_features_selected_columns, model_file)
+        if task != 'segment':
+            # Step 4-2-1-2) calculate_scores(features) - calculates scores, labels, mean std for each feature
+            if model_filename: #IF MODEL FILE EXISTS, USE TO SCORE
+                mean_scores, std_scores = calculate_scores(cell_features_selected_columns, model_file)
+                cell_features = cell_features.with_columns([
+                    pl.Series("mean_score", mean_scores),
+                    pl.Series("std_score", std_scores),
+                    pl.Series("predictions", get_prediction_and_label(mean_scores))
+                ])
+        else:
+            # IF TASK IS 'segment', NO SCORING IS DONE; ONLY CELL CANDIDATES ARE IDENTIFIED
             cell_features = cell_features.with_columns([
-                pl.Series("mean_score", mean_scores),
-                pl.Series("std_score", std_scores),
-                pl.Series("predictions", get_prediction_and_label(mean_scores))
+                pl.lit(0.0).alias("mean_score"),  # Use alias() to name the column
+                pl.lit(0.0).alias("std_score"),
+                pl.lit(2).alias("predictions")  # 2 is putative cell
             ])
 
         if self.save_output_with_hostname:
@@ -1426,7 +1444,7 @@ class CellMaker(
 
         print(f'DEBUG: {xy_resolution=}, {z_resolution=}, {w=}, {h=}, {z_length=}')
         #READ, CONSOLIDATE PREDICTION FILES, SAMPLE AS NECESSARY
-        dfpath = os.path.join(self.cell_label_path, 'all_predictions.csv')
+        
         if os.path.exists(self.cell_label_path):
             print(f'Parsing cell labels from {self.cell_label_path}')
         else:
@@ -1563,10 +1581,10 @@ class CellMaker(
                 #cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
 
         out_dir = Path(annotations_dir, ann_out_folder_name + '.precomputed')
-        # if os.path.exists(out_dir):
-        #     print(f'Removing existing directory {out_dir}')
-        #     delete_in_background(out_dir)
-        # os.makedirs(out_dir, exist_ok=True)
+        if os.path.exists(out_dir):
+            print(f'Removing existing directory {out_dir}')
+            delete_in_background(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
         
         print(f'Creating precomputed annotations in {out_dir}')
         resolution = int(xy_resolution * 1000 * SCALING_FACTOR)
@@ -2036,8 +2054,8 @@ class CellMaker(
         Used for automated cell labeling - final output for cells detected
         """
         print("Starting cell detections")
-        # self.process_sections = []  # all sections
-        self.process_sections = list(range(70, 80))
+        self.process_sections = []  # all sections
+        # self.process_sections = list(range(70, 80))
         if self.process_sections:
             print(f'Processing sections: {self.process_sections}')
         else:
@@ -2050,6 +2068,30 @@ class CellMaker(
         # assert statement could be in unit test (separate)
         self.start_labels()
         print(f'Finished cell detections')
+
+
+    def segment(self):
+        """
+        Used for automated cell labeling, but just first 2 steps: segmentation
+        """
+        print(self.TASK_SEGMENT)
+
+        self.process_sections = []  # all sections
+        # self.process_sections = list(range(70, 80))
+        if self.process_sections:
+            print(f'Segmenting sections: {self.process_sections}')
+        else:
+            print('Segmenting all sections')
+        self.report_status()
+        scratch_tmp = get_scratch_dir()
+        self.check_prerequisites(scratch_tmp)
+        
+        # if any error from check_prerequisites(), print error and exit
+        # assert statement could be in unit test (separate)
+        self.start_labels()
+        print(f'Finished cell segmentation - extracting predictions')
+        self.extract_predictions_precomputed()
+        self.neuroglancer()
 
 
     def fix_coordinates(self):
@@ -2356,7 +2398,7 @@ class CellMaker(
 
     def neuroglancer(self):
         '''
-        #WIP 24-JUL-2025
+        #WIP 28-JUL-2025
         CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
         ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
         '''
@@ -2369,7 +2411,9 @@ class CellMaker(
         OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
         temp_output_path.mkdir(parents=True, exist_ok=True)
         temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
-        progress_dir.mkdir(parents=True, exist_ok=True)
+        if self.task == 'segment': #REGENERATE ENTIRE NG FROM SCRATCH
+            delete_in_background(progress_dir)
+        progress_dir.mkdir(parents=True, exist_ok=True)    
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         
         if self.debug:
@@ -2394,7 +2438,7 @@ class CellMaker(
         chunks = [image_manager.height//16, image_manager.width//16, 1]
         image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
 
-        if not OUTPUT_DIR.exists():
+        if not OUTPUT_DIR.exists() or not any(OUTPUT_DIR.iterdir()):
             per_worker_memory = self.available_memory // workers
             memory_target = per_worker_memory if workers == 1 else (per_worker_memory // workers)
 

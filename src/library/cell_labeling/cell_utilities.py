@@ -138,11 +138,13 @@ def filter_cell_candidates(
     absolute_coordinates,
     difference_ch1,
     difference_ch3,
+    task: str = None
 ):
     """PART OF STEP 2. Identify cell candidates:  Area is for the object, where pixel values are not zero,
     Segments are filtered to remove those that are too large or too small"""
     n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
     cell_candidates = []
+    img_CH1 = []
     for segmenti in range(n_segments):
         _, _, width, height, object_area = segment_stats[segmenti, :]
         if object_area > segment_size_max or object_area < segment_size_min:
@@ -161,15 +163,17 @@ def filter_cell_candidates(
             continue
         segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
 
-        #FINAL SANITY CHECK
-        img_CH1 = difference_ch1[row_start:row_end, col_start:col_end].T
         img_CH3 = difference_ch3[row_start:row_end, col_start:col_end].T
-        if img_CH1.shape != img_CH3.shape or img_CH1.shape != segment_mask.shape:
-            print(f"ERROR: Image shapes do not match. Skipping this segment.")
-            print(f'img_CH1: {img_CH1.shape}')
-            print(f'img_CH3: {img_CH3.shape}')
-            print(f'segment_mask: {segment_mask.shape}')
-            continue
+
+        #FINAL SANITY CHECK [IF NOT 'segment' TASK]
+        if task != 'segment':
+            img_CH1 = difference_ch1[row_start:row_end, col_start:col_end].T
+            if img_CH1.shape != img_CH3.shape or img_CH1.shape != segment_mask.shape:
+                print(f"ERROR: Image shapes do not match. Skipping this segment.")
+                print(f'img_CH1: {img_CH1.shape}')
+                print(f'img_CH3: {img_CH3.shape}')
+                print(f'segment_mask: {segment_mask.shape}')
+                continue
 
         cell = {
             "animal": animal,

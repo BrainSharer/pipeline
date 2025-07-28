@@ -110,6 +110,7 @@ if __name__ == "__main__":
     function_mapping = {
         "create_features": pipeline.create_features,
         "detect": pipeline.create_detections,
+        "segment": pipeline.segment,
         "extract": pipeline.extract_predictions_precomputed,
         "neuroglancer": pipeline.neuroglancer,
         "train": pipeline.train,
