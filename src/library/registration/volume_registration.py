@@ -1285,6 +1285,8 @@ class VolumeRegistration:
             print(f"Zarr dir not found at {input_zarr_path}")
             exit(1)
         volume = zarr.open(input_zarr_path, mode='r')
+        print(volume.info)
+        exit(1)
         for i in tqdm(range(int(volume.shape[0]))): # type: ignore
             section = volume[i, ...]
             if section.ndim > 2: # type: ignore
