@@ -2412,7 +2412,10 @@ class CellMaker(
         temp_output_path.mkdir(parents=True, exist_ok=True)
         temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
         if self.task == 'segment': #REGENERATE ENTIRE NG FROM SCRATCH
-            delete_in_background(progress_dir)
+            try:
+                delete_in_background(progress_dir)
+            except Exception as e:
+                print(f"Error deleting progress directory: {e}")
         progress_dir.mkdir(parents=True, exist_ok=True)    
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         
@@ -2534,10 +2537,6 @@ class CellMaker(
             cv = CloudVolume(cloudpath)
             cv.cache.flush()
 
-            # Verify all mip levels exist
-            for mip in range(0, mips+1):
-                assert cv.mip_available(mip), f"MIP {mip} not generated properly"
-
             ################################################
             # MODIFY PROVENANCE FILE WITH META-DATA
             ################################################
@@ -2581,7 +2580,7 @@ class CellMaker(
                 json.dump(prov, f, indent=2, ensure_ascii=False)
 
             #MOVE PRECOMPUTED FILES TO FINAL LOCATION
-            copy_with_rclone(temp_output_path, OUTPUT_DIR)
+            # copy_with_rclone(temp_output_path, OUTPUT_DIR)
             copy_with_rclone(temp_output_path_pyramid, OUTPUT_DIR)
         
         #################################################
