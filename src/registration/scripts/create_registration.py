@@ -4,6 +4,12 @@ Important notes
 If your fixed image has a smaller field of view than your moving image, 
 your moving image will be cropped. (This is what happens when the brain stem
 gets cropped out when setting a neurotrace brain against the Allen atlas. 
+
+Steps:
+1. Create a moving volume with the size as your fixed Allen volume
+2. run: python src/registration/scripts/create_registration.py --moving ALLEN771602 --fixed Allen --xy_um 14.4 --z_um 16 --task register_volume
+3. run: python src/registration/scripts/create_registration.py --moving ALLEN771602 --fixed Allen --xy_um 14.4 --z_um 16 --task reverse_register_volume
+
 """
 
 import argparse
@@ -24,7 +30,7 @@ if __name__ == '__main__':
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument('--xy_um', help="xy resolution in um", required=True, default=16, type=float)
     parser.add_argument('--z_um', help="z resolution in um", required=True, default=16, type=float)
-    parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, type=int)
+    parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, default=1, type=int)
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
     parser.add_argument("--bspline", help="Enter true or false", required=False, default="false", type=str)
@@ -64,6 +70,8 @@ if __name__ == '__main__':
                         'create_brain_coms': volumeRegistration.create_brain_coms,
                         'create_moving_fixed_points': volumeRegistration.create_moving_fixed_points,
                         'register_volume_with_fiducials': volumeRegistration.register_volume_with_fiducials,
+                        'zarr2tif': volumeRegistration.zarr2tif,
+                        'downsample_stack': volumeRegistration.downsample_stack,
     }
 
     if task in function_mapping:

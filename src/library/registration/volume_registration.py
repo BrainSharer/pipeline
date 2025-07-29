@@ -17,6 +17,8 @@ import pandas as pd
 import cv2
 import json
 
+import zarr
+
 from library.atlas.atlas_utilities import adjust_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
@@ -328,7 +330,7 @@ class VolumeRegistration:
 
 
     def transformix_polygons(self):
-        """Marissa is ID=38, TG_L =80 and TG_R=81
+        """id for ALLEN771602, cerebellum test is 8357
         """
         def linear_stretch(old_min, old_max, x, stretch):
             new_max = old_max * stretch
@@ -360,51 +362,50 @@ class VolumeRegistration:
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
         z_scale = sqlController.scan_run.zresolution
-        #annotation_left = sqlController.get_annotation_session(self.moving, label_id=80, annotator_id=38)
-        annotation_right = sqlController.get_annotation_session(self.moving, label_id=81, annotator_id=38)
-        #annotation_left = annotation_left.annotation
-        annotation_right = annotation_right.annotation
-        #left_childJsons = annotation_left['childJsons']
-        right_childJsons = annotation_right['childJsons']
-        rows_left = []
-        rows_right = []
+        id = 8357
+        annotation_session = sqlController.get_annotation_by_id(id)
+        childJsons = annotation_session.annotation['childJsons']
+        rows = []
         polygons = defaultdict(list)
-        #for child in left_childJsons:
-        #    for i, row in enumerate(child['childJsons']):
-        #        rows_left.append(row['pointA'])
-        for child in right_childJsons:
+        for child in childJsons:
             for i, row in enumerate(child['childJsons']):
-                rows_right.append(row['pointA'])
+                x,y,z = row['pointA']
+                #if z > 0.007721:
+                #    continue
+                rows.append((x,y,z))
         input_points = itk.PointSet[itk.F, 3].New()
-        #df_L = pd.DataFrame(rows_left, columns=['x1','y1','z1'])
-        df_R = pd.DataFrame(rows_right, columns=['x1','y1','z1'])
-        #frames = [df_L, df_R]
-        frames = [df_R]
-        df = pd.concat(frames)
-        #len_L = df_L.shape[0]
-        len_R = df_R.shape[0]
-        len_total = df.shape[0]
-        #assert len_L + len_R == len_total, "Lengths of dataframes do not add up."
+        df = pd.DataFrame(rows, columns=['xm','ym','zm'])
+        #print(df.head())
+        #print()
+        print(f'Creating polygons for {self.moving} with {len(df)} DB resolution: xy={scale_xy} z={z_scale} points xy_um={self.xy_um} z_um={self.z_um} scaling_factor={self.scaling_factor}')
+
         
         with open(self.changes_path, 'r') as file:
             change = json.load(file)
 
-        df['xn'] = df['x1'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-        df['yn'] = df['y1'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-        df['zn'] = df['z1'] * M_UM_SCALE / z_scale
-        
-        df['x'] = df['x1'] * change['change_x'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-        df['y'] = df['y1'] * change['change_y'] * M_UM_SCALE / (scale_xy * SCALING_FACTOR)
-        df['z2'] = df['z1'] * M_UM_SCALE / z_scale
-        df['z'] = linear_stretch(df['z2'].min(), df['z2'].max(), df['z2'], change['change_z'])
+        print(f'change={change}')
+
+        df['xng'] = df['xm'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        df['yng'] = df['ym'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        df['zng'] = df['zm'] * M_UM_SCALE / z_scale
+
+        df['x'] = df['xm'] * change['change_x'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        df['y'] = df['ym'] * change['change_y'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        #df['z2'] = df['zm'] * M_UM_SCALE / z_scale
+        df['z'] = df['zm'] * 0.1020408 * M_UM_SCALE / z_scale
+        #df['z'] = linear_stretch(df['z'].min(), df['z'].max(), df['z'], 0.1020408)
+
+        print(df.head())
+
+
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x']
             y = row['y']
             z = int(round(row['z']))
-            section = int(round(row['zn']))
-            point = [x,y, z]
+            #section = int(round(row['zn']))
+            point = [x, y, z]
             input_points.GetPoints().InsertElement(idx, point)
-            polygons[section].append((x,y))
+            polygons[z].append((x, y))
 
         if self.debug:
             output_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_debug')
@@ -413,9 +414,9 @@ class VolumeRegistration:
                 shutil.rmtree(output_dir)
 
             os.makedirs(output_dir, exist_ok=True)
-            print(df.describe())
+            #print(df.describe())
             for section, points in tqdm(polygons.items()):
-                file = str(section).zfill(3) + ".tif"
+                file = str(section).zfill(4) + ".tif"
                 inpath = os.path.join(self.thumbnail_aligned, file)
                 if not os.path.exists(inpath):
                     print(f'{inpath} does not exist')
@@ -423,9 +424,25 @@ class VolumeRegistration:
                 img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
                 points = np.array(points)
                 points = points.astype(np.int32)
-                cv2.fillPoly(img, pts = [points], color = 255)
+                cv2.polylines(img, pts = [points], isClosed=True, color=255, thickness=3)
                 outpath = os.path.join(output_dir, file)
                 cv2.imwrite(outpath, img)
+                
+            """
+            points = polygons[section]
+            for section in range(380, 410):
+                file = str(section).zfill(4) + ".tif"
+                inpath = os.path.join(self.thumbnail_aligned, file)
+                if not os.path.exists(inpath):
+                    print(f'{inpath} does not exist')
+                    continue
+                img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
+                points = np.array(points)
+                points = points.astype(np.int32)
+                cv2.polylines(img, pts = [points], isClosed=True, color=255, thickness=1)
+                outpath = os.path.join(output_dir, file)
+                cv2.imwrite(outpath, img)
+            """
             del polygons
             return
 
@@ -572,8 +589,8 @@ class VolumeRegistration:
         * Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
         """
         image_manager = ImageManager(self.thumbnail_aligned)
-        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.um
-        z_resolution = self.sqlController.scan_run.zresolution * self.scaling_factor / self.um
+        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
+        z_resolution = self.sqlController.scan_run.zresolution * self.scaling_factor / self.z_um
 
         change_z = z_resolution
         change_y = xy_resolution
@@ -581,7 +598,9 @@ class VolumeRegistration:
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
-
+        exit(1)
+        with open(self.changes_path, 'w') as f:
+            json.dump(changes, f)            
         
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
@@ -600,16 +619,16 @@ class VolumeRegistration:
                 farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
                 file_list.append(farr)
             
-        image_stack = np.stack(file_list, axis = 0)
-        
-        
-        with open(self.changes_path, 'w') as f:
-            json.dump(changes, f)            
-        
-        #zoomed = zoom(image_stack, change)
-        zoomed = image_stack.copy()
+        image_stack = np.stack(file_list, axis = 0)    
+            
+        zoomed = zoom(image_stack, change)
         write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
+
+    def downsample_stack(self):
+        image_manager = ImageManager(self.full_aligned)
+
+
 
     def pad_volume(self):
         pad = 500
@@ -1255,6 +1274,24 @@ class VolumeRegistration:
         print(f'Saved img to {self.registered_volume}')
         transform.WriteTransform(self.registered_transform_file)
 
+
+    def zarr2tif(self):
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'full_aligned')
+        os.makedirs(output_dir, exist_ok=True)
+
+        #input_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        input_zarr_path = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/ALLEN771602/www/neuroglancer_data/C1.zarr/0'
+        if not os.path.isdir(input_zarr_path):
+            print(f"Zarr dir not found at {input_zarr_path}")
+            exit(1)
+        volume = zarr.open(input_zarr_path, mode='r')
+        for i in tqdm(range(int(volume.shape[0]))): # type: ignore
+            section = volume[i, ...]
+            if section.ndim > 2: # type: ignore
+                section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
+            
+            filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
+            write_image(filepath, section)
 
 
     def check_status(self):
