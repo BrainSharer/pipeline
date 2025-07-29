@@ -1280,17 +1280,15 @@ class VolumeRegistration:
         os.makedirs(output_dir, exist_ok=True)
 
         #input_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
-        input_zarr_path = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/ALLEN771602/www/neuroglancer_data/C1.zarr/0'
+        input_zarr_path = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/ALLEN771602/www/neuroglancer_data/C1.zarr/2'
         if not os.path.isdir(input_zarr_path):
             print(f"Zarr dir not found at {input_zarr_path}")
             exit(1)
         volume = zarr.open(input_zarr_path, mode='r')
         print(volume.info)
         exit(1)
-        for i in tqdm(range(int(volume.shape[0]))): # type: ignore
-            section = volume[i, ...]
-            if section.ndim > 2: # type: ignore
-                section = section.reshape(section.shape[-2], section.shape[-1]) # type: ignore
+        for i in tqdm(range(int(volume.shape[2]))): # type: ignore
+            section = volume[:, :, i, ...]
             
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
             write_image(filepath, section)
