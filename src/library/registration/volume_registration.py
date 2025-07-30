@@ -1266,7 +1266,7 @@ class VolumeRegistration:
             exit(1)
         volume = zarr.open(input_zarr, mode='r')
         print(volume.info)
-        for i in tqdm(range(int(volume.shape[0])), disable=True): # type: ignore
+        for i in tqdm(range(int(volume.shape[0])), disable=self.debug, desc="Creating tifs from zarr"): # type: ignore
             section = volume[i, ...]
             section = np.squeeze(section)
             ids, counts = np.unique(section, return_counts=True)
@@ -1274,6 +1274,8 @@ class VolumeRegistration:
             if lids > 75:
                 print(f"Section {i}: length IDs: {len(ids)}  dtype: {section.dtype} ")
                 section = rescaler(section)
+            else:
+                section = np.zeros_like(section, dtype=np.uint16)
 
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
             write_image(filepath, section)
