@@ -1286,7 +1286,7 @@ class VolumeRegistration:
             exit(1)
         volume = zarr.open(input_zarr_path, mode='r')
         print(volume.info)
-        for i in tqdm(range(int(volume.shape[2]))): # type: ignore
+        for i in tqdm(range(int(volume.shape[-1]))): # type: ignore
             section = volume[:, :, i, ...]
             section = np.squeeze(section)
             
