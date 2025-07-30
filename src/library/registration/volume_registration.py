@@ -1259,6 +1259,9 @@ class VolumeRegistration:
     def zarr2tif(self):
         input_zarr = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        if os.path.exists(output_dir):
+            print(f"Output directory {output_dir} already exists. Removing.")
+            shutil.rmtree(output_dir)
         os.makedirs(output_dir, exist_ok=True)
 
         if not os.path.isdir(input_zarr):
