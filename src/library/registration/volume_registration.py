@@ -27,7 +27,7 @@ from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_mask import normalize16
+from library.utilities.utilities_mask import normalize16, rescaler
 from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
@@ -1257,19 +1257,24 @@ class VolumeRegistration:
 
 
     def zarr2tif(self):
-        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'full_aligned')
+        input_zarr = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
         os.makedirs(output_dir, exist_ok=True)
 
-        #input_zarr_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
-        input_zarr_path = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/ALLEN771602/www/neuroglancer_data/C1.zarr/0'
-        if not os.path.isdir(input_zarr_path):
-            print(f"Zarr dir not found at {input_zarr_path}")
+        if not os.path.isdir(input_zarr):
+            print(f"Zarr dir not found at {input_zarr}")
             exit(1)
-        volume = zarr.open(input_zarr_path, mode='r')
+        volume = zarr.open(input_zarr, mode='r')
         print(volume.info)
-        for i in tqdm(range(int(volume.shape[-1]))): # type: ignore
-            section = volume[..., i]
+        for i in tqdm(range(int(volume.shape[0])), disable=True): # type: ignore
+            section = volume[i, ...]
             section = np.squeeze(section)
+            ids, counts = np.unique(section, return_counts=True)
+            lids = len(ids)
+            if lids > 75:
+                print(f"Section {i}: length IDs: {len(ids)}  dtype: {section.dtype} ")
+                section = rescaler(section)
+
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
             write_image(filepath, section)
 
@@ -1285,7 +1290,13 @@ class VolumeRegistration:
         - chunk_size: tuple of (z, y, x) chunk size
         - multichannel: whether the TIFFs are RGB
         """
+        sqlController = SqlController(self.moving) 
+        scale_xy = sqlController.scan_run.resolution
+        z_scale = sqlController.scan_run.zresolution
+
+
         input_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'full_aligned')
+        output_zarr = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         if not os.path.isdir(input_dir):
             print(f"Input directory not found at {input_dir}")
             exit(1)
@@ -1298,8 +1309,10 @@ class VolumeRegistration:
         else:
             print(f"with {len(files)} TIFF files")
 
+        scale_x = scale_xy / self.xy_um
+        scale_y = scale_xy / self.xy_um
+        scale_z = z_scale / self.z_um
 
-        scale_z, scale_y, scale_x = 1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor
         print(f"Downsampling by (z, y, x) scale: ({scale_z}, {scale_y}, {scale_x})")
 
         # Load one image to get shape
@@ -1342,7 +1355,7 @@ class VolumeRegistration:
             dask_imgs = da.from_array(resize_z(dask_imgs.compute()), chunks=chunk_size)
 
         # Save to Zarr
-        output_zarr = os.path.join(self.fileLocationManager.prep, f'C{self.channel}', f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+        print(f"Saving downsampled stack to {output_zarr}")
 
         if os.path.exists(output_zarr):
             print(f"Zarr directory {output_zarr} already exists. Removing.")
@@ -1352,6 +1365,10 @@ class VolumeRegistration:
             dask_imgs.to_zarr(output_zarr, overwrite=True)
 
         print(f"✅ Downsampled stack saved to {output_zarr}")
+
+        volume = zarr.open(output_zarr, mode='r')
+        print(volume.info)
+
 
 
     def points_within_polygons(self):
