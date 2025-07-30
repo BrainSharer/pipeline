@@ -4,20 +4,23 @@ import shutil
 import sys
 import numpy as np
 from skimage import io
+import dask.array as da
+from dask import delayed
+from dask.diagnostics import ProgressBar
+from skimage.transform import resize
 from scipy.ndimage import zoom
 from skimage.filters import gaussian        
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from tqdm import tqdm
 import SimpleITK as sitk
 import itk
-
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
 import json
-
 import zarr
+from shapely.geometry import Point, Polygon
 
 from library.atlas.atlas_utilities import adjust_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
@@ -370,20 +373,14 @@ class VolumeRegistration:
         for child in childJsons:
             for i, row in enumerate(child['childJsons']):
                 x,y,z = row['pointA']
-                #if z > 0.007721:
-                #    continue
                 rows.append((x,y,z))
         input_points = itk.PointSet[itk.F, 3].New()
         df = pd.DataFrame(rows, columns=['xm','ym','zm'])
-        #print(df.head())
-        #print()
         print(f'Creating polygons for {self.moving} with {len(df)} DB resolution: xy={scale_xy} z={z_scale} points xy_um={self.xy_um} z_um={self.z_um} scaling_factor={self.scaling_factor}')
-
         
         with open(self.changes_path, 'r') as file:
             change = json.load(file)
 
-        print(f'change={change}')
 
         df['xng'] = df['xm'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
         df['yng'] = df['ym'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
@@ -402,7 +399,6 @@ class VolumeRegistration:
             x = row['x']
             y = row['y']
             z = int(round(row['z']))
-            #section = int(round(row['zn']))
             point = [x, y, z]
             input_points.GetPoints().InsertElement(idx, point)
             polygons[z].append((x, y))
@@ -414,7 +410,7 @@ class VolumeRegistration:
                 shutil.rmtree(output_dir)
 
             os.makedirs(output_dir, exist_ok=True)
-            #print(df.describe())
+            point = Point(10, 10)
             for section, points in tqdm(polygons.items()):
                 file = str(section).zfill(4) + ".tif"
                 inpath = os.path.join(self.thumbnail_aligned, file)
@@ -428,21 +424,6 @@ class VolumeRegistration:
                 outpath = os.path.join(output_dir, file)
                 cv2.imwrite(outpath, img)
                 
-            """
-            points = polygons[section]
-            for section in range(380, 410):
-                file = str(section).zfill(4) + ".tif"
-                inpath = os.path.join(self.thumbnail_aligned, file)
-                if not os.path.exists(inpath):
-                    print(f'{inpath} does not exist')
-                    continue
-                img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
-                points = np.array(points)
-                points = points.astype(np.int32)
-                cv2.polylines(img, pts = [points], isClosed=True, color=255, thickness=1)
-                outpath = os.path.join(output_dir, file)
-                cv2.imwrite(outpath, img)
-            """
             del polygons
             return
 
@@ -1293,6 +1274,128 @@ class VolumeRegistration:
             write_image(filepath, section)
 
 
+    def tif2zarr(self):
+        """
+        Downsample a folder of large TIFFs by (z, y, x) scale and write to Zarr.
+
+        Parameters:
+        - input_folder: str, path to folder with TIFFs (assumed to be Z-stack)
+        - output_zarr: str, path to output Zarr directory
+        - scale_factors: tuple of (scale_z, scale_y, scale_x), e.g., (0.5, 0.5, 0.5)
+        - chunk_size: tuple of (z, y, x) chunk size
+        - multichannel: whether the TIFFs are RGB
+        """
+        input_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'full_aligned')
+        if not os.path.isdir(input_dir):
+            print(f"Input directory not found at {input_dir}")
+            exit(1)
+        else:
+            print(f"Input directory found at {input_dir}", end= " ")
+        files = sorted(os.listdir(input_dir))
+        if len(files) == 0:
+            print(f"No TIFF files found in {input_dir}")
+            exit(1)
+        else:
+            print(f"with {len(files)} TIFF files")
+
+
+        scale_z, scale_y, scale_x = 1/self.scaling_factor, 1/self.scaling_factor, 1/self.scaling_factor
+        print(f"Downsampling by (z, y, x) scale: ({scale_z}, {scale_y}, {scale_x})")
+
+        # Load one image to get shape
+        sample_path = os.path.join(input_dir, files[0])
+        sample = read_image(sample_path)
+        is_rgb = sample.ndim == 3
+        original_shape = sample.shape
+        chunk_size = (1, 256, 256)
+
+        def load_and_resize(path):
+            filepath = os.path.join(input_dir, path)
+            img = read_image(filepath)
+            if is_rgb:
+                new_shape = (
+                    int(img.shape[0] * scale_y),
+                    int(img.shape[1] * scale_x),
+                    img.shape[2],
+                )
+            else:
+                new_shape = (
+                    int(img.shape[0] * scale_y),
+                    int(img.shape[1] * scale_x),
+                )
+            return resize(img, new_shape, anti_aliasing=True, preserve_range=True).astype(img.dtype)
+
+        # Create delayed images
+        lazy_imgs = [delayed(load_and_resize)(f) for f in files]
+
+        # Convert to dask array
+        sample_down = load_and_resize(sample_path)
+        dask_imgs = da.stack([da.from_delayed(im, shape=sample_down.shape, dtype=sample_down.dtype) for im in lazy_imgs])
+
+        # Downsample Z dimension if needed
+        if scale_z != 1.0:
+            new_z = int(len(files) * scale_z)
+
+            def resize_z(arr):
+                return resize(arr, (new_z,) + arr.shape[1:], anti_aliasing=True, preserve_range=True).astype(arr.dtype)
+
+            dask_imgs = da.from_array(resize_z(dask_imgs.compute()), chunks=chunk_size)
+
+        # Save to Zarr
+        output_zarr = os.path.join(self.fileLocationManager.prep, f'C{self.channel}', f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
+
+        if os.path.exists(output_zarr):
+            print(f"Zarr directory {output_zarr} already exists. Removing.")
+            shutil.rmtree(output_zarr)
+
+        with ProgressBar():
+            dask_imgs.to_zarr(output_zarr, overwrite=True)
+
+        print(f"✅ Downsampled stack saved to {output_zarr}")
+
+
+    def points_within_polygons(self):
+        
+        sqlController = SqlController(self.moving) 
+        scale_xy = sqlController.scan_run.resolution
+        z_scale = sqlController.scan_run.zresolution
+        id = 8357 # Get the annotation session ID from the database
+        annotation_session = sqlController.get_annotation_by_id(id)
+        childJsons = annotation_session.annotation['childJsons']
+        rows = []
+        polygons = defaultdict(list)
+        for child in childJsons:
+            for i, row in enumerate(child['childJsons']):
+                x,y,z = row['pointA']
+                rows.append((x,y,z))
+
+        # Create a dataframe of the points. Note all data in the DB is in meters
+        df = pd.DataFrame(rows, columns=['xm','ym','zm'])
+        
+
+        # create colums that are in neuroglancer coordinates
+        # scaling_factor is just 1 for most cases, unless you downsampled the data
+        df['xng'] = df['xm'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        df['yng'] = df['ym'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
+        df['zng'] = df['zm'] * M_UM_SCALE / z_scale * self.scaling_factor
+
+        print(df.head())
+
+
+        for (_, row) in df.iterrows():
+            x = row['xng']
+            y = row['yng']
+            z = int(round(row['zng']))
+            polygons[z].append((x, y))
+
+        # this is where you can test for points within the polygons
+        test_x = 6809
+        test_y = 1054
+        for section, points in tqdm(polygons.items()):
+            is_in_polygon = point_in_polygon(test_x, test_y, points)
+            print(f'section {section} has {len(points)} points,  and test_point is in polygon: {is_in_polygon}')
+
+
     def check_status(self):
         """Starter method to check for existing directories and files
         """
@@ -1399,3 +1502,19 @@ def pad_volume(volume, padto):
     re = (padto[2] - volume.shape[2]) // 1
     ce = (padto[1] - volume.shape[1]) // 1
     return np.pad(volume, [[0, 0], [0, ce], [0, re]], constant_values=(0))
+
+def point_in_polygon(x, y, points):
+    """
+    Check if a point (x, y) is inside a polygon defined by polygon_points.
+
+    Parameters:
+        x (float): X coordinate of the point.
+        y (float): Y coordinate of the point.
+        polygon_points (list of tuple): List of (x, y) tuples defining the polygon.
+
+    Returns:
+        bool: True if the point is inside the polygon, False otherwise.
+    """
+    point = Point(x, y)
+    polygon = Polygon(points)
+    return polygon.contains(point)

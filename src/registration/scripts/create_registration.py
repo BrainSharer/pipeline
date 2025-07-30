@@ -71,7 +71,9 @@ if __name__ == '__main__':
                         'create_moving_fixed_points': volumeRegistration.create_moving_fixed_points,
                         'register_volume_with_fiducials': volumeRegistration.register_volume_with_fiducials,
                         'zarr2tif': volumeRegistration.zarr2tif,
+                        'tif2zarr': volumeRegistration.tif2zarr,
                         'downsample_stack': volumeRegistration.downsample_stack,
+                        'points_within_polygons': volumeRegistration.points_within_polygons,
     }
 
     if task in function_mapping:
