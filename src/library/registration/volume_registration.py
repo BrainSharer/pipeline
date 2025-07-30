@@ -1287,9 +1287,8 @@ class VolumeRegistration:
         volume = zarr.open(input_zarr_path, mode='r')
         print(volume.info)
         for i in tqdm(range(int(volume.shape[-1]))): # type: ignore
-            section = volume[:, :, i, ...]
+            section = volume[..., i]
             section = np.squeeze(section)
-            
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
             write_image(filepath, section)
 
