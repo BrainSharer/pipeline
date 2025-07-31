@@ -341,12 +341,6 @@ class VolumeRegistration:
             return (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
 
         # check for necessary files
-        if not os.path.exists(self.registered_volume):
-            print(f'{self.registered_volume} does not exist, exiting.')
-            sys.exit()
-        if not os.path.exists(self.fixed_volume_path):
-            print(f'{self.fixed_volume_path} does not exist, exiting.')
-            sys.exit()
         transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
         if os.path.exists(transformix_pointset_file):
             print(f'{transformix_pointset_file} exists, removing')
@@ -355,12 +349,6 @@ class VolumeRegistration:
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
             sys.exit()
         result_path = os.path.join(self.registration_output, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}_annotated.tif')
-        if not os.path.exists(self.changes_path):
-            print(f'{self.changes_path} does not exist, exiting.')
-            sys.exit()
-        if not os.path.exists(self.registered_volume):
-            print(f'{self.registered_volume} does not exist, exiting.')
-            sys.exit()
         
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
@@ -376,24 +364,22 @@ class VolumeRegistration:
                 rows.append((x,y,z))
         input_points = itk.PointSet[itk.F, 3].New()
         df = pd.DataFrame(rows, columns=['xm','ym','zm'])
-        print(f'Creating polygons for {self.moving} with {len(df)} DB resolution: xy={scale_xy} z={z_scale} points xy_um={self.xy_um} z_um={self.z_um} scaling_factor={self.scaling_factor}')
-        
-        with open(self.changes_path, 'r') as file:
-            change = json.load(file)
+        scale_x = scale_xy / self.xy_um
+        scale_y = scale_xy / self.xy_um
+        scale_z = z_scale / self.z_um
 
 
-        df['xng'] = df['xm'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        df['yng'] = df['ym'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        df['zng'] = df['zm'] * M_UM_SCALE / z_scale
+        print(f'Creating polygons for {self.moving} with {len(df)} DB resolution: xy={scale_xy} z={z_scale} points xy_um={self.xy_um} z_um={self.z_um} ')
+        print(f'Scaling factors: scale_x={scale_x} scale_y={scale_y} scale_z={scale_z}')
 
-        df['x'] = df['xm'] * change['change_x'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        df['y'] = df['ym'] * change['change_y'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        #df['z2'] = df['zm'] * M_UM_SCALE / z_scale
-        df['z'] = df['zm'] * 0.1020408 * M_UM_SCALE / z_scale
+
+        df['x'] = df['xm'] * M_UM_SCALE / scale_xy * scale_x
+        df['y'] = df['ym'] * M_UM_SCALE / scale_xy * scale_y
+        df['z'] = df['zm'] * M_UM_SCALE / z_scale * scale_z
         #df['z'] = linear_stretch(df['z'].min(), df['z'].max(), df['z'], 0.1020408)
 
-        print(df.head())
-
+        if self.debug:
+            print(df.head())
 
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x']
@@ -409,11 +395,12 @@ class VolumeRegistration:
                 print(f'{output_dir} exists, removing')
                 shutil.rmtree(output_dir)
 
+            input_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+
             os.makedirs(output_dir, exist_ok=True)
-            point = Point(10, 10)
             for section, points in tqdm(polygons.items()):
                 file = str(section).zfill(4) + ".tif"
-                inpath = os.path.join(self.thumbnail_aligned, file)
+                inpath = os.path.join(input_dir, file)
                 if not os.path.exists(inpath):
                     print(f'{inpath} does not exist')
                     continue
@@ -1272,16 +1259,37 @@ class VolumeRegistration:
         for i in tqdm(range(int(volume.shape[0])), disable=self.debug, desc="Creating tifs from zarr"): # type: ignore
             section = volume[i, ...]
             section = np.squeeze(section)
-            ids, counts = np.unique(section, return_counts=True)
+            ids, _ = np.unique(section, return_counts=True)
             lids = len(ids)
             if lids > 75:
-                print(f"Section {i}: length IDs: {len(ids)}  dtype: {section.dtype} ")
                 section = rescaler(section)
             else:
                 section = np.zeros_like(section, dtype=np.uint16)
 
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
             write_image(filepath, section)
+
+        input_dir = output_dir
+        del output_dir
+        image_manager = ImageManager(input_dir)
+        
+        if os.path.exists(self.moving_volume_path):
+            print(f'{self.moving_volume_path} exists, exiting')
+            return
+
+        image_stack = np.zeros(image_manager.volume_size)
+        file_list = []
+        for ffile in tqdm(image_manager.files, desc='Creating volume'):
+            fpath = os.path.join(input_dir, ffile)
+            farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+            file_list.append(farr)
+
+            
+        image_stack = np.stack(file_list, axis = 0)    
+
+        write_image(self.moving_volume_path, image_stack.astype(image_manager.dtype))
+        print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
+
 
 
     def tif2zarr(self):
