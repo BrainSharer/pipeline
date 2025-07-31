@@ -846,6 +846,24 @@ class AntsRegistration:
         else:
             print(f"Transformation not found at {self.transform_filepath}")
 
+    def create_reverse_transformation(self):
+        if not os.path.isfile(self.moving_filepath):
+            print(f"Moving image not found at {self.moving_filepath}")
+            exit(1)
+        if not os.path.isfile(self.fixed_filepath):
+            print(f"Fixed image found at {self.fixed_filepath}")
+            exit(1)
+
+
+        moving = ants.image_read(self.moving_filepath)
+        print(f'Read moving image from {self.moving_filepath}')
+        fixed = ants.image_read(self.fixed_filepath)
+        print(f'Read fixed image from {self.fixed_filepath}')
+        print("Starting reverse registration ...")
+        registration = ants.registration(fixed=moving, moving=fixed, type_of_transform=self.transformation)
+        print(f"Registration completed, copying inverse transform to {self.inverse_transform_filepath}")
+        shutil.copy(registration['fwdtransforms'][0], self.inverse_transform_filepath)
+
 
     def create_registration_in_memory(self):
         if not os.path.isfile(self.moving_filepath):
@@ -860,9 +878,8 @@ class AntsRegistration:
         fixed = ants.image_read(self.fixed_filepath)
         print(f'Read fixed image from {self.fixed_filepath}')
 
-        if os.path.isfile(self.transform_filepath) and os.path.isfile(self.inverse_transform_filepath):
+        if os.path.isfile(self.transform_filepath):
             print(f"Transform file already exists at {self.transform_filepath}")
-            print(f"Inverse transform file already exists at {self.inverse_transform_filepath}")
             print("Applying registration ...")
             warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
                                         transformlist=self.transform_filepath, defaultvalue=0)
@@ -873,7 +890,6 @@ class AntsRegistration:
             print(registration.keys())
             warped_moving = registration['warpedmovout']
             shutil.copy(registration['fwdtransforms'][0], self.transform_filepath)            
-            shutil.copy(registration['invtransforms'][0], self.inverse_transform_filepath)
 
 
         # Convert to numpy and save to disk
@@ -1542,6 +1558,7 @@ if __name__ == '__main__':
                         'create_zarr': pipeline.create_zarr,
                         'create_matrix': pipeline.create_matrix,
                         'create_registration': pipeline.create_registration_in_memory,
+                        'create_reverse_transformation': pipeline.create_reverse_transformation,
                         'split_volume': pipeline.split_big_volume,
                         'repack_volume': pipeline.repack_big_volume,
                         'apply_registration': pipeline.apply_registration,

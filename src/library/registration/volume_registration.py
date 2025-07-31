@@ -2,6 +2,7 @@ from collections import defaultdict
 import os
 import shutil
 import sys
+import ants
 import numpy as np
 from skimage import io
 import dask.array as da
@@ -374,11 +375,11 @@ class VolumeRegistration:
         df['x'] = df['xm'] * M_UM_SCALE / scale_xy * scale_x
         df['y'] = df['ym'] * M_UM_SCALE / scale_xy * scale_y
         df['z'] = df['zm'] * M_UM_SCALE / z_scale * scale_z
-        df['t'] = 0
+        #df['t'] = 0
 
+        df.drop(columns=['xm', 'ym', 'zm'], inplace=True)
         if self.debug:
             print(df.head())
-            exit(1)
 
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x']
@@ -393,7 +394,21 @@ class VolumeRegistration:
             polygons[section].append((x, y))
             #transformed_polygons[transformed_section].append((transformed_x, transformed_y))
 
-        #exit(1)
+
+
+        transformed_df = ants.apply_transforms_to_points(3, df, self.inverse_transform_filepath)
+        if self.debug:
+            print("Transformed points")
+            print(transformed_df.head())
+
+        for idx, (_, row) in enumerate(transformed_df.iterrows()):
+            x = row['x']
+            y = row['y']
+            z = row['z']
+            section = int(round(row['z']))
+            transformed_polygons[section].append((x, y))
+
+        exit(1)
         def write_polygons_to_files(input_dir, output_dir, polygons):
             ##### Draw the scaled and transformed polygons on the images
             if not os.path.exists(input_dir):
