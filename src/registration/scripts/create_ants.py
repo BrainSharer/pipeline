@@ -112,7 +112,7 @@ class AntsRegistration:
         self.fixed_filepath_zarr = os.path.join(self.fixed_path, f'{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.moving_filepath_zarr = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
-        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.txt')
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
     # Apply affine transform to Dask array in chunks
     @staticmethod
@@ -848,38 +848,32 @@ class AntsRegistration:
 
 
     def create_registration_in_memory(self):
-        if os.path.isfile(self.moving_filepath):
-            print(f"Moving image found at {self.moving_filepath}")
-        else:
+        if not os.path.isfile(self.moving_filepath):
             print(f"Moving image not found at {self.moving_filepath}")
             exit(1)
-        if os.path.isfile(self.fixed_filepath):
+        if not os.path.isfile(self.fixed_filepath):
             print(f"Fixed image found at {self.fixed_filepath}")
-        else:
-            print(f"Fixed image not found at {self.fixed_filepath}")
             exit(1)
 
-
-        print(f'Reading moving image from {self.moving_filepath}')
         moving = ants.image_read(self.moving_filepath)
-        print("Moving image loaded")
-        print(f'Reading fixed image from {self.fixed_filepath}')
+        print(f'Read moving image from {self.moving_filepath}')
         fixed = ants.image_read(self.fixed_filepath)
-        print("Fixed image loaded")
+        print(f'Read fixed image from {self.fixed_filepath}')
 
-        if not os.path.isfile(self.transform_filepath):
+        if os.path.isfile(self.transform_filepath) and os.path.isfile(self.inverse_transform_filepath):
+            print(f"Transform file already exists at {self.transform_filepath}")
+            print(f"Inverse transform file already exists at {self.inverse_transform_filepath}")
+            print("Applying registration ...")
+            warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
+                                        transformlist=self.transform_filepath, defaultvalue=0)
+        else:
             print("Starting registration ...")
             registration = ants.registration(fixed=fixed, moving=moving, type_of_transform=self.transformation)
             print("Registration completed")
             print(registration.keys())
             warped_moving = registration['warpedmovout']
             shutil.copy(registration['fwdtransforms'][0], self.transform_filepath)            
-
-        else:
-            print(f"Transform file already exists at {self.transform_filepath}")
-            print("Applying registration ...")
-            warped_moving = ants.apply_transforms( fixed=fixed, moving=moving, 
-                                        transformlist=self.transform_filepath, defaultvalue=0)
+            shutil.copy(registration['invtransforms'][0], self.inverse_transform_filepath)
 
 
         # Convert to numpy and save to disk

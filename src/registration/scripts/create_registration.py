@@ -72,6 +72,7 @@ if __name__ == '__main__':
                         'register_volume_with_fiducials': volumeRegistration.register_volume_with_fiducials,
                         'zarr2tif': volumeRegistration.zarr2tif,
                         'tif2zarr': volumeRegistration.tif2zarr,
+                        'volume2tif': volumeRegistration.volume2tif,
                         'downsample_stack': volumeRegistration.downsample_stack,
                         'points_within_polygons': volumeRegistration.points_within_polygons,
     }

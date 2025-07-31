@@ -22,7 +22,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import adjust_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -75,6 +75,11 @@ class VolumeRegistration:
         self.registered_point_file = os.path.join(self.registration_output, 'outputpoints.txt')
         self.unregistered_point_file = os.path.join(self.moving_path, f'{self.animal}_{z_um}x{xy_um}x{xy_um}um_{orientation}_unregistered.pts')
         self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
+
+        self.transformation = 'Affine'
+        self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
+
 
         if self.fixed is not None:
             self.fiducial_fixed_file_path = os.path.join(self.registration_path, self.fixed, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
@@ -335,20 +340,15 @@ class VolumeRegistration:
     def transformix_polygons(self):
         """id for ALLEN771602, cerebellum test is 8357
         """
-        def linear_stretch(old_min, old_max, x, stretch):
-            new_max = old_max * stretch
-            new_min = old_min
-            return (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
-
+        #transform_file = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
+        if not os.path.exists(self.inverse_transform_filepath):
+            print(f'{self.inverse_transform_filepath} does not exist, exiting.')
+            sys.exit()
+        #affine_matrix = elastix_to_affine_4x4(self.inverse_transform_filepath)
         # check for necessary files
-        transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
-        if os.path.exists(transformix_pointset_file):
-            print(f'{transformix_pointset_file} exists, removing')
-            os.remove(transformix_pointset_file)
         if not os.path.exists(self.reverse_elastix_output):
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
             sys.exit()
-        result_path = os.path.join(self.registration_output, f'Allen_{self.z_um}x{self.xy_um}x{self.xy_um}_annotated.tif')
         
         sqlController = SqlController(self.moving) 
         scale_xy = sqlController.scan_run.resolution
@@ -358,46 +358,55 @@ class VolumeRegistration:
         childJsons = annotation_session.annotation['childJsons']
         rows = []
         polygons = defaultdict(list)
+        transformed_polygons = defaultdict(list)
         for child in childJsons:
             for i, row in enumerate(child['childJsons']):
                 x,y,z = row['pointA']
                 rows.append((x,y,z))
-        input_points = itk.PointSet[itk.F, 3].New()
         df = pd.DataFrame(rows, columns=['xm','ym','zm'])
         scale_x = scale_xy / self.xy_um
         scale_y = scale_xy / self.xy_um
         scale_z = z_scale / self.z_um
 
-
         print(f'Creating polygons for {self.moving} with {len(df)} DB resolution: xy={scale_xy} z={z_scale} points xy_um={self.xy_um} z_um={self.z_um} ')
         print(f'Scaling factors: scale_x={scale_x} scale_y={scale_y} scale_z={scale_z}')
-
 
         df['x'] = df['xm'] * M_UM_SCALE / scale_xy * scale_x
         df['y'] = df['ym'] * M_UM_SCALE / scale_xy * scale_y
         df['z'] = df['zm'] * M_UM_SCALE / z_scale * scale_z
-        #df['z'] = linear_stretch(df['z'].min(), df['z'].max(), df['z'], 0.1020408)
+        df['t'] = 0
 
         if self.debug:
             print(df.head())
+            exit(1)
 
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x']
             y = row['y']
-            z = int(round(row['z']))
-            point = [x, y, z]
-            input_points.GetPoints().InsertElement(idx, point)
-            polygons[z].append((x, y))
+            z = row['z']
+            section = int(round(row['z']))
+            #transformed = affine_transform_point([x, y, z], affine_matrix)
+            #print(f'Point {idx}: Original ({x}, {y}, {z}), Transformed ({transformed[0]}, {transformed[1]}, {transformed[2]})')
+            #transformed_x = transformed[0]
+            #transformed_y = transformed[1]
+            #transformed_section = int(round(transformed[2]))
+            polygons[section].append((x, y))
+            #transformed_polygons[transformed_section].append((transformed_x, transformed_y))
 
-        if self.debug:
-            output_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_debug')
+        #exit(1)
+        def write_polygons_to_files(input_dir, output_dir, polygons):
+            ##### Draw the scaled and transformed polygons on the images
+            if not os.path.exists(input_dir):
+                print(f'{input_dir} does not exist for drawing transformed polygons, exiting.')
+                sys.exit()
+            else:
+                print(f'Drawing polygons on images from {input_dir}')
+                print(f'and saving to {output_dir}')
             if os.path.exists(output_dir):
                 print(f'{output_dir} exists, removing')
                 shutil.rmtree(output_dir)
-
-            input_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
-
             os.makedirs(output_dir, exist_ok=True)
+            
             for section, points in tqdm(polygons.items()):
                 file = str(section).zfill(4) + ".tif"
                 inpath = os.path.join(input_dir, file)
@@ -410,62 +419,15 @@ class VolumeRegistration:
                 cv2.polylines(img, pts = [points], isClosed=True, color=255, thickness=3)
                 outpath = os.path.join(output_dir, file)
                 cv2.imwrite(outpath, img)
-                
-            del polygons
-            return
 
-        del df
-        # Write points to be transformed
-        with open(transformix_pointset_file, "w") as f:
-            f.write("point\n")
-            f.write(f"{input_points.GetNumberOfPoints()}\n")
-            f.write(f"{point[0]} {point[1]} {point[2]}\n")
-            for idx in range(input_points.GetNumberOfPoints()):
-                point = input_points.GetPoint(idx)
-                f.write(f"{point[0]} {point[1]} {point[2]}\n")
-                
-        transformixImageFilter = self.setup_transformix(self.reverse_elastix_output)
-        transformixImageFilter.SetFixedPointSetFileName(transformix_pointset_file)
-        transformixImageFilter.Execute()
-                    
-        polygons = defaultdict(list)
-        with open(self.registered_point_file, "r") as f:                
-            lines=f.readlines()
-            f.close()
-
-        point_or_index = 'OutputPoint'
-        points = []
-        for i in tqdm(range(len(lines))):        
-            lx=lines[i].split()[lines[i].split().index(point_or_index)+3:lines[i].split().index(point_or_index)+6] #x,y,z
-            lf = [float(f) for f in lx]
-            x = lf[0]
-            y = lf[1]
-            z = lf[2]
-            section = int(np.round(z))
-            polygons[section].append((x,y))
-            points.append((x,y,section))
-        resultImage = io.imread(self.fixed_volume_path)
-        registered_volume = io.imread(self.registered_volume)
-        
-        for section, points in tqdm(polygons.items()):
-            if self.debug:
-                for point in points:
-                    x = int(point[0])
-                    y = int(point[1])
-                    cv2.circle(resultImage[section,:,:], (x,y), 12, 254, thickness=3)
-            else:
-                points = np.array(points, dtype=np.int32)
-                try:
-                    cv2.fillPoly(resultImage[section,:,:], pts = [points], color = self.mask_color)
-                    cv2.fillPoly(registered_volume[section,:,:], pts = [points], color = self.mask_color)
-                except IndexError as e:
-                    print(f'Section: {section} error: {e}')
-
-        io.imsave(result_path, resultImage)
-        print(f'Saved a 3D volume {result_path} with shape={resultImage.shape} and dtype={resultImage.dtype}')
-
-        io.imsave(self.registered_volume, registered_volume)
-        print(f'Saved a 3D volume {self.registered_volume} with shape={registered_volume.shape} and dtype={registered_volume.dtype}')
+        ##### Draw the scaled polygons on the images
+        input_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'drawn_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        write_polygons_to_files(input_dir, output_dir, polygons)
+        ##### Draw the scaled and transformed polygons on the images
+        input_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_drawn_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        write_polygons_to_files(input_dir, output_dir, transformed_polygons)
 
 
     def transformix_coms_db(self):
@@ -1290,6 +1252,34 @@ class VolumeRegistration:
         write_image(self.moving_volume_path, image_stack.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
 
+    def volume2tif(self):
+        
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        if os.path.exists(output_dir):
+            print(f"Output directory {output_dir} already exists. Removing.")
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+
+        if not os.path.isfile(self.registered_volume):
+            print(f"Registered volume not found at {self.registered_volume}")
+            exit(1)
+        volume = read_image(self.registered_volume)
+        print(f'Loading volume with shape: {volume.shape}, dtype: {volume.dtype}')
+        for i in tqdm(range(int(volume.shape[0])), disable=self.debug, desc="Creating tifs from zarr"): # type: ignore
+            section = volume[i, ...]
+            section = np.squeeze(section)
+            ids, _ = np.unique(section, return_counts=True)
+            lids = len(ids)
+            if lids > 75:
+                section = rescaler(section)
+            else:
+                section = np.zeros_like(section, dtype=np.uint16)
+
+            filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
+            write_image(filepath, section)
+
+        print(f'Saved a 3D stack at {output_dir} with {len(os.listdir(output_dir))} sections')
+
 
 
     def tif2zarr(self):
@@ -1548,3 +1538,54 @@ def point_in_polygon(x, y, points):
     point = Point(x, y)
     polygon = Polygon(points)
     return polygon.contains(point)
+
+
+def elastix_to_affine_4x4(filepath):
+    """
+    Converts an Elastix TransformParameters.0.txt affine file into a 4x4 numpy matrix in ZYX order.
+    """
+    import re
+    with open(filepath, 'r') as f:
+        content = f.read()
+
+    # Extract TransformParameters
+    params_match = re.search(r'\(TransformParameters\s+(.*?)\)', content, re.DOTALL)
+    if not params_match:
+        raise ValueError("TransformParameters not found in the file.")
+    params = list(map(float, params_match.group(1).split()))
+
+    if len(params) != 12:
+        raise ValueError(f"Expected 12 TransformParameters, got {len(params)}")
+
+    # Extract CenterOfRotationPoint
+    center_match = re.search(r'\(CenterOfRotationPoint\s+(.*?)\)', content)
+    if not center_match:
+        raise ValueError("CenterOfRotationPoint not found in the file.")
+    center = np.array(list(map(float, center_match.group(1).split())))
+
+    # Build the affine matrix A and translation vector t
+    A = np.array(params[:9]).reshape(3, 3)
+    t = np.array(params[9:])
+
+    # Apply the formula: M = A·(x - c) + t + c  => Full affine:
+    # M = A x + (t - A·c + c) = A x + offset
+    offset = t - A @ center + center
+
+    # Compose into 4x4 affine matrix
+    affine = np.eye(4)
+    affine[:3, :3] = A
+    affine[:3, 3] = offset
+    return affine
+
+    # Reorder from XYZ to ZYX by permuting rows and columns
+    reorder = [2, 1, 0]  # Z, Y, X
+    affine_zyx = np.eye(4)
+    affine_zyx[:3, :3] = affine[:3, :3][reorder, :][:, reorder]
+    affine_zyx[:3, 3] = affine[:3, 3][reorder]
+
+    return affine_zyx
+
+def linear_stretch(old_min, old_max, x, stretch):
+    new_max = old_max * stretch
+    new_min = old_min
+    return (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
