@@ -23,7 +23,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, average_images, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, affine_transform_points, affine_transform_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -341,11 +341,18 @@ class VolumeRegistration:
     def transformix_polygons(self):
         """id for ALLEN771602, cerebellum test is 8357
         """
-        #transform_file = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
+        transform_file = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
         if not os.path.exists(self.inverse_transform_filepath):
             print(f'{self.inverse_transform_filepath} does not exist, exiting.')
             sys.exit()
-        #affine_matrix = elastix_to_affine_4x4(self.inverse_transform_filepath)
+        else:
+            print(f'Using {self.inverse_transform_filepath} for reverse transformation')
+        elastix_affine_matrix = elastix_to_affine_4x4(transform_file)
+        print('Affine matrix from elastix:')
+        print(elastix_affine_matrix)
+        #ants_affine_matrix = create_affine_matrix_from_mat(self.inverse_transform_filepath)
+        #print('Affine matrix from ants:')
+        #print(ants_affine_matrix)
         # check for necessary files
         if not os.path.exists(self.reverse_elastix_output):
             print(f'{self.reverse_elastix_output} does not exist, exiting.')
@@ -375,7 +382,6 @@ class VolumeRegistration:
         df['x'] = df['xm'] * M_UM_SCALE / scale_xy * scale_x
         df['y'] = df['ym'] * M_UM_SCALE / scale_xy * scale_y
         df['z'] = df['zm'] * M_UM_SCALE / z_scale * scale_z
-        #df['t'] = 0
 
         df.drop(columns=['xm', 'ym', 'zm'], inplace=True)
         if self.debug:
@@ -386,29 +392,14 @@ class VolumeRegistration:
             y = row['y']
             z = row['z']
             section = int(round(row['z']))
-            #transformed = affine_transform_point([x, y, z], affine_matrix)
+            transformed = affine_transform_point([x, y, z], elastix_affine_matrix)
             #print(f'Point {idx}: Original ({x}, {y}, {z}), Transformed ({transformed[0]}, {transformed[1]}, {transformed[2]})')
-            #transformed_x = transformed[0]
-            #transformed_y = transformed[1]
-            #transformed_section = int(round(transformed[2]))
+            transformed_x = transformed[0]
+            transformed_y = transformed[1]
+            transformed_section = int(round(transformed[2]))
             polygons[section].append((x, y))
-            #transformed_polygons[transformed_section].append((transformed_x, transformed_y))
+            transformed_polygons[transformed_section].append((transformed_x, transformed_y))
 
-
-
-        transformed_df = ants.apply_transforms_to_points(3, df, self.inverse_transform_filepath)
-        if self.debug:
-            print("Transformed points")
-            print(transformed_df.head())
-
-        for idx, (_, row) in enumerate(transformed_df.iterrows()):
-            x = row['x']
-            y = row['y']
-            z = row['z']
-            section = int(round(row['z']))
-            transformed_polygons[section].append((x, y))
-
-        exit(1)
         def write_polygons_to_files(input_dir, output_dir, polygons):
             ##### Draw the scaled and transformed polygons on the images
             if not os.path.exists(input_dir):
@@ -1244,6 +1235,8 @@ class VolumeRegistration:
                 section = np.zeros_like(section, dtype=np.uint16)
 
             filepath = os.path.join(output_dir, f'{str(i).zfill(4)}.tif')
+            if os.path.exists(filepath):
+                continue
             write_image(filepath, section)
 
         input_dir = output_dir
@@ -1586,6 +1579,7 @@ def elastix_to_affine_4x4(filepath):
     # M = A x + (t - A·c + c) = A x + offset
     offset = t - A @ center + center
 
+
     # Compose into 4x4 affine matrix
     affine = np.eye(4)
     affine[:3, :3] = A
@@ -1599,6 +1593,26 @@ def elastix_to_affine_4x4(filepath):
     affine_zyx[:3, 3] = affine[:3, 3][reorder]
 
     return affine_zyx
+
+def create_affine_matrix_from_mat(filepath):
+    from scipy.io import loadmat
+
+    transfo_dict = loadmat(filepath)
+    lps2ras = np.diag([-1, -1, 1])
+
+    rot = transfo_dict['AffineTransform_float_3_3'][0:9].reshape((3, 3))
+    trans = transfo_dict['AffineTransform_float_3_3'][9:12]
+    offset = transfo_dict['fixed']
+    r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
+
+    matrix = np.eye(4)
+    matrix[0:3, 3] = r_trans
+    matrix[:3, :3] = np.dot(np.dot(lps2ras, rot), lps2ras)
+
+    translation = (matrix[..., 3][0:3])
+    #translation = 0
+    return matrix
+
 
 def linear_stretch(old_min, old_max, x, stretch):
     new_max = old_max * stretch

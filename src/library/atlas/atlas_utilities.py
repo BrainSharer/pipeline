@@ -81,6 +81,7 @@ def affine_transform_points(polygons: defaultdict, matrix: np.ndarray) -> defaul
         for x, y in points:
             vec = np.array([x, y, z])
             x_new, y_new, z_new = affine_matrix @ vec
+            z_new = int(round(z_new))
             transformed[z_new].append((x_new, y_new))
 
     return transformed
