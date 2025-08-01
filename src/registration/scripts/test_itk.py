@@ -13,7 +13,7 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     initial_transform = sitk.CenteredTransformInitializer(
         fixed_image, 
         moving_image, 
-        sitk.Euler3DTransform(), 
+        sitk.AffineTransform(3), 
         sitk.CenteredTransformInitializerFilter.GEOMETRY
     )
 
@@ -23,11 +23,12 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
     registration_method.SetMetricSamplingPercentage(0.01)
     registration_method.SetInterpolator(sitk.sitkLinear)
-    registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+    registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=1000, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+
     registration_method.SetOptimizerScalesFromPhysicalShift()
     registration_method.SetInitialTransform(initial_transform, inPlace=False)
-    registration_method.SetShrinkFactorsPerLevel([4, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([2, 1, 0])
+    registration_method.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
     # Perform registration
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     )
 
     # Apply transform to points
-    fixed_points = transform_points(moving_points, transform)
-    print("Transformed Points in Fixed Space:\n", fixed_points)
+    #fixed_points = transform_points(moving_points, transform)
+    #print("Transformed Points in Fixed Space:\n", fixed_points)
     fixed_points = transform_points(moving_points, inverse_transform)
     print("Transformed Points in Fixed Space:\n", fixed_points)
