@@ -2,12 +2,25 @@ import SimpleITK as sitk
 import numpy as np
 import os
 
+def command_iteration(method):
+    """ Callback invoked when the optimization process is performing an iteration. """
+    print(
+        f"{method.GetOptimizerIteration():3} "
+        + f"= {method.GetMetricValue():10.5f} "
+        + f": {method.GetOptimizerPosition()}"
+    )
+
+
 def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Load fixed and moving images
     fixed_image = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
     print(f"Read fixed image: {fixed_path}")
     moving_image = sitk.ReadImage(moving_path, sitk.sitkFloat32)
     print(f"Read moving image: {moving_path}")
+
+    fixed_image_size = fixed_image.GetSize()
+    moving_image_size = moving_image.GetSize()
+
 
     # Initial alignment of the centers of the two volumes
     initial_transform = sitk.CenteredTransformInitializer(
@@ -18,22 +31,41 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     )
 
     # Set up the registration method
-    registration_method = sitk.ImageRegistrationMethod()
-    registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
-    registration_method.SetMetricSamplingPercentage(0.01)
-    registration_method.SetInterpolator(sitk.sitkLinear)
-    registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=1000, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+    R = sitk.ImageRegistrationMethod()
+    R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50) # [44.27027195 39.20937542 -0.23252082]
+    #R.SetMetricAsMeanSquares()
+    #R.SetMetricAsJointHistogramMutualInformation()
+    #R.SetMetricAsCorrelation # [44.25506863 36.46962315 -0.61515676] 
 
-    registration_method.SetOptimizerScalesFromPhysicalShift()
-    registration_method.SetInitialTransform(initial_transform, inPlace=False)
-    registration_method.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
-    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    R.SetMetricSamplingStrategy(R.RANDOM)
+    R.SetMetricSamplingPercentage(0.01)
+    R.SetInterpolator(sitk.sitkLinear)
+    R.SetOptimizerAsGradientDescent(
+        learningRate=0.05, 
+        numberOfIterations=300, # changing this has very little
+        convergenceMinimumValue=1e-1, 
+        convergenceWindowSize=100)
+
+    R.SetOptimizerScalesFromPhysicalShift()
+    R.SetInitialTransform(initial_transform, inPlace=False)
+    R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+    R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    #R.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(R))
 
     # Perform registration
-    transform = registration_method.Execute(fixed_image, moving_image)
+    transform = R.Execute(fixed_image, moving_image)
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    print("Final metric value: ", R.GetMetricValue())
+    print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
+    output_image_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_Allen_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
+    # Resample moving image onto fixed image grid
+    resampled = sitk.Resample(moving_image, fixed_image, transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+    sitk.WriteImage(resampled, output_image_path)
+    print(f"Resampled moving image written to {output_image_path}")
+
+
+
     output_file_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tfm')
     # Save the transform
     sitk.WriteTransform(transform, output_file_path)
@@ -45,7 +77,7 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Save the transform
     sitk.WriteTransform(inverse_transform, output_file_path)
     print(f"Registration written to {output_file_path}")
-    return transform, initial_transform
+    return transform, inverse_transform, fixed_image_size, moving_image_size
 
 def transform_points(points_xyz, transform):
     """
@@ -68,38 +100,11 @@ if __name__ == "__main__":
     moving_image_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
 
     # Register the images
-    transform, inverse_transform = register_3d_images(fixed_image_path, moving_image_path, xy_um, z_um)
+    transform, inverse_transform, fixed_image_size, moving_image_size = register_3d_images(fixed_image_path, moving_image_path, xy_um, z_um)
+    fixed_midpoint = np.array(fixed_image_size) / 2
+    moving_midpoint = np.array(moving_image_size) / 2  #
+    print(f'Fixed midpoint: {fixed_midpoint}, Moving midpoint: {moving_midpoint}')
+    inverse_transformed_point = inverse_transform.TransformPoint(moving_midpoint.tolist())
+    print("Inverse Transformed Points using inverse:\n", inverse_transformed_point)
+    print(f'Difference between fixed and moving midpoints: {fixed_midpoint - np.array(inverse_transformed_point)}')
 
-    # Define points in moving image space
-    moving_points = np.array(
-        [
-            [1224.9345891177654, 180.99660519510508, 326.6999963670969],
-            [1185.2512136101723, 206.79081790149212, 326.6999963670969],
-            [1187.2353963553905, 307.9835791140795, 326.6999963670969],
-            [1215.0137685239315, 325.8411306887865, 326.6999963670969],
-            [1195.1720342040062, 349.65118393301964, 326.6999963670969],
-            [1185.2512136101723, 436.9547590613365, 326.6999963670969],
-            [1240.8080510795116, 528.2266531139612, 326.6999963670969],
-            [1278.507336974144, 542.1158391982317, 326.6999963670969],
-            [1310.253981500864, 506.40078261494637, 326.6999963670969],
-            [1320.1748952269554, 454.8122640699148, 326.6999963670969],
-            [1292.3965230584145, 413.1447058171034, 326.6999963670969],
-            [1240.8080510795116, 393.3029714971781, 326.6999963670969],
-            [1242.79223382473, 383.3821043372154, 326.6999963670969],
-            [1284.4597920775414, 373.46123717725277, 326.6999963670969],
-            [1300.33316090703, 397.2712904214859, 326.6999963670969],
-            [1361.8424534797668, 385.3662870824337, 326.6999963670969],
-            [1395.5733738839626, 345.6828650087118, 326.6999963670969],
-            [1383.668463677168, 311.95192132145166, 326.6999963670969],
-            [1395.5733738839626, 278.22102420032024, 326.6999963670969],
-            [1353.9058156311512, 218.69586780667305, 326.6999963670969],
-            [1316.2066228687763, 226.63255222141743, 326.6999963670969],
-            [1302.3173436522484, 200.83831623196602, 326.6999963670969],
-        ]
-    )
-
-    # Apply transform to points
-    #fixed_points = transform_points(moving_points, transform)
-    #print("Transformed Points in Fixed Space:\n", fixed_points)
-    fixed_points = transform_points(moving_points, inverse_transform)
-    print("Transformed Points in Fixed Space:\n", fixed_points)

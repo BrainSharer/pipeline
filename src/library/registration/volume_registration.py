@@ -23,7 +23,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, affine_transform_points, affine_transform_volume, average_images, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, average_images, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -78,7 +78,7 @@ class VolumeRegistration:
         self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
 
         self.transformation = 'Affine'
-        self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}_inverse.mat')
+        self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_inverse.tfm')
         self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
 
@@ -342,6 +342,7 @@ class VolumeRegistration:
         """id for ALLEN771602, cerebellum test is 8357
         """
         transform_file = os.path.join(self.reverse_elastix_output, 'TransformParameters.0.txt')
+        
         if not os.path.exists(transform_file):
             print(f'{transform_file} does not exist, exiting.')
             sys.exit()
@@ -349,7 +350,16 @@ class VolumeRegistration:
             print(f'Using {transform_file} for reverse transformation')
         elastix_affine_matrix = elastix_to_affine_4x4(transform_file)
         print('Affine matrix from elastix:')
+        elastix_affine_matrix[0, 2] = 0  # R13
+        elastix_affine_matrix[1, 2] = 0  # R23
+        elastix_affine_matrix[2, 2] = 0  # R33        
         print(elastix_affine_matrix)
+        #if not os.path.exists(self.inverse_transform_filepath):
+        #    print(f'{self.inverse_transform_filepath} does not exist, exiting.')
+        #    sys.exit()
+        #else:
+        #    print(f'Using {self.inverse_transform_filepath} for reverse transformation')
+        #transform = sitk.ReadTransform(self.inverse_transform_filepath)
         #ants_affine_matrix = create_affine_matrix_from_mat(self.inverse_transform_filepath)
         #print('Affine matrix from ants:')
         #print(ants_affine_matrix)
@@ -378,11 +388,6 @@ class VolumeRegistration:
         df['z'] = df['zm'] * M_UM_SCALE / self.z_um
 
         df.drop(columns=['xm', 'ym', 'zm'], inplace=True)
-        if self.debug:
-            for idx, row in df.iterrows():
-                print(f"[{row['x']}, {row['y']}, {row['z']}],")
-            exit(1)
-
 
         for idx, (_, row) in enumerate(df.iterrows()):
             x = row['x']
@@ -390,7 +395,15 @@ class VolumeRegistration:
             z = row['z']
             section = int(round(row['z']))
             polygons[section].append((x, y))
-            input_points.GetPoints().InsertElement(idx, (x,y,z))
+            #input_points.GetPoints().InsertElement(idx, (x,y,z))
+            tx, ty, tz = affine_transform_point((x,y,z), elastix_affine_matrix)
+            transformed_section = int(round(tz))
+            transformed_polygons[transformed_section].append((tx, ty))
+
+        for section, points in transformed_polygons.items():
+            print(f'Section {section} has {len(points)} points average points: {np.mean(points, axis=0)}')
+
+        exit(1)
 
         def write_polygons_to_files(input_dir, output_dir, polygons, desc):
             
@@ -424,6 +437,7 @@ class VolumeRegistration:
         output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'drawn_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
         write_polygons_to_files(input_dir, output_dir, polygons, desc='Drawing scaled polygons')
 
+        """
         ### Now use transformix on the points
         transformix_pointset_file = os.path.join(self.registration_output, "transformix_input_points.txt")
         if os.path.exists(transformix_pointset_file):
@@ -460,7 +474,7 @@ class VolumeRegistration:
             section = int(np.round(z))
             transformed_polygons[section].append((x,y))
             #points.append((x,y,section))
-
+        """
         ##### Draw the scaled polygons on the images
         input_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
         output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_drawn_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
@@ -1680,3 +1694,14 @@ def apply_affine_to_points(points, affine):
     # Apply affine transformation
     transformed = homogeneous_points @ affine.T
     return transformed[:, :3][0].tolist()  # Return as list of tuples
+
+def transform_points(points_xyz, transform):
+    """
+    Apply a SimpleITK transform to a list of (x, y, z) points.
+
+    :param points_xyz: Nx3 numpy array of points
+    :param transform: SimpleITK.Transform object
+    :return: Nx3 numpy array of transformed points
+    """
+    transformed_points = [transform.TransformPoint(p) for p in points_xyz]
+    return np.array(transformed_points)
