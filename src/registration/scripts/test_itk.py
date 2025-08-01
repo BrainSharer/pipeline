@@ -2,7 +2,7 @@ import SimpleITK as sitk
 import numpy as np
 import os
 
-def register_3d_images(fixed_path, moving_path):
+def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Load fixed and moving images
     fixed_image = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
     print(f"Read fixed image: {fixed_path}")
@@ -31,9 +31,20 @@ def register_3d_images(fixed_path, moving_path):
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
     # Perform registration
-    final_transform = registration_method.Execute(fixed_image, moving_image)
-    print("Registration completed.")
-    return final_transform
+    transform = registration_method.Execute(fixed_image, moving_image)
+    reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    output_file_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tfm')
+    # Save the transform
+    sitk.WriteTransform(transform, output_file_path)
+    print(f"Registration written to {output_file_path}")
+    # do inverse
+    inverse_transform = transform.GetInverse()
+    reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    output_file_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal_inverse.tfm')
+    # Save the transform
+    sitk.WriteTransform(inverse_transform, output_file_path)
+    print(f"Registration written to {output_file_path}")
+    return transform, initial_transform
 
 def transform_points(points_xyz, transform):
     """
@@ -49,12 +60,14 @@ def transform_points(points_xyz, transform):
 # Example usage
 if __name__ == "__main__":
     # Paths to fixed and moving 3D images
+    xy_um = 10.0
+    z_um = 10.0
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
-    fixed_image_path = os.path.join(reg_path, 'Allen', 'Allen_10.0x10.0x10.0um_sagittal.tif')
-    moving_image_path = os.path.join(reg_path, 'ALLEN771602', 'ALLEN771602_10.0x10.0x10.0um_sagittal.tif')
+    fixed_image_path = os.path.join(reg_path, 'Allen', f'Allen_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
+    moving_image_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
 
     # Register the images
-    transform = register_3d_images(fixed_image_path, moving_image_path)
+    transform, inverse_transform = register_3d_images(fixed_image_path, moving_image_path, xy_um, z_um)
 
     # Define points in moving image space
     moving_points = np.array(
@@ -86,5 +99,6 @@ if __name__ == "__main__":
 
     # Apply transform to points
     fixed_points = transform_points(moving_points, transform)
-
+    print("Transformed Points in Fixed Space:\n", fixed_points)
+    fixed_points = transform_points(moving_points, inverse_transform)
     print("Transformed Points in Fixed Space:\n", fixed_points)
