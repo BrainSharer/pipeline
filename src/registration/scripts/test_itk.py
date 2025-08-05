@@ -2,14 +2,6 @@ import SimpleITK as sitk
 import numpy as np
 import os
 
-def command_iteration(method):
-    """ Callback invoked when the optimization process is performing an iteration. """
-    print(
-        f"{method.GetOptimizerIteration():3} "
-        + f"= {method.GetMetricValue():10.5f} "
-        + f": {method.GetOptimizerPosition()}"
-    )
-
 
 def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Load fixed and moving images
@@ -33,25 +25,21 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Set up the registration method
     R = sitk.ImageRegistrationMethod()
     R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50) # [44.27027195 39.20937542 -0.23252082]
-    #R.SetMetricAsMeanSquares()
-    #R.SetMetricAsJointHistogramMutualInformation()
-    #R.SetMetricAsCorrelation # [44.25506863 36.46962315 -0.61515676] 
 
     R.SetMetricSamplingStrategy(R.RANDOM)
     R.SetMetricSamplingPercentage(0.01)
     R.SetInterpolator(sitk.sitkLinear)
     R.SetOptimizerAsGradientDescent(
-        learningRate=0.05, 
+        learningRate=1, 
         numberOfIterations=300, # changing this has very little
-        convergenceMinimumValue=1e-1, 
-        convergenceWindowSize=100)
+        convergenceMinimumValue=1e-6, 
+        convergenceWindowSize=10)
 
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(initial_transform, inPlace=False)
     R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
     R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
     R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-    #R.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(R))
 
     # Perform registration
     transform = R.Execute(fixed_image, moving_image)
@@ -106,5 +94,6 @@ if __name__ == "__main__":
     print(f'Fixed midpoint: {fixed_midpoint}, Moving midpoint: {moving_midpoint}')
     inverse_transformed_point = inverse_transform.TransformPoint(moving_midpoint.tolist())
     print("Inverse Transformed Points using inverse:\n", inverse_transformed_point)
-    print(f'Difference between fixed and moving midpoints: {fixed_midpoint - np.array(inverse_transformed_point)}')
+    print(f'Difference between fixed and transformed moving midpoints: {fixed_midpoint},  {np.array(inverse_transformed_point)}')
+    print(f'Difference between fixed and transformed moving midpoints: {fixed_midpoint - np.array(inverse_transformed_point)}')
 

@@ -202,7 +202,7 @@ class BrainStructureManager:
         com = (np.array( center_of_mass(volume) ))  + origin
         
         if debug:
-            if structure == 'SC':
+            if structure == 'cerebellum':
                 print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
         else:
             brainMerger.coms_to_merge[structure].append(com)
