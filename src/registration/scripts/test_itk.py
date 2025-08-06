@@ -37,8 +37,8 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
 
     R.SetOptimizerScalesFromPhysicalShift()
     R.SetInitialTransform(initial_transform, inPlace=False)
-    R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-    R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+    R.SetShrinkFactorsPerLevel([4, 2, 1])
+    R.SetSmoothingSigmasPerLevel([2, 1, 0])
     R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
     # Perform registration
@@ -81,8 +81,8 @@ def transform_points(points_xyz, transform):
 # Example usage
 if __name__ == "__main__":
     # Paths to fixed and moving 3D images
-    xy_um = 10.0
-    z_um = 10.0
+    xy_um = 28.8
+    z_um = 32.0
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
     fixed_image_path = os.path.join(reg_path, 'Allen', f'Allen_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
     moving_image_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')

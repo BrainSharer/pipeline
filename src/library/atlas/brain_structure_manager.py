@@ -9,9 +9,9 @@ from collections import defaultdict
 import cv2
 import json
 import pandas as pd
-from pymysql import IntegrityError
 from scipy.ndimage import center_of_mass, zoom
 from skimage.filters import gaussian
+from scipy.spatial import Delaunay
 from cloudvolume import CloudVolume
 import sqlalchemy
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
@@ -178,15 +178,24 @@ class BrainStructureManager:
         if annotation_session is None:
             print(f'Did not find any data for {animal} {structure}')
             return
-
+        self.sqlController = SqlController(animal)
+        scan_run = self.sqlController.scan_run
         # polygons are in micrometers
-        polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
-        if len(polygons) == 0:
+        #polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
+        # data is in the DB in meters, so we need to convert it to um, then our scale
+        #scale_xy = scan_run.resolution * self.um
+        #scale_z = scan_run.zresolution * self.um
+
+        scale_xy = 1
+        scale_z = 1
+        
+        polygon_data = self.sqlController.get_annotation_array(annotation_session.id, scale_xy, scale_z)
+        if polygon_data.size == 0:
             print(f'Found data for {animal} {structure}, but the data is empty')
             return
         
 
-        origin, volume = self.create_volume_for_one_structure(polygons, self.pad_z)
+        origin, volume = self.create_volume_for_one_structure(polygon_data, self.pad_z)
         # we want to keep the origin in micrometers, so we multiply by the allen um
         #####origin = origin * self.um
 
@@ -195,15 +204,14 @@ class BrainStructureManager:
             return None
         
         volume = np.swapaxes(volume, 0, 2)
-        volume = gaussian(volume, 1.0)
-        volume[volume != 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
-        volume = volume.astype(np.uint8)
+        #volume = gaussian(volume, 1.0)
+        #volume[volume != 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
+        #volume = volume.astype(np.uint8)
         #com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.um + (origin * self.um)
         com = (np.array( center_of_mass(volume) ))  + origin
-        
         if debug:
             if structure == 'cerebellum':
-                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} len polygons {len(polygons)}')
+                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon shape {polygon_data.shape}')
         else:
             brainMerger.coms_to_merge[structure].append(com)
             brainMerger.origins_to_merge[structure].append(origin)
@@ -414,8 +422,10 @@ class BrainStructureManager:
                 com = com0
                 origin = origin0
 
-            #if 'TG' in structure:
-            #    com = com0
+            if structure == 'cerebellum':
+                origin = [1048, 157, 191]
+                com = com0
+                print(f"Using cerebellum origin {origin} com {com}")
 
             #x_start, y_start, z_start = self.get_start_positions(volume, com)
 
@@ -1020,7 +1030,7 @@ class BrainStructureManager:
         return c
 
     @staticmethod
-    def create_volume_for_one_structure(polygons, pad_z):
+    def create_volume_for_one_structureXXX(polygons, pad_z):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
@@ -1053,6 +1063,49 @@ class BrainStructureManager:
         min_z = min(sections)
         print(f"mean z = {np.mean(sections)}")
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
+        return origin, volume
+    
+    @staticmethod
+    def create_volume_for_one_structure(xyz_array: np.ndarray, pad_z: int = 0) -> tuple:
+        """Creates a volume from a dictionary of polygons
+        The data is a numpy array of coordinates in the form of [x, y, z] with shape (n, 3).
+        """
+
+        scales = np.array([18, 18, 20])
+        #scale_xy = scan_run.resolution * self.um
+        #scale_z = scan_run.zresolution * self.um
+
+        xyz_array = np.array(xyz_array, dtype=np.float32) / scales 
+
+        _min = np.min(xyz_array, axis=0)
+        _max = np.max(xyz_array, axis=0)
+        xlength = int(round(_max[0] - _min[0]))
+        ylength = int(round(_max[1] - _min[1]))
+        zlength = int(round(_max[2] - _min[2]))
+        xyz_array = xyz_array - _min
+        shape = (zlength, ylength, xlength)
+        print(f'Creating volume with shape={shape} with min={_min} max={_max}')
+        exit(1)
+        volume = np.zeros(shape, dtype=np.uint8)  # Initialize the volume with zeros
+        hull = Delaunay(xyz_array)
+
+
+        # Create a grid of all voxel indices
+        zz, yy, xx = np.meshgrid(
+            np.arange(shape[0]), np.arange(shape[1]), np.arange(shape[2]),
+            indexing='ij'
+        )
+        grid_points = np.vstack((xx.ravel(), yy.ravel(), zz.ravel())).T
+
+        # Find which voxels lie inside the convex hull
+        mask = hull.find_simplex(grid_points) >= 0
+
+        # Fill in those voxels with 255
+        volume_flat = volume.ravel()
+        volume_flat[mask] = 255
+        volume = volume_flat.reshape(shape)
+
+        origin = np.array([_min[0], _min[1], _min[2]]).astype(np.float64)
         return origin, volume
 
     def fetch_create_polygons(self):    

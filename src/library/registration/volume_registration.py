@@ -350,9 +350,6 @@ class VolumeRegistration:
             print(f'Using {transform_file} for reverse transformation')
         elastix_affine_matrix = elastix_to_affine_4x4(transform_file)
         print('Affine matrix from elastix:')
-        elastix_affine_matrix[0, 2] = 0  # R13
-        elastix_affine_matrix[1, 2] = 0  # R23
-        elastix_affine_matrix[2, 2] = 0  # R33        
         print(elastix_affine_matrix)
         #if not os.path.exists(self.inverse_transform_filepath):
         #    print(f'{self.inverse_transform_filepath} does not exist, exiting.')
@@ -399,11 +396,12 @@ class VolumeRegistration:
             tx, ty, tz = affine_transform_point((x,y,z), elastix_affine_matrix)
             transformed_section = int(round(tz))
             transformed_polygons[transformed_section].append((tx, ty))
+            print(f"({tx}, {ty}, {tz}),")
+        exit(1)
 
         for section, points in transformed_polygons.items():
             print(f'Section {section} has {len(points)} points average points: {np.mean(points, axis=0)}')
 
-        exit(1)
 
         def write_polygons_to_files(input_dir, output_dir, polygons, desc):
             
@@ -640,14 +638,14 @@ class VolumeRegistration:
         else:
             print(f'Creating precomputed from {volumepath}')
 
-
         PRECOMPUTED = self.neuroglancer_data_path
         if os.path.exists(PRECOMPUTED):
             print(f'{PRECOMPUTED} exists, removing')
             shutil.rmtree(PRECOMPUTED)
 
-        scale = self.um * 1000
-        scales = (scale, scale, scale)
+        scale_xy = self.xy_um * 1000
+        scale_z = self.z_um * 1000
+        scales = (scale_xy, scale_xy, scale_z)
         os.makedirs(PRECOMPUTED, exist_ok=True)
         volume = read_image(volumepath)
         volume = np.swapaxes(volume, 0, 2)

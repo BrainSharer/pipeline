@@ -261,7 +261,7 @@ class AnnotationSessionController:
 
         return polygons
 
-    def get_annotation_array(self, session_id, scaling_factor=1):
+    def get_annotation_array(self, session_id, scale_xy=1, scale_z=1):
 
         """
         This returns data in meters * scaling_factor in an array of nx3.
@@ -281,15 +281,17 @@ class AnnotationSessionController:
             print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
             return arr
         
-        animal = annotation_session.FK_prep_id
         arrays = []
         for row in data:
             if 'childJsons' not in row:
                 return arr
             for child in row['childJsons']:
                 x,y,z = child['pointA']
+                x = x * M_UM_SCALE / scale_xy
+                y = y * M_UM_SCALE / scale_xy
+                z = z * M_UM_SCALE / scale_z
                 array_to_add = np.array([x,y,z])
-                array_to_add = array_to_add *  scaling_factor
+                #array_to_add = array_to_add *  scaling_factor
                 arrays.append(array_to_add)
 
         data = np.stack(arrays)
