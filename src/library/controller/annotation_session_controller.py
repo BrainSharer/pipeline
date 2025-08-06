@@ -261,7 +261,7 @@ class AnnotationSessionController:
 
         return polygons
 
-    def get_annotation_array(self, session_id, scale_xy=1, scale_z=1):
+    def get_annotation_array(self, session_id, scale=1):
 
         """
         This returns data in meters * scaling_factor in an array of nx3.
@@ -287,9 +287,9 @@ class AnnotationSessionController:
                 return arr
             for child in row['childJsons']:
                 x,y,z = child['pointA']
-                x = x * M_UM_SCALE / scale_xy
-                y = y * M_UM_SCALE / scale_xy
-                z = z * M_UM_SCALE / scale_z
+                x = x * M_UM_SCALE / scale
+                y = y * M_UM_SCALE / scale
+                z = z * M_UM_SCALE / scale
                 array_to_add = np.array([x,y,z])
                 #array_to_add = array_to_add *  scaling_factor
                 arrays.append(array_to_add)

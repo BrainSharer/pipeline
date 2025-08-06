@@ -178,18 +178,8 @@ class BrainStructureManager:
         if annotation_session is None:
             print(f'Did not find any data for {animal} {structure}')
             return
-        self.sqlController = SqlController(animal)
-        scan_run = self.sqlController.scan_run
-        # polygons are in micrometers
-        #polygons = self.sqlController.get_annotation_volume(annotation_session.id, scaling_factor=self.um)
-        # data is in the DB in meters, so we need to convert it to um, then our scale
-        #scale_xy = scan_run.resolution * self.um
-        #scale_z = scan_run.zresolution * self.um
 
-        scale_xy = 1
-        scale_z = 1
-        
-        polygon_data = self.sqlController.get_annotation_array(annotation_session.id, scale_xy, scale_z)
+        polygon_data = self.sqlController.get_annotation_array(annotation_session.id, self.um)
         if polygon_data.size == 0:
             print(f'Found data for {animal} {structure}, but the data is empty')
             return
@@ -1071,11 +1061,7 @@ class BrainStructureManager:
         The data is a numpy array of coordinates in the form of [x, y, z] with shape (n, 3).
         """
 
-        scales = np.array([18, 18, 20])
-        #scale_xy = scan_run.resolution * self.um
-        #scale_z = scan_run.zresolution * self.um
-
-        xyz_array = np.array(xyz_array, dtype=np.float32) / scales 
+        xyz_array = np.array(xyz_array, dtype=np.float32) 
 
         _min = np.min(xyz_array, axis=0)
         _max = np.max(xyz_array, axis=0)
