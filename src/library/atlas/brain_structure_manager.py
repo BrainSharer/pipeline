@@ -413,7 +413,8 @@ class BrainStructureManager:
                 origin = origin0
 
             if structure == 'cerebellum':
-                origin = [1048, 157, 191]
+                #origin = [1048, 157, 191]
+                origin =(1006.4404940906367, 66.58640497850439, 201.97515475575017)
                 com = com0
                 print(f"Using cerebellum origin {origin} com {com}")
 
@@ -1071,7 +1072,6 @@ class BrainStructureManager:
         xyz_array = xyz_array - _min
         shape = (zlength, ylength, xlength)
         print(f'Creating volume with shape={shape} with min={_min} max={_max}')
-        exit(1)
         volume = np.zeros(shape, dtype=np.uint8)  # Initialize the volume with zeros
         hull = Delaunay(xyz_array)
 
