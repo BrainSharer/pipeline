@@ -10,7 +10,7 @@ class NeoroglancerStateController():
         self.session = session
         
 
-    def insert_ng_state(self, combined_json: str, created='', updated='', fk_lab_id=2, comments: str = "", description=None, fk_user_id=None, readonly=False, public=False, ng_id: int = None, active=True):
+    def insert_ng_state(self, combined_json: str, fk_prep_id: str, created='', updated='', fk_lab_id=2, comments: str = "", description=None, fk_user_id=None, readonly=False, public=False, ng_id: int = None, active=True):
         """
         Inserts a new record into the neuroglancer_state table.  If a record with the same comments exists, updates it instead.
 
@@ -33,6 +33,7 @@ class NeoroglancerStateController():
         #TODO: WOULD BE BETTER TO SET FIELD DEFAULT IN DB
         created = datetime.now()
         updated = datetime.now()
+        print(f"adding neuroglancer state for: {fk_prep_id}")
         if not fk_user_id:
             fk_user_id = 37
 
@@ -60,10 +61,11 @@ class NeoroglancerStateController():
             # else:
 
             #Always create new state; user will need to manually delete unneeded states
-            #24-JUL-2025
+            #5-AUG-2025
             new_record = NeoroglancerState(
                 neuroglancer_state=combined_json,
                 FK_lab_id=fk_lab_id,
+                FK_prep_id=fk_prep_id,
                 created=created,
                 updated=updated,
                 comments=comments,

@@ -10,6 +10,12 @@ from library.utilities.utilities_process import get_hostname
 class ParallelManager:
     """Methods to support processing any part of pipeline (discreet function) using multiple cores
     """
+    def __init__(self, debug: bool = False):
+        """Initialize the ParallelManager with debug mode.
+
+        :param debug: If True, runs in debug mode with single-threaded execution.
+        """
+        self.debug = debug
 
     def get_nworkers(self):
         """Get the number of cores to use per workstation. The same

@@ -20,6 +20,7 @@ class NeoroglancerState(Base, AtlasModel):
     active = Column(Boolean, default=True, nullable=False)  # Maps to 'tinyint(1)' with default value 1
     FK_user_id = Column(String, ForeignKey('auth_user.id'), nullable=False)
     FK_lab_id = Column(Integer, ForeignKey('auth_lab.id'), nullable=False)
+    FK_prep_id = Column(String, ForeignKey('animal.prep_id'), nullable=True)
 
     def __repr__(self):
         return f"<NeuroglancerState(id={self.id}, comments={self.comments})>"

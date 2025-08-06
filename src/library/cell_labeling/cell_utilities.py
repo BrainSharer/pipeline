@@ -2,8 +2,6 @@ import os, sys, json
 import cv2
 import imageio
 import numpy as np
-import dask_image.ndfilters
-import dask.array as da
 import subprocess
 from pathlib import Path
 
@@ -19,8 +17,6 @@ try:
     from cupyx.scipy.ndimage import gaussian_filter
 except ImportError as ie:
     gaussian_filter = None
-    
-from numba import cuda
 
 
 def load_image(file: str):
@@ -383,25 +379,3 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
         print(f"Error during rclone copy: {e}")
     except Exception as e:
         print(f"Unexpected error: {e}")
-
-
-def clean_provenance(prov_data):
-    """Clean and normalize provenance data"""
-    # Convert byte strings to regular strings
-    if 'processing' in prov_data:
-        for entry in prov_data['processing']:
-            if isinstance(entry['by'], bytes):
-                entry['by'] = entry['by'].decode('utf-8')
-    
-    # Remove duplicate processing entries
-    if 'processing' in prov_data:
-        unique_entries = []
-        seen = set()
-        for entry in prov_data['processing']:
-            entry_str = json.dumps(entry, sort_keys=True)
-            if entry_str not in seen:
-                seen.add(entry_str)
-                unique_entries.append(entry)
-        prov_data['processing'] = unique_entries
-    
-    return prov_data

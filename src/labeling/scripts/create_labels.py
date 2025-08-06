@@ -111,11 +111,11 @@ if __name__ == "__main__":
         "create_features": pipeline.create_features,
         "detect": pipeline.create_detections,
         "segment": pipeline.segment,
-        "extract": pipeline.extract_predictions_precomputed,
-        "neuroglancer": pipeline.neuroglancer,
+        "extract": pipeline.extract_predictions_precomputed,        
         "train": pipeline.train,
-        "fix": pipeline.fix_coordinates,
-        "omezarr": pipeline.omezarr, #replace 'neuroglancer' task?
+        "fix": pipeline.fix_coordinates
+        # "neuroglancer": pipeline.neuroglancer, #TODO: remove
+        # "omezarr": pipeline.omezarr, #TODO: remove
     }
     
 
