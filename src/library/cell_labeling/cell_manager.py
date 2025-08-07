@@ -70,7 +70,7 @@ class CellMaker(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SEGMENT = "Creating cell segmentation"
 
-    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, ng_id: str = "", debug: bool = False):
+    def __init__(self, animal: str, task: str, step: int = None, model: str = "", channel: int = 1, x: int = 0, y: int = 0, annotation_id: int = "", sampling: int = 0, segment_size_min: int = 100, segment_size_max: int = 100000, segment_gaussian_sigma: int = 350, segment_gaussian_kernel: int = 401, segment_threshold: int = 2000, cell_radius: int = 40, process_range: list[int] | None = None, ng_id: str = "", debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
         self.task = task
@@ -95,6 +95,7 @@ class CellMaker(
         self.virus_channel = 0
         self.annotation_id = annotation_id
         self.ng_id = ng_id
+        self.process_sections = process_range
 
         #SEGMENTATION PARAMETERS
         self.segment_size_min = segment_size_min
@@ -2102,21 +2103,20 @@ class CellMaker(
         """
         print(self.TASK_SEGMENT)
 
-        self.process_sections = []  # all sections
-        # self.process_sections = list(range(70, 80))
-        if self.process_sections:
-            print(f'Segmenting sections: {self.process_sections}')
-        else:
+        if not self.process_sections:
             print('Segmenting all sections')
+        else:
+            print(f'Segmenting sections: {self.process_sections}')
+
         self.report_status()
         scratch_tmp = get_scratch_dir()
         _, _, meta_data_info = self.check_prerequisites(scratch_tmp)
         
         # if any error from check_prerequisites(), print error and exit
         # assert statement could be in unit test (separate)
-        # self.start_labels()
+        self.start_labels()
         print(f'Finished cell segmentation - extracting predictions')
-        # self.extract_predictions_precomputed(self.task, meta_data_info)
+        self.extract_predictions_precomputed(self.task, meta_data_info)
         self.ng_prep()
 
 

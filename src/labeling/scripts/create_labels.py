@@ -55,6 +55,24 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.cell_labeling.cell_manager import CellMaker
 
+class SectionRangeAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        # reuse parse_section_range logic inside here
+        s = values.strip()
+        if s.startswith('[') and s.endswith(']'):
+            s = s[1:-1]
+        parts = s.split(':')
+        if len(parts) != 2:
+            raise argparse.ArgumentError(self, f"Range must be two numbers separated by ':', got '{s}'")
+        try:
+            start, end = map(int, parts)
+        except ValueError:
+            raise argparse.ArgumentError(self, "Start and end must be integers.")
+        if start > end:
+            raise argparse.ArgumentError(self, f"Start ({start}) cannot exceed end ({end}).")
+
+        setattr(namespace, self.dest, list(range(start, end + 1)))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
@@ -74,6 +92,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-segment", help="Maximum segmentation size (pixels)", required=False, default=100000, type=int)
     parser.add_argument("--segment-threshold", help="Intensity threshold (0 to 65535) [SEGMENTATION]", required=False, default=2000, type=int)
     parser.add_argument("--cell-radius", help="cell radius (pixels) [SEGMENTATION]", required=False, default=40, type=int)
+    parser.add_argument("--section-range", dest='section_range', action=SectionRangeAction, help="Section processing range (e.g. [70:79] or 70:79). If omitted, all sections are processed.", required=False, default=None)
 
     #NEUROGLANCER ARGUMENTS [USED WITH 'neuroglancer' TASK]
     #Note: ng-id should be id of full-resolution (all channels); this task will add CH3_DIFF and ML_POSITIVE point detections
@@ -103,17 +122,18 @@ if __name__ == "__main__":
     segment_gaussian_kernel = args.kernel
     segment_threshold = args.segment_threshold
     cell_radius = args.cell_radius
+    section_range = args.section_range
     ng_id = args.ng_id
 
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius, ng_id=ng_id, debug=debug)
+    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius, process_range=section_range, ng_id=ng_id, debug=debug)
 
     function_mapping = {
-        "create_features": pipeline.create_features,
-        "detect": pipeline.create_detections,
         "segment": pipeline.segment,
+        #"create_features": pipeline.create_features, #TODO: remove
+        "detect": pipeline.create_detections,
         "extract": pipeline.extract_predictions_precomputed,        
-        "train": pipeline.train,
-        "fix": pipeline.fix_coordinates
+        "train": pipeline.train
+        # "fix": pipeline.fix_coordinates #TODO: remove
         # "neuroglancer": pipeline.neuroglancer, #TODO: remove
         # "omezarr": pipeline.omezarr, #TODO: remove
     }
