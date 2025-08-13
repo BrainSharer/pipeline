@@ -32,7 +32,7 @@ class Cell_UI():
 
     def ng_prep(self):
             '''
-            #WIP 11-AUG-2025
+            #WIP 13-AUG-2025
             CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
             ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
 
@@ -228,7 +228,7 @@ class Cell_UI():
                 with open(prov_path, 'w') as f:
                     json.dump(prov, f, indent=2, ensure_ascii=False)
 
-                #MOVE PRECOMPUTED FILES TO FINAL LOCATION
+                #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
                 # copy_with_rclone(temp_output_path, OUTPUT_DIR)
                 copy_with_rclone(temp_output_path_pyramid, OUTPUT_DIR)
             
@@ -255,6 +255,16 @@ class Cell_UI():
                 self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
                 if not Path(OUTPUT_DIR, self.animal + '.png').exists():
                     make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
+
+            #CLEAN UP TEMP FILES
+            temp_folders = [progress_dir, temp_output_path, temp_output_path_pyramid]
+            try:
+                for folder in temp_folders:
+                    if self.debug:
+                        print(f"DEBUG: Deleting temporary folder: {folder}")
+                    delete_in_background(folder)
+            except Exception as e:
+                print(f"Non-critical Error deleting progress directory: {e}")
 
             self.gen_ng_preview()
 

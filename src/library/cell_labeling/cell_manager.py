@@ -125,11 +125,11 @@ class CellSegmenter():
                 "gaussian_blur_kernel_size_pixels": list(self.gaussian_blur_kernel_size_pixels),
                 'pruning': {
                     "run_pruning": self.run_pruning,
-                    "prune_x_range": (self.prune_x_range[0], self.prune_x_range[-1]),
-                    "prune_y_range": (self.pruning_info['prune_y_range'][0], self.pruning_info['prune_y_range'][-1]),
+                    "prune_x_range": (self.prune_x_range[0], self.prune_x_range[-1]) if len(self.prune_x_range) >= 2 else None,
+                    "prune_y_range": (self.prune_y_range[0], self.prune_y_range[-1]) if len(self.prune_y_range) >= 2 else None,
                     "prune_area_min": self.pruning_info['prune_area_min'],
                     "prune_area_max": self.pruning_info['prune_area_max'],
-                    "prune_annotation_ids": list(self.pruning_info['prune_annotation_ids']),
+                    "prune_annotation_ids": list(self.prune_annotation_ids) if self.prune_annotation_ids is not None else None,
                     "prune_combine_method": self.pruning_info['prune_combine_method']
                 }
             }

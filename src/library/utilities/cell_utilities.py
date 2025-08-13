@@ -121,95 +121,72 @@ def filter_cell_candidates(
     'prune_combine_method' = Method to combine overlapping segments (e.g., 'union', 'intersection')
     '''
   
-    n_segments, segment_masks, segment_stats, segment_location = (connected_segments)
+    n_segments, segment_masks, segment_stats, segment_location = connected_segments
     label_of_interest = []
     cell_candidates = []
     img_counterstain = []
+
     for segmenti in range(n_segments):
         _, _, width, height, object_area = segment_stats[segmenti, :]
+
         if object_area > segment_size_max or object_area < segment_size_min:
             continue
-        segment_row, segment_col = segment_location[segmenti, :]
 
+        segment_row, segment_col = segment_location[segmenti, :]
         row_start = int(segment_row - cell_radius)
         col_start = int(segment_col - cell_radius)
         if row_start < 0 or col_start < 0:
             continue
+
         row_end = int(segment_row + cell_radius)
         col_end = int(segment_col + cell_radius)
-        if (
-            row_end > x_window or col_end > y_window
-        ):  # row evaluates with x-axis (width), col evaluates with y-axis (height)
+        if row_end > x_window or col_end > y_window:  # row evaluates with x-axis (width), col evaluates with y-axis (height)
             continue
 
-        # if debug:
-        #     segment_mask_org = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)    
-        #     label_of_interest_org = difference_ch3[row_start:row_end, col_start:col_end].T
-        #     absolute_coordinates_YX = (absolute_coordinates[2] + segment_col,
-        #                                absolute_coordinates[0] + segment_row,
-        #                                 )
-        #     cell_shape_XY = (height, width)
-        #     if task != 'segment':
-        #         img_counterstain_org = difference_ch1[row_start:row_end, col_start:col_end].T
-        #         if img_counterstain_org.shape != label_of_interest_org.shape or img_counterstain_org.shape != segment_mask_org.shape:
-        #             print(f"ERROR: Image shapes do not match. Skipping this segment.")
-        #             print(f'img_counterstain: {img_counterstain_org.shape}')
-        #             print(f'img_label_of_interest: {label_of_interest_org.shape}')
-        #             print(f'segment_mask: {segment_mask_org.shape}')
-        #             continue
-            
-        #     cell_org = package_output(animal, section_number, object_area, absolute_coordinates_YX, cell_shape_XY, label_of_interest_org, img_counterstain_org, segment_mask_org)
-        #     cell_candidates_org.append(cell_org)
+        segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
+        label_of_interest = difference_ch3[row_start:row_end, col_start:col_end].T
+        absolute_coordinates_YX = (absolute_coordinates[2] + segment_col,
+                                 absolute_coordinates[0] + segment_row)
 
-        try:
-            if pruning_info['run_pruning'] == True: #apply pruning filters on cell candidates
-                if debug:
-                    print('APPLYING PRUNING FILTERS:')
-                    print(f'Pruning x range: {pruning_info["prune_x_range"]}')
-                    print(f'Pruning y range: {pruning_info["prune_y_range"]}')
-                    print(f'Pruning area min: {pruning_info["prune_area_min"]}')
-                    print(f'Pruning area max: {pruning_info["prune_area_max"]}')
-                    print(f'Pruning annotation id: {pruning_info["prune_annotation_id"]}')
-                if pruning_info['prune_x_range'] is not None:
-                    if not (pruning_info['prune_x_range'][0] <= segment_col <= pruning_info['prune_x_range'][1]):
-                        continue
-                if pruning_info['prune_y_range'] is not None:
-                    if not (pruning_info['prune_y_range'][0] <= segment_row <= pruning_info['prune_y_range'][1]):
-                        continue
-                if object_area < pruning_info['prune_amin'] or object_area > pruning_info['prune_amax']:
+        if pruning_info and pruning_info.get('run_pruning'):
+            try:
+                prune_x = pruning_info.get("prune_x_range")
+                if prune_x and not (prune_x[0] <= segment_col <= prune_x[1]):
                     continue
-                if pruning_info["prune_annotation_id"]:
-                    result_in_vol = point_in_volume_pruning(animal, absolute_coordinates_YX, pruning_info["prune_annotation_id"]) #returns bool
+            
+                prune_y = pruning_info.get("prune_y_range")
+                if prune_y and not (prune_y[0] <= segment_row <= prune_y[1]):
+                    continue
+            
+                if (object_area < pruning_info.get("prune_amin", 0) or 
+                    object_area > pruning_info.get("prune_amax", float('inf'))):
+                    continue
+                
+                annotation_ids = pruning_info.get("prune_annotation_ids")
+                if annotation_ids:
+                    result_in_vol = point_in_volume_pruning(animal, absolute_coordinates_YX, annotation_ids, pruning_info.get("prune_combine_method")) #returns bool
                     if not result_in_vol:
                         continue
                 
-                segment_mask = (segment_masks[row_start:row_end, col_start:col_end] == segmenti)
-                label_of_interest = difference_ch3[row_start:row_end, col_start:col_end].T
-                absolute_coordinates_YX = (absolute_coordinates[2] + segment_col,
-                                            absolute_coordinates[0] + segment_row,
-                                        )
-                cell_shape_XY = (height, width)
-        except Exception as e:
-            print(f"Error occurred while applying pruning filters: {e}")
+            except Exception as e:
+                print(f"Error occurred while applying pruning filters: {e}")
 
         #FINAL SANITY CHECK [IF NOT 'segment' TASK]
         if task != 'segment':
             img_counterstain = difference_ch1[row_start:row_end, col_start:col_end].T
             if img_counterstain.shape != label_of_interest.shape or img_counterstain.shape != segment_mask.shape:
-                print(f"ERROR: Image shapes do not match. Skipping this segment.")
-                print(f'img_counterstain: {img_counterstain.shape}')
-                print(f'img_label_of_interest: {label_of_interest.shape}')
-                print(f'segment_mask: {segment_mask.shape}')
+                if debug:
+                    print(f"ERROR: Image shapes do not match. Skipping this segment.")
+                    print(f'img_counterstain: {img_counterstain.shape}')
+                    print(f'img_label_of_interest: {label_of_interest.shape}')
+                    print(f'segment_mask: {segment_mask.shape}')
                 continue
 
         cell = {
             "animal": animal,
             "section": section_number,
             "area": object_area,
-            "absolute_coordinates_YX": (
-                absolute_coordinates[2] + segment_col,
-                absolute_coordinates[0] + segment_row,
-            ),
+            "absolute_coordinates_YX": absolute_coordinates_YX,
             "cell_shape_XY": (height, width),
             "image_CH3": label_of_interest,
             "image_CH1": img_counterstain,
@@ -413,7 +390,7 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
         print(f"Unexpected error: {e}")
 
 
-def point_in_volume_pruning(animal: str, point: tuple[int, int], prune_annotation_id: int) -> bool:
+def point_in_volume_pruning(animal: str, point: tuple[int, int], prune_annotation_ids: list[int] | int | None = None, prune_combine_method: str = "union") -> bool:
     """
     Check if a point is within the volume defined by the pruning annotation ID (in database)
 

@@ -122,8 +122,8 @@ class CellMaker(
 
         #PRUNING PARAMETERS
         self.run_pruning = run_pruning
-        self.prune_x_range = prune_x_range
-        self.prune_y_range = prune_y_range
+        self.prune_x_range = prune_x_range if prune_x_range and len(prune_x_range) >= 2 else []
+        self.prune_y_range = prune_y_range if prune_y_range and len(prune_y_range) >= 2 else []
         self.prune_amin = prune_amin
         self.prune_amax = prune_amax
         self.prune_annotation_ids = prune_annotation_ids

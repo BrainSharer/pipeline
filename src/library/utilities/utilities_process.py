@@ -21,6 +21,7 @@ M_UM_SCALE = 1000000
 DOWNSCALING_FACTOR = 1 / SCALING_FACTOR
 Image.MAX_IMAGE_PIXELS = None
 
+
 def delete_in_background(path: str) -> Future:
     current_date = datetime.now().strftime('%Y-%m-%d')
     old_path = f"{path}.old_{current_date}"
