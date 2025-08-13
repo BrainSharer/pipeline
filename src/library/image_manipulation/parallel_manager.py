@@ -3,9 +3,8 @@ to process multiple images simultaneously.
 """
 from concurrent.futures.process import ProcessPoolExecutor
 from concurrent.futures import wait, ThreadPoolExecutor
-
 from library.utilities.utilities_process import get_hostname
-
+import pickle
 
 class ParallelManager:
     """Methods to support processing any part of pipeline (discreet function) using multiple cores
@@ -36,7 +35,8 @@ class ParallelManager:
             usecpus = cpus[hostname]
         return usecpus
 
-    def run_commands_concurrently(self, function, file_keys, workers):
+
+    def run_commands_concurrently(self, function, file_keys: tuple, workers: int):
         """This method uses the ProcessPoolExecutor library to run
         multiple processes at the same time. It also has a debug option.
         This is helpful to show errors on stdout. 
@@ -45,11 +45,23 @@ class ParallelManager:
         :param file_keys: tuple of file information
         :param workers: integer number of workers to use
         """
-        
+        ################################
+        #ADDED FOR DEBUGGING MULTI-PROCESSOR SERIALIZATION
+        try:
+            # Test if the function and arguments can be pickled
+            pickle.dumps(function)
+            pickle.dumps(file_keys[0])  # Test one sample argument
+            print("ProcessPoolExecutor argument pickling successful!")
+        except Exception as e:
+            print(f"CAN'T PICKLE: {e}\nObject type: {type(e).__name__}")
+            raise
+        ################################
+
         if self.debug:
             for file_key in sorted(file_keys):
                 function(file_key)
         else:
+            print(f"Starting {workers} workers for {function.__name__}")
             with ProcessPoolExecutor(max_workers=workers) as executor:
                 executor.map(function, sorted(file_keys))
                 executor.shutdown(wait=True)

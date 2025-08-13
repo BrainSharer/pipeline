@@ -5,13 +5,11 @@ The models are named by step: models_step_X_threshold_2000.pkl
 where 'X' is the step number.
 The program can be run with the following commands:
 
-- python srs/labeling/scripts/create_labels.py --animal DKXX --task create_features
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task segment
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task detect
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task extract
-- python srs/labeling/scripts/create_labels.py --animal DKXX --task neuroglancer
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task train
-- python srs/labeling/scripts/create_labels.py --animal DKXX --task fix
-
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task prune
 
 Explanation for the tasks:
 
@@ -53,46 +51,66 @@ from timeit import default_timer as timer
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.cell_labeling.cell_manager import CellMaker
+from library.cell_labeling.cell_process import CellMaker
 
-class SectionRangeAction(argparse.Action):
+class RangeOrIntAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        # reuse parse_section_range logic inside here
         s = values.strip()
-        if s.startswith('[') and s.endswith(']'):
-            s = s[1:-1]
-        parts = s.split(':')
-        if len(parts) != 2:
-            raise argparse.ArgumentError(self, f"Range must be two numbers separated by ':', got '{s}'")
-        try:
-            start, end = map(int, parts)
-        except ValueError:
-            raise argparse.ArgumentError(self, "Start and end must be integers.")
-        if start > end:
-            raise argparse.ArgumentError(self, f"Start ({start}) cannot exceed end ({end}).")
-
-        setattr(namespace, self.dest, list(range(start, end + 1)))
+        
+        # Case 1: Range (e.g., "8081:8087" or "[8081:8087]")
+        if ":" in s:
+            if s.startswith('[') and s.endswith(']'):
+                s = s[1:-1]
+            parts = s.split(':')
+            if len(parts) != 2:
+                raise argparse.ArgumentError(self, f"Range must be two numbers separated by ':', got '{s}'")
+            try:
+                start = int(parts[0])
+                end = int(parts[1])
+            except ValueError:
+                raise argparse.ArgumentError(self, "Start and end must be integers.")
+            if start > end:
+                raise argparse.ArgumentError(self, f"Start ({start}) cannot exceed end ({end}).")
+            setattr(namespace, self.dest, list(range(start, end + 1)))
+        
+        # Case 2: List of IDs (e.g., "8081,8084,8087" or "[8081,8084,8087]")
+        else:
+            if s.startswith('[') and s.endswith(']'):
+                s = s[1:-1]
+            try:
+                ids = [int(id.strip()) for id in s.split(',')]
+                setattr(namespace, self.dest, ids)
+            except ValueError:
+                raise argparse.ArgumentError(self, f"Invalid ID list: '{s}'")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument("--model", help="Enter the model", required=False, type=str)
+    parser.add_argument("--channel", help="Enter channel", required=False, default=None, type=int)
+    parser.add_argument("--model", help="Enter the model", required=False, type=bool)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--annotation", help="Create features with specific annotation id", required=False, default="", type=str)
     parser.add_argument("--step", help="Enter step", required=False, type=int)
-    parser.add_argument("--x", help="Enter x", required=False, default=0, type=int)
-    parser.add_argument("--y", help="Enter y", required=False, default=0, type=int)
     parser.add_argument("--sampling", help="Random sampling qty", required=False, default=0, type=int)
 
-    #SEGMENTATION ARGUMENTS [USED WITH 'detect' TASK]
+    #SEGMENTATION ARGUMENTS [USED WITH 'segment' & 'detect' TASK]
     parser.add_argument("--kernel", help="Kernel size for Gaussian blurring [SEGMENTATION]", required=False, default=401, type=int)
     parser.add_argument("--sigma", help="Sigma for Gaussian blurring [SEGMENTATION]", required=False, default=350, type=int)
     parser.add_argument("--min-segment", help="Minimum segmentation size (pixels)", required=False, default=100, type=int)
     parser.add_argument("--max-segment", help="Maximum segmentation size (pixels)", required=False, default=100000, type=int)
     parser.add_argument("--segment-threshold", help="Intensity threshold (0 to 65535) [SEGMENTATION]", required=False, default=2000, type=int)
     parser.add_argument("--cell-radius", help="cell radius (pixels) [SEGMENTATION]", required=False, default=40, type=int)
-    parser.add_argument("--section-range", dest='section_range', action=SectionRangeAction, help="Section processing range (e.g. [70:79] or 70:79). If omitted, all sections are processed.", required=False, default=None)
+    parser.add_argument("--section-range", dest='section_range', action=RangeOrIntAction, help="Section processing range (e.g. [70:79] or 70:79). If omitted, all sections are processed.", required=False, default=None)
+
+    #PRUNING ARGUMENTS [USED WITH 'prune' & 'segment' TASK]
+    parser.add_argument("--pruning", help="Enter true or false to perform pruning", required=False, default="false", type=str)
+    parser.add_argument("--prune-x-range", dest='prune_x_range', action=RangeOrIntAction, help="Pruning x axis filter range (e.g. [1500:7000] or 1500:7000).", required=False, default=None)
+    parser.add_argument("--prune-y-range", dest='prune_y_range', action=RangeOrIntAction, help="Pruning y axis filter range (e.g. [1500:7000] or 1500:7000).", required=False, default=None)
+    parser.add_argument("--prune-amin", help="The minimum area (pixel^2) [PRUNING]", required=False, default=100, type=int)
+    parser.add_argument("--prune-amax", help="The maximum area (pixel^2) [PRUNING]", required=False, default=10000, type=int)
+    parser.add_argument("--prune-annotation-ids", dest='prune_annotation_ids', action=RangeOrIntAction, help="Polygon annotation volume ids -NO SPACES- [PRUNING] (e.g. [81,97,8083] or int)", required=False, default=None)
+    parser.add_argument("--prune-combine-method", help="Pruning combine method: union|intersection|difference|xor", required=False, default="union", type=str)
 
     #NEUROGLANCER ARGUMENTS [USED WITH 'neuroglancer' TASK]
     #Note: ng-id should be id of full-resolution (all channels); this task will add CH3_DIFF and ML_POSITIVE point detections
@@ -108,12 +126,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     animal = args.animal
+    channel = args.channel
     model = args.model
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    pruning = bool({"true": True, "false": False}[str(args.pruning).lower()])
     task = str(args.task).strip().lower()
     step = args.step
-    x = args.x
-    y = args.y
+    
     annotation_id = args.annotation
     sampling = args.sampling #Note: only used in conjunction with 'extract' task
     segment_size_min = args.min_segment
@@ -123,15 +142,41 @@ if __name__ == "__main__":
     segment_threshold = args.segment_threshold
     cell_radius = args.cell_radius
     section_range = args.section_range
-    ng_id = args.ng_id
+    prune_x_range = args.prune_x_range
+    prune_y_range = args.prune_y_range
+    prune_amin = args.prune_amin
+    prune_amax = args.prune_amax
+    prune_annotation_ids = args.prune_annotation_ids
+    prune_combine_method = args.prune_combine_method
 
-    pipeline = CellMaker(animal=animal, task=task, step=step, model=model, channel=1, x=x, y=y, annotation_id=annotation_id, sampling=sampling, segment_size_min=segment_size_min, segment_size_max=segment_size_max, segment_gaussian_sigma=segment_gaussian_sigma, segment_gaussian_kernel=segment_gaussian_kernel, segment_threshold=segment_threshold, cell_radius=cell_radius, process_range=section_range, ng_id=ng_id, debug=debug)
+    pipeline = CellMaker(animal, 
+                         channel=channel,
+                         task=task, 
+                         step=step, 
+                         model=model,
+                         run_pruning=pruning,
+                         prune_x_range=prune_x_range, 
+                         prune_y_range=prune_y_range,
+                         prune_amin=prune_amin,
+                         prune_amax=prune_amax,
+                         annotation_id=annotation_id, 
+                         sampling=sampling, 
+                         segment_size_min=segment_size_min, 
+                         segment_size_max=segment_size_max, 
+                         segment_gaussian_sigma=segment_gaussian_sigma, 
+                         segment_gaussian_kernel=segment_gaussian_kernel, 
+                         segment_threshold=segment_threshold, 
+                         cell_radius=cell_radius, 
+                         process_range=section_range, 
+                         prune_annotation_ids=prune_annotation_ids,
+                         prune_combine_method=prune_combine_method,
+                         debug=debug)
 
     function_mapping = {
         "segment": pipeline.segment,
         #"create_features": pipeline.create_features, #TODO: remove
         "detect": pipeline.create_detections,
-        "extract": pipeline.extract_predictions_precomputed,        
+        "extract": pipeline.create_annotations,        
         "train": pipeline.train
         # "fix": pipeline.fix_coordinates #TODO: remove
         # "neuroglancer": pipeline.neuroglancer, #TODO: remove

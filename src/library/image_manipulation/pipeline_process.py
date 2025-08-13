@@ -31,6 +31,7 @@ from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.database_model.scan_run import IMAGE_MASK
+from library.cell_labeling.cell_ui import Cell_UI
 
 try:
     from settings import data_path, host, schema
@@ -39,6 +40,7 @@ except ImportError:
     data_path = "/net/birdstore/Active_Atlas_Data/data_root"
     host = "db.dk.ucsd.edu"
     schema = "brainsharer"
+import uuid
 
 
 class Pipeline(
@@ -52,7 +54,8 @@ class Pipeline(
     OmeZarrManager,
     ParallelManager,
     PrepCreater,
-    TiffExtractor
+    TiffExtractor,
+    Cell_UI
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -71,7 +74,7 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
+    def __init__(self, animal: str, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -92,8 +95,8 @@ class Pipeline(
             data_path (str, optional): path to where the images and intermediate steps are stored. Defaults to '/net/birdstore/Active_Atlas_Data/data_root'.
             debug (bool, optional): determine if we are in debug mode.  This is used for development purposes. Defaults to False. (forces processing on single core)
         """
-        self.task = task
         self.animal = animal
+        self.task = task
         self.downsample = downsample
         self.debug = debug
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
@@ -122,6 +125,9 @@ class Pipeline(
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         #self.report_status()
         #self.check_settings()
+        if not hasattr(self, 'SCRATCH'):
+            self.SCRATCH = get_scratch_dir()
+        self.set_id = uuid.uuid4().hex
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -173,6 +179,7 @@ class Pipeline(
             self.create_symbolic_link(target_path, link_path)
 
         print(f'Finished {self.TASK_EXTRACT}.')
+
 
     def mask(self):
         print(self.TASK_MASK)
@@ -327,8 +334,10 @@ class Pipeline(
 
         print(f'Finished {self.TASK_OMEZARR}.')
 
+
     def omezarr_info(self):
         self.get_omezarr_info()
+
 
     def omezarr2tif(self):
         self.write_sections_from_volume()
@@ -338,6 +347,7 @@ class Pipeline(
         print(self.TASK_SHELL, end=" ")
         self.create_shell()
         print(f'Finished {self.TASK_SHELL}.')
+
 
     def align_masks(self):
         print("Aligning masks")
@@ -363,6 +373,7 @@ class Pipeline(
             self.create_cleaned_images_full_resolution(channel=self.channel)
             self.apply_full_transformations(channel=self.channel)
         print(f'Finished {self.TASK_EXTRA_CHANNEL}.')
+
 
     def check_status(self):
         prep = self.fileLocationManager.prep
@@ -429,13 +440,15 @@ class Pipeline(
         url_status = self.check_url(self.animal)
         print(url_status)
 
+
     def ng_preview(self):
         '''
         USED TO GENERATE NG STATE WITH DEFAULT SETTINGS (AVAILABLE CHANNELS, ANNOTATIONS)
-        As this is used to do QC on image stacks, it made sense to include with PrepCreater
+        As this is used to do QC on image stacks
         '''
         print(self.TASK_NG_PREVIEW)
-        self.gen_ng_preview()
+        self.ng_prep() #will create precomputed format if not exist
+        #self.gen_ng_preview() #just create ng state
         print(f'Finished {self.TASK_NG_PREVIEW}.')
         
 
@@ -452,6 +465,7 @@ class Pipeline(
         if len(error) > 0:
             print(error)
             sys.exit()
+
 
     def check_ram(self):
         """

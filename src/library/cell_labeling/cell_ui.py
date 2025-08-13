@@ -1,22 +1,20 @@
-import os, sys, glob, json, math
+import os, sys, glob, json
 import re
 from datetime import datetime
+import argparse
 from pathlib import Path
 import inspect
-from library.utilities.utilities_process import test_dir, M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, random_string, read_image, get_hostname, delete_in_background
+from library.utilities.utilities_process import test_dir, M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, read_image, get_hostname, delete_in_background
 from library.image_manipulation.image_manager import ImageManager
-from library.image_manipulation.histogram_maker import make_histogram_full_RAM, make_single_histogram_full, make_combined_histogram_full
+from library.image_manipulation.histogram_maker import make_single_histogram_full, make_combined_histogram_full
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker, XY_CHUNK, Z_CHUNK
-from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.image_manipulation.parallel_manager import ParallelManager
-from library.controller.sql_controller import SqlController
 from cloudvolume import CloudVolume
 from taskqueue import LocalTaskQueue
 
 from library.omezarr.builder_init import builder
 import igneous.task_creation as tc
-from library.cell_labeling.cell_utilities import (
+from library.utilities.cell_utilities import (
     copy_with_rclone
 )
 from library.utilities.dask_utilities import closest_divisors_to_target
@@ -26,27 +24,49 @@ from distributed import LocalCluster
 from dask.distributed import Client
 
 
-class Cell_UI:
+class Cell_UI():
+
+    def __init__(self):
+        self.SCRATCH = get_scratch_dir()
+
 
     def ng_prep(self):
             '''
-            #WIP 5-AUG-2025
+            #WIP 11-AUG-2025
             CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
             ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
-            '''
 
-            INPUT_DIR = Path(self.fileLocationManager.prep, 'CH3_DIFF')
-            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff')
-            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'ch3_diff_py')
-            progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'C3_DIFF')
-            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
+            Note: called from regular pipeline: self.TASK_NG_PREVIEW
+            or called from cell labeling pipeline: self.TASK_SEGMENT
+            '''
+            if self.debug:
+                current_function_name = inspect.currentframe().f_code.co_name
+                print(f"DEBUG: {self.__class__.__name__}::{current_function_name} Start")
+
+            if self.task == 'segment': #REGENERATE ENTIRE NG FROM SCRATCH
+                ch_name = 'DIFF'
+                progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', ch_name)
+                INPUT_DIR = Path(self.fileLocationManager.prep, ch_name)
+            else: #e.g. 'ng_preview':
+                print('GENERATING NEUROGLANCER PREVIEW: CALLED FROM REGULAR PIPELINE')
+                progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'NG_PREVIEW' + '_' + self.set_id)
+                if self.channel:
+                    print('GENERATING PREVIEW FOR CHANNEL:', self.channel)
+                    ch_name = f"C{self.channel}"
+                    if self.downsample:
+                        INPUT_DIR = self.fileLocationManager.get_thumbnail_aligned(self.channel)
+                    else:
+                        INPUT_DIR = self.fileLocationManager.get_full_aligned(self.channel)
+            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name)
+            temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name + '_py')
             temp_output_path.mkdir(parents=True, exist_ok=True)
             temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
-            if self.task == 'segment': #REGENERATE ENTIRE NG FROM SCRATCH
-                try:
-                    delete_in_background(progress_dir)
-                except Exception as e:
-                    print(f"Error deleting progress directory: {e}")
+            OUTPUT_DIR = Path(self.fileLocationManager.neuroglancer_data, ch_name)
+
+            try:
+                delete_in_background(progress_dir)
+            except Exception as e:
+                print(f"Non-critical Error deleting progress directory: {e}")
             progress_dir.mkdir(parents=True, exist_ok=True)    
             OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             
@@ -57,16 +77,15 @@ class Cell_UI:
             else:
                 workers = self.get_nworkers()
 
+            print('*'*50)
             print("\tINPUT_DIR:".ljust(20), f"{INPUT_DIR}".ljust(20))
             print("\tTEMP Output:".ljust(20), f"{temp_output_path}".ljust(20))
             print("\tTEMP DOWNSAMPLED PRECOMPUTED Output:".ljust(20), f"{temp_output_path_pyramid}".ljust(20))
             print("\tTEMP Progress:".ljust(20), f"{progress_dir}".ljust(20))
             print("\tFINAL Output:".ljust(20), f"{OUTPUT_DIR}".ljust(20))
-            # if self.ng_id:
-            #     print("\tWILL APPEND LAYERS TO NEUROGLANCER ID: ".ljust(20), f"{self.ng_id}".ljust(20))
-            # else:
-            print("\tNEW NEUROGLANCER WILL BE CREATED".ljust(20))
-
+            print("\tNEW NEUROGLANCER WILL BE CREATED [IF NOT EXIST]".ljust(20))
+            print('*'*50)
+            
             image_manager = ImageManager(INPUT_DIR)
             chunks = [image_manager.height//16, image_manager.width//16, 1]
             image_files = sorted([f for f in os.listdir(INPUT_DIR) if f.endswith('.tif')])
@@ -109,7 +128,7 @@ class Cell_UI:
                     for file_key in file_keys:
                         ng.process_image(file_key)
                 else:
-                    self.parallel_manager.run_commands_concurrently(ng.process_image, file_keys, workers)
+                    self.run_commands_concurrently(ng.process_image, file_keys, workers)
 
                 #################################################
                 # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) START
@@ -216,32 +235,32 @@ class Cell_UI:
             #################################################
             # HISTOGRAM CREATION - SINGLE AND COMBINED
             #################################################
-            OUTPUT_DIR = Path(self.fileLocationManager.histogram, 'C3_DIFF')
+            OUTPUT_DIR = Path(self.fileLocationManager.histogram, ch_name)
             OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            print(f'Creating histogram for {OUTPUT_DIR}')
+            print(f'Creating histogram for {OUTPUT_DIR} [IF NOT EXIST]')
             
-            file_keys = []
-            for i, file in enumerate(image_files):
-                filename = str(i).zfill(3) + ".tif"
-                input_path = str(Path(INPUT_DIR, filename))
-                mask_path = str(Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', filename))
-                output_path = str(Path(OUTPUT_DIR, f"{i}.png")) 
+            if not OUTPUT_DIR.exists() or not any(OUTPUT_DIR.iterdir()):
+                file_keys = []
+                for i, file in enumerate(image_files):
+                    filename = str(i).zfill(3) + ".tif"
+                    input_path = str(Path(INPUT_DIR, filename))
+                    mask_path = str(Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', filename))
+                    output_path = str(Path(OUTPUT_DIR, f"{i}.png")) 
 
-                if not output_path:
-                    file_keys.append(
-                        [input_path, mask_path, 'CH3_DIFF', file, output_path]
-                    )
-            # Process single histograms in parallel
-            self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
-            if not Path(OUTPUT_DIR, self.animal + '.png').exists():
-                make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
+                    if not output_path:
+                        file_keys.append(
+                            [input_path, mask_path, ch_name, file, output_path]
+                        )
+                # Process single histograms in parallel
+                self.run_commands_concurrently(make_single_histogram_full, file_keys, workers)
+                if not Path(OUTPUT_DIR, self.animal + '.png').exists():
+                    make_combined_histogram_full(image_manager, OUTPUT_DIR, self.animal, Path(mask_path).parent)
 
-            #CREATE NG_PREVIEW (APPENDS TO EXISTING IF ng_id PROVIDED)
-            self.gen_ng_preview(src = 'cell_manager')
+            self.gen_ng_preview()
 
 
     #possibly delete
-    def omezarr():
+    def omezarr(self):
         if self.debug:
             # current_function_name = inspect.currentframe().f_code.co_name
             # print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
@@ -350,15 +369,15 @@ class Cell_UI:
         omezarr.cleanup()
 
 
-    def gen_ng_preview(self, src: str = None, ng_id: int = None):
+    def gen_ng_preview(self):
 
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+            print(self.task)
 
-        if src == 'cell_manager':
-            print('CALLED FROM CELL MANAGER')
-            downsample = False
+        if self.task == 'segment':
+            self.downsample = False
 
             #FIND ANNOTATION SETS TO INCLUDE        
             annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
@@ -377,7 +396,15 @@ class Cell_UI:
         with open(meta_store, 'r') as f:
             data = json.load(f)
         tracing_data = data.get("Neuroanatomical_tracing", {})
-        channel_names = [info.get("channel_name") for info in tracing_data.values()]
+        
+        try:
+            if int(self.channel)>1 and self.task != 'segment':
+                #ONLY USE PROVIDED CHANNEL
+                channel_names = [f"C{self.channel}"]
+            else:
+                channel_names = [info.get("channel_name") for info in tracing_data.values()]
+        except Exception as e:
+            print(f"Error determining channels: {e}")
 
         #IF AVAIABLE, GET XY RESOLUTION FROM meta-data.json, ELSE FROM DATABASE
         xy_resolution_unit = data.get("xy_resolution_unit", {})
@@ -413,13 +440,13 @@ class Cell_UI:
                 pattern3.match(os.path.basename(f)) or
                 pattern4.match(os.path.basename(f)))
         ]
-
+        
         ng_layers = []
         img_layers = {}
         segmentation_layers = {}
         for channel_name in channel_names:
             ome_zarr_path = os.path.join(self.fileLocationManager.neuroglancer_data, channel_name + ".zarr")
-            if downsample:
+            if self.downsample:
                 precomputed_path1 = os.path.join(self.fileLocationManager.neuroglancer_data, channel_name + 'T')
                 precomputed_path2 = os.path.join(self.fileLocationManager.neuroglancer_data, channel_name + 'T_aligned')
             else:    
@@ -439,15 +466,14 @@ class Cell_UI:
                 print(f"ERROR: NEUROGLANCER DATA NOT FOUND FOR {channel_name}")
                 continue
 
-            #FOR cell_manager USAGE, ONLY ADD C3_DIFF LAYER
-            if src == 'cell_manager':
+            #FOR cell_manager USAGE, ONLY ADD C3_DIFF LAYER - rename
+            if self.task == 'segment':
                 ng_folders = [f for f in ng_folders if not os.path.basename(f) == 'C3_DIFF.zarr']
                 c3_diff_dir = [f for f in ng_folders if os.path.basename(f) == 'C3_DIFF']
                 if c3_diff_dir:
                     print(f' FOLDERS: {ng_folders}')
                 c3_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'C3_DIFF')
                 img_layers['C3_DIFF'] = {'src': c3_path, 'src_type': 'precomputed', 'folder_name': 'C3_DIFF'}
-
         
         ##################################################################################
         #define initial view field (x,y,z) - center on image and across stack
@@ -461,17 +487,12 @@ class Cell_UI:
         ##################################################################################
 
         print(f'GENERATING NG PREVIEW FOR {self.animal} WITH LAYERS: {list(img_layers.keys())}')
-        if ng_id:
-            print(f'ADDING TO EXISTING NG STATE {ng_id}')
-        else:
-            print(f'CREATING NEW NG STATE')
         
         ##################################################################################
         #COMPILE IMG SRC FOR LAYERS
         base_url = f"https://imageserv.dk.ucsd.edu/data/{self.animal}/neuroglancer_data/"
         
-        print('*' * 50)
-        print(f'{img_layers=}')
+        
         desired_order = ['C1', 'C2', 'C3_DIFF', 'ML_POS']
         ordered_dict = {key: img_layers[key] for key in desired_order if key in img_layers}
         print(f'{ordered_dict=}')
@@ -489,8 +510,7 @@ class Cell_UI:
             print(f"Largest channel number: {largest_number}")
         else:
             print("No valid channel numbers found.")
-        print('*' * 50)
-        print(f'{diff_channel_name=}')
+        
         for channel_name, channel_attributes in ordered_dict.items():
             if channel_name.endswith('_DIFF'):
                 channel_name = diff_channel_name
@@ -502,7 +522,7 @@ class Cell_UI:
             }
             ng_layers.append(layer)
         
-        if src == 'cell_manager': #ADD ANNOTATION LAYERS LAST
+        if self.task == 'segment': #ADD ANNOTATION LAYERS LAST
             for folder in matching_ml_pos_folders:
                 folder_name = folder.name
                 if folder_name.endswith('.precomputed'):
@@ -631,7 +651,7 @@ class Cell_UI:
 
         combined_json_str = json.dumps(combined_json)
         comments = self.animal + ' auto preview'
-        active_query = self.sqlController.insert_ng_state(combined_json_str, fk_prep_id=self.animal, comments=comments, readonly=True, public=False, ng_id=ng_id, active=True)
+        active_query = self.sqlController.insert_ng_state(combined_json_str, fk_prep_id=self.animal, comments=comments, readonly=True, public=False, active=True)
         
         if active_query:
             # print(f"preview state created: {active_query}")

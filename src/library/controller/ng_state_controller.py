@@ -10,7 +10,7 @@ class NeoroglancerStateController():
         self.session = session
         
 
-    def insert_ng_state(self, combined_json: str, fk_prep_id: str, created='', updated='', fk_lab_id=2, comments: str = "", description=None, fk_user_id=None, readonly=False, public=False, ng_id: int = None, active=True):
+    def insert_ng_state(self, combined_json: str, fk_prep_id: str, created='', updated='', fk_lab_id=2, comments: str = "", description=None, fk_user_id=None, readonly=False, public=False, active=True):
         """
         Inserts a new record into the neuroglancer_state table.  If a record with the same comments exists, updates it instead.
 

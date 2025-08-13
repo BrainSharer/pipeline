@@ -22,8 +22,6 @@ class FileLocationManager(object):
     -czi folder [stores raw scanner images from which tiff images are extracted]
     -tif [stores full resolution images extracted from czi files]
     -neuroglancer_data [stores 'precomputed' format of entire image stack for loading into Neuroglancer visualization tool]
-
-
     """
 
     def __init__(self, stack, data_path=data_path):
@@ -67,8 +65,13 @@ class FileLocationManager(object):
         return os.path.join(self.prep, f"C{channel}", "thumbnail")
 
     def get_full_aligned(self, channel=1):
-        """This is used in cell labeling"""
+        """This is used in cell_ui"""
         validated_path = os.path.join(self.prep, f"C{channel}", "full_aligned")
+        return validated_path
+
+    def get_thumbnail_aligned(self, channel=1):
+        """This is used in cell_ui"""
+        validated_path = os.path.join(self.prep, f"C{channel}", "thumbnail_aligned")
         return validated_path
 
     def get_alignments(self, iteration=0):
