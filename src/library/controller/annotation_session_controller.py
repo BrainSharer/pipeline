@@ -224,7 +224,7 @@ class AnnotationSessionController:
         x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
         return int(round(x1)), int(round(y1)), int(round(z1))
 
-    def get_annotation_volume(self, session_id: int, scaling_factor=1) -> dict:
+    def get_annotation_volume(self, session_id: int, scaling_factor: int = 1, debug: bool = False) -> dict:
 
         """
         This returns data in micrometers divided by the scaling_factor provided.
@@ -232,7 +232,16 @@ class AnnotationSessionController:
         and then do an offset. (e.g., fixing DK78)
         """
 
-        annotation_session = self.session.query(AnnotationSession).get(session_id)
+        # annotation_session = self.session.query(AnnotationSession).get(session_id)
+        query = (
+            self.session.query(AnnotationSession)
+            .filter(AnnotationSession.id == session_id)
+        )
+
+        if debug:  # Print the raw SQL query
+            print(f'RAW SQL: {query.statement.compile(compile_kwargs={"literal_binds": True})}')
+        annotation_session = query.one_or_none()
+
         polygons = defaultdict(list)
 
         if not annotation_session:
