@@ -1565,6 +1565,8 @@ class VolumeRegistration:
             status.append(f'\tRegistered moving points at: {self.registered_point_file}')
 
 
+        if os.path.exists(self.registered_transform_file):
+            status.append(f'\tRegistered transform at: {self.registered_transform_file}')
 
 
         if len(status) > 0:
