@@ -1088,7 +1088,7 @@ class BrainStructureManager:
         affine_transform = sitk.AffineTransform(3) 
         affine_transform.SetMatrix(matrix)
         affine_transform.SetTranslation((0,0,0))   
-        """
+        
         resampler = sitk.ResampleImageFilter()
         # Set the transform
         resampler.SetTransform(affine_transform)
@@ -1103,7 +1103,6 @@ class BrainStructureManager:
         # Execute the resampling
         resampled = resampler.Execute(image)
         volume = sitk.GetArrayFromImage(resampled)
-        """
         
         origin = np.array([min_x, min_y, min_z]).astype(np.float64) + translation
         return origin, volume
