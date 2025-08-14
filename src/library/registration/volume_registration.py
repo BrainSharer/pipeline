@@ -66,7 +66,6 @@ class VolumeRegistration:
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-        self.affine_matrix_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tfm' )
         self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.moving_path, self.output_dir)
@@ -676,10 +675,10 @@ class VolumeRegistration:
 
     def register_volume(self):
         # Load fixed and moving images
-        fixed_image = sitk.ReadImage(self.fixed_path, sitk.sitkFloat32)
-        print(f"Read fixed image: {self.fixed_path}")
-        moving_image = sitk.ReadImage(self.moving_path, sitk.sitkFloat32)
-        print(f"Read moving image: {self.moving_path}")
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_volume_path}")
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
+        print(f"Read moving image: {self.moving_volume_path}")
 
         # Initial alignment of the centers of the two volumes
         initial_transform = sitk.CenteredTransformInitializer(
