@@ -78,8 +78,8 @@ class VolumeRegistration:
         self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
 
         self.transformation = 'Affine'
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um.tfm')
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_inverse.tfm')
-        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
 
         if self.fixed is not None:
@@ -718,8 +718,8 @@ class VolumeRegistration:
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
-        sitk.WriteTransform(transform, self.affine_matrix_path)
-        print(f"Registration written to {self.affine_matrix_path}")
+        sitk.WriteTransform(transform, self.transform_filepath)
+        print(f"Registration written to {self.transform_filepath}")
         return
 
 
@@ -1565,8 +1565,8 @@ class VolumeRegistration:
             status.append(f'\tRegistered moving points at: {self.registered_point_file}')
 
 
-        if os.path.exists(self.registered_transform_file):
-            status.append(f'\tRegistered transform at: {self.registered_transform_file}')
+        if os.path.exists(self.transform_filepath):
+            status.append(f'\tRegistered transform at: {self.transform_filepath}')
 
 
         if len(status) > 0:
