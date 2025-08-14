@@ -1,13 +1,20 @@
 from collections import defaultdict
-import math
 import os
 from pathlib import Path
 import sys
 import numpy as np
 import SimpleITK as sitk
+from scipy.spatial import Delaunay
+
 from scipy.spatial.transform import Rotation as R
 from skimage.filters import gaussian
 from scipy.ndimage import affine_transform
+from scipy.interpolate import splprep, splev
+
+import shapely
+from shapely.geometry import LineString, Polygon, MultiPoint
+from shapely.ops import triangulate,  unary_union, polygonize
+from skimage.draw import polygon as sk_polygon
 
 from library.controller.sql_controller import SqlController
 from library.registration.algorithm import umeyama
@@ -19,6 +26,255 @@ ORIGINAL_ATLAS = 'AtlasV7'
 NEW_ATLAS = 'AtlasV8'
 RESOLUTION = 0.452
 ALLEN_UM = 10
+
+def order_points_concave_hull(points, alpha=1.0):
+    """Return points ordered along a concave hull using alpha shape."""
+    pts = np.array(points)
+    if len(pts) < 4:
+        return pts
+    
+    tri = Delaunay(pts)
+    edges = set()
+    for ia, ib, ic in tri.simplices:
+        pa, pb, pc = pts[ia], pts[ib], pts[ic]
+        a = np.linalg.norm(pa - pb)
+        b = np.linalg.norm(pb - pc)
+        c = np.linalg.norm(pc - pa)
+        s = (a + b + c) / 2.0
+        area = np.sqrt(s * (s - a) * (s - b) * (s - c))
+        circum_r = a * b * c / (4.0 * area)
+        if circum_r < 1.0 / alpha:
+            edges.add(tuple(sorted((ia, ib))))
+            edges.add(tuple(sorted((ib, ic))))
+            edges.add(tuple(sorted((ic, ia))))
+
+    m = MultiPoint([tuple(p) for p in pts])
+    edge_lines = [LineString([pts[i], pts[j]]) for i, j in edges]
+    m = unary_union(edge_lines)
+    polygons = list(polygonize(m))
+    if not polygons:
+        return pts
+    boundary = polygons[0].exterior.coords[:-1]  # drop duplicate last point
+    return np.array(boundary)
+
+def interpolate_points(points, new_len):
+    points = np.array(points)
+    pu = points.astype(int)
+    indexes = np.unique(pu, axis=0, return_index=True)[1]
+    points = np.array([points[index] for index in sorted(indexes)])
+    addme = points[0].reshape(1, 2)
+    points = np.concatenate((points, addme), axis=0)
+    tck, u = splprep(points.T, u=None, s=3, per=1)
+    u_new = np.linspace(u.min(), u.max(), new_len)
+    x_array, y_array = splev(u_new, tck, der=0)
+    arr_2d = np.concatenate([x_array[:, None], y_array[:, None]], axis=1)
+    return list(map(tuple, arr_2d.astype(np.int32)))
+
+
+def alpha_shape_polygon(points_xy, alpha=1.5):
+    """
+    Build a (multi)polygon concave hull from unordered 2D points using an alpha-shape.
+    Returns a list of shapely Polygons. Requires shapely.
+    """
+    if len(points_xy) < 4:
+        return []  # too few to form area
+
+    mp = MultiPoint(points_xy)
+    # Start with convex hull if alpha very small or points small:
+    hull = mp.convex_hull
+    if alpha <= 0:
+        return [hull] if isinstance(hull, Polygon) else []
+
+    # Triangulate and keep triangles with circumradius small enough
+    tris = triangulate(mp)
+    keep = []
+    for tri in tris:
+        # triangle as 3 points
+        x, y = tri.exterior.coords.xy
+        pts = np.column_stack([x[:-1], y[:-1]])  # 3 vertices
+        # edge lengths
+        a = np.linalg.norm(pts[0] - pts[1])
+        b = np.linalg.norm(pts[1] - pts[2])
+        c = np.linalg.norm(pts[2] - pts[0])
+        s = 0.5 * (a + b + c)
+        area = max(s * (s - a) * (s - b) * (s - c), 0.0) ** 0.5
+        if area == 0:
+            continue
+        R = (a * b * c) / (4.0 * area)  # circumradius
+        if R < (1.0 / alpha):
+            keep.append(tri)
+
+    if not keep:
+        # fallback: convex hull
+        return [hull] if isinstance(hull, Polygon) else []
+
+    # Union kept triangles -> concave hull
+    concave = shapely.union_all(keep) if hasattr(shapely, "union_all") else keep[0].union(keep[1:])
+    # Normalize to list of Polygons
+    if isinstance(concave, Polygon):
+        return [concave]
+    elif hasattr(concave, "geoms"):
+        return [g for g in concave.geoms if isinstance(g, Polygon)]
+    else:
+        return []
+
+
+def nearest_neighbor_polygon(points_xy):
+    """
+    Very simple NN chain to order unordered boundary points into a closed polygon.
+    Works surprisingly well for dense boundaries but is heuristic.
+    Returns a (N,2) array of ordered vertices.
+    """
+    pts = np.asarray(points_xy, dtype=float)
+    if len(pts) < 3:
+        return None
+    # start at the leftmost (then lowest y) point
+    start_idx = np.lexsort((pts[:,1], pts[:,0]))[0]
+    used = np.zeros(len(pts), dtype=bool)
+    order = [start_idx]
+    used[start_idx] = True
+    for _ in range(len(pts) - 1):
+        last = pts[order[-1]]
+        # squared distances to unused
+        diffs = pts[~used] - last
+        d2 = np.einsum('ij,ij->i', diffs, diffs)
+        next_rel = np.argmin(d2)
+        # map back to absolute index
+        cand_idx = np.flatnonzero(~used)[next_rel]
+        order.append(cand_idx)
+        used[cand_idx] = True
+    ordered = pts[order]
+    return ordered
+
+
+def rasterize_polygon_to_mask(poly, H, W):
+    """
+    Fill polygon (with holes) into a 2D mask of shape (H, W).
+    poly: shapely Polygon
+    """
+    mask = np.zeros((H, W), dtype=bool)
+    # exterior
+    ex = np.array(poly.exterior.coords, dtype=float)
+    rr, cc = sk_polygon(ex[:,1], ex[:,0], shape=(H, W))
+    mask[rr, cc] = True
+    # holes
+    for interior in poly.interiors:
+        hole = np.array(interior.coords, dtype=float)
+        rr_h, cc_h = sk_polygon(hole[:,1], hole[:,0], shape=(H, W))
+        mask[rr_h, cc_h] = False
+    return mask
+
+
+def create_subvolume_from_boundary_vertices(shape_zyx,
+                                            coords_xyz,
+                                            dtype=np.uint8,
+                                            fill_value=255,
+                                            alpha=1.5,
+                                            voxel_spacing_xyz=None):
+    """
+    Build a 3D volume with a filled subvolume defined by boundary vertices (x,y,z).
+    Non-convex shapes supported (per-slice concave hull). Coordinates can be floats.
+    
+    Parameters
+    ----------
+    shape_zyx : tuple (Z, Y, X)
+        Output volume shape.
+    coords_xyz : array-like of (x, y, z)
+        Unordered boundary points. z should index slices in [0, Z-1].
+    dtype : numpy dtype
+        Output dtype.
+    fill_value : int
+        Value assigned inside the filled subvolume; 0 elsewhere.
+    alpha : float
+        Alpha-shape parameter (larger -> more detail; smaller -> smoother/closer to convex).
+        Only used if shapely is available.
+    voxel_spacing_xyz : (sx, sy, sz) or None
+        If provided, points are rescaled so alpha operates in physical units per slice.
+        Commonly not needed; useful when x,y are anisotropic.
+
+    Returns
+    -------
+    vol : np.ndarray (Z, Y, X)
+        Binary-ish mask with fill_value inside subvolume and 0 outside.
+    """
+    Z, Y, X = map(int, shape_zyx)
+    vol = np.zeros((Z, Y, X), dtype=dtype)
+
+    coords = np.asarray(coords_xyz, dtype=float)
+    if coords.ndim != 2 or coords.shape[1] != 3:
+        raise ValueError("coords_xyz must be an array of shape (N, 3) with (x, y, z).")
+
+    # Optionally rescale to physical units for alpha-shape (x,y only matter per slice)
+    if voxel_spacing_xyz is not None:
+        sx, sy, sz = voxel_spacing_xyz
+    else:
+        sx = sy = sz = 1.0
+
+    # Group by slice index (round to nearest int robustly)
+    by_slice = defaultdict(list)
+    for x, y, z in coords:
+        zi = int(round(z / sz))
+        if 0 <= zi < Z:
+            by_slice[zi].append((x / sx, y / sy))  # store rescaled coords
+
+    for zi, pts in by_slice.items():
+        if len(pts) < 3:
+            continue
+
+        H, W = Y, X  # mask height, width
+
+        # Concave hull via alpha-shape; may produce MultiPolygons.
+        polys = alpha_shape_polygon(pts, alpha=alpha)
+        if not polys:
+            # Fallback to NN ordering if alpha-shape fails to make area
+            ordered = nearest_neighbor_polygon(pts)
+            if ordered is None:
+                continue
+            rr, cc = sk_polygon(ordered[:,1], ordered[:,0], shape=(H, W))
+            slice_mask = np.zeros((H, W), dtype=bool)
+            slice_mask[rr, cc] = True
+        else:
+            slice_mask = np.zeros((H, W), dtype=bool)
+            for poly in polys:
+                if poly.is_empty or not isinstance(poly, Polygon):
+                    continue
+                slice_mask |= rasterize_polygon_to_mask(poly, H, W)
+
+        vol[zi, slice_mask] = fill_value
+
+    return vol
+
+
+
+def load_transformation(animal: str, xy_um: float, z_um: float, inverse: bool = False) -> sitk.Transform:
+    reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
+    transform = f'{animal}_{z_um}x{xy_um}x{xy_um}um_sagittal_inverse.tfm' if inverse else f'{animal}_{z_um}x{xy_um}x{xy_um}um_sagittal.tfm'
+    transform_path = os.path.join(reg_path, animal, transform)
+    if not os.path.exists(transform_path):
+        print(f"Transformation file not found: {transform_path}")
+        return None
+
+    return sitk.ReadTransform(transform_path)
+
+
+
+
+def create_convex_hull(xyz_array: np.ndarray, volume: np.ndarray, shape: tuple) -> np.ndarray:
+    hull = Delaunay(xyz_array)
+    # Create a grid of all voxel indices
+    zz, yy, xx = np.meshgrid(
+        np.arange(shape[0]), np.arange(shape[1]), np.arange(shape[2]),
+        indexing='ij'
+    )
+    grid_points = np.vstack((xx.ravel(), yy.ravel(), zz.ravel())).T
+    # Find which voxels lie inside the convex hull
+    mask = hull.find_simplex(grid_points) >= 0
+    # Fill in those voxels with 255
+    volume_flat = volume.ravel()
+    volume_flat[mask] = 255
+    volume = volume_flat.reshape(shape)
+    return volume
+
 
 
 def affine_transform_point(point: list, matrix: np.ndarray) -> np.ndarray:

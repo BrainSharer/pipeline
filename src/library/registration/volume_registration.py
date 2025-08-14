@@ -674,8 +674,57 @@ class VolumeRegistration:
         tq.insert(tasks)
         tq.execute()
 
-
     def register_volume(self):
+        # Load fixed and moving images
+        fixed_image = sitk.ReadImage(self.fixed_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_path}")
+        moving_image = sitk.ReadImage(self.moving_path, sitk.sitkFloat32)
+        print(f"Read moving image: {self.moving_path}")
+
+        # Initial alignment of the centers of the two volumes
+        initial_transform = sitk.CenteredTransformInitializer(
+            fixed_image, 
+            moving_image, 
+            sitk.AffineTransform(3), 
+            sitk.CenteredTransformInitializerFilter.GEOMETRY
+        )
+
+        # Set up the registration method
+        R = sitk.ImageRegistrationMethod()
+        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+
+        R.SetMetricSamplingStrategy(R.RANDOM)
+        R.SetMetricSamplingPercentage(0.01)
+        R.SetInterpolator(sitk.sitkLinear)
+        R.SetOptimizerAsGradientDescent(
+            learningRate=1, 
+            numberOfIterations=300, 
+            convergenceMinimumValue=1e-6, 
+            convergenceWindowSize=10)
+
+        R.SetOptimizerScalesFromPhysicalShift()
+        R.SetInitialTransform(initial_transform, inPlace=False)
+        R.SetShrinkFactorsPerLevel([4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        # Perform registration
+        transform = R.Execute(fixed_image, moving_image)
+        print("Final metric value: ", R.GetMetricValue())
+        print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
+        # Resample moving image onto fixed image grid
+        resampled = sitk.Resample(moving_image, fixed_image, transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+        sitk.WriteImage(resampled, self.registered_volume)
+        print(f"Resampled moving image written to {self.registered_volume}")
+
+        # Save the transform
+        sitk.WriteTransform(transform, self.affine_matrix_path)
+        print(f"Registration written to {self.affine_matrix_path}")
+        return
+
+
+
+    def register_volume_elastix(self):
         """
         Registers a moving volume to a fixed volume using elastix and saves the resulting registered volume.
         This method performs the following steps:

@@ -62,9 +62,10 @@ class BrainMerger():
             print(f'{structure} has no volumes to merge')
             return None
             #return volumes[0]
-        elif lvolumes > 0:
-            average_volume = average_images(volumes)
-            return average_volume
+        elif lvolumes == 1:
+            return volumes[0]
+        elif lvolumes > 1:
+            return average_images(volumes)
         else:
             print(f'{structure} has no volumes to merge')
             return None
@@ -117,7 +118,10 @@ class BrainMerger():
             np.save(volume_filepath, volume)
             
             #mesh stl files for 3D slicer
-            mesh_volume = adjust_volume(volume, 100)
+            if structure == 'cerebellum':
+                mesh_volume = volume
+            else:
+                mesh_volume = adjust_volume(volume, 100)
             relative_origin = (origin_allen - origins_mean)
             aligned_structure = volume_to_polygon(volume=mesh_volume, origin=relative_origin, times_to_simplify=3)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
