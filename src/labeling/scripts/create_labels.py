@@ -30,16 +30,23 @@ Training workflow::
 
 
 - Detect cells on available brains.
-- Some of the brains have too many points to easily display in Neuroglancer. DK59 has about 75MB of points. \
-    This won't display and will crash the browser. We can take the points and display them as a precomputed \
-    data format, similar to the way we display large images.
-- Once we have the display of the predicted points along with the image stacks of the dye and the virus channels, \
-    we can create two more layers. A 'bad' layer where the user marks as 'bad' the predictions that are bad. \
-    And another layer 'sure' where the user creates annotations that the prediction process has missed.
-- These 'bad' and 'sure' new annotations are then saved to the database.
-- We then create features from these 'bad' and 'sure' coordinates.
-- These features are then fed back into the training process and a new model is created which we then use \
-    to repeat the process.
+- Some of the brains have too many points to easily display in Neuroglancer as annotation layers
+    and will crash the browser. We create them as a precomputed \
+    data format, which can be loaded in Neuroglancer as segmentation layer
+    [this is included when running task:detect]
+
+@end of 'detect' task, artifacts:
+[on birdstore]:
+preps/DIFF_{uuid} #not removed
+www/histogram/DIFF_{uuid} #not removed
+www/neuroglancer/DIFF_{uuid} #not removed
+www/neuroglancer_data/progress/DIFF_{uuid} #removed
+
+[on compute server] #all removed
+/scratch/pipeline_tmp/{animal}/cell_candidates_{uuid}
+/scratch/pipeline_tmp/{animal}/cell_features_{uuid}
+/scratch/pipeline_tmp/{animal}/DIFF_{uuid}
+/scratch/pipeline_tmp/{animal}/DIFF_candidates_{uuid}_py
 """
 
 import argparse
@@ -90,6 +97,7 @@ if __name__ == "__main__":
     parser.add_argument("--channel", help="Enter channel", required=False, default=None, type=int)
     parser.add_argument("--model", help="Enter the model", required=False, type=bool)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
+    parser.add_argument("--uuid", help="Force prev. uuid; used for debug", required=False, default=None, type=str)
     parser.add_argument("--annotation", help="Create features with specific annotation id", required=False, default="", type=str)
     parser.add_argument("--step", help="Enter step", required=False, type=int)
     parser.add_argument("--sampling", help="Random sampling qty", required=False, default=0, type=int)
@@ -110,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--prune-amin", help="The minimum area (pixel^2) [PRUNING]", required=False, default=100, type=int)
     parser.add_argument("--prune-amax", help="The maximum area (pixel^2) [PRUNING]", required=False, default=10000, type=int)
     parser.add_argument("--prune-annotation-ids", dest='prune_annotation_ids', action=RangeOrIntAction, help="Polygon annotation volume ids -NO SPACES- [PRUNING] (e.g. [81,97,8083] or int)", required=False, default=None)
-    parser.add_argument("--prune-combine-method", help="Pruning combine method: union|intersection|difference|xor", required=False, default="union", type=str)
+    parser.add_argument("--prune-combine-method", help="Pruning combine method: union|intersection", required=False, default="union", type=str)
 
     #NEUROGLANCER ARGUMENTS [USED WITH 'neuroglancer' TASK]
     #Note: ng-id should be id of full-resolution (all channels); this task will add CH3_DIFF and ML_POSITIVE point detections
@@ -118,7 +126,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: create_features|detect|extract|neuroglancer|train",
+        help="Enter the task you want to perform: segment|create_features|detect|extract|neuroglancer|train",
         required=True,
         type=str,
     )
@@ -129,6 +137,7 @@ if __name__ == "__main__":
     channel = args.channel
     model = args.model
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    arg_uuid = args.uuid
     pruning = bool({"true": True, "false": False}[str(args.pruning).lower()])
     task = str(args.task).strip().lower()
     step = args.step
@@ -170,6 +179,7 @@ if __name__ == "__main__":
                          process_range=section_range, 
                          prune_annotation_ids=prune_annotation_ids,
                          prune_combine_method=prune_combine_method,
+                         arg_uuid=arg_uuid,
                          debug=debug)
 
     function_mapping = {

@@ -5,6 +5,9 @@ import numpy as np
 import subprocess
 from pathlib import Path
 from library.controller.sql_controller import SqlController
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
+from library.utilities.utilities_process import get_cpus
 
 
 def load_image(file: str):
@@ -107,6 +110,7 @@ def filter_cell_candidates(
     difference_ch3,
     task: str = None,
     pruning_info: dict = None,
+    super_annotation_dict: dict = None,
     debug: bool = False
 ):
     '''PART OF STEP 2. Identify cell candidates:  Area is for the object, where pixel values are not zero,
@@ -164,7 +168,8 @@ def filter_cell_candidates(
                 
                 annotation_ids = pruning_info.get("prune_annotation_ids")
                 if annotation_ids:
-                    result_in_vol = point_in_volume_pruning(animal, absolute_coordinates_YX, annotation_ids, pruning_info.get("prune_combine_method")) #returns bool
+                    result_in_vol = point_in_volume_pruning(animal, section_number, absolute_coordinates_YX, annotation_ids, super_annotation_dict, pruning_info.get("prune_combine_method")) #returns bool
+
                     if not result_in_vol:
                         continue
                 
@@ -371,11 +376,15 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
     if not dest_dir.exists():
         dest_dir.mkdir(parents=True, exist_ok=True)
 
+    num_cores = get_cpus()
+    transfers = min(num_cores[0], max(num_cores[1], 1))
+
     # Construct the rclone command
     rclone_cmd = [
         "rclone",
         "copy",
         "--progress",  # Show progress (optional)
+        "--transfers", str(transfers), #num of parallel transfers
         str(src_dir) + "/",  # Ensure trailing slash for directory copy
         str(dest_dir) + "/",
     ]
@@ -390,25 +399,57 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
         print(f"Unexpected error: {e}")
 
 
-def point_in_volume_pruning(animal: str, point: tuple[int, int], prune_annotation_ids: list[int] | int | None = None, prune_combine_method: str = "union") -> bool:
+def point_in_volume_pruning(animal: str, section_number: int, point_YX: tuple[int, int], prune_annotation_ids: list[int] | int | None = None, super_annotation_dict: dict | None = None, prune_combine_method: str = "union") -> bool:
     """
-    Check if a point is within the volume defined by the pruning annotation ID (in database)
-
+    Check if a point is within one or more volume annotations, combining results according to specified method.
+    
     Args:
-        point (Tuple[int, int]): The (y, x) coordinates of the point.
-        prune_annotation_id (int): The ID of the pruning annotation.
-
+        animal: Animal ID
+        point: (y, x) coordinates to check
+        prune_annotation_ids: Single ID or list of annotation IDs to check against
+        prune_combine_method: How to combine results ('union' or 'intersection')
+        
     Returns:
-        bool: True if the point is within the volume, False otherwise.
+        bool: True if point meets the inclusion criteria based on combine method
     """
-    #TODO: see if we can move polygon volume annotation sets to couchdb
-    db = SqlController()
-    vol_stacked_polygons = db.get_annotation_session(prep_id=animal, label_ids=prune_annotation_id)
-    if vol_stacked_polygons is None or len(vol_stacked_polygons) == 0:
-        print(f"Warning: No volume polygons found for annotation ID {prune_annotation_id} in animal {animal}.")
+    
+    if not prune_annotation_ids:
         return False
-    else:
-        print('DEBUG:')
-        print(vol_stacked_polygons)
-        return True
+    
+    print(super_annotation_dict)
+    return True
+
+    
+        
+    #     polygon = Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])
+    #     for section, points in vol_polygons.items():
+    #         for x, y in points:
+    #             if section == section_number:
+    #                 if (y, x) == point_YX:
+    #                     return True
+
+    #     if not vol_polygons:
+    #         print(f"Warning: No volume polygons found for annotation ID {annotation_id} in {animal}")
+    #         if prune_combine_method == "intersection":
+    #             return False  # Early exit for intersection mode
+    #         continue
+        
+    #     # Check if point is in any of the polygons for this annotation
+    #     in_volume = any(polygon.contains_point(point) for polygon in vol_polygons)
+    #     results.append(in_volume)
+        
+    #     # Early exit optimization for union mode
+    #     if prune_combine_method == "union" and in_volume:
+    #         return True
+    
+    # # Determine final result based on combine method
+    # if prune_combine_method == "union":
+    #     return any(results)
+    # elif prune_combine_method == "intersection":
+    #     return all(results)
+    # else:
+    #     raise ValueError(f"Unknown combine method: {prune_combine_method}. Use 'union' or 'intersection'")
+    
+
+    
      

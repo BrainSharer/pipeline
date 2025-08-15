@@ -2,7 +2,6 @@ from collections import defaultdict
 import datetime
 import numpy as np
 from collections import defaultdict
-import SimpleITK as sitk
 
 from library.database_model.annotation_points import AnnotationLabel
 from library.database_model.annotation_points import AnnotationSession
@@ -59,9 +58,11 @@ class AnnotationSessionController:
             .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
             .order_by(AnnotationSession.updated.desc())
         )
-
+    
         if debug:  # Print the raw SQL query
-            print(f'RAW SQL: {query.statement.compile(compile_kwargs={"literal_binds": True})}')
+            raw_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
+            raw_sql = raw_sql.replace('"', '')
+            print(f'RAW SQL:\n {raw_sql}\n')
         
         return query.first()
 
@@ -155,7 +156,9 @@ class AnnotationSessionController:
             fiducials[section].append((x, y))
 
         if debug:  # Print the raw SQL query
-            print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
+            raw_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
+            raw_sql = raw_sql.replace('"', '')
+            print(f'RAW SQL:\n {raw_sql}\n')
 
         return fiducials
 
@@ -224,8 +227,8 @@ class AnnotationSessionController:
         x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
         return int(round(x1)), int(round(y1)), int(round(z1))
 
-    def get_annotation_volume(self, session_id: int, scaling_factor=1, transform=None) -> dict:
 
+    def get_annotation_volume(self, session_id: int, scaling_factor=1, transform=None, debug: bool = False) -> dict:
         """
         This returns data in micrometers divided by the scaling_factor provided.
         If you need x,y offsets, you'll need to convert to scale a
@@ -239,7 +242,9 @@ class AnnotationSessionController:
         )
 
         if debug:  # Print the raw SQL query
-            print(f'RAW SQL: {query.statement.compile(compile_kwargs={"literal_binds": True})}')
+            raw_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
+            raw_sql = raw_sql.replace('"', '')
+            print(f'RAW SQL:\n {raw_sql}\n')
         annotation_session = query.one_or_none()
 
         polygons = defaultdict(list)
@@ -284,6 +289,7 @@ class AnnotationSessionController:
                 polygons[section].append((x,y))
 
         return polygons
+
 
     def get_annotation_xyz_array(self, session_id, scale=1):
 

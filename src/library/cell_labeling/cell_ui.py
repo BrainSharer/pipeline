@@ -32,7 +32,7 @@ class Cell_UI():
 
     def ng_prep(self):
             '''
-            #WIP 13-AUG-2025
+            #WIP 15-AUG-2025
             CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
             ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
 
@@ -44,9 +44,13 @@ class Cell_UI():
                 print(f"DEBUG: {self.__class__.__name__}::{current_function_name} Start")
 
             if self.task == 'segment': #REGENERATE ENTIRE NG FROM SCRATCH
-                ch_name = 'DIFF'
+                ch_name = 'DIFF' + '_' + self.set_id
                 progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', ch_name)
-                INPUT_DIR = Path(self.fileLocationManager.prep, ch_name)
+                INPUT_DIR = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name)
+
+                #MOVE src prep file [from scratch] to final location
+                FINAL_PREP_DIR = Path(self.fileLocationManager.prep, ch_name)
+                copy_with_rclone(INPUT_DIR, FINAL_PREP_DIR)
             else: #e.g. 'ng_preview':
                 print('GENERATING NEUROGLANCER PREVIEW: CALLED FROM REGULAR PIPELINE')
                 progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', 'NG_PREVIEW' + '_' + self.set_id)
@@ -57,7 +61,7 @@ class Cell_UI():
                         INPUT_DIR = self.fileLocationManager.get_thumbnail_aligned(self.channel)
                     else:
                         INPUT_DIR = self.fileLocationManager.get_full_aligned(self.channel)
-            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name)
+            temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name + '_ng')
             temp_output_path_pyramid = Path(self.SCRATCH, 'pipeline_tmp', self.animal, ch_name + '_py')
             temp_output_path.mkdir(parents=True, exist_ok=True)
             temp_output_path_pyramid.mkdir(parents=True, exist_ok=True)
@@ -68,18 +72,15 @@ class Cell_UI():
             except Exception as e:
                 print(f"Non-critical Error deleting progress directory: {e}")
             progress_dir.mkdir(parents=True, exist_ok=True)    
-            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             
             if self.debug:
-                current_function_name = inspect.currentframe().f_code.co_name
-                print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
                 workers = 1    
             else:
                 workers = self.get_nworkers()
 
             print('*'*50)
             print("\tINPUT_DIR:".ljust(20), f"{INPUT_DIR}".ljust(20))
-            print("\tTEMP Output:".ljust(20), f"{temp_output_path}".ljust(20))
+            print("\tTEMP ng Output:".ljust(20), f"{temp_output_path}".ljust(20))
             print("\tTEMP DOWNSAMPLED PRECOMPUTED Output:".ljust(20), f"{temp_output_path_pyramid}".ljust(20))
             print("\tTEMP Progress:".ljust(20), f"{progress_dir}".ljust(20))
             print("\tFINAL Output:".ljust(20), f"{OUTPUT_DIR}".ljust(20))
@@ -94,6 +95,7 @@ class Cell_UI():
                 # per_worker_memory = self.available_memory // workers
                 # memory_target = per_worker_memory if workers == 1 else (per_worker_memory // workers)
 
+                OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
                 print(f'\t{workers=}')
                 # print(f'\tUsing memory target per worker: {memory_target:.2f} GB')
 

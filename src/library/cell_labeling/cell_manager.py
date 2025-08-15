@@ -1,4 +1,4 @@
-import os, sys, glob, json, math
+import os, sys, json, math
 import inspect
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
@@ -17,7 +17,7 @@ from library.utilities.cell_utilities import (
     subtract_blurred_image
 )
 from library.image_manipulation.histogram_maker import make_histogram_full_RAM
-
+from library.utilities.utilities_process import SCALING_FACTOR
 
 class CellSegmenter():
     '''Handles cell segmentation methods'''
@@ -107,35 +107,81 @@ class CellSegmenter():
                         "prune_combine_method": self.prune_combine_method
                     }
         
-        #SAVE PARAMETERS IN cell_candidates folder
+        #SAVE PARAMETERS IN cell_candidates folder (scratch then moved with cell candidates)
         output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'cell_candidates_' + str(self.set_id))
         output_path.mkdir(parents=True, exist_ok=True)
         param_file = Path(output_path, 'parameters.json')
-        
-        params = {
-                "animal": self.animal,
-                "section_cnt": len(list(self.process_sections)),
-                "uuid": self.set_id,
-                "segmentation_threshold": self.segmentation_threshold,
-                "cell_radius": self.cell_radius,
-                "segment_size_min": self.segment_size_min,
-                "segment_size_max": self.segment_size_max,
-                "sampling": self.sampling,
-                "gaussian_blur_standard_deviation_sigmaX": self.gaussian_blur_standard_deviation_sigmaX,
-                "gaussian_blur_kernel_size_pixels": list(self.gaussian_blur_kernel_size_pixels),
-                'pruning': {
-                    "run_pruning": self.run_pruning,
-                    "prune_x_range": (self.prune_x_range[0], self.prune_x_range[-1]) if len(self.prune_x_range) >= 2 else None,
-                    "prune_y_range": (self.prune_y_range[0], self.prune_y_range[-1]) if len(self.prune_y_range) >= 2 else None,
-                    "prune_area_min": self.pruning_info['prune_area_min'],
-                    "prune_area_max": self.pruning_info['prune_area_max'],
-                    "prune_annotation_ids": list(self.prune_annotation_ids) if self.prune_annotation_ids is not None else None,
-                    "prune_combine_method": self.pruning_info['prune_combine_method']
+
+        params = {}
+        if not param_file.exists():
+            params = {
+                    "animal": self.animal,
+                    "section_cnt": len(list(self.process_sections)),
+                    "uuid": self.set_id,
+                    "segmentation_threshold": self.segmentation_threshold,
+                    "cell_radius": self.cell_radius,
+                    "segment_size_min": self.segment_size_min,
+                    "segment_size_max": self.segment_size_max,
+                    "sampling": self.sampling,
+                    "gaussian_blur_standard_deviation_sigmaX": self.gaussian_blur_standard_deviation_sigmaX,
+                    "gaussian_blur_kernel_size_pixels": list(self.gaussian_blur_kernel_size_pixels),
+                    'pruning': {
+                        "run_pruning": self.run_pruning,
+                        "prune_x_range": (self.prune_x_range[0], self.prune_x_range[-1]) if len(self.prune_x_range) >= 2 else None,
+                        "prune_y_range": (self.prune_y_range[0], self.prune_y_range[-1]) if len(self.prune_y_range) >= 2 else None,
+                        "prune_area_min": self.pruning_info['prune_area_min'],
+                        "prune_area_max": self.pruning_info['prune_area_max'],
+                        "prune_annotation_ids": list(self.prune_annotation_ids) if self.prune_annotation_ids is not None else None,
+                        "prune_combine_method": self.pruning_info['prune_combine_method']
+                    }
                 }
-            }
-        
-        with open(param_file, 'w') as f:
-            json.dump(params, f, indent=2)
+            
+            with open(param_file, 'w') as f:
+                json.dump(params, f, indent=2)
+        else:
+            if self.debug:
+                print(f'PREV. UUID DETECTED ({self.set_id}); LOADING PARAMETERS FROM {param_file}')
+            with open(param_file, 'r') as f:
+                params = json.load(f)
+                
+        super_annotation_dict = {}
+        if self.prune_annotation_ids: #single db query for volume (send through file_keys)
+            xy_resolution = self.sqlController.scan_run.resolution
+            z_resolution = self.sqlController.scan_run.zresolution
+            z_length = len(os.listdir(self.fileLocationManager.section_web)) #SHOULD ALWAYS EXIST FOR ALL BRAIN STACKS
+            print(f'DEBUG: {xy_resolution=}, {z_resolution=}, {z_length=}')
+
+            # Normalize to list if single ID provided
+            all_stats = []
+            annotation_ids = [self.prune_annotation_ids] if isinstance(self.prune_annotation_ids, int) else self.prune_annotation_ids
+            for annotation_id in annotation_ids:
+                polygons = self.sqlController.get_annotation_volume(session_id=annotation_id, scaling_factor=1, debug=self.debug)
+                transformed_polygons = {
+                    int(z / z_resolution - 0.5): [  # Transform z key
+                        [x / xy_resolution, y / xy_resolution]  # Transform x,y coordinates
+                        for x, y in polygon
+                    ]
+                    for z, polygon in polygons.items()
+                }
+                num_sections = len(transformed_polygons)
+                total_points = sum(len(points) for points in transformed_polygons.values())
+                super_annotation_dict[annotation_id] = {
+                    'super_annotation_dict': transformed_polygons,
+                    'num_sections': num_sections,
+                    'total_points': total_points
+                }
+                all_stats.append((annotation_id, num_sections, total_points))
+            
+            if self.debug:
+                print('Query DB for annotation_ids...')
+                print(super_annotation_dict.keys())
+                print("\nAnnotation Statistics:")
+                print(f"{'ID':<10} | {'Sections':<8} | {'Total Points':<12}")
+                print("-" * 35)
+                for annotation_id, num_sections, total_points in all_stats:
+                    print(f"{annotation_id:<10} | {num_sections:<8} | {total_points:<12}")
+                    print("-" * 35)
+                print(f"Total annotations retrieved: {len(annotation_ids)}")            
 
         if self.debug:
             print()
@@ -177,6 +223,7 @@ class CellSegmenter():
                     self.task,
                     self.set_id,
                     self.pruning_info,
+                    super_annotation_dict,
                     self.debug,
                 ]
             )
@@ -208,7 +255,7 @@ class CellSegmenter():
         N.B.: If full-resolution, single image is used, generate single histogram while image still in RAM
         '''
         (
-            animal,
+            _,
             section,
             str_section_number,
             segmentation_threshold,
@@ -226,8 +273,8 @@ class CellSegmenter():
             task,
             set_id,
             pruning_info,
-            debug,
-            *_,
+            super_annotation_dict,
+            debug
         ) = file_keys
 
         if not os.path.exists(label_of_interest):
@@ -238,11 +285,11 @@ class CellSegmenter():
             sys.exit(1)
 
         #ALL FINAL PATHS WILL INCORPORATE UNIQUE SET ID (uuid)
-        output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_candidates_' + str(set_id))
+        output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'cell_candidates_' + str(set_id))
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'extracted_cells_{str_section_number}.gz')
         
-        output_file_diff_path = Path(SCRATCH, 'pipeline_tmp', animal, 'DIFF_'+ str(set_id))
+        output_file_diff_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'DIFF_'+ str(set_id))
         output_file_diff_path.mkdir(parents=True, exist_ok=True)
         output_file_diff3 = Path(output_file_diff_path, f'{str_section_number}.tif')
         
@@ -253,7 +300,7 @@ class CellSegmenter():
             return cell_candidates
         else:
             cell_candidates = []
-
+        
         # TODO: CLEAN UP - maybe extend dask to more dimensions?
         if input_format == 'tif':#section_number is already string for legacy processing 'tif' (zfill)
             if debug:
@@ -368,7 +415,7 @@ class CellSegmenter():
                     print('CALCULATING DIFFERENCE FOR LABEL OF INTEREST (A.K.A. VIRUS, CTB, CH3)')
                     print(f'ROI: {x_start=}, {x_end=}, {y_start=}, {y_end=}')
 
-                difference_label_of_interest = subtract_blurred_image(image_roi_label_of_interest, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
+                difference_label_of_interest = subtract_blurred_image(image_roi_label_of_interest, gaussian_blur_standard_deviation_sigmaX, gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug) #calculate img difference for virus channel (e.g. fluorescence)
                 full_difference_label_of_interest[x_start:x_end, y_start:y_end] = difference_label_of_interest
 
                 connected_segments = find_connected_segments(difference_label_of_interest, segmentation_threshold)
@@ -379,10 +426,10 @@ class CellSegmenter():
                     if task != 'segment':
                         if debug:
                             print('CALCULATING DIFFERENCE FOR COUNTERSTAIN (A.K.A. DYE, NTB, CH1)')
-                        difference_counterstain = subtract_blurred_image(image_roi_counterstain, self.gaussian_blur_standard_deviation_sigmaX, self.gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
-
+                        difference_counterstain = subtract_blurred_image(image_roi_counterstain, gaussian_blur_standard_deviation_sigmaX, gaussian_blur_kernel_size_pixels, self.segmentation_make_smaller, debug)  # Calculate img difference for dye channel (e.g. neurotrace)
+        
                     cell_candidate = filter_cell_candidates(
-                        animal,
+                        self.animal,
                         section,
                         connected_segments,
                         segment_size_min,
@@ -395,9 +442,10 @@ class CellSegmenter():
                         difference_label_of_interest,
                         task,
                         pruning_info,
+                        super_annotation_dict,
                         debug
                     )
-
+                    
                     # For overlapping regions, we need to filter duplicates
                     # Only keep cells whose centers are in the non-overlapping part of the tile
                     if row > 0 or col > 0:  # Not the first row or column
@@ -456,9 +504,9 @@ def detect_cells_all_sections(file_keys: tuple):
 
     animal = file_keys[0]
     debug = file_keys[-1]  # debug is last item
-
+    
     cell_segmenter = CellMaker(animal) #Instantiate class in staticmethod
-
+    
     if debug: #Last element of tuple is debug
         print(f"DEBUG: auto_cell_labels - STEP 1 & 2 (Identify cell candidates a.k.a. cell segmentation)")
     

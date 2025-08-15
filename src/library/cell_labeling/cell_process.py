@@ -80,6 +80,7 @@ class CellMaker(
                  process_range: list[int] | None = None, 
                  prune_annotation_ids: list[int] | int | None = None, 
                  prune_combine_method: str = "union",
+                 arg_uuid: str = None,
                  debug: bool = False):
         """Set up the class with the name of the file and the path to it's location."""
         self.animal = animal
@@ -104,8 +105,11 @@ class CellMaker(
         self.annotation_id = annotation_id
         self.prune_annotation_ids = prune_annotation_ids
         self.process_sections = process_range
-        self.set_id = uuid.uuid4().hex #for tracking unique: cell_labels, histogram, image DIFF layer, annotation set
-        self.cell_label_path = os.path.join(self.fileLocationManager.prep, 'cell_labels' + '_' + self.set_id)
+        if arg_uuid:
+            self.set_id = arg_uuid #for debug of prev. uuid
+        else:
+            self.set_id = uuid.uuid4().hex #for tracking unique: cell_labels, histogram, image DIFF layer, annotation set
+        self.cell_label_path = Path(self.fileLocationManager.prep, 'cell_labels' + '_' + str(self.set_id))
 
         #SEGMENTATION PARAMETERS
         self.segment_size_min = segment_size_min
@@ -410,11 +414,11 @@ class CellMaker(
 
         '''
 
-        animal, section, str_section_number, _, _, _, _, _, _,  SCRATCH, _, avg_cell_img, _, _, _, _, _, task, set_id, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, SCRATCH, _, avg_cell_img, _, _, _, _, _, task, set_id, _, debug = file_keys
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
 
-        output_path = Path(SCRATCH, 'pipeline_tmp', animal, 'cell_features_' + str(set_id))
+        output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'cell_features_' + str(set_id))
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'cell_features_{str_section_number}.csv')
 
@@ -439,7 +443,7 @@ class CellMaker(
 
             # Build features dictionary
             spreadsheet_row = {
-                "animal": animal,
+                "animal": self.animal,
                 "section": section,
                 "index": idx,
                 "row": cell["absolute_coordinates_YX"][0],
@@ -491,7 +495,7 @@ class CellMaker(
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, task, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, task, set_id, _, debug = file_keys
 
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
@@ -1576,7 +1580,7 @@ class CellMaker(
         self.start_labels()
         print(f'Finished cell segmentation - extracting predictions')
         self.create_annotations(self.task, meta_data_info)
-        # self.ng_prep()
+        self.ng_prep()
         # out_dir = Path(scratch_tmp, 'pipeline_tmp', self.animal)
         # if os.path.exists(out_dir):
         #     print(f'Removing existing directory {out_dir}')
