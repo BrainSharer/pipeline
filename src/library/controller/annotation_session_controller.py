@@ -224,7 +224,7 @@ class AnnotationSessionController:
         x1,y1,z1 = np.dot(R, p - center[animal]) + t + center[animal]
         return int(round(x1)), int(round(y1)), int(round(z1))
 
-    def get_annotation_volume(self, session_id: int, scaling_factor: int = 1, debug: bool = False) -> dict:
+    def get_annotation_volume(self, session_id: int, scaling_factor=1, transform=None) -> dict:
 
         """
         This returns data in micrometers divided by the scaling_factor provided.
@@ -257,20 +257,35 @@ class AnnotationSessionController:
         
         animal = annotation_session.FK_prep_id
 
+        if scaling_factor is None:
+            change_xy = 1
+            change_z = 1
+
+        if isinstance(scaling_factor, (list, np.ndarray)):
+            change_xy = scaling_factor[0]
+            change_z = scaling_factor[2]
+
+        if scaling_factor is not None and isinstance(scaling_factor, (int, float)):
+            change_xy = scaling_factor
+            change_z = scaling_factor
+
         for row in data:
             if 'childJsons' not in row:
                 return polygons
             for child in row['childJsons']:
                 x,y,z = child['pointA']
-                x = int(np.round(x * M_UM_SCALE / scaling_factor))
-                y = int(np.round(y * M_UM_SCALE / scaling_factor))
-                section = int(np.round(z * M_UM_SCALE / scaling_factor))
+                x = x * M_UM_SCALE / change_xy
+                y = y * M_UM_SCALE / change_xy
+                z = z * M_UM_SCALE / change_z
+                if transform is not None:
+                    x, y, z = transform.TransformPoint((x, y, z))
+                section = int(np.round(z))
                 #x, y, section = self.convert_euler(animal, x, y, section)
                 polygons[section].append((x,y))
 
         return polygons
 
-    def get_annotation_array(self, session_id, scale=1):
+    def get_annotation_xyz_array(self, session_id, scale=1):
 
         """
         This returns data in meters * scaling_factor in an array of nx3.
@@ -299,8 +314,7 @@ class AnnotationSessionController:
                 x = x * M_UM_SCALE / scale
                 y = y * M_UM_SCALE / scale
                 z = z * M_UM_SCALE / scale
-                array_to_add = np.array([x,y,z])
-                #array_to_add = array_to_add *  scaling_factor
+                array_to_add = np.array([x, y, z])
                 arrays.append(array_to_add)
 
         data = np.stack(arrays)

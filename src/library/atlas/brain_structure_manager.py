@@ -11,16 +11,17 @@ import json
 import pandas as pd
 from scipy.ndimage import center_of_mass, zoom
 from skimage.filters import gaussian
-from scipy.spatial import Delaunay
+
 from cloudvolume import CloudVolume
 import sqlalchemy
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
-
+import SimpleITK as sitk
 
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from tqdm import tqdm
+
 
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.pipeline_process import Pipeline
@@ -34,6 +35,9 @@ from library.atlas.atlas_utilities import (
     get_min_max_mean,
     list_coms,
     ORIGINAL_ATLAS,
+    load_transformation,
+    order_points_concave_hull,
+    interpolate_points
 )
 from library.controller.sql_controller import SqlController
 from library.database_model.annotation_points import AnnotationLabel, AnnotationSession
@@ -84,7 +88,7 @@ class BrainStructureManager:
 
         self.allen_x_length = 1820
         self.allen_y_length = 1000
-        self.allen_z_length = 1140
+        self.allen_z_length = 1140 + 0
         #unpadded_allen_x_length = 1320
         #unpadded_allen_y_length = 800
         #unpadded_allen_z_length = 1140
@@ -166,26 +170,34 @@ class BrainStructureManager:
         label_ids = self.get_label_ids(structure)
         annotator_id = 1 # hard coded to Edward
 
-        annotation_session = (
-            self.sqlController.session.query(AnnotationSession)
-            .filter(AnnotationSession.active == True)
-            .filter(AnnotationSession.FK_user_id == annotator_id)
-            .filter(AnnotationSession.FK_prep_id == animal)
-            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-            .one_or_none()
-        )
+        try:
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.FK_prep_id == animal)
+                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                .one_or_none()
+            )
+        except Exception as e:
+            print(f"Error occurred while fetching annotation session for {animal}: {structure}")
+            print(e)
+            return
 
         if annotation_session is None:
             print(f'Did not find any data for {animal} {structure}')
             return
+        
+        # Inverse = True as we are transforming points.
+        transform = load_transformation(animal, self.um, self.um, inverse=True)
 
-        polygon_data = self.sqlController.get_annotation_array(annotation_session.id, self.um)
-        if polygon_data.size == 0:
+        polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
+        if len(polygons) == 0:
             print(f'Found data for {animal} {structure}, but the data is empty')
             return
-        
 
-        origin, volume = self.create_volume_for_one_structure(polygon_data, self.pad_z)
+
+        origin, volume = self.create_volume_for_one_structure_from_polygons(polygons, self.pad_z, transform)
         # we want to keep the origin in micrometers, so we multiply by the allen um
         #####origin = origin * self.um
 
@@ -201,7 +213,7 @@ class BrainStructureManager:
         com = (np.array( center_of_mass(volume) ))  + origin
         if debug:
             if structure == 'cerebellum':
-                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon shape {polygon_data.shape}')
+                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon len {len(polygons)}')
         else:
             brainMerger.coms_to_merge[structure].append(com)
             brainMerger.origins_to_merge[structure].append(origin)
@@ -396,12 +408,12 @@ class BrainStructureManager:
             # com0 is in micrometers, so convert to allen space
             com0 = com0 / self.um
 
-            volume = np.load(os.path.join(self.volume_path, volume_file))
+            volume0 = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
                 volume = np.rot90(volume, axes=(0, 1))
                 volume = np.flip(volume, axis=0)
 
-            volume = adjust_volume(volume, allen_id)
+            volume = adjust_volume(volume0, allen_id)
             #x_start, y_start, z_start = self.get_start_positions(volume, com0)
 
             if self.affine:
@@ -414,8 +426,15 @@ class BrainStructureManager:
 
             if structure == 'cerebellum':
                 #origin = [1048, 157, 191]
-                origin =(1006.4404940906367, 66.58640497850439, 201.97515475575017)
+                #origin =(1006.4404940906367, 66.58640497850439, 201.97515475575017)
+                volume = volume0.astype(np.uint32)
+                upper = 100
+                volume[(volume > 0)] = allen_id
+                #volume[(volume != allen_id)] = 0
+                #volume = volume.astype(np.uint32)
+
                 com = com0
+                origin = origin0
                 print(f"Using cerebellum origin {origin} com {com}")
 
             #x_start, y_start, z_start = self.get_start_positions(volume, com)
@@ -431,7 +450,8 @@ class BrainStructureManager:
 
             if self.debug:
                 print(f"{structure} com={np.round(com)}", end = " ")
-                print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}")
+                nids, ncounts = np.unique(volume, return_counts=True)
+                print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end} ids={nids}, counts={ncounts} allen IDs={allen_id} dtype={volume.dtype}")
                 if x_end > atlas_volume.shape[0]:
                     print(f"\tWarning: End x {x_end} is larger than atlas volume shape {atlas_volume.shape[0]}")
                 if y_end > atlas_volume.shape[1]:
@@ -1021,7 +1041,7 @@ class BrainStructureManager:
         return c
 
     @staticmethod
-    def create_volume_for_one_structureXXX(polygons, pad_z):
+    def create_volume_for_one_structure_from_polygons(polygons, pad_z=0, transform=None):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
@@ -1033,66 +1053,61 @@ class BrainStructureManager:
         min_y = min_vals[1]
         max_x = max_vals[0]
         max_y = max_vals[1]
+        min_z = min(polygons.keys())
+        max_z = max(polygons.keys())        
         xlength = max_x - min_x
         ylength = max_y - min_y
         slice_size = (int(round(ylength)), int(round(xlength)))
         print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=}', end=" ")
         volume = []
         # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
-        sections = []
-        for section, points in sorted(polygons.items()):
-            vertices = np.array(points) - np.array((min_x, min_y))
+        slices = []
+        points_dict = {}
+        for i, idx in enumerate(range(min_z, max_z)):
             volume_slice = np.zeros(slice_size, dtype=np.uint8)
-            points = (vertices).astype(np.int32)
+            if idx in polygons:
+                points = polygons[idx]
+                points = np.array(points) - np.array((min_x, min_y))
+                points = order_points_concave_hull(points, alpha=0.5)
+                points = interpolate_points(points, 250)
+                points = np.array(points).astype(np.int32)
+                points_dict[i] = points
+            else:
+                try:
+                    points = points_dict[i]
+                except KeyError:
+                    pass
+        
             cv2.fillPoly(volume_slice, pts=[points], color=255)
-            volume.append(volume_slice)
-            sections.append(section)
-
-        volume = np.array(volume).astype(np.uint8)  # Keep this at uint8!
-         # pad the volume in the z axis
-        #volume = np.pad(volume, ((pad_z, pad_z), (0, 0), (0, 0)))  
-        min_z = min(sections)
-        print(f"mean z = {np.mean(sections)}")
-        origin = np.array([min_x, min_y, min_z]).astype(np.float64)
+            slices.append(volume_slice)
+        volume = np.stack(slices, axis=0).astype(np.uint8)  # Keep this at uint8!
+        ##### Transform volume with sitk, no translation
+        matrix = transform.GetParameters()[0:9]
+        translation = transform.GetParameters()[9:]
+        del transform
+        affine_transform = sitk.AffineTransform(3) 
+        affine_transform.SetMatrix(matrix)
+        affine_transform.SetTranslation((0,0,0))   
+        """
+        resampler = sitk.ResampleImageFilter()
+        # Set the transform
+        resampler.SetTransform(affine_transform)
+        # Set the reference image (determines output size, spacing, origin, and direction)
+        # Often, the input image itself is used as the reference for the output grid.
+        image = sitk.GetImageFromArray(volume.astype(np.float32))
+        resampler.SetReferenceImage(image)
+        # Set the interpolator (e.g., linear, nearest neighbor, B-spline)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        # Set the default pixel value for areas outside the original image bounds
+        resampler.SetDefaultPixelValue(0.0)
+        # Execute the resampling
+        resampled = resampler.Execute(image)
+        volume = sitk.GetArrayFromImage(resampled)
+        """
+        
+        origin = np.array([min_x, min_y, min_z]).astype(np.float64) + translation
         return origin, volume
     
-    @staticmethod
-    def create_volume_for_one_structure(xyz_array: np.ndarray, pad_z: int = 0) -> tuple:
-        """Creates a volume from a dictionary of polygons
-        The data is a numpy array of coordinates in the form of [x, y, z] with shape (n, 3).
-        """
-
-        xyz_array = np.array(xyz_array, dtype=np.float32) 
-
-        _min = np.min(xyz_array, axis=0)
-        _max = np.max(xyz_array, axis=0)
-        xlength = int(round(_max[0] - _min[0]))
-        ylength = int(round(_max[1] - _min[1]))
-        zlength = int(round(_max[2] - _min[2]))
-        xyz_array = xyz_array - _min
-        shape = (zlength, ylength, xlength)
-        print(f'Creating volume with shape={shape} with min={_min} max={_max}')
-        volume = np.zeros(shape, dtype=np.uint8)  # Initialize the volume with zeros
-        hull = Delaunay(xyz_array)
-
-
-        # Create a grid of all voxel indices
-        zz, yy, xx = np.meshgrid(
-            np.arange(shape[0]), np.arange(shape[1]), np.arange(shape[2]),
-            indexing='ij'
-        )
-        grid_points = np.vstack((xx.ravel(), yy.ravel(), zz.ravel())).T
-
-        # Find which voxels lie inside the convex hull
-        mask = hull.find_simplex(grid_points) >= 0
-
-        # Fill in those voxels with 255
-        volume_flat = volume.ravel()
-        volume_flat[mask] = 255
-        volume = volume_flat.reshape(shape)
-
-        origin = np.array([_min[0], _min[1], _min[2]]).astype(np.float64)
-        return origin, volume
 
     def fetch_create_polygons(self):    
         jsonpath = os.path.join(

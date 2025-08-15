@@ -102,8 +102,8 @@ class AtlasManager():
         
         
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
-            #if structure not in ['SC']:
-            #    continue
+            if structure not in ['cerebellum']:
+                continue
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
@@ -142,7 +142,7 @@ if __name__ == '__main__':
     parser.add_argument('--animal', required=False, default='AtlasV8', type=str)
     parser.add_argument('--debug', required=False, default='false', type=str)
     parser.add_argument('--affine', required=False, default='false', type=str)
-    parser.add_argument('--um', required=False, default=10, type=int)
+    parser.add_argument('--um', required=False, default=10.0, type=float)
     parser.add_argument('--scaling_factor', required=False, default=SCALING_FACTOR, type=float)
     
     

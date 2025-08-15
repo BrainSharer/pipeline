@@ -66,7 +66,6 @@ class VolumeRegistration:
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
         self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-        self.affine_matrix_path = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tfm' )
         self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.moving_path, self.output_dir)
@@ -78,8 +77,8 @@ class VolumeRegistration:
         self.fiducial_moving_file_path = os.path.join(self.registration_path, self.moving, f'fiducials_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.pts')
 
         self.transformation = 'Affine'
+        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um.tfm')
         self.inverse_transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_inverse.tfm')
-        self.transform_filepath = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.transformation}.mat')
 
 
         if self.fixed is not None:
@@ -674,8 +673,57 @@ class VolumeRegistration:
         tq.insert(tasks)
         tq.execute()
 
-
     def register_volume(self):
+        # Load fixed and moving images
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_volume_path}")
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
+        print(f"Read moving image: {self.moving_volume_path}")
+
+        # Initial alignment of the centers of the two volumes
+        initial_transform = sitk.CenteredTransformInitializer(
+            fixed_image, 
+            moving_image, 
+            sitk.AffineTransform(3), 
+            sitk.CenteredTransformInitializerFilter.GEOMETRY
+        )
+
+        # Set up the registration method
+        R = sitk.ImageRegistrationMethod()
+        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+
+        R.SetMetricSamplingStrategy(R.RANDOM)
+        R.SetMetricSamplingPercentage(0.01)
+        R.SetInterpolator(sitk.sitkLinear)
+        R.SetOptimizerAsGradientDescent(
+            learningRate=1, 
+            numberOfIterations=300, 
+            convergenceMinimumValue=1e-6, 
+            convergenceWindowSize=10)
+
+        R.SetOptimizerScalesFromPhysicalShift()
+        R.SetInitialTransform(initial_transform, inPlace=False)
+        R.SetShrinkFactorsPerLevel([4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        # Perform registration
+        transform = R.Execute(fixed_image, moving_image)
+        print("Final metric value: ", R.GetMetricValue())
+        print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
+        # Resample moving image onto fixed image grid
+        resampled = sitk.Resample(moving_image, fixed_image, transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+        sitk.WriteImage(resampled, self.registered_volume)
+        print(f"Resampled moving image written to {self.registered_volume}")
+
+        # Save the transform
+        sitk.WriteTransform(transform, self.transform_filepath)
+        print(f"Registration written to {self.transform_filepath}")
+        return
+
+
+
+    def register_volume_elastix(self):
         """
         Registers a moving volume to a fixed volume using elastix and saves the resulting registered volume.
         This method performs the following steps:
@@ -1516,6 +1564,8 @@ class VolumeRegistration:
             status.append(f'\tRegistered moving points at: {self.registered_point_file}')
 
 
+        if os.path.exists(self.transform_filepath):
+            status.append(f'\tRegistered transform at: {self.transform_filepath}')
 
 
         if len(status) > 0:

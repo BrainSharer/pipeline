@@ -58,6 +58,7 @@ def register_3d_images(fixed_path, moving_path, xy_um, z_um):
     # Save the transform
     sitk.WriteTransform(transform, output_file_path)
     print(f"Registration written to {output_file_path}")
+    return
     # do inverse
     inverse_transform = transform.GetInverse()
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
@@ -83,17 +84,11 @@ if __name__ == "__main__":
     # Paths to fixed and moving 3D images
     xy_um = 10.0
     z_um = 10.0
+    moving_image = 'MD585'
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
     fixed_image_path = os.path.join(reg_path, 'Allen', f'Allen_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
     moving_image_path = os.path.join(reg_path, 'ALLEN771602', f'ALLEN771602_{z_um}x{xy_um}x{xy_um}um_sagittal.tif')
 
     # Register the images
-    transform, inverse_transform, fixed_image_size, moving_image_size = register_3d_images(fixed_image_path, moving_image_path, xy_um, z_um)
-    fixed_midpoint = np.array(fixed_image_size) / 2
-    moving_midpoint = np.array(moving_image_size) / 2  #
-    print(f'Fixed midpoint: {fixed_midpoint}, Moving midpoint: {moving_midpoint}')
-    inverse_transformed_point = inverse_transform.TransformPoint(moving_midpoint.tolist())
-    print("Inverse Transformed Points using inverse:\n", inverse_transformed_point)
-    print(f'Difference between fixed and transformed moving midpoints: {fixed_midpoint},  {np.array(inverse_transformed_point)}')
-    print(f'Difference between fixed and transformed moving midpoints: {fixed_midpoint - np.array(inverse_transformed_point)}')
-
+    register_3d_images(fixed_image_path, moving_image_path, xy_um, z_um)
+    
