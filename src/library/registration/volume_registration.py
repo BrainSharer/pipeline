@@ -1013,7 +1013,7 @@ class VolumeRegistration:
         volumes = {}
         moving_brains = ['MD585', 'MD594', 'MD589']
         for brain in tqdm(moving_brains, 'Adding registered volume'):
-            brainpath = os.path.join(self.registration_path, brain, f'{brain}_AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
+            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}.tif')
             if not os.path.exists(brainpath):
                 print(f'{brainpath} does not exist, exiting.')
                 return
@@ -1027,7 +1027,7 @@ class VolumeRegistration:
         avg_array = np.mean(registered_images, axis=0)
         avg_array = gaussian(avg_array, sigma=1)
         savepath = os.path.join(self.registration_path, 'AtlasV8')
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
+        save_atlas_path = os.path.join(savepath, f'MDXXX_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
         print(f'Saving img to {save_atlas_path}')
         write_image(save_atlas_path, avg_array.astype(np.uint8))
 

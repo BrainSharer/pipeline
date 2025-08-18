@@ -248,7 +248,7 @@ def create_subvolume_from_boundary_vertices(shape_zyx,
 
 def load_transformation(animal: str, xy_um: float, z_um: float, inverse: bool = False) -> sitk.Transform:
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
-    transform = f'{animal}_{z_um}x{xy_um}x{xy_um}um_sagittal_inverse.tfm' if inverse else f'{animal}_{z_um}x{xy_um}x{xy_um}um_sagittal.tfm'
+    transform = f'{animal}_Allen_{z_um}x{xy_um}x{xy_um}um_inverse.tfm' if inverse else f'{animal}_Allen_{z_um}x{xy_um}x{xy_um}um.tfm'
     transform_path = os.path.join(reg_path, animal, transform)
     if not os.path.exists(transform_path):
         print(f"Transformation file not found: {transform_path}")

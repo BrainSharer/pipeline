@@ -90,20 +90,17 @@ class AtlasManager():
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
 
         # Note, for DK78, The C1 source is C1.v1
-        #structures = ['TG_L', 'TG_R']
+        structures = ['TG_L', 'TG_R']
         
-        other_brains = ['ALLEN771602']
+        other_brains = ['DK78']
         for animal in other_brains:
             #structure_coms = list_coms(animal)
             #structures = sorted(structure_coms.keys())
-            structures = ['cerebellum']
             for structure in structures:
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
         
         
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
-            if structure not in ['cerebellum']:
-                continue
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)
             self.atlasMerger.volumes[structure]= volume
@@ -171,12 +168,11 @@ if __name__ == '__main__':
                         'save_atlas': pipeline.brainManager.save_atlas_volume,
                         'create_atlas': pipeline.brainManager.create_atlas_volume,
                         'update_coms': pipeline.brainManager.update_atlas_coms,
-                        'update_volumes': pipeline.brainManager.update_volumes,
                         'list_coms': pipeline.brainManager.list_coms_by_atlas,
                         'validate': pipeline.brainManager.validate_volumes,
                         'evaluate': pipeline.brainManager.evaluate,
                         'status': pipeline.brainManager.report_status,
-                        'polygons': pipeline.brainManager.fetch_create_polygons,
+                        'update_volumes': pipeline.brainManager.fetch_create_volumes,
                         'precomputed': pipeline.create_precomputed,
                         'atlas2allen': pipeline.brainManager.atlas2allen,
     }
