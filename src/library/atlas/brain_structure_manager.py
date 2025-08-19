@@ -190,6 +190,9 @@ class BrainStructureManager:
         
         # Inverse = True as we are transforming points.
         transform = load_transformation(animal, self.um, self.um, inverse=False)
+        if transform is None:
+            print(f'Could not load transform for {animal}')
+            return
 
         polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
         if len(polygons) == 0:
@@ -582,6 +585,7 @@ class BrainStructureManager:
         else:
             print(f"Atlas volume or json do not exist, creating new ...")
 
+        ##### Actual atlas volume is in this step
         atlas_volume, ids = self.create_atlas_volume()
 
         print(f"Pre Shape {atlas_volume.shape=} {atlas_volume.dtype=}")
@@ -1070,7 +1074,7 @@ class BrainStructureManager:
         xlength = max_x - min_x
         ylength = max_y - min_y
         slice_size = (int(round(ylength)), int(round(xlength)))
-        print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
+        #print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
         volume = []
         # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
         slices = []
@@ -1092,15 +1096,17 @@ class BrainStructureManager:
         
             cv2.fillPoly(volume_slice, pts=[points], color=255)
             slices.append(volume_slice)
+        if len(slices) == 0:
+            return None, None
         volume = np.stack(slices, axis=0).astype(np.uint8)  # Keep this at uint8!
         ##### Transform volume with sitk, no translation
         origin = np.array([min_x, min_y, min_z]).astype(np.float64)
         if transform is not None:
-            print("Transforming volume with")
-            transform = transform.GetInverse()
+            inverse_transform = transform.GetInverse()
             R = transform.GetParameters()[0:9]
-            print(np.array(R).reshape(3, 3))
+            R_inv = inverse_transform.GetParameters()[0:9]
             translation = transform.GetParameters()[9:]
+            inverse_translation = inverse_transform.GetParameters()[9:]
             del transform
             affine_transform = sitk.AffineTransform(3) 
             affine_transform.SetMatrix(R)
@@ -1120,8 +1126,7 @@ class BrainStructureManager:
             # Execute the resampling
             resampled = resampler.Execute(image)
             volume = sitk.GetArrayFromImage(resampled)
-            origin = origin + translation
-            print('origin', origin)
+            origin = origin + inverse_translation
         
         return origin, volume
     
@@ -1137,10 +1142,7 @@ class BrainStructureManager:
             aligned_dict = json.load(f)
         
         structures = list(aligned_dict.keys())
-        desc = f"Create {self.animal} polygons"
-        for structure in tqdm(structures, desc=desc):
-            if structure != 'SC':
-                continue
+        for structure in structures:
             polygons = aligned_dict[structure]
             self.upsert_annotation(structure, polygons)
 
@@ -1315,15 +1317,19 @@ class BrainStructureManager:
             print(f"animal is None")
             return
         
-        annotation_session = (
-            self.sqlController.session.query(AnnotationSession)
-            .filter(AnnotationSession.active == True)
-            .filter(AnnotationSession.FK_prep_id == animal)
-            .filter(AnnotationSession.FK_user_id == annotator_id)
-            .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-            .filter(AnnotationSession.annotation["type"] == "volume")
-            .one_or_none()
-        )
+        try:
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_prep_id == animal)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                .filter(AnnotationSession.annotation["type"] == "volume")
+                .one_or_none()
+            )
+        except Exception as e:
+            print(f"Found more than one structure for {animal} {structure}. Exiting program, please fix")
+            exit(1)
 
         if annotation_session is None:
             print(f"Inserting {structure} for {animal}")

@@ -572,7 +572,7 @@ class VolumeRegistration:
         """
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
-        z_resolution = self.sqlController.scan_run.zresolution * self.scaling_factor / self.z_um
+        z_resolution = self.sqlController.scan_run.zresolution / self.z_um
 
         change_z = z_resolution
         change_y = xy_resolution

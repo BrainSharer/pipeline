@@ -84,19 +84,26 @@ class AtlasManager():
         """
         start_time = timer()
         polygon_annotator_id = 1
+        """"
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
-
+        """
         # Note, for DK78, The C1 source is C1.v1
-        structures = ['TG_L', 'TG_R']
+        other_structures = ['TG_L', 'TG_R']
         
-        other_brains = ['DK78']
-        for animal in other_brains:
-            #structure_coms = list_coms(animal)
-            #structures = sorted(structure_coms.keys())
+        brains = ['MD585', 'MD589', 'MD594']
+        for animal in brains:
+            structure_coms = list_coms(animal)
+            structures = sorted(structure_coms.keys())
             for structure in structures:
+                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
+
+        other_brains = ['DK78']
+
+        for animal in other_brains:
+            for structure in other_structures:
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
         
         
@@ -186,3 +193,4 @@ if __name__ == '__main__':
 
 
 
+ 
