@@ -563,12 +563,11 @@ class VolumeRegistration:
     def create_volume(self):
         """
         Create a 3D volume
+        e.g., to get to 10um isotropic with a 0.325x0.325x20 typical brain whose images (thumbnail_aligned)
+        are downsampled by 1/32 do:
+        xy change = 0.325 * 32 / 10um
+        z change = 20 * 32 / 10um
 
-        * image stack = 10.4um x 10.4um x 20um
-        * atlas stack = 10um x 10um x 10um
-        * MD589 z is 20um * 447 sections so 894um
-        * Allen z @ 10um  = 1140 sections = 11400um
-        * Allen @50 x,y,z = 264x160x224, 50um=[13200  8000 11400]
         """
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
@@ -580,7 +579,6 @@ class VolumeRegistration:
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
-        exit(1)
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
