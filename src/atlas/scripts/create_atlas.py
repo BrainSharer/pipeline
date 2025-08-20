@@ -30,7 +30,7 @@ from tqdm import tqdm
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.atlas.atlas_utilities import list_coms
+from library.atlas.atlas_utilities import list_coms, load_transformation
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.utilities.utilities_process import SCALING_FACTOR
@@ -83,8 +83,8 @@ class AtlasManager():
         # All foundation COM brain data is under: Beth ID=2"
         """
         start_time = timer()
+        """
         polygon_annotator_id = 1
-        """"
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
@@ -94,19 +94,22 @@ class AtlasManager():
         other_structures = ['TG_L', 'TG_R']
         
         brains = ['MD585', 'MD589', 'MD594']
+        transform = None
         for animal in brains:
+        # Inverse = True as we are transforming points.
             structure_coms = list_coms(animal)
             structures = sorted(structure_coms.keys())
             for structure in structures:
-                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
+                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
         other_brains = ['DK78']
 
         for animal in other_brains:
+            transform = load_transformation(animal, self.um, self.um, inverse=False)
             for structure in other_structures:
-                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, self.debug)
-        
-        
+                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
+
+
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = self.atlasMerger.merge_volumes(structure, volumes)

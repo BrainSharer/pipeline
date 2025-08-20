@@ -165,7 +165,7 @@ class BrainStructureManager:
 
         return label_ids
 
-    def create_brains_origin_volume_from_polygons(self, brainMerger, animal, structure, debug=False):
+    def create_brains_origin_volume_from_polygons(self, brainMerger, animal, structure, transform=None, debug=False):
 
         label_ids = self.get_label_ids(structure)
         annotator_id = 1 # hard coded to Edward
@@ -188,11 +188,6 @@ class BrainStructureManager:
             print(f'Did not find any data for {animal} {structure}')
             return
         
-        # Inverse = True as we are transforming points.
-        transform = load_transformation(animal, self.um, self.um, inverse=False)
-        if transform is None:
-            print(f'Could not load transform for {animal}')
-            return
 
         polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
         if len(polygons) == 0:
