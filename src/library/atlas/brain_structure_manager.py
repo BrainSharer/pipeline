@@ -33,6 +33,7 @@ from library.atlas.atlas_utilities import (
     get_evenly_spaced_vertices,
     get_evenly_spaced_vertices_from_slice,
     get_min_max_mean,
+    get_physical_center,
     list_coms,
     ORIGINAL_ATLAS,
     load_transformation,
@@ -171,54 +172,51 @@ class BrainStructureManager:
         annotator_id = 1 # hard coded to Edward
 
         try:
-            annotation_session = (
+            annotation_sessions = (
                 self.sqlController.session.query(AnnotationSession)
                 .filter(AnnotationSession.active == True)
                 .filter(AnnotationSession.FK_user_id == annotator_id)
                 .filter(AnnotationSession.FK_prep_id == animal)
                 .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-                .one_or_none()
+                .all()
             )
         except Exception as e:
             print(f"Error occurred while fetching annotation session for {animal}: {structure}")
             print(e)
             return
 
-        if annotation_session is None:
+        if annotation_sessions is None:
             print(f'Did not find any data for {animal} {structure}')
             return
-        
 
-        polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
-        if len(polygons) == 0:
-            print(f'Found data for {animal} {structure}, but the data is empty')
-            return
+        for annotation_session in annotation_sessions:
+
+            polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
+            if len(polygons) == 0:
+                print(f'Found data for {animal} {structure}, but the data is empty')
+                continue
 
 
-        origin, volume = self.create_volume_for_one_structure_from_polygons(polygons, self.pad_z, transform)
-        # we want to keep the origin in micrometers, so we multiply by the allen um
-        #####origin = origin * self.um
+            origin, volume = self.create_volume_for_one_structure_from_polygons(polygons, transform)
+            # we want to keep the origin in micrometers, so we multiply by the allen um
+            #####origin = origin * self.um
 
-        if origin is None or volume is None:
-            print(f"{animal} {structure} has no volumes to merge")
-            return None
-        
-        volume = np.swapaxes(volume, 0, 2)
-        #volume = gaussian(volume, 1.0)
-        #volume[volume != 0] = 255 # set all values that are not zero to 255, which is the drawn shape value
-        #volume = volume.astype(np.uint8)
-        #com = (np.array( center_of_mass(volume) ) - self.pad_z) * self.um + (origin * self.um)
-        com = (np.array( center_of_mass(volume) ))  + origin
-        if debug:
-            print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon len {len(polygons)}')
-        else:
-            brainMerger.coms_to_merge[structure].append(com)
-            brainMerger.origins_to_merge[structure].append(origin)
-            brainMerger.volumes_to_merge[structure].append(volume)
+            if origin is None or volume is None:
+                print(f"{animal} {structure} has no volumes to merge")
+                continue
+            
+            volume = np.swapaxes(volume, 0, 2)
+            com = (np.array( center_of_mass(volume) ))  + origin
+            if debug:
+                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon len {len(polygons)}')
+            else:
+                brainMerger.coms_to_merge[structure].append(com)
+                brainMerger.origins_to_merge[structure].append(origin)
+                brainMerger.volumes_to_merge[structure].append(volume)
 
-            structure_path = os.path.join(self.data_path, animal, "structure2allen")
-            os.makedirs(structure_path, exist_ok=True)
-            np.save(os.path.join(structure_path, f"{structure}.npy"), volume)
+                structure_path = os.path.join(self.data_path, animal, "structure2allen")
+                os.makedirs(structure_path, exist_ok=True)
+                np.save(os.path.join(structure_path, f"{structure}.npy"), volume)
 
 
     def save_brain_origins_and_volumes_and_meshes(self):
@@ -1052,7 +1050,89 @@ class BrainStructureManager:
 
 
     @staticmethod
-    def create_volume_for_one_structure_from_polygons(polygons, pad_z=0, transform=None):
+    def create_volume_for_one_structure_from_polygonsXXX(polygons, transform):
+        """Creates a volume from a dictionary of polygons
+        The polygons are in the form of {section: [x,y]}
+        """
+        coords = list(polygons.values())
+        min_vals, max_vals, mean_vals = get_min_max_mean(coords)
+        if min_vals is None:
+            return None, None
+        min_x = min_vals[0]
+        min_y = min_vals[1]
+        min_z = int(min(polygons.keys()))
+        max_z = int(max(polygons.keys()))  
+        xlength = 7266
+        ylength = 1266
+        zlength = 892
+        slice_size = (int(round(ylength)), int(round(xlength)))
+        #print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
+        volume = np.zeros((zlength, *slice_size), dtype=np.uint8)
+        print(f'volume dtype={volume.dtype}, shape={volume.shape}')
+        # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
+        points_dict = {}
+        for i, idx in enumerate(range(min_z, max_z)):
+            if idx in polygons:
+                points = polygons[idx]
+                points = np.array(points)
+                points = order_points_concave_hull(points, alpha=0.5)
+                points = interpolate_points(points, 250)
+                points = np.array(points).astype(np.int32)
+                points_dict[i] = points
+            else:
+                try:
+                    points = points_dict[i]
+                except KeyError:
+                    continue
+        
+            cv2.fillPoly(volume[idx, : , :], pts=[points], color=255)
+
+        ##### Transform volume with sitk, no translation
+        origin = np.array([min_x, min_y, min_z]).astype(np.float64)
+        reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/'
+        fixedpath = os.path.join(reg_path, 'Allen', 'Allen_10um_sagittal_padded.tif')
+        print('Getting volume into sitk array')
+        ref_img = sitk.ReadImage(fixedpath)
+        subvolume = sitk.GetImageFromArray(volume.astype(np.uint8))
+        print('Got volume into sitk array')
+        #R = transform.GetParameters()[0:9]
+        #print('R', R)
+        #scale = np.linalg.norm(np.array(R).reshape(3, 3), axis=0)
+        #translation = transform.GetParameters()[9:]
+        #print('scale', scale, type(scale))
+        #print('translation', translation )
+        #print('origin', origin)
+        #affine_transform = sitk.AffineTransform(3) 
+        #R = [0.8850562764709712, -0.02398604364042069, -0.015471994415640193, 0.0450165174332337, 0.7883304146542273, 0.010483239730345326, 0,0,1]
+        #affine_transform.SetMatrix(R)
+        #affine_transform.SetTranslation(translation)
+        #print('subvolume getsize', subvolume.GetSize())
+        #ref_img = sitk.Image(subvolume.GetSize(), subvolume.GetPixelIDValue())
+        #ref_img.SetSpacing(subvolume.GetSpacing())
+        #ref_img.SetDirection(subvolume.GetDirection())
+        # Compute physical origin for subvolume
+        #idx = (0, 100, 0)
+        #img_origin = subvolume.TransformIndexToPhysicalPoint(idx)
+        #ref_img.SetOrigin(subvolume.GetOrigin()) 
+ 
+
+        resampled_subvolume = sitk.Resample(
+            subvolume,
+            ref_img,                   # target space
+            transform,            # affine transform
+            sitk.sitkLinear,             # interpolator
+            0.0,                         # default pixel value
+            subvolume.GetPixelID()       # preserve pixel type
+        )        
+        outpath = os.path.join(reg_path, 'test_sc.tif')
+        sitk.WriteImage(resampled_subvolume, outpath)
+        exit(1)
+        # get moving volume
+        # get polygon data, get start index for sitk as the min values and the sub_size for sitk as the dimensions
+        return origin, subvolume
+
+    @staticmethod
+    def create_volume_for_one_structure_from_polygons(polygons, transform=None):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
@@ -1070,7 +1150,6 @@ class BrainStructureManager:
         ylength = max_y - min_y
         slice_size = (int(round(ylength)), int(round(xlength)))
         #print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
-        volume = []
         # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
         slices = []
         points_dict = {}
@@ -1095,36 +1174,39 @@ class BrainStructureManager:
             return None, None
         volume = np.stack(slices, axis=0).astype(np.uint8)  # Keep this at uint8!
         ##### Transform volume with sitk, no translation
-        origin = np.array([min_x, min_y, min_z]).astype(np.float64)
+        origin = np.array([min_x, min_y, min_z]).astype(np.float32)
         if transform is not None:
-            inverse_transform = transform.GetInverse()
-            R = transform.GetParameters()[0:9]
-            R_inv = inverse_transform.GetParameters()[0:9]
+            R = np.array(transform.GetParameters()[0:9]).reshape(3, 3)
+            print('R', R)
+            scale = np.linalg.norm(R, axis=0)
+            print('scale', scale)
+            affine_transform = sitk.AffineTransform(3)
+            affine_transform.SetMatrix(R.ravel())
+            #translation = transform.GetInverse().GetParameters()[9:]
             translation = transform.GetParameters()[9:]
-            inverse_translation = inverse_transform.GetParameters()[9:]
-            del transform
-            affine_transform = sitk.AffineTransform(3) 
-            affine_transform.SetMatrix(R)
-            affine_transform.SetTranslation((0,0,0))   
-            
-            resampler = sitk.ResampleImageFilter()
-            # Set the transform
-            resampler.SetTransform(affine_transform)
-            # Set the reference image (determines output size, spacing, origin, and direction)
-            # Often, the input image itself is used as the reference for the output grid.
-            image = sitk.GetImageFromArray(volume.astype(np.float32))
-            resampler.SetReferenceImage(image)
-            # Set the interpolator (e.g., linear, nearest neighbor, B-spline)
-            resampler.SetInterpolator(sitk.sitkLinear)
-            # Set the default pixel value for areas outside the original image bounds
-            resampler.SetDefaultPixelValue(0.0)
-            # Execute the resampling
-            resampled = resampler.Execute(image)
-            volume = sitk.GetArrayFromImage(resampled)
-            origin = origin + inverse_translation
-        
+            volume = sitk.GetImageFromArray(volume.astype(np.float32))
+            #old_size = volume.GetSize()
+            #new_size = (int(old_size[0] * scale[0]), int(old_size[1] * scale[1]), int(old_size[2] * scale[2]))
+            #ref_img = sitk.Image(new_size, sitk.sitkFloat32)
+            center = get_physical_center(volume)
+            offset = translation - R @ center + center
+            print(f'offset: {offset}')
+            affine_transform.SetTranslation(offset)
+            resampled_subvolume = sitk.Resample(
+                volume,
+                volume,                   # target space
+                affine_transform,            # affine transform
+                sitk.sitkLinear,             # interpolator
+                0.0,                         # default pixel value
+                volume.GetPixelID()       # preserve pixel type
+            )
+            volume = sitk.GetArrayFromImage(resampled_subvolume)
+            #origin = origin + translation
+
+        # get moving volume
+        # get polygon data, get start index for sitk as the min values and the sub_size for sitk as the dimensions
         return origin, volume
-    
+
 
     def fetch_create_volumes(self):    
         jsonpath = os.path.join(

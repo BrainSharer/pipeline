@@ -91,23 +91,25 @@ class AtlasManager():
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
         """
         # Note, for DK78, The C1 source is C1.v1
-        other_structures = ['TG_L', 'TG_R']
         
-        brains = ['MD585', 'MD589', 'MD594']
-        transform = None
+        
+        brains = ['MD585']
         for animal in brains:
-        # Inverse = True as we are transforming points.
+            transform = load_transformation(animal, self.um, self.um)
             structure_coms = list_coms(animal)
             structures = sorted(structure_coms.keys())
+            structures = ['SC']
             for structure in structures:
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
-        other_brains = ['DK78']
+        
+        other_brains = ['DK78', 'DK79']
+        other_structures = ['TG_L', 'TG_R']
 
-        for animal in other_brains:
-            transform = load_transformation(animal, self.um, self.um, inverse=False)
-            for structure in other_structures:
-                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
+        #for animal in other_brains:
+        #    transform = load_transformation(animal, self.um, self.um)
+        #    for structure in other_structures:
+        #        self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
 
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):

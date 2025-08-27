@@ -63,6 +63,8 @@ def interpolate_points(points, new_len):
     indexes = np.unique(pu, axis=0, return_index=True)[1]
     points = np.array([points[index] for index in sorted(indexes)])
     addme = points[0].reshape(1, 2)
+    if points.shape[0] < 3:
+        return points
     points = np.concatenate((points, addme), axis=0)
     tck, u = splprep(points.T, u=None, s=3, per=1)
     u_new = np.linspace(u.min(), u.max(), new_len)
@@ -246,16 +248,26 @@ def create_subvolume_from_boundary_vertices(shape_zyx,
 
 
 
-def load_transformation(animal: str, xy_um: float, z_um: float, inverse: bool = False) -> sitk.Transform:
+def load_transformation(animal: str, xy_um: float, z_um: float) -> sitk.Transform:
     reg_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
-    transform = f'{animal}_Allen_{z_um}x{xy_um}x{xy_um}um_inverse.tfm' if inverse else f'{animal}_Allen_{z_um}x{xy_um}x{xy_um}um.tfm'
+    transform = f'{animal}_Allen_{z_um}x{xy_um}x{xy_um}um.tfm'
     transform_path = os.path.join(reg_path, animal, transform)
     if not os.path.exists(transform_path):
         print(f"Transformation file not found: {transform_path}")
         return None
+    else:
+        print(f"Loading transformation file: {transform_path}")
 
     return sitk.ReadTransform(transform_path)
 
+def get_physical_center(image):
+    size = np.array(image.GetSize())
+    spacing = np.array(image.GetSpacing())
+    origin = np.array(image.GetOrigin())
+    direction = np.array(image.GetDirection()).reshape(3, 3)
+    center_index = size / 2.0
+    center_physical = origin + direction @ (spacing * center_index)
+    return center_physical
 
 
 
