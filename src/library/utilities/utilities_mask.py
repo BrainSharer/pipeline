@@ -6,7 +6,6 @@ import sys
 import cv2
 import numpy as np
 from skimage.exposure import rescale_intensity
-from library.database_model.scan_run import FULL_MASK, FULL_MASK_NO_CROP
 from skimage import color
 from scipy.ndimage import binary_fill_holes
 from skimage import exposure
@@ -335,6 +334,7 @@ def clean_and_rotate_image(file_key):
             print("Image size does not match mask size, please fix")
             sys.exit()
 
+    # sRGB file with 3 channels
     if cleaned.dtype == np.uint8 and cleaned.ndim == 3:
         #b, g, r = cv2.split(cleaned) # this is an expensive function, using numpy is faster
         r = cleaned[:,:,0]
@@ -507,32 +507,6 @@ def smooth_image(gray):
     #return cv2.bitwise_and(gray, gray, mask=mask.astype(np.uint8))
     return cv2.bitwise_and(gray, mask.astype(np.uint8), mask=None)
 
-def match_histogramsXXX(source, template):
-    """
-    Adjust the pixel values of a grayscale image such that its histogram matches that of a target image
-
-    Arguments:
-    source -- a grayscale image which histogram will be modified
-    template -- a grayscale image which histogram will be used as a reference
-
-    Returns:
-    a grayscale image with the same size as source
-    """
-    oldshape = source.shape
-    source = source.ravel()
-    template = template.ravel()
-
-    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True, return_counts=True)
-    t_values, t_counts = np.unique(template, return_counts=True)
-
-    s_quantiles = np.cumsum(s_counts).astype(np.float64)
-    s_quantiles /= s_quantiles[-1]
-    t_quantiles = np.cumsum(t_counts).astype(np.float64)
-    t_quantiles /= t_quantiles[-1]
-
-    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
-
-    return interp_t_values[bin_idx].reshape(oldshape)
 
 
 def match_histograms(cleaned, reference):
@@ -598,86 +572,3 @@ def compare_directories(dir1: str, dir2: str) -> None:
         print(f"Error {desc}")
         sys.exit()
 
-##### Deprecated methods
-
-def apply_mask(img, mask, infile):
-    """Apply image mask to image.
-
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :param infile: path to file
-    :return: numpy array of cleaned image
-    """
-
-    try:
-        cleaned = cv2.bitwise_and(img, img, mask=mask)
-    except:
-        print(f"Error in masking {infile} with mask shape {mask.shape} img shape {img.shape}")
-        print("Are the shapes exactly the same?")
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-    return cleaned
-
-
-def crop_imageDEPRECATED(img, mask):
-    """Crop image to remove parts of image not in mask
-
-    :param img: numpy array of image
-    :param mask: numpy array of mask
-    :return: numpy array of cropped image
-    """
-
-    x1, y1, x2, y2 = get_image_box(mask)
-    img = np.ascontiguousarray(img, dtype=img.dtype)
-    cropped = img[y1:y2, x1:x2]
-    return cropped
-
-
-def clean_and_rotate_imageOLD(file_key):
-    """The main function that uses the user edited mask to crop out the tissue from 
-    surrounding debris. It also rotates the image to
-    a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
-    The hippocampus is facing up and the brainstem is facing down)
-
-    :param file_key: is a tuple of the following:
-
-    - infile file path of image to read
-    - outpath file path of image to write
-    - mask binary mask image of the image
-    - rotation number of 90 degree rotations
-    - flip either flip or flop
-    - max_width width of image
-    - max_height height of image
-    - scale used in scaling. Gotten from the histogram
-
-    :return: nothing. we write the image to disk
-    """
-
-    infile, outpath, maskfile, rotation, flip, max_width, max_height, channel, mask_image = file_key
-
-    img = read_image(infile)
-    mask = read_image(maskfile)
-    cleaned = apply_mask(img, mask, infile)
-    cleaned = scaled(cleaned, mask)
-    if channel == 1:
-        #cleaned = normalize_image(cleaned)
-        cleaned = equalized(cleaned, cliplimit=2)
-        #cleaned = normalize16(cleaned)
-
-    # Cropping is not working 100% of the time
-    #if mask_image == FULL_MASK:
-    #    cleaned = crop_image(cleaned, mask)
-    del img
-    del mask
-    if rotation > 0:
-        cleaned = rotate_image(cleaned, infile, rotation)
-    if flip == "flip":
-        cleaned = np.flip(cleaned)
-    if flip == "flop":
-        cleaned = np.flip(cleaned, axis=1)
-    cleaned = place_imageOLD(cleaned, infile, max_width, max_height, bgcolor=0)
-
-    message = f'Error in saving {outpath} with shape {cleaned.shape} img type {cleaned.dtype}'
-    write_image(outpath, cleaned, message=message)
-        
-    return

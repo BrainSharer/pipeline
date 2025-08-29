@@ -5,8 +5,7 @@ from library.database_model.atlas_model import Base, AtlasModel
 NO_MASK = 0
 FULL_MASK = 1
 BOTTOM_MASK = 2
-FULL_MASK_NO_CROP = 3
-IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK', 3: 'FULL_MASK_NO_CROP'}
+IMAGE_MASK = {0: 'NO_MASK', 1: 'FULL_MASK', 2: 'BOTTOM_MASK'}
 
 
 class ScanRun(Base, AtlasModel):  

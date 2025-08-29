@@ -34,7 +34,6 @@ class Normalizer:
                 continue
             
             img = read_image(infile)
-            print(f'{file} dtype={img.dtype} shape={img.shape} ndim={img.ndim}')
             if img.ndim == 3:
                 img = np.dot(img[...,:3], [0.2989, 0.5870, 0.1140])
                 img = img.astype(np.uint8)

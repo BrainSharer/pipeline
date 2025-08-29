@@ -21,7 +21,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.models.detection import MaskRCNN_ResNet50_FPN_Weights
 
 
-from library.database_model.scan_run import BOTTOM_MASK, FULL_MASK_NO_CROP
+from library.database_model.scan_run import BOTTOM_MASK
 from library.utilities.utilities_mask import combine_dims, compare_directories, merge_mask
 from library.utilities.utilities_process import read_image, test_dir, get_image_size, write_image
 
@@ -174,9 +174,6 @@ class MaskManager:
         """Upsample the masks created for the downsampled images to the full resolution
         """
 
-        if self.mask_image == FULL_MASK_NO_CROP:
-            print('Skipping full resolution mask creation as it is not needed')
-            return
 
         self.input = self.fileLocationManager.get_full(self.channel)
         THUMBNAIL = self.fileLocationManager.get_thumbnail_masked(channel=self.channel) # usually channel=1, except for step 6
