@@ -116,20 +116,20 @@ class OmeZarrManager():
             return
         input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=iteration)
         print(f'Creating OME-Zarr from {input}')
+        image_manager = ImageManager(input)
 
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
-            image_manager = ImageManager(input)
             mips = 3
-            originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # 1796x984
+            chunk_y = image_manager.height
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
-            image_manager = ImageManager(input)
             mips = 8
-            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
-            originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # t,c,z,y,x
+            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 8)
+            
+        originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # t,c,z,y,x
 
         files = []
         for file in sorted(os.listdir(input)):
@@ -171,11 +171,12 @@ class OmeZarrManager():
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         nworkers = 1
         threads_per_worker = omezarr.sim_jobs
-
-        
+        threads_per_worker = 1
 
         cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        if self.debug:
+            exit(1)
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
@@ -189,7 +190,6 @@ class OmeZarrManager():
 
             # pass 2
             chunks = omezarr.pyramidMap[0]['chunk']
-            #input_path = omezarr.rechunkme_path
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)

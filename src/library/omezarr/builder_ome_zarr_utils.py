@@ -56,7 +56,7 @@ class BuilderOmeZarrUtils:
 
         multiscales["datasets"] = datasets
 
-        multiscales["type"] = self.downSampType
+        multiscales["type"] = "mean"
 
         # Define down sampling methods for inclusion in zattrs
         description = '2x downsample of in up to 3 dimensions calculated using the local mean'

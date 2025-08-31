@@ -37,15 +37,13 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.files = sorted(files)
         self.resolution = resolution
         self.originalChunkSize = tuple(originalChunkSize)
-        self.cpu_cores = os.cpu_count()
-        self.sim_jobs = self.cpu_cores // 3
+        self.sim_jobs = os.cpu_count() // 3
         self.workers = 1
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore
         self.scratch_space = scratch_space
         self.debug = debug
         self.omero_dict = omero_dict
-        self.downSampType = "mean"
         self.mips = mips
 
         image_manager = ImageManager(self.input)
@@ -67,13 +65,14 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         z_chunk = 128 if len(files) >= 128 else len(self.files)
         y_chunk = closest_divisors_to_target(image_manager.height, 2048)
         x_chunk = closest_divisors_to_target(image_manager.width, 2048)
-        chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
-        self.pyramidMap[-1] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 1, 1)}
+        #chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
+        # pyramidMap at -1 is for the initial transfer of the original chunk size
+        self.pyramidMap[-1] = {'chunk': originalChunkSize, 'resolution': resolution, 'downsample': (1, 1, 1)}
         # setup the rechunks chunks
         z_chunk = 64
         if len(self.files) < 64:
             z_chunk = len(self.files)
-        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, 512, 512), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, y_chunk, x_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
 
@@ -92,6 +91,4 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
 
         for k, v in self.pyramidMap.items():
             print(k,v)
-        if self.debug:
-            exit(1)
         self.build_zattrs()

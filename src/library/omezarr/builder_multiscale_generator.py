@@ -27,7 +27,7 @@ class BuilderMultiscaleGenerator:
                 print(volume.info)
                 print(f'volume.shape={volume.shape}')
             return
-        chunks = self.originalChunkSize
+        chunks = self.pyramidMap[0]['chunk']
         print(f"Transferring data from image stack to zarr to {self.transfer_path}")
         imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
         lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
@@ -52,7 +52,7 @@ class BuilderMultiscaleGenerator:
             print('This is not a 2D or 3D image stack, exiting')
             sys.exit(1)
 
-        stack = stack.rechunk(chunks)  # Rechunk to original chunk size
+        #stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         store = get_store_from_path(self.transfer_path)
         z = zarr.zeros(
             stack.shape,
