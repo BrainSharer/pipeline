@@ -7,7 +7,7 @@ import numpy as np
 import tifffile
 import toolz as tz
 from skimage.io import imread
-from typing import List
+from typing import List, Optional, Tuple
 import zarr
 from dask.delayed import delayed
 
@@ -165,6 +165,105 @@ def get_optimum_chunks(image_shape, leading_chunk):
         leading_chunk = z
 
     return (leading_chunk, y, x)
+
+def compute_optimal_chunks(shape: Tuple[int, ...],
+                           dtype: np.dtype,
+                           channels: int,
+                           total_mem_bytes: int,
+                           n_workers: int,
+                           target_chunk_bytes: Optional[int] = None,
+                           max_chunk_bytes: int = 256 * 1024**2,
+                           xy_align: int = 256,
+                           tile_boundary: Optional[int] = None,
+                           prefer_z_chunks: int = 1) -> Tuple[int, ...]:
+    """
+    Heuristic to compute chunk sizes.
+
+    shape: global array shape (Z, Y, X[, C])
+    dtype: numpy dtype
+    channels: number of channels
+    total_mem_bytes: usable memory in bytes (system-level or per-worker? pass per-worker*something)
+    n_workers: number of dask workers
+    target_chunk_bytes: desired bytes per chunk (optional)
+    max_chunk_bytes: hard cap on chunk size in bytes
+    xy_align: make X,Y divisible by this (e.g., 256 for cloud)
+    tile_boundary: if tif tile grid is known (e.g., 512), align XY to tile boundary
+    prefer_z_chunks: number of z slices per chunk (try to keep small)
+    """
+    itemsize = np.dtype(dtype).itemsize
+    # default target: smaller of max_chunk_bytes and per-worker_mem/4
+    if target_chunk_bytes is None:
+        per_worker_mem = max(256 * 1024**2, int(total_mem_bytes / max(1, n_workers)))
+        t = max(16 * 1024**2, int(per_worker_mem / 4))
+        target_chunk_bytes = min(t, max_chunk_bytes)
+
+    # shape unpack
+    # Handle shapes: (Z, Y, X) or (Z, Y, X, C)
+    Z = shape[0]
+    Y = shape[1]
+    X = shape[2]
+    # channels param used separately
+
+    # Start with Z-chunk small (prefer 1 or a few slices)
+    z_chunk = min(max(1, prefer_z_chunks), Z)
+
+    # compute XY area that results in target bytes:
+    # bytes_per_xy = target_chunk_bytes / (z_chunk * itemsize * channels)
+    bytes_per_xy = max(1, int(target_chunk_bytes / (z_chunk * itemsize * max(1, channels))))
+    # aim for square-ish XY chunk:
+    approx_side = int(math.sqrt(bytes_per_xy))
+    # ensure at least 16 px
+    approx_side = max(16, approx_side)
+
+    # align to xy_align and optionally tile_boundary
+    def align(n, align_to):
+        return int(math.ceil(n / align_to) * align_to)
+
+    y_chunk = align(min(Y, approx_side), xy_align)
+    x_chunk = align(min(X, approx_side), xy_align)
+
+    # if aligning pushed bytes too large, reduce z_chunk or xy sizes
+    def chunk_bytes(zc, yc, xc):
+        return zc * yc * xc * itemsize * max(1, channels)
+
+    # iterative adjust if chunk too big
+    current_bytes = chunk_bytes(z_chunk, y_chunk, x_chunk)
+    while current_bytes > target_chunk_bytes and (y_chunk > xy_align or x_chunk > xy_align or z_chunk > 1):
+        # prefer shrinking XY then Z
+        if y_chunk > xy_align:
+            y_chunk = max(xy_align, int(y_chunk / 2))
+            y_chunk = align(y_chunk, xy_align)
+        elif x_chunk > xy_align:
+            x_chunk = max(xy_align, int(x_chunk / 2))
+            x_chunk = align(x_chunk, xy_align)
+        elif z_chunk > 1:
+            z_chunk = max(1, int(z_chunk / 2))
+        else:
+            break
+        current_bytes = chunk_bytes(z_chunk, y_chunk, x_chunk)
+
+    # ensure divisibility of X,Y by 2 (not strictly necessary)
+    y_chunk = min(Y, y_chunk)
+    x_chunk = min(X, x_chunk)
+
+    # final fallback: if resulting chunk too small, increase a bit
+    if current_bytes < (4 * 1024**2):  # < 4MB - inefficient
+        # increase XY until reasonable or hit image size
+        while current_bytes < (16 * 1024**2) and (y_chunk * 2 <= Y or x_chunk * 2 <= X):
+            if y_chunk * 2 <= Y:
+                y_chunk = align(min(Y, y_chunk * 2), xy_align)
+            if x_chunk * 2 <= X:
+                x_chunk = align(min(X, x_chunk * 2), xy_align)
+            current_bytes = chunk_bytes(z_chunk, y_chunk, x_chunk)
+
+    # Return a chunk tuple depending on channels presence
+    if channels > 1:
+        # shape: (Z, Y, X, C) -> keep channel axis small (full channel)
+        return (z_chunk, y_chunk, x_chunk, channels)
+    else:
+        return (z_chunk, y_chunk, x_chunk)
+
+
 
 def get_tiff_zarr_array(filepaths):
     with tifffile.imread(filepaths, aszarr=True) as store:

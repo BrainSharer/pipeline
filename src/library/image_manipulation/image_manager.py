@@ -72,6 +72,7 @@ class ImageManager:
             self.num_channels = 1
         self.center = np.array([self.width, self.height]) / 2
         self.volume_size = (self.width, self.height, self.len_files)
+        self.volume_zyx = (self.len_files, self.height, self.width)
         self.size = self.img.size
 
     def get_bgcolor(self):

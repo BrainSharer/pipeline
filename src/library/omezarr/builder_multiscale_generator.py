@@ -38,7 +38,7 @@ class BuilderMultiscaleGenerator:
                 for lazy_image in lazy_images]
 
         stack = da.stack(arrays, axis=0)
-        stack = stack.rechunk(chunks)  # Rechunk to original chunk size
+        #stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         print(f'Stack after stacking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
 
         if self.ndim == 2:
@@ -55,7 +55,6 @@ class BuilderMultiscaleGenerator:
         
         
         print(f'Stack after adding time and channel dimensions type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-        exit(1)
 
         store = get_store_from_path(self.transfer_path)
         z = zarr.zeros(

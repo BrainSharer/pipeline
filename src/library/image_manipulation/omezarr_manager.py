@@ -14,16 +14,17 @@ distributed:
 import os
 import inspect
 import dask
-
+import logging
 import dask.config
 from dask.distributed import Client
 from distributed import LocalCluster
 from timeit import default_timer as timer
+from sklearn import cluster
 from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.dask_utilities import closest_divisors_to_target
+from library.utilities.dask_utilities import closest_divisors_to_target, compute_optimal_chunks
 from library.utilities.utilities_process import SCALING_FACTOR, write_image
 
 
@@ -122,14 +123,20 @@ class OmeZarrManager():
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
             mips = 3
-            chunk_y = image_manager.height
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1
             mips = 8
-            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 8)
-            
-        originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # t,c,z,y,x
+
+
+        originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
+                                         dtype=image_manager.dtype,
+                                         channels=image_manager.num_channels,
+                                         total_mem_bytes=self.available_memory,
+                                         n_workers=1,
+                                         xy_align=256,
+                                         tile_boundary=None,
+                                         prefer_z_chunks=1)
 
         files = []
         for file in sorted(os.listdir(input)):
@@ -170,13 +177,14 @@ class OmeZarrManager():
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         nworkers = 1
-        threads_per_worker = omezarr.sim_jobs
+        threads_per_worker = omezarr.sim_jobs - 1
 
         cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
 
+        dask.config.set({'logging.distributed': 'error'})
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
@@ -191,11 +199,11 @@ class OmeZarrManager():
             chunks = omezarr.pyramidMap[0]['chunk']
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
-            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
         
-            #pyramids = len(omezarr.pyramidMap) - 1
-            #for mip in range(1, pyramids):
-            #    omezarr.write_mips(mip, client)
+            pyramids = len(omezarr.pyramidMap) - 1
+            for mip in range(1, pyramids):
+                omezarr.write_mips(mip, client)
 
         cluster.close()
         omezarr.cleanup()
