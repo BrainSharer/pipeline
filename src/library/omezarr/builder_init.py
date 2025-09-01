@@ -37,7 +37,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.files = sorted(files)
         self.resolution = resolution
         self.originalChunkSize = tuple(originalChunkSize)
-        self.sim_jobs = os.cpu_count() // 3
+        self.sim_jobs = os.cpu_count() // 2
         self.workers = 1
         self.compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
         self.zarr_store_type = zarr.storage.NestedDirectoryStore

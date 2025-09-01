@@ -14,17 +14,15 @@ distributed:
 import os
 import inspect
 import dask
-import logging
 import dask.config
 from dask.distributed import Client
 from distributed import LocalCluster
 from timeit import default_timer as timer
-from sklearn import cluster
 from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.dask_utilities import closest_divisors_to_target, compute_optimal_chunks
+from library.utilities.dask_utilities import compute_optimal_chunks
 from library.utilities.utilities_process import SCALING_FACTOR, write_image
 
 
@@ -177,14 +175,13 @@ class OmeZarrManager():
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         nworkers = 1
-        threads_per_worker = omezarr.sim_jobs - 1
+        threads_per_worker = omezarr.sim_jobs
 
         cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
 
-        dask.config.set({'logging.distributed': 'error'})
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
