@@ -53,6 +53,7 @@ class BuilderMultiscaleGenerator:
             sys.exit(1)
 
         #stack = stack.rechunk(chunks)  # Rechunk to original chunk size
+        
         store = get_store_from_path(self.transfer_path)
         z = zarr.zeros(
             stack.shape,

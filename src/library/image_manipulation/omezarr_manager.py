@@ -129,7 +129,7 @@ class OmeZarrManager():
             mips = 8
             chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 8)
             
-        originalChunkSize = [1, image_manager.num_channels, 1, image_manager.height, image_manager.width] # t,c,z,y,x
+        originalChunkSize = [1, image_manager.num_channels, 1, chunk_y, image_manager.width] # t,c,z,y,x
 
         files = []
         for file in sorted(os.listdir(input)):
