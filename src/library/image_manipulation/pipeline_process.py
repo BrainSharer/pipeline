@@ -114,7 +114,7 @@ class Pipeline(
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
         total_mem = psutil.virtual_memory().total
-        self.available_memory = int(total_mem * 0.85) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
+        self.available_memory = int(total_mem * 0.65) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
         self.section_count = self.get_section_count()
 
         #self.mips = 7 

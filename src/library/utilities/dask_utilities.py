@@ -171,10 +171,8 @@ def compute_optimal_chunks(shape: Tuple[int, ...],
                            channels: int,
                            total_mem_bytes: int,
                            n_workers: int,
-                           target_chunk_bytes: Optional[int] = None,
                            max_chunk_bytes: int = 256 * 1024**2,
                            xy_align: int = 256,
-                           tile_boundary: Optional[int] = None,
                            prefer_z_chunks: int = 1) -> Tuple[int, ...]:
     """
     Heuristic to compute chunk sizes.
@@ -192,10 +190,9 @@ def compute_optimal_chunks(shape: Tuple[int, ...],
     """
     itemsize = np.dtype(dtype).itemsize
     # default target: smaller of max_chunk_bytes and per-worker_mem/4
-    if target_chunk_bytes is None:
-        per_worker_mem = max(256 * 1024**2, int(total_mem_bytes / max(1, n_workers)))
-        t = max(16 * 1024**2, int(per_worker_mem / 4))
-        target_chunk_bytes = min(t, max_chunk_bytes)
+    per_worker_mem = max(256 * 1024**2, int(total_mem_bytes / max(1, n_workers)))
+    t = max(16 * 1024**2, int(per_worker_mem / 4))
+    target_chunk_bytes = min(t, max_chunk_bytes)
 
     # shape unpack
     # Handle shapes: (Z, Y, X) or (Z, Y, X, C)

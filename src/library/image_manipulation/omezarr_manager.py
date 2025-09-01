@@ -127,13 +127,13 @@ class OmeZarrManager():
             mips = 8
 
 
+        nworkers = os.cpu_count() // 8
         originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
                                          dtype=image_manager.dtype,
                                          channels=image_manager.num_channels,
                                          total_mem_bytes=self.available_memory,
                                          n_workers=1,
                                          xy_align=256,
-                                         tile_boundary=None,
                                          prefer_z_chunks=1)
 
         files = []
@@ -174,13 +174,18 @@ class OmeZarrManager():
         )
 
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
-        nworkers = 1
-        threads_per_worker = omezarr.sim_jobs
+        threads_per_worker = 2
 
         cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
+
+        #for res in range(len(self.pyramidMap)):
+        #    with Client(n_workers=self.workers,threads_per_worker=self.sim_jobs) as client:
+        #        self.write_resolution(res,client)
+
+
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
