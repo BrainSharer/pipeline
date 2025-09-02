@@ -127,7 +127,7 @@ class OmeZarrManager():
             mips = 8
 
 
-        n_workers = os.cpu_count() // 6
+        n_workers = os.cpu_count() // 8
         originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
                                          dtype=image_manager.dtype,
                                          channels=image_manager.num_channels,
@@ -173,7 +173,8 @@ class OmeZarrManager():
             channel=self.channel,
         )
         # n workers = 2 and sim jobs = 2 omezarr took 680.52 seconds.
-        # n workers =2 and sim jobs = 3 omezarr took 1793.21 seconds.
+        # n workers = 2 and sim jobs = 3 omezarr took 1793.21 seconds.
+        # n workers = 4 and sim job = 1 omezarr took 1838.43 seconds.
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         threads_per_worker = 2
 
