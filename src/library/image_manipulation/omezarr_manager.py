@@ -127,12 +127,12 @@ class OmeZarrManager():
             mips = 8
 
 
-        nworkers = os.cpu_count() // 8
+        n_workers = os.cpu_count() // 6
         originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
                                          dtype=image_manager.dtype,
                                          channels=image_manager.num_channels,
                                          total_mem_bytes=self.available_memory,
-                                         n_workers=1,
+                                         n_workers=n_workers,
                                          xy_align=256,
                                          prefer_z_chunks=1)
 
@@ -172,12 +172,13 @@ class OmeZarrManager():
             downsample=self.downsample,
             channel=self.channel,
         )
-
+        # n workers = 2 and sim jobs = 2 omezarr took 680.52 seconds.
+        # n workers =2 and sim jobs = 3 omezarr took 1793.21 seconds.
         dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
         threads_per_worker = 2
 
-        cluster = LocalCluster(n_workers=nworkers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        print(f"Using Dask cluster with {nworkers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        print(f"Using Dask cluster with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
 
