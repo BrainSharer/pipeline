@@ -127,7 +127,7 @@ class OmeZarrManager():
             mips = 8
 
 
-        n_workers = os.cpu_count() // 8
+        n_workers = os.cpu_count() // 6
         originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
                                          dtype=image_manager.dtype,
                                          channels=image_manager.num_channels,
