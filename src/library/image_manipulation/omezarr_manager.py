@@ -22,7 +22,7 @@ from tqdm import tqdm
 import zarr
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
-from library.utilities.dask_utilities import compute_optimal_chunks
+from library.utilities.dask_utilities import closest_divisors_to_target
 from library.utilities.utilities_process import SCALING_FACTOR, write_image
 
 
@@ -120,14 +120,18 @@ class OmeZarrManager():
         if self.downsample:
             storefile = f'C{self.channel}T.zarr'
             scaling_factor = SCALING_FACTOR
+            chunk_y = image_manager.height
             mips = 3
         else:
             storefile = f'C{self.channel}.zarr'
-            scaling_factor = 1
-            mips = 8
+            scaling_factor = 1  
+            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 2)
+        mips = 8
 
 
         n_workers = os.cpu_count() // 6
+        #n_workers = 1
+        """
         originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
                                          dtype=image_manager.dtype,
                                          channels=image_manager.num_channels,
@@ -135,7 +139,8 @@ class OmeZarrManager():
                                          n_workers=n_workers,
                                          xy_align=256,
                                          prefer_z_chunks=1)
-
+        """
+        originalChunkSize = (1, chunk_y, image_manager.width)
         files = []
         for file in sorted(os.listdir(input)):
             filepath = os.path.join(input, file)

@@ -67,15 +67,13 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         #x_chunk = closest_divisors_to_target(image_manager.width, 256)
         #chunks = (1, image_manager.num_channels, z_chunk, y_chunk, x_chunk)
         # pyramidMap at -1 is for the initial transfer of the original chunk size
-        #self.pyramidMap[-1] = {'chunk': (1, 1, *self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
-        self.pyramidMap[-1] = {'chunk': (self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[-1] = {'chunk': (1, 1, *self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
         # setup the rechunks chunks
         z_chunk = 64
         xy_chunk = 256
         if len(self.files) < 64:
             z_chunk = len(self.files)
-        #self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, xy_chunk, xy_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
-        self.pyramidMap[0] = {'chunk': (z_chunk, xy_chunk, xy_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, xy_chunk, xy_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
 
