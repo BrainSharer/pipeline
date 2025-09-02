@@ -175,17 +175,17 @@ class OmeZarrManager():
         # n workers = 2 and sim jobs = 2 omezarr took 680.52 seconds.
         # n workers = 2 and sim jobs = 3 omezarr took 1793.21 seconds.
         # n workers = 4 and sim job = 1 omezarr took 1838.43 seconds.
-        dask.config.set({'logging.distributed': 'error', 'temporary_directory': self.scratch_space})
-        threads_per_worker = 2
-
+        # 1 worker, 12 threads omezarr took 296.11 seconds.
+        # 2 workers, 6 threads, mezarr took 271.18 seconds.
+        # 2 workers, 12 threads omezarr took 261.55 seconds
+        # 8 workers, 2 threads omezarr took 268.12 seconds
+        # 2 workers, 12 threadsomezarr took 263.12 seconds.
+        dask.config.set({'logging.distributed': 'info', 'temporary_directory': self.scratch_space})
+        threads_per_worker = 4
         cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
-
-        #for res in range(len(self.pyramidMap)):
-        #    with Client(n_workers=self.workers,threads_per_worker=self.sim_jobs) as client:
-        #        self.write_resolution(res,client)
 
 
 
@@ -203,12 +203,11 @@ class OmeZarrManager():
             chunks = omezarr.pyramidMap[0]['chunk']
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
-            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
         
-            pyramids = len(omezarr.pyramidMap) - 1
-            for mip in range(1, pyramids):
-                omezarr.write_mips(mip, client)
-
+            #pyramids = len(omezarr.pyramidMap) - 1
+            #for mip in range(1, pyramids):
+            #    omezarr.write_mips(mip, client)
         cluster.close()
         omezarr.cleanup()
 

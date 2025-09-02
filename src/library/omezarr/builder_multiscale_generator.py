@@ -40,7 +40,7 @@ class BuilderMultiscaleGenerator:
         stack = da.stack(arrays, axis=0)
         #stack = stack.rechunk(chunks)  # Rechunk to original chunk size
         print(f'Stack after stacking type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
-
+        """
         if self.ndim == 2:
             stack = stack[None, None, ...]  # Add time and channel dimensions
         elif self.ndim == 3:
@@ -52,7 +52,7 @@ class BuilderMultiscaleGenerator:
             print(f'stack shape={stack.shape} chunksize={stack.chunksize} dtype={stack.dtype}')
             print('This is not a 2D or 3D image stack, exiting')
             sys.exit(1)
-        
+        """
         
         print(f'Stack after adding time and channel dimensions type: {type(stack)} shape: {stack.shape} chunks: {stack.chunksize} dtype: {stack.dtype}')
 
