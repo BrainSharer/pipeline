@@ -106,7 +106,12 @@ class OmeZarrManager():
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
-            
+
+        """Set some OS variables"""
+        os.environ['OMP_NUM_THREADS']='1'
+        os.environ['MKL_NUM_THREADS']='1'
+        os.environ['OPENBLAS_NUM_THREADS']='1'        
+        
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         iteration = self.get_alignment_status()
@@ -208,11 +213,11 @@ class OmeZarrManager():
             chunks = omezarr.pyramidMap[0]['chunk']
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
-            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
         
-            #pyramids = len(omezarr.pyramidMap) - 1
-            #for mip in range(1, pyramids):
-            #    omezarr.write_mips(mip, client)
+            pyramids = len(omezarr.pyramidMap) - 1
+            for mip in range(1, pyramids):
+                omezarr.write_mips(mip, client)
         cluster.close()
         omezarr.cleanup()
 
