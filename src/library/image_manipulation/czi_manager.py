@@ -182,7 +182,8 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
         try:
             bounding_box = scenes_bounding_rectangle[scenei]
         except KeyError:
-            print(f"Bounding box for scene {scenei} not found.")
+            print(f"Bounding box for scene {scenei} not found in CZI={czi_file} channel={channel} scale={scale}.")
+            print(f'Could not create {outfile}')
             return
         data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
         if data.ndim == 3 and data.shape[2] == 1:
