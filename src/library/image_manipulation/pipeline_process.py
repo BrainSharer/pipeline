@@ -74,7 +74,7 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal: str, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', debug=False):
+    def __init__(self, animal: str, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', arg_uuid: str = None, debug: bool = False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -127,7 +127,11 @@ class Pipeline(
         #self.check_settings()
         if not hasattr(self, 'SCRATCH'):
             self.SCRATCH = get_scratch_dir()
-        self.set_id = uuid.uuid4().hex
+        if arg_uuid:
+            self.set_id = arg_uuid #for debug of prev. uuid
+        else:
+            self.set_id = uuid.uuid4().hex
+        
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -448,7 +452,7 @@ class Pipeline(
         '''
         print(self.TASK_NG_PREVIEW)
         self.ng_prep() #will create precomputed format if not exist
-        #self.gen_ng_preview() #just create ng state
+        self.gen_ng_preview() #just create ng state
         print(f'Finished {self.TASK_NG_PREVIEW}.')
         
 

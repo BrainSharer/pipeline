@@ -89,6 +89,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32.0, type=float)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
+    parser.add_argument("--uuid", help="Force prev. uuid; used for debug", required=False, default=None, type=str)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
@@ -106,6 +107,7 @@ if __name__ == "__main__":
     downsample = bool({"true": True, "false": False}[str(args.downsample).lower()])
     scaling_factor = args.scaling_factor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    arg_uuid = args.uuid
     task = str(args.task).strip().lower()
 
     pipeline = Pipeline(
@@ -115,6 +117,7 @@ if __name__ == "__main__":
         downsample=downsample,
         scaling_factor=scaling_factor,
         task=task,
+        arg_uuid=arg_uuid,
         debug=debug,
     )
 
