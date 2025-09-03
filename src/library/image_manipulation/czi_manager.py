@@ -179,7 +179,11 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     with pyczi.open_czi(czi_file) as czidoc:
         # get the bounding boxes for each individual scene
         scenes_bounding_rectangle = czidoc.scenes_bounding_rectangle
-        bounding_box = scenes_bounding_rectangle[scenei]
+        try:
+            bounding_box = scenes_bounding_rectangle[scenei]
+        except KeyError:
+            print(f"Bounding box for scene {scenei} not found.")
+            return
         data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
         if data.ndim == 3 and data.shape[2] == 1:
             data = data.squeeze(axis=2)
