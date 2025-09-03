@@ -47,6 +47,7 @@ class ParallelManager:
         """
         ################################
         #ADDED FOR DEBUGGING MULTI-PROCESSOR SERIALIZATION
+        # I'm taking out the raise as this thing does not work and halts the function
         try:
             # Test if the function and arguments can be pickled
             pickle.dumps(function)
@@ -54,7 +55,7 @@ class ParallelManager:
             print("ProcessPoolExecutor argument pickling successful!")
         except Exception as e:
             print(f"CAN'T PICKLE: {e}\nObject type: {type(e).__name__}")
-            raise
+            
         ################################
 
         if self.debug:
