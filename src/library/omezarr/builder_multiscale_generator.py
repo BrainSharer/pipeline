@@ -77,7 +77,7 @@ class BuilderMultiscaleGenerator:
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Transfer from TIF stack to zarr completed in {total_elapsed_time} seconds")
 
-    def write_rechunk_transfer(self, client, chunks, input_path, write_storepath):
+    def write_rechunk_transfer(self, client, input_path, write_storepath):
         print()
         start_time = timer()
         
@@ -94,6 +94,7 @@ class BuilderMultiscaleGenerator:
                 print(f'volume.shape={volume.shape}')
             return
 
+        chunks = self.pyramidMap[0]['chunk']
         print(f"Building rechunked zarr store with {chunks=}:")
         print(f"\tfrom {input_path}")
         print(f"\tto {write_storepath}")
@@ -119,7 +120,7 @@ class BuilderMultiscaleGenerator:
         print(volume.info)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
-        print(f"Rechunkin completed in {total_elapsed_time} seconds")
+        print(f"Rechunking completed in {total_elapsed_time} seconds")
 
 
     def write_mips(self, mip, client):

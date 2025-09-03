@@ -131,7 +131,7 @@ class OmeZarrManager():
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1  
             chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 2)
-        mips = 8
+            mips = 8
 
 
         n_workers = os.cpu_count() // 6
@@ -182,14 +182,6 @@ class OmeZarrManager():
             downsample=self.downsample,
             channel=self.channel,
         )
-        # n workers = 2 and sim jobs = 2 omezarr took 680.52 seconds.
-        # n workers = 2 and sim jobs = 3 omezarr took 1793.21 seconds.
-        # n workers = 4 and sim job = 1 omezarr took 1838.43 seconds.
-        # 1 worker, 12 threads omezarr took 296.11 seconds.
-        # 2 workers, 6 threads, mezarr took 271.18 seconds.
-        # 2 workers, 12 threads omezarr took 261.55 seconds
-        # 8 workers, 2 threads omezarr took 268.12 seconds
-        # 2 workers, 12 threadsomezarr took 263.12 seconds.
         dask.config.set({'logging.distributed': 'info', 'temporary_directory': self.scratch_space})
         threads_per_worker = 4
         cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
@@ -202,18 +194,11 @@ class OmeZarrManager():
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
-            
-            # pass 1
-            #chunks = omezarr.pyramidMap[-1]['chunk']
-            #input_path = omezarr.transfer_path
-            #output_path = omezarr.rechunkme_path
-            #omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
 
             # pass 2
-            chunks = omezarr.pyramidMap[0]['chunk']
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
-            omezarr.write_rechunk_transfer(client, chunks, input_path, output_path)
+            omezarr.write_rechunk_transfer(client, input_path, output_path)
         
             pyramids = len(omezarr.pyramidMap) - 1
             for mip in range(1, pyramids):
