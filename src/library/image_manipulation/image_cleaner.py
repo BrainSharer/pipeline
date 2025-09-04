@@ -15,7 +15,7 @@ from skimage.filters import gaussian
 import cv2
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR, REALIGNED_DIR
+from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, get_image_box, mask_with_contours, place_image, rotate_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
@@ -195,7 +195,6 @@ class ImageCleaner:
         self.start_image_alignment()
 
         # Test the placed_aligned images
-        #compare_directories(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=REALIGNED_DIR), self.output)
         # Cleanup
         output_dirs = ['placed', 'mask_placed_aligned_0']
         cleanup(output_dirs)
@@ -326,7 +325,8 @@ class ImageCleaner:
         if iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
             return
-        input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=True, iteration=iteration)            
+        input = self.fileLocationManager.get_directory(channel=self.channel, downsample=True, inpath=ALIGNED_DIR)
+          
 
         if WRITE_MASKS:
             output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')

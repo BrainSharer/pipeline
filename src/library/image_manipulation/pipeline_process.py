@@ -17,7 +17,7 @@ from pathlib import Path
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, REALIGNED_DIR, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.mask_manager import MaskManager
@@ -260,8 +260,8 @@ class Pipeline(
         print(self.TASK_REALIGN)
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
 
@@ -288,9 +288,8 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
-
         
-        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)            
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)      
         self.use_scratch = use_scratch_dir(self.input)
         self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
             self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)

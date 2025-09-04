@@ -11,7 +11,6 @@ REALIGNED = 1
 CLEANED_DIR = 'cleaned'
 CROPPED_DIR = 'cropped'
 ALIGNED_DIR = 'aligned'
-REALIGNED_DIR = 'realigned'
 
 class FileLocationManager(object):
     """Master class to house all file paths for preprocessing-pipeline

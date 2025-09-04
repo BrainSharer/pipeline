@@ -397,7 +397,14 @@ class ElastixManager():
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         if self.downsample:
-            transformations = self.get_transformations(self.iteration)
+            #transformations = self.get_transformations(self.iteration)
+            # For downsampled resolution, we need to check if there is a second iteration
+            # If there is a 2nd iteration (self.iteration=1), then we need to combine the transformations
+            print('Computing composite transformations for downsampled resolution')
+            transformations0 = self.get_transformations(iteration=ALIGNED)
+            transformations1 = self.get_transformations(iteration=REALIGNED)
+            transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
+            transformations = rescale_transformations(transformations, 1)
         else:
             # For full resolution, we need to check if there is a second iteration
             # If there is a 2nd iteration (self.iteration=1), then we need to combine the transformations
