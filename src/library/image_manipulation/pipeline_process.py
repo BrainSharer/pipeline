@@ -29,6 +29,7 @@ from library.image_manipulation.parallel_manager import ParallelManager
 from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
+from library.utilities.utilities_mask import compare_directories
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.database_model.scan_run import IMAGE_MASK
 from library.cell_labeling.cell_ui import Cell_UI
@@ -425,6 +426,19 @@ class Pipeline(
             print(f'Dir={display_directory} exists.')
         else:
             print(f'Non-existent dir={display_directory}')
+        # compare masked dir to initial dir
+        if self.downsample:
+            mask_dir = self.fileLocationManager.get_thumbnail_masked(channel=1)
+            orig_dir = self.fileLocationManager.get_thumbnail()
+        else:
+            mask_dir = self.fileLocationManager.get_full_masked(channel=1)
+            orig_dir = self.fileLocationManager.get_full(channel=self.channel)
+
+        if os.path.exists(mask_dir) and os.path.exists(orig_dir) \
+            and len(os.listdir(mask_dir)) == len(os.listdir(orig_dir)) \
+            and len(os.listdir(mask_dir)) > 0:
+            print(f'Comparing {mask_dir[57:]} to {orig_dir[57:]}')
+            compare_directories(orig_dir, mask_dir)
         # neuroglancer progress dir
         progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel)
         histogram_dir = self.fileLocationManager.get_histogram(self.channel)

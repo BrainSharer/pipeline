@@ -315,6 +315,7 @@ class MetaUtilities:
             for _ in channels:
                 tif = SlideCziTif()
                 tif.FK_slide_id = slide.id
+                #####TODO why is czifile part of SlideCziTif?
                 tif.czifile = slide.file_name
                 tif.scene_number = scene_number
                 tif.file_size = 0
