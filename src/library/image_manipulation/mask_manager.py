@@ -195,7 +195,11 @@ class MaskManager:
             except:
                 print(f"Could not open {infile}")
             if self.debug:
-                print(f' infile={infile} thumbfile={thumbfile} outfile={outfile} width={width} height={height}')
+                print('Creating full resolution mask')
+                print(f'infile={infile}')
+                print(f'thumbfile={thumbfile}')
+                print(f'outfile={outfile}')
+                print(f'width={width} height={height}')
             size = int(width), int(height)
             file_keys.append([thumbfile, outfile, size])
 
