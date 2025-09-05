@@ -62,12 +62,12 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         self.pyramidMap = {}
 
         # setup the transfer chunks
-        z_chunk = 64 if len(files) >= 64 else len(self.files)
+        z_chunk = 128 if len(files) >= 128 else len(self.files)
         # pyramidMap at -1 is for the initial transfer of the original chunk size
         self.pyramidMap[-1] = {'chunk': (1, 1, *self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
         # setup the rechunks chunks
-        xy_chunk = 256
-        self.pyramidMap[0] = {'chunk': (1, self.channels, xy_chunk, xy_chunk, xy_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        xy_chunk = 1024
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, xy_chunk, xy_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
 
@@ -76,6 +76,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
                     z_chunk = len(self.files)
                 chunks = (1, self.channels, z_chunk, 128, 128)
             else:
+                z_chunk = 64 if len(files) >= 64 else len(self.files)
                 chunks = (1, self.channels, z_chunk, 64, 64)
 
             if downsample:
