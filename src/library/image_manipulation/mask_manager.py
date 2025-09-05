@@ -194,6 +194,8 @@ class MaskManager:
                 width, height = get_image_size(infile)
             except:
                 print(f"Could not open {infile}")
+            if self.debug:
+                print(f' infile={infile} thumbfile={thumbfile} outfile={outfile} width={width} height={height}')
             size = int(width), int(height)
             file_keys.append([thumbfile, outfile, size])
 
