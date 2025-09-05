@@ -394,7 +394,6 @@ class Pipeline(
                 "C1/normalized",
                 f"C{self.channel}/thumbnail_cleaned",
                 f"C{self.channel}/thumbnail_aligned",
-                f"C{self.channel}/thumbnail_realigned",
             ]
             ndirectory = f"C{self.channel}T"
         else:
@@ -403,7 +402,6 @@ class Pipeline(
                 f"C{self.channel}/full",
                 f"C{self.channel}/full_cleaned",
                 f"C{self.channel}/full_aligned",
-                f"C{self.channel}/full_realigned",
             ]
             ndirectory = f"C{self.channel}"
 

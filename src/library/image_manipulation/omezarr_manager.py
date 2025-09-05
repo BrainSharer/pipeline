@@ -135,16 +135,6 @@ class OmeZarrManager():
 
 
         n_workers = os.cpu_count() // 6
-        #n_workers = 1
-        """
-        originalChunkSize = compute_optimal_chunks(shape=image_manager.volume_zyx,
-                                         dtype=image_manager.dtype,
-                                         channels=image_manager.num_channels,
-                                         total_mem_bytes=self.available_memory,
-                                         n_workers=n_workers,
-                                         xy_align=256,
-                                         prefer_z_chunks=1)
-        """
         originalChunkSize = (1, chunk_y, image_manager.width)
         files = []
         for file in sorted(os.listdir(input)):
