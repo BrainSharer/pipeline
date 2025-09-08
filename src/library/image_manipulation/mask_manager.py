@@ -172,6 +172,7 @@ class MaskManager:
 
     def create_full_resolution_mask(self):
         """Upsample the masks created for the downsampled images to the full resolution
+        By default, the channel will always be == 1, unless this is step 6 of the pipeline
         """
 
 

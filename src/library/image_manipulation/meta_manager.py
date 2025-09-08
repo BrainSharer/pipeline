@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 from library.database_model.slide import Slide, SlideCziTif
 from library.image_manipulation.czi_manager import CZIManager
@@ -60,7 +61,11 @@ class MetaUtilities:
                 infile = infile.replace(" ","_").strip()
                 file_keys.append([infile, self.scan_id])
             
-            self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
+            for file_key in tqdm(file_keys, desc="Extracting slide metadata and inserting into database"):
+                self.parallel_extract_slide_meta_data_and_insert_to_database(file_key)
+
+            # the treads bit is not working, so I'm taking it out for now
+            #self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
             
         else:
             self.fileLogger.logevent("NOTHING TO PROCESS - SKIPPING")
@@ -94,7 +99,7 @@ class MetaUtilities:
             msg2 = "NO DUPLICATE FILES; CONTINUE"
         else:
             self.multiple_slides = list(set([i for i in slide_id if slide_id.count(i)>1]))
-            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); multiple_slides with physical IDs={self.multiple_slides}"
+            msg2 = f"{total_slides_cnt-unique_slides_cnt} DUPLICATE SLIDE(S) EXIST(S); multiple_slides with physical IDs={sorted(self.multiple_slides)}"
             
         if self.debug:
             print(msg, msg2, sep="\n")
@@ -316,7 +321,7 @@ class MetaUtilities:
                 tif = SlideCziTif()
                 tif.FK_slide_id = slide.id
                 #####TODO why is czifile part of SlideCziTif?
-                tif.czifile = slide.file_name
+                #tif.czifile = slide.file_name
                 tif.scene_number = scene_number
                 tif.file_size = 0
                 tif.active = 1

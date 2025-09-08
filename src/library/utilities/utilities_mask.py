@@ -11,7 +11,7 @@ from scipy.ndimage import binary_fill_holes
 from skimage import exposure
 from tqdm import tqdm
 
-from library.utilities.utilities_process import read_image, write_image
+from library.utilities.utilities_process import get_image_size, read_image, write_image
 
 
 def rotate_image(img, file: str, rotation: int):
@@ -561,12 +561,12 @@ def compare_directories(dir1: str, dir2: str) -> None:
     assert len(files1) > 0, f"Empty directory {dir1}"
     desc = f"Comparing {os.path.basename(dir1)} and {os.path.basename(dir2)}"
     for file1, file2 in tqdm(zip(files1, files2), total=len(files1), desc=desc):
-        img1 = read_image(os.path.join(dir1, file1))
-        img2 = read_image(os.path.join(dir2, file2))
+        w1, h1 = get_image_size(os.path.join(dir1, file1))
+        w2, h2 = get_image_size(os.path.join(dir2, file2))
         if file1 != file2: error += f"{file1} != {file2}\n"
-        if img1.shape[0] != img2.shape[0]: error += f"{file1} rows {img1.shape[0]} != {file2} {img2.shape[0]}\n"
-        if img1.shape[1] != img2.shape[1]: error += f"{file1} cols {img1.shape[1]} != {file2} {img2.shape[1]}\n"
-    
+        if w1 != w2: error += f"{file1} width {w1} != {file2} {w2}\n"
+        if h1 != h2: error += f"{file1} height {h1} != {file2} {h2}\n"
+
     if len(error) > 0:
         print(error)
         print(f"Error {desc}")

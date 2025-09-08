@@ -61,6 +61,8 @@ class ImageCleaner:
 
         CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
 
+        compare_directories(INPUT, MASKS)
+
         try:
             starting_files = os.listdir(INPUT)
         except OSError:

@@ -85,15 +85,11 @@ class TiffExtractor():
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
         if duplicates:
             self.fileLogger.logevent(f"DUPLICATE FILES FOUND: {duplicates}")
-            print("\nDUPLICATE FILES FOUND:")
+            print("Duplicate scenes found:")
             for duplicate in duplicates:
-                print()
                 for file in duplicate:
                     print(f"{os.path.basename(file)}", end=" ")
-            print("\n\nDuplicate files found, please fix. Exiting.")                                
-            sys.exit()
-                
-            print()
+                print()
 
 
     def create_web_friendly_image(self):

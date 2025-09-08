@@ -63,9 +63,6 @@ class SlideCZIToTifController():
             .filter(Slide.scan_run_id == scan_run_id)\
             .filter(Slide.slide_physical_id == slide_physical_id)
         
-        if debug: # Print the raw SQL query
-            print(f'RAW SQL: {str(slide_query.statement.compile(compile_kwargs={"literal_binds": True}))}')
-            print('*'*50, '\n')
         
         slide_rows = slide_query.all()
         for slide_row in slide_rows:
@@ -82,9 +79,6 @@ class SlideCZIToTifController():
             try:
                 update_query = self.session.query(SlideCziTif)\
                     .filter(SlideCziTif.FK_slide_id == other_slide).update({'FK_slide_id': master_slide_id})
-                if debug:
-                    print("RAW SQL for SlideCziTif update:")
-                    print(update_query.compile(compile_kwargs={"literal_binds": True}))
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')
@@ -94,9 +88,6 @@ class SlideCZIToTifController():
             try:
                 inactive_update = self.session.query(Slide)\
                     .filter(Slide.id == other_slide).update({'active': False})
-                if debug:
-                    print("RAW SQL for Slide inactive update:")
-                    print(inactive_update.compile(compile_kwargs={"literal_binds": True}))
                 self.session.commit()
             except Exception as e:
                 print(f'No merge for  {e}')

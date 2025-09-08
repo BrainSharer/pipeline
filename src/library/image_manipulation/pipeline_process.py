@@ -170,7 +170,8 @@ class Pipeline(
     def extract(self):
         print(self.TASK_EXTRACT)
         self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
-        self.correct_multiples()
+        if self.channel == 1 and self.downsample:
+            self.correct_multiples()
         self.extract_tiffs_from_czi()
         self.reorder_scenes()
         if self.channel == 1 and self.downsample:
@@ -178,10 +179,11 @@ class Pipeline(
             self.create_previews()
             self.create_checksums()
             
-            #ADD SYMLINKS TO EXTRACTED THUMBNAIL IMAGES
-            target_path = str(self.fileLocationManager.www)
-            link_path = str(Path('/', 'srv', self.animal))
-            self.create_symbolic_link(target_path, link_path)
+            #ADD SYMLINKS TO EXTRACTED THUMBNAIL IMAGES if necessary
+            if not self.url_exists(self.animal):
+                target_path = str(self.fileLocationManager.www)
+                link_path = str(Path('/', 'srv', self.animal))
+                self.create_symbolic_link(target_path, link_path)
 
         print(f'Finished {self.TASK_EXTRACT}.')
 
@@ -517,3 +519,16 @@ class Pipeline(
             status = f"Imageserver link exists for {animal}"
 
         return status
+    
+    @staticmethod
+    def url_exists(animal):
+        exists = True
+        url = f"https://imageserv.dk.ucsd.edu/data/{animal}/"
+        url_response = Request(url)
+        try:
+            response = urlopen(url_response, timeout=10)
+        except HTTPError as e:
+            # do something
+            exists = False
+
+        return exists
