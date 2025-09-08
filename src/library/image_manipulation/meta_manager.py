@@ -320,8 +320,11 @@ class MetaUtilities:
             for _ in channels:
                 tif = SlideCziTif()
                 tif.FK_slide_id = slide.id
-                #####TODO why is czifile part of SlideCziTif?
-                #tif.czifile = slide.file_name
+                ##### The czifile in the slide_czi_to_tif table is needed!
+                ##### In the case where there are duplicate slide physical IDs,
+                ##### the slide ID will be the same, but the czifile will be different.
+                ##### In that case, the field below will get updated in the duplicate handler
+                tif.czifile = slide.file_name
                 tif.scene_number = scene_number
                 tif.file_size = 0
                 tif.active = 1

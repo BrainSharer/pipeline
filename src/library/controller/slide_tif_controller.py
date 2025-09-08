@@ -67,7 +67,7 @@ class SlideCZIToTifController():
         slide_rows = slide_query.all()
         for slide_row in slide_rows:
             slide_physical_ids.append(slide_row.id)
-        print(f'Slide_physical_ids={slide_physical_ids}')
+        print(f'Slide_physical_ids={sorted(slide_physical_ids)}')
         master_slide_id = min(slide_physical_ids)
         print(f'Master slide={master_slide_id}')
         slide_physical_ids.remove(master_slide_id)
