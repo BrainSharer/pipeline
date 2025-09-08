@@ -134,7 +134,6 @@ class OmeZarrManager():
             mips = 8
 
 
-        n_workers = os.cpu_count() // 6
         originalChunkSize = (1, chunk_y, image_manager.width)
         files = []
         for file in sorted(os.listdir(input)):
@@ -173,19 +172,26 @@ class OmeZarrManager():
             channel=self.channel,
         )
         dask.config.set({'logging.distributed': 'info', 'temporary_directory': self.scratch_space})
+        n_workers = os.cpu_count() // 6
         threads_per_worker = 4
         cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        print(f"Using Dask cluster with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
-
 
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
 
-            # pass 2
+        cluster.close()
+        ## The number of workers needs to be reduced for the remainder of the process
+        n_workers = n_workers // 2 if n_workers > 2 else 1
+        threads_per_worker = 4
+        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        print(f"Using Dask cluster for remainder with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+
+        with Client(cluster) as client:
             input_path = omezarr.transfer_path
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, input_path, output_path)
@@ -193,6 +199,7 @@ class OmeZarrManager():
             pyramids = len(omezarr.pyramidMap) - 1
             for mip in range(1, pyramids):
                 omezarr.write_mips(mip, client)
+
         cluster.close()
         omezarr.cleanup()
 
