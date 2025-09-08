@@ -84,8 +84,9 @@ class ImageManager:
 
         if self.img.ndim == 2:
             # If the image is grayscale, return the background color as an integer
+            # Neurotrace brains are black background
             bgcolor = int(self.img[10, 10])
-            return bgcolor
+            return 0
 
         test_image = self.img[self.img != 255]  # Get the pixel value at (10, 10)
 
