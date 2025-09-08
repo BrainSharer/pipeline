@@ -272,7 +272,7 @@ class Pipeline(
             self.cleanup_fiducials()
             self.create_fiducial_points()
             self.create_within_stack_transformations()
-            
+
         self.start_image_alignment()
         print(f'Finished {self.TASK_REALIGN}.')
 
@@ -292,18 +292,35 @@ class Pipeline(
         
         print(self.TASK_NEUROGLANCER)
         
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)      
+        #check if realigned dir exists; that takes priority - are we still using _realigned suffix?
+        # if self.channel == 1 and self.downsample:
+        #     aligned_dirs = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)
+        #     aligned_dir = next((item for item in aligned_dirs if item.endswith('_realigned')), 
+        #            next((item for item in aligned_dirs if item.endswith('_aligned')), None))
+        #     if self.debug:
+        #         print(f'DEBUG: USING ALIGNED DIR {aligned_dirs}')
+        #     self.input = aligned_dir
+        #     if any(item.endswith('_realigned') for item in aligned_dirs): #realigned exists
+        #         self.iteration = REALIGNED
+        #     self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        # else:
+        #     self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
+        #     self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
         self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
             self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
-        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
+
         print(f'Input: {self.input}')
         print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
         print(f'Rechunkme: {self.rechunkme_path}')
-
+        
         self.create_neuroglancer()
         self.create_downsamples()
         print(f'Make sure you delete {self.rechunkme_path}.')
