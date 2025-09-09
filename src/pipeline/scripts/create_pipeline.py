@@ -3,15 +3,17 @@ The only required argument is the animal and task. By default it will work on ch
 and downsample = True. Run them in this sequence for channel 1, when that is done, run
 them again for the remaining channels and then for the full resolution version:
 
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task status
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task mask
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task clean
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task histogram
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task align
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task realign
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task neuroglancer
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task omezarr
-- python src/pipeline/scripts/create_pipeline.py --animal DKXX --task ng_preview
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task status``
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task extract``
+- Do the QC in the database portal. If any tifs need to be inactivated, do that first and and use the 'Save and continue editing' button. \
+    Then make sure the scene ordering is in the correct order. They need to increment correctly.
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task mask``
+- Do the QC of the colored masks
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task clean``
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task histogram``
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task align``
+- ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task neuroglancer``
+
 
 Explanation for the tasks:
 
@@ -47,12 +49,12 @@ of workers is too low, the processes take too long.
 
 **Human intervention is required at several points in the process**
 
-- After create meta the user needs to check the database and verify the images \
+- After creating the meta data, the user needs to check the database and verify the images \
 are in the correct order and the images look good.
 - After the first create mask method - the user needs to check the colored masks \
 and possible dilate or crop them.
 - After the alignment process - the user needs to verify the alignment looks good. \
-Creating fiducials and then running the realing task will improve the alignment.
+Creating fiducials and then running the realign task will improve the alignment.
 
 **Switching projection in Neuroglancer** 
 

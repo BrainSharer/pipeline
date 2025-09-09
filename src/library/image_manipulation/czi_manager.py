@@ -146,9 +146,9 @@ class CZIManager():
 
  
 def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None:
+    pass
     """Gets the TIFF file out of the CZI and writes it to the filesystem
         :param file_key: a tuple of: czi_file, output_path, checksum_filepath, scenei, channel, scale, debug
-    """
     
     czi_file, outfile, scenei, channel, scale = file_key    
     czi = CZIManager(czi_file)
@@ -161,6 +161,7 @@ def extract_tiff_from_cziORIG(file_key: tuple[str, str, int, bool, str]) -> None
     
     message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
     write_image(outfile, data, message=message)
+    """
  
 def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
     """
@@ -188,10 +189,9 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
         data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel - 1}, zoom=scale, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
         if data.ndim == 3 and data.shape[2] == 1:
             data = data.squeeze(axis=2)
-        write_image(outfile, data)
     
-    message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
-    write_image(outfile, data, message=message)
+        message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
+        write_image(outfile, data, message=message)
 
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing

@@ -39,11 +39,11 @@ def delete_in_background(path: str) -> Future:
 
 def use_scratch_dir(directory: str) -> bool:
     """
-    Determines if there is enough free space in the /scratch directory to accommodate
+    Determines if there is enough free space in the /data directory to accommodate
     the specified directory with a buffer factor applied.
     Args:
     :param directory (str): The path to the directory whose size needs to be checked.
-    :return: bool: True if there is enough free space in the /scratch directory, False otherwise.
+    :return: bool: True if there is enough free space in the /data directory, False otherwise.
     """
     
     BUFFER_FACTOR = 1.25
@@ -209,10 +209,10 @@ def get_scratch_dir():
     # if hostname in usedir.keys():
     #     tmp_dir = usedir[hostname]
     # else:
-    #     tmp_dir = "/scratch"
+    #     tmp_dir = "/data"
     
-    #/scratch created on all servers (device or symbolic link to space with enough storage)
-    tmp_dir = '/scratch'
+    #/data created on all servers (device or symbolic link to space with enough storage)
+    tmp_dir = "/data"
 
     return tmp_dir
 
