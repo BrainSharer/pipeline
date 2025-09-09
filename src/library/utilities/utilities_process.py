@@ -124,7 +124,6 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
     except:
         error = f"{directory} does not exist\n"
         files = []
-
     
     if section_count == 0:
         section_count = len(files)
@@ -213,7 +212,7 @@ def get_scratch_dir():
     #     tmp_dir = "/scratch"
     
     #/scratch created on all servers (device or symbolic link to space with enough storage)
-    tmp_dir = "/scratch"
+    tmp_dir = '/scratch'
 
     return tmp_dir
 

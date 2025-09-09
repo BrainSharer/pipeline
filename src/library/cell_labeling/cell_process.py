@@ -1,5 +1,6 @@
 from collections import defaultdict
 import os, sys, glob, json
+from datetime import datetime
 import re
 import inspect
 import gzip
@@ -59,7 +60,8 @@ class CellMaker(
     TASK_DETECT = "Creating cell detections"
     TASK_EXTRACT = "Extracting cell labels and features; store as annotation set"
     TASK_TRAIN = "[Re]training CellBoost model"
-    
+    TASK_NG_PREVIEW = "Creating neuroglancer preview"
+
     def __init__(self, animal: str, 
                  channel: int = None,
                  task: str = '', step: int = None, 
@@ -92,9 +94,9 @@ class CellMaker(
         self.step = step
         self.model = model
         self.channel = channel
-        self.use_scratch = True
-        self.section_count = 0
+        self.use_scratch = False # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
         self.SCRATCH = get_scratch_dir()
+        self.section_count = 0
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         #####TODO put average cell someplace better
         self.avg_cell_img_file = Path(os.getcwd(), 'src', 'library', 'cell_labeling', 'average_cell_image.pkl')
@@ -103,13 +105,13 @@ class CellMaker(
         self.dye_channel = 0
         self.virus_channel = 0
         self.annotation_id = annotation_id
-        self.prune_annotation_ids = prune_annotation_ids
         self.process_sections = process_range
         if arg_uuid:
             self.set_id = arg_uuid #for debug of prev. uuid
         else:
             self.set_id = uuid.uuid4().hex #for tracking unique: cell_labels, histogram, image DIFF layer, annotation set
         self.cell_label_path = Path(self.fileLocationManager.prep, 'cell_labels' + '_' + str(self.set_id))
+        self.downsample = False
 
         #SEGMENTATION PARAMETERS
         self.segment_size_min = segment_size_min
@@ -122,7 +124,6 @@ class CellMaker(
         self.segmentation_make_smaller = False
         self.ground_truth_filename = 'ground_truth.csv'
         self.sampling = sampling
-        self.save_output_with_hostname = False
 
         #PRUNING PARAMETERS
         self.run_pruning = run_pruning
@@ -145,6 +146,7 @@ class CellMaker(
         print("\tavg cell image:".ljust(20), f"{str(self.avg_cell_img_file)}".ljust(20))
         print("\tavg cell annotation_id:".ljust(20), f"{str(self.annotation_id)}".ljust(20), "[OPTIONAL FOR TRAINING]")
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
+        print("\tstart time:".ljust(20), f"{str(datetime.now())}".ljust(20))
         print()
 
 
@@ -275,6 +277,10 @@ class CellMaker(
 
         found_dye_channel = False
         found_virus_marker_channel = False
+        
+        #21-AUG-2025 Song-Mao special processing
+        # INPUT_dye = Path(self.fileLocationManager.get_full(channel=self.counterstain_channel))
+        # INPUT_virus_marker = Path(self.fileLocationManager.get_full(channel=self.label_of_interest_channel))
         INPUT_dye = Path(self.fileLocationManager.get_full_aligned(channel=self.counterstain_channel))
         INPUT_virus_marker = Path(self.fileLocationManager.get_full_aligned(channel=self.label_of_interest_channel))
         
@@ -414,22 +420,22 @@ class CellMaker(
 
         '''
 
-        _, section, str_section_number, _, _, _, _, _, _, SCRATCH, _, avg_cell_img, _, _, _, _, _, task, set_id, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, SCRATCH, _, avg_cell_img, _, _, _, _, _, task, set_id, _, _, debug = file_keys
 
         print(f'Starting function: calculate_features with {len(cell_candidate_data)} cell candidates')
-
+        
         output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'cell_features_' + str(set_id))
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = Path(output_path, f'cell_features_{str_section_number}.csv')
 
         #TODO check if features already extracted
         if os.path.exists(output_file):
-            print(f'Cell features already extracted. Using: {output_file}')
+            if self.debug:
+                print(f'Cell features already extracted. Using: {output_file}')
             df_features = pl.read_csv(output_file)
             return df_features
         else:
             output_spreadsheet = []
-
 
         # STEP 3-B) load information from cell candidates (pickle files from step 2 - cell candidate identification) **Now passed as parameter**
         for idx, cell in enumerate(cell_candidate_data):
@@ -464,6 +470,7 @@ class CellMaker(
             output_spreadsheet.append(spreadsheet_row)
 
             #TODO: EXPLORE IF HARD-CODED VARIABLES MAKE ANY DIFFERENCE HERE
+            #TODO: remove - seems like testing code
             fx = 26346
             fy = 5718
             #col = 5908
@@ -495,7 +502,7 @@ class CellMaker(
     def score_and_detect_cell(self, file_keys: tuple, cell_features: pl.DataFrame):
         ''' Part of step 4. detect cells; score cells based on features (prior trained models (30) used for calculation)'''
 
-        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, task, set_id, _, debug = file_keys
+        _, section, str_section_number, _, _, _, _, _, _, _, OUTPUT, _, model_filename, _, _, _, _, task, set_id, _, _, debug = file_keys
 
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
@@ -611,9 +618,6 @@ class CellMaker(
                 pl.lit(2).alias("predictions")  # 2 is putative cell
             ])
 
-        if self.save_output_with_hostname:
-            OUTPUT = str(Path(f"{OUTPUT}_{self.hostname}")) #TESTING OUTPUT TO HOST-SPECIFIC LOCATION
-            
         # STEP 4-2-2) Stores dataframe as csv file
         if debug:
             print(f'Cell labels output dir: {OUTPUT}')
@@ -1502,21 +1506,6 @@ class CellMaker(
         chunk_data = create_spatial_chunk(annotations, chunk_size)
         write_spatial_chunk("spatial0", chunk_data)  # Write the spatial chunk for the given key
 
-        #ng write version - NOT WORKING
-        # write_annotations(
-        #     annotations=annotations,
-        #     output_dir=output_dir,
-        #     voxel_size=(
-        #         int(xy_resolution * 1000),  # μm → nm
-        #         int(xy_resolution * 1000),
-        #         int(z_resolution * 1000)
-        #     ),
-        #     annotation_type="point",
-        #     properties=[{"id": "label", "type": "string"}],
-        # )
-
-        
-
 
         ###############################################
         # if not self.debug:
@@ -1545,19 +1534,26 @@ class CellMaker(
         """
         print(self.TASK_DETECT)
         self.process_sections = []  # all sections
-        # self.process_sections = list(range(70, 80))
-        if self.process_sections:
-            print(f'Processing sections: {self.process_sections}')
-        else:
+        if not self.process_sections:
             print('Processing all sections')
+        else:
+            print(f'Processing sections: {self.process_sections}')
         self.report_status()
-        scratch_tmp = get_scratch_dir()
-        self.check_prerequisites(scratch_tmp)
+        if self.use_scratch:
+            scratch_tmp = get_scratch_dir()
+        else:
+            scratch_tmp = str(Path('/', 'data'))
+        
+        _, _, meta_data_info = self.check_prerequisites(scratch_tmp)
 
-        # if any error from check_prerequisites(), print error and exit
-        # assert statement could be in unit test (separate)
-        self.start_labels()
-        print(f'Finished cell detections')
+        assert (meta_data_info), (
+            f"MISSING META-DATA INFO"
+        )
+        
+        self.start_labels(scratch_tmp)
+        print(f'Finished cell segmentation - extracting predictions')
+        self.create_annotations(meta_data_info)
+        self.ng_prep()
 
 
     def segment(self):
@@ -1571,20 +1567,40 @@ class CellMaker(
             print(f'Segmenting sections: {self.process_sections}')
 
         self.report_status()
-        scratch_tmp = get_scratch_dir()
+        if self.use_scratch:
+            scratch_tmp = get_scratch_dir()
+        else:
+            scratch_tmp = str(Path('/', 'data'))
         _, _, meta_data_info = self.check_prerequisites(scratch_tmp)
         
         assert (meta_data_info), (
             f"MISSING META-DATA INFO"
         )
-        self.start_labels()
+        self.start_labels(scratch_tmp)
+        if self.debug:
+            print()
+            print('*'*50)
         print(f'Finished cell segmentation - extracting predictions')
-        self.create_annotations(self.task, meta_data_info)
+        if self.channel:
+            self.create_annotations(self.task, meta_data_info, self.channel)
+        else:
+            self.create_annotations(self.task, meta_data_info)
         self.ng_prep()
         # out_dir = Path(scratch_tmp, 'pipeline_tmp', self.animal)
         # if os.path.exists(out_dir):
         #     print(f'Removing existing directory {out_dir}')
         #     delete_in_background(out_dir)
+
+    def ng_preview(self):
+        """
+        Used to quickly generate json states for Neuroglancer
+        Includes:
+        -annotation set (if uuid included)
+        -database entries compatible with brainsharer
+        """
+        print(self.TASK_NG_PREVIEW)
+        self.report_status()
+        self.gen_ng_preview()
 
 
     def fix_coordinates(self):
@@ -1956,6 +1972,36 @@ class CellMaker(
                 print(f'Saved {len(df_features)} features to {dfpath}')
 
         print(f'Finished processing {idx} coordinates')
+
+
+    def create_annotations(self, meta_data_info):
+        '''
+        Used for generating annotation sets in neuroglancer-compatible format
+        currently supports segmentation layer (large qty of points) or annotation layer (smaller qty of points with labels)
+        '''
+        print(self.TASK_EXTRACT)
+        if self.use_scratch:
+            scratch_tmp = get_scratch_dir()
+        else:
+            scratch_tmp = str(Path('/', 'data'))
+
+        #TODO: define
+        meta_data_info = None
+        segment_ch = None
+
+        df_points, counterstain_channel, label_of_interest_channel, *expected_shape = self.extract_point_annotations(self.task, meta_data_info, segment_ch)
+
+        dest_format = 'segmentation' #vector-based
+        # dest_format = 'annotation' #text-based
+
+        if dest_format == 'segmentation':
+            print('Creating segmentation layer format')
+            self.create_segmentation_layer(df_points, expected_shape, scratch_tmp, counterstain_channel, label_of_interest_channel)
+        else:
+            print('Creating annotation layer format')
+            self.create_annotation_layer(df_points, expected_shape, scratch_tmp, counterstain_channel, label_of_interest_channel)
+
+        # self.create_annotations(self.task, meta_data_info, segment_ch, dest_format, scratch_tmp)
 
 
     @staticmethod

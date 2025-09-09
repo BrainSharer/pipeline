@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from compress_pickle import dump, load
 import tifffile
+from collections import defaultdict
 
 from library.utilities.cell_utilities import (
     filter_cell_candidates,
@@ -22,7 +23,7 @@ from library.utilities.utilities_process import SCALING_FACTOR
 class CellSegmenter():
     '''Handles cell segmentation methods'''
 
-    def start_labels(self):
+    def start_labels(self, scratch_tmp):
         '''1. Use dask to create virtual tiles of full-resolution images
                 Which mode (dye/virus: Neurotrace/GFP is for which directory) -> rename input
                 label_of_interest_channel a.k.a. virus channel (channel 3)
@@ -39,6 +40,8 @@ class CellSegmenter():
            4. Detect cells; score cell candidate and classify as positive, negative, unknown
                 @ start: csv file for each section with cell features [used in identification]
                 @ end of step: csv file for each section where putative CoM cells detected with classification (positive, negative, unknown)
+
+        Note: scratch_tmp overrides SCRATCH if use_scratch==False
         '''
         self.fileLogger.logevent(f"DEBUG: start_labels - Steps 1 & 2 (revised); Start on image segmentation")
         if self.debug:
@@ -47,6 +50,7 @@ class CellSegmenter():
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} Start")
         
         # TODO: Need to address scenario where >1 dye or virus channels are present [currently only 1 of each is supported]
+        #this is just for auto-detect using user-supplied info
         counterstain_modes = ['counterstain', 'dye', 'ntb']
         label_of_interest_modes = ['label_of_interest', 'virus', 'ctb']
         for channel_number, channel_data in self.meta_channel_mapping.items():
@@ -67,6 +71,36 @@ class CellSegmenter():
                 self.fileLogger.logevent(msg)
                 raise ValueError(msg)
 
+        segmentation_info = {'counterstain_channel': self.counterstain_channel, 'label_of_interest_channel': self.label_of_interest_channel, 'gen_diff': True}
+        segment_ch = ''
+        if self.channel:
+            if self.debug:
+                print(f'DEBUG: {self.channel} will be used for segmentation')
+                print('BEFORE SWAP')
+                print(f'{self.counterstain_channel=}')
+                print(f'{self.label_of_interest_channel=}')
+            if self.label_of_interest_channel != self.channel:
+                msg = f"WARNING: {self.label_of_interest_channel} was the label_of_interest channel, but {self.channel} was provided for segmentation. Now using {self.channel} for segmentation."
+                print(msg)
+                self.fileLogger.logevent(msg)
+                prior_LOI_ch = self.label_of_interest_channel
+                segment_ch = self.label_of_interest_channel = self.channel
+
+                if self.counterstain_channel == self.channel:
+                    msg = f"WARNING: {self.counterstain_channel} was the counterstain channel, but {self.channel} was provided for segmentation. DIFF will not be generated"
+                    print(msg)
+                    self.fileLogger.logevent(msg)
+                    gen_diff = False
+                else:
+                    self.counterstain_channel = prior_LOI_ch
+                    gen_diff = True
+            segmentation_info.update({'gen_diff': gen_diff, 'segment_ch': segment_ch})
+            if self.debug:
+                print('AFTER SWAP (SHOULD BE INVERTED)')
+                print(f'{self.counterstain_channel=}')
+                print(f'{self.label_of_interest_channel=}')
+                print('NOTE: THESE ARE JUST VARIABLE NAMES FOR DEBUGGING PURPOSES')
+        
         self.input_format = 'tif' #options are 'tif' and 'ome-zarr'
         
         if os.path.exists(self.avg_cell_img_file):
@@ -108,14 +142,24 @@ class CellSegmenter():
                     }
         
         #SAVE PARAMETERS IN cell_candidates folder (scratch then moved with cell candidates)
-        output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'cell_candidates_' + str(self.set_id))
+        output_path = Path(scratch_tmp, 'pipeline_tmp', self.animal, 'cell_candidates_' + str(self.set_id))
         output_path.mkdir(parents=True, exist_ok=True)
-        param_file = Path(output_path, 'parameters.json')
+        param_file = Path(self.OUTPUT, 'parameters.json') #final destination
+        Path(self.OUTPUT).mkdir(parents=True, exist_ok=True)
+        if self.debug:
+            print(f'SAVING PROCESSING PARAMETERS FILE TO: {param_file}')
 
+        if segment_ch:
+            msg = f'Segmentation was performed on channel {segment_ch}'
+        else:
+            msg = ''
         params = {}
+        x_dim = int(self.sqlController.scan_run.width)
+        y_dim = int(self.sqlController.scan_run.height)
         if not param_file.exists():
             params = {
                     "animal": self.animal,
+                    "vol_shape_x_y_z": (x_dim , y_dim, len(list(self.process_sections))), #from DB
                     "section_cnt": len(list(self.process_sections)),
                     "uuid": self.set_id,
                     "segmentation_threshold": self.segmentation_threshold,
@@ -133,7 +177,9 @@ class CellSegmenter():
                         "prune_area_max": self.pruning_info['prune_area_max'],
                         "prune_annotation_ids": list(self.prune_annotation_ids) if self.prune_annotation_ids is not None else None,
                         "prune_combine_method": self.pruning_info['prune_combine_method']
-                    }
+                    },
+                    'segmentation_info': segmentation_info,
+                    'additional_notes': msg
                 }
             
             with open(param_file, 'w') as f:
@@ -153,6 +199,7 @@ class CellSegmenter():
 
             # Normalize to list if single ID provided
             all_stats = []
+            all_polygons_by_section = defaultdict(list)
             annotation_ids = [self.prune_annotation_ids] if isinstance(self.prune_annotation_ids, int) else self.prune_annotation_ids
             for annotation_id in annotation_ids:
                 polygons = self.sqlController.get_annotation_volume(session_id=annotation_id, scaling_factor=1, debug=self.debug)
@@ -163,26 +210,38 @@ class CellSegmenter():
                     ]
                     for z, polygon in polygons.items()
                 }
+
+                #sanity check/debug: 
+                # print(f'{annotation_id=}', 'section: 53', 'verticies: ', len(transformed_polygons[53]))
+
                 num_sections = len(transformed_polygons)
                 total_points = sum(len(points) for points in transformed_polygons.values())
                 super_annotation_dict[annotation_id] = {
-                    'super_annotation_dict': transformed_polygons,
+                    'transformed_polygons': transformed_polygons,
                     'num_sections': num_sections,
                     'total_points': total_points
                 }
                 all_stats.append((annotation_id, num_sections, total_points))
+                
+                # Group polygons by section number (since each annotation spans multiple sections).
+                for section, polygons in transformed_polygons.items():
+                    all_polygons_by_section[section].extend(polygons)
+
+            self.pruning_info["all_polygons_by_section"] = all_polygons_by_section
             
             if self.debug:
                 print('Query DB for annotation_ids...')
                 print(super_annotation_dict.keys())
                 print("\nAnnotation Statistics:")
-                print(f"{'ID':<10} | {'Sections':<8} | {'Total Points':<12}")
+                print(f"{'ID':<10} | {'Sections':<8} | {'Total Points/Verticies':<12}")
                 print("-" * 35)
                 for annotation_id, num_sections, total_points in all_stats:
                     print(f"{annotation_id:<10} | {num_sections:<8} | {total_points:<12}")
                     print("-" * 35)
-                print(f"Total annotations retrieved: {len(annotation_ids)}")            
+                print(f"Total annotations sets retrieved: {len(annotation_ids)}")
+                print(f'Polygons extracted from all annotation sets and aggregated for sections: {list(all_polygons_by_section.keys())}')
 
+            
         if self.debug:
             print()
             print('*'*50)
@@ -212,7 +271,7 @@ class CellSegmenter():
                     self.segment_size_max,
                     self.gaussian_blur_standard_deviation_sigmaX,
                     self.gaussian_blur_kernel_size_pixels,
-                    self.SCRATCH,
+                    scratch_tmp,
                     self.OUTPUT,
                     avg_cell_img,
                     self.model_file,
@@ -222,12 +281,12 @@ class CellSegmenter():
                     self.step,
                     self.task,
                     self.set_id,
+                    segmentation_info,
                     self.pruning_info,
-                    super_annotation_dict,
                     self.debug,
                 ]
             )
-
+        
         if self.debug:
             workers=1
             print(f'Running in debug mode with {workers} workers; {len(file_keys)} sections to process, out: {self.SCRATCH}')
@@ -265,15 +324,15 @@ class CellSegmenter():
             gaussian_blur_standard_deviation_sigmaX,
             gaussian_blur_kernel_size_pixels,
             SCRATCH,
-            _, _, _,
+            OUTPUT, _, _,
             input_format,
             counterstain,
             label_of_interest,
             _,
             task,
             set_id,
+            segmentation_info,
             pruning_info,
-            super_annotation_dict,
             debug
         ) = file_keys
 
@@ -295,7 +354,8 @@ class CellSegmenter():
         
         #TODO check if candidates already extracted
         if os.path.exists(output_file):
-            print(f'Cell candidates already extracted. Using: {output_file}')
+            if self.debug:
+                print(f'Cell candidates already extracted. Using: {output_file}')
             cell_candidates = load(output_file)
             return cell_candidates
         else:
@@ -306,16 +366,19 @@ class CellSegmenter():
             if debug:
                 print('*'*50)
                 print(f'READING "tif" ALIGNED FORMAT')
+                print(f'{counterstain=}')
+                print(f'{label_of_interest=}')
+                print('SEGMENTATION PERFORMED ON VARIABLE self.counterstain_channel')
             input_file_label_of_interest = Path(label_of_interest, str_section_number + '.tif')
             input_file_counterstain = Path(counterstain, str_section_number + '.tif')
 
         else:
-            store = parse_url(label_of_interest, mode="r").store
+            # store = parse_url(label_of_interest, mode="r").store
             reader = Reader(parse_url(label_of_interest))
             nodes = list(reader())
             image_node = nodes[0]  # first node is image pixel data
             dask_data = image_node.data
-            total_sections = dask_data[0].shape[2]
+            # total_sections = dask_data[0].shape[2]
 
             input_file_label_of_interest = []
             for img in dask_data[0][0][0]:
@@ -353,11 +416,33 @@ class CellSegmenter():
             print(f'[LABEL_OF_INTEREST] {org_label_of_interest_img_shape=}: {y_dim=}, {x_dim=}')
             print(f'[COUNTERSTAIN] {org_counterstain_img_shape=}: {counterstain_y_dim=}, {counterstain_x_dim=}')
 
-        # both channels must same dimensions; DO NOT PROCEED IF NOT TRUE!
+        # Update the parameters file [with actual file dimensions, not database]
+        param_file = Path(OUTPUT, 'parameters.json')
+        with open(param_file, 'r') as f:
+            params = json.load(f)
+        expected_x, expected_y, expected_z = params["vol_shape_x_y_z"]
+        addl_notes = params["additional_notes"]
+
+        # both img channels must have same dimensions; DO NOT PROCEED IF NOT TRUE!
         assert (x_dim == counterstain_x_dim and y_dim == counterstain_y_dim), (
             f"Dimension mismatch between virus and dye channels: "
             f"label_of_interest/ctb/virus=({y_dim}, {x_dim}), counterstain/dye=({counterstain_y_dim}, {counterstain_x_dim})"
         )
+
+        #database should match actual image dimensions (but only warn if inconsistent)
+        if (expected_x, expected_y) != (x_dim, y_dim):
+            msg = f"Dimensions in Database ({expected_x}, {expected_y}) do not match actual image dimensions ({x_dim}, {y_dim})"
+            self.fileLogger.logevent(msg)
+            if debug:
+                print(f"[DEBUG] {msg}")
+                print('Correcting parameters.json with actual volume shape')
+
+            img_shape = (x_dim, y_dim)
+            params["vol_shape_x_y_z"] = (img_shape[0], img_shape[1], expected_z) 
+            params["additional_notes"] = addl_notes + '; ' + msg
+
+            with open(param_file, 'w') as f:
+                json.dump(params, f, indent=2)
 
         # Create a Dask array from the delayed tasks (NOTE: DELAYED); SHAPE IS y-axis then x-axis
         image_stack_label_of_interest = [da.from_delayed(v, shape=(y_dim, x_dim), dtype='uint16') for v in delayed_tasks_label_of_interest]
@@ -442,7 +527,6 @@ class CellSegmenter():
                         difference_label_of_interest,
                         task,
                         pruning_info,
-                        super_annotation_dict,
                         debug
                     )
                     
@@ -471,17 +555,23 @@ class CellSegmenter():
         if len(cell_candidates) > 0:
             if debug:
                 print(f'Saving {len(cell_candidates)} cell candidates to {output_file}')
-                print(f'Saving label_of_interest (ch3_diff) images to {output_file_diff3}')
+                print(f'Saving label_of_interest (diff) images to {output_file_diff3}')
+            
             dump(cell_candidates, output_file, compression="gzip", set_default_extension=True)
 
-            full_difference_label_of_interest_corrected = np.swapaxes(full_difference_label_of_interest, 0, 1)
-            tifffile.imwrite(str(output_file_diff3), full_difference_label_of_interest_corrected)
+            if segmentation_info['gen_diff'] is True: 
+                full_difference_label_of_interest_corrected = np.swapaxes(full_difference_label_of_interest, 0, 1)
+                tifffile.imwrite(str(output_file_diff3), full_difference_label_of_interest_corrected)
 
             #Make histogram for full-resolution image [while still in RAM]
             output_path_histogram = Path(self.fileLocationManager.www, 'histogram', 'DIFF_' + str(set_id), f'{str_section_number}.png')
             output_path_histogram.parent.mkdir(parents=True, exist_ok=True)
             mask_path = Path(self.fileLocationManager.masks, 'C1', 'thumbnail_masked', f'{str_section_number}.tif')
-            make_histogram_full_RAM(full_difference_label_of_interest_corrected, output_path_histogram, mask_path, debug)
+
+            #TODO: Only generate histogram on downsampled images (likely faster but more calcs?)
+            #Note: These are individual sections, not overall
+            if segmentation_info['gen_diff'] is True: 
+                make_histogram_full_RAM(full_difference_label_of_interest_corrected, output_path_histogram, mask_path, debug)
 
         return cell_candidates
 
@@ -490,16 +580,26 @@ def detect_cells_all_sections(file_keys: tuple):
     # launcher for multiprocessing of all (4) steps - all functions must be serializable ('pickleable')
     # class instances are not serializable; use static methods instead
     # notes: model_filename has placeholder, but cannot be loaded into file_keys (not serializable)
-    # filelogger not currently active in multi-processing mode
-
-    # think about how to inherit, or reinstantiate Pipeline/Filelogger
-    # filemanager = FileLocationManager(file_key[0])
-    # filelogger = FileLogger(filemanager.get_logdir())
-    # cellmaker = filelogger(CellMaker)
+    # use filelogger sparingly in multi-processing mode (concurrent writing to log file)
     
     # currently debug (bool) is set at end of file_keys
 
     # Note: MUST be staticmethod to allow pickling (ProcessPoolExecutor)
+
+    # N.B. After identify_cell_candidates(), you should have:
+    # on tmp storage (SCRATCH):
+    # -cell_candidates_{uuid} : populated with extracted_cells_{section}.gz
+    # -DIFF_{uuid} : populated with {section}.tif
+    #
+    # on permanent storage (birdstore):
+    # -www/histogram/DIFF_{uuid} : populated with {section}.png
+    #
+    # after calculate_features(), you should have on tmp storage (SCRATCH):
+    # -cell_features_{uuid} : populated with cell_features_{section}.csv
+    #
+    # after score_and_detect_cell(), you should have on ermanent storage (birdstore):
+    # -cell_labels_{uuid} : populated with detections_{section}.csv
+
     from library.cell_labeling.cell_process import CellMaker #import statement cannot got at top of file!
 
     animal = file_keys[0]
@@ -513,7 +613,7 @@ def detect_cells_all_sections(file_keys: tuple):
     cell_candidates = cell_segmenter.identify_cell_candidates(file_keys) #STEPS 1 & 2. virtual tiling and cell candidate identification
 
     if debug:
-        print(f"DEBUG: found {len(cell_candidates)} cell candidates on section {file_keys[1]}")
+        print(f"DEBUG: SUMMARY - {len(cell_candidates)} cell candidates on section {file_keys[1]}")
 
     if len(cell_candidates) > 0: #continue if cell candidates were detected [note: this is list of all cell candidates]
         if debug:

@@ -9,10 +9,12 @@ The program can be run with the following commands:
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task detect
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task extract
 - python srs/labeling/scripts/create_labels.py --animal DKXX --task train
-- python srs/labeling/scripts/create_labels.py --animal DKXX --task prune
+- python srs/labeling/scripts/create_labels.py --animal DKXX --task ng_preview
 
 Explanation for the tasks:
 
+- segment - Uses parameters and gaussian blurring to create the initial cell segmentation.
+  If channel argument is provided, that channel will be used for the segmentation
 - detect - This is the 1st task to run and will create the cell_labels/detection_XXX.csv files. \
     This task will run the cell detection model on the images and create the detections.
 - extract - This task will extract the predictions from the detection files and create the \
@@ -126,7 +128,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--task",
-        help="Enter the task you want to perform: segment|create_features|detect|extract|neuroglancer|train",
+        help="Enter the task you want to perform: segment|detect|extract|train|ng_preview|create_features|neuroglancer|",
         required=True,
         type=str,
     )
@@ -184,10 +186,11 @@ if __name__ == "__main__":
 
     function_mapping = {
         "segment": pipeline.segment,
-        #"create_features": pipeline.create_features, #TODO: remove
         "detect": pipeline.create_detections,
         "extract": pipeline.create_annotations,        
-        "train": pipeline.train
+        "train": pipeline.train,
+        "ng_preview": pipeline.ng_preview,
+        #"create_features": pipeline.create_features, #TODO: remove
         # "fix": pipeline.fix_coordinates #TODO: remove
         # "neuroglancer": pipeline.neuroglancer, #TODO: remove
         # "omezarr": pipeline.omezarr, #TODO: remove

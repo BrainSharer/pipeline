@@ -4,11 +4,10 @@ import imageio
 import numpy as np
 import subprocess
 from pathlib import Path
-from library.controller.sql_controller import SqlController
-from shapely.geometry import Point
-from shapely.geometry.polygon import Polygon
 from library.utilities.utilities_process import get_cpus
-
+from shapely.ops import unary_union
+from shapely.geometry import Polygon
+from shapely.geometry import Point
 
 def load_image(file: str):
     if os.path.exists(file):
@@ -100,9 +99,9 @@ def filter_cell_candidates(
     animal: str,
     section_number: int,
     connected_segments,
-    segment_size_min,
-    segment_size_max,
-    cell_radius,
+    segment_size_min: int,
+    segment_size_max: int,
+    cell_radius: int,
     x_window,
     y_window,
     absolute_coordinates,
@@ -110,7 +109,6 @@ def filter_cell_candidates(
     difference_ch3,
     task: str = None,
     pruning_info: dict = None,
-    super_annotation_dict: dict = None,
     debug: bool = False
 ):
     '''PART OF STEP 2. Identify cell candidates:  Area is for the object, where pixel values are not zero,
@@ -123,13 +121,14 @@ def filter_cell_candidates(
     'prune_area_max' = The maximum area (pixel^2)
     'prune_annotation_ids' = volume id(s) from brainsharer (filters if point is located inside volume)
     'prune_combine_method' = Method to combine overlapping segments (e.g., 'union', 'intersection')
+    'super_annotation_dict' = annotations ids (brainsharer) for finding point in volume
     '''
   
     n_segments, segment_masks, segment_stats, segment_location = connected_segments
     label_of_interest = []
     cell_candidates = []
     img_counterstain = []
-
+    
     for segmenti in range(n_segments):
         _, _, width, height, object_area = segment_stats[segmenti, :]
 
@@ -154,6 +153,8 @@ def filter_cell_candidates(
 
         if pruning_info and pruning_info.get('run_pruning'):
             try:
+                if debug:
+                    print(f"DEBUG: Applying pruning filters - absolute coordinates YX: {absolute_coordinates_YX}")
                 prune_x = pruning_info.get("prune_x_range")
                 if prune_x and not (prune_x[0] <= segment_col <= prune_x[1]):
                     continue
@@ -165,10 +166,11 @@ def filter_cell_candidates(
                 if (object_area < pruning_info.get("prune_amin", 0) or 
                     object_area > pruning_info.get("prune_amax", float('inf'))):
                     continue
-                
-                annotation_ids = pruning_info.get("prune_annotation_ids")
-                if annotation_ids:
-                    result_in_vol = point_in_volume_pruning(animal, section_number, absolute_coordinates_YX, annotation_ids, super_annotation_dict, pruning_info.get("prune_combine_method")) #returns bool
+
+                current_polygons = pruning_info['all_polygons_by_section'][section_number]
+                print('debug:', current_polygons)
+                if current_polygons:
+                    result_in_vol = point_in_volume_pruning(pruning_info['prune_combine_method'], current_polygons, absolute_coordinates_YX)
 
                     if not result_in_vol:
                         continue
@@ -399,57 +401,30 @@ def copy_with_rclone(src_dir: str, dest_dir: str) -> None:
         print(f"Unexpected error: {e}")
 
 
-def point_in_volume_pruning(animal: str, section_number: int, point_YX: tuple[int, int], prune_annotation_ids: list[int] | int | None = None, super_annotation_dict: dict | None = None, prune_combine_method: str = "union") -> bool:
+def point_in_volume_pruning(combination_method: str, polygons: list[float:float], point_YX: tuple[int, int]) -> bool:
     """
     Check if a point is within one or more volume annotations, combining results according to specified method.
     
     Args:
-        animal: Animal ID
-        point: (y, x) coordinates to check
-        prune_annotation_ids: Single ID or list of annotation IDs to check against
-        prune_combine_method: How to combine results ('union' or 'intersection')
-        
+        combination_method (str): The method to combine results ('union' or 'intersection').
+        polygons (list[float:float]): List of polygons to check against.
+        point_YX (tuple[int, int]): The (y, x) coordinates of the point to check.
+
     Returns:
         bool: True if point meets the inclusion criteria based on combine method
-    """
     
-    if not prune_annotation_ids:
+    Note: polygon coordinates will arrive in (x, y) format
+    """
+    if not polygons:
         return False
     
-    print(super_annotation_dict)
-    return True
+    point = Point(point_YX[1], point_YX[0])  # Convert (y,x) to (x,y) for Shapely
+    shapely_polygons = [Polygon(poly) for poly in polygons if len(poly) >= 3]
 
+    if not shapely_polygons:
+        return False
     
-        
-    #     polygon = Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])
-    #     for section, points in vol_polygons.items():
-    #         for x, y in points:
-    #             if section == section_number:
-    #                 if (y, x) == point_YX:
-    #                     return True
-
-    #     if not vol_polygons:
-    #         print(f"Warning: No volume polygons found for annotation ID {annotation_id} in {animal}")
-    #         if prune_combine_method == "intersection":
-    #             return False  # Early exit for intersection mode
-    #         continue
-        
-    #     # Check if point is in any of the polygons for this annotation
-    #     in_volume = any(polygon.contains_point(point) for polygon in vol_polygons)
-    #     results.append(in_volume)
-        
-    #     # Early exit optimization for union mode
-    #     if prune_combine_method == "union" and in_volume:
-    #         return True
-    
-    # # Determine final result based on combine method
-    # if prune_combine_method == "union":
-    #     return any(results)
-    # elif prune_combine_method == "intersection":
-    #     return all(results)
-    # else:
-    #     raise ValueError(f"Unknown combine method: {prune_combine_method}. Use 'union' or 'intersection'")
-    
-
-    
-     
+    if combination_method == 'intersection':# Point must be in all polygons
+        return all(poly.contains(point) for poly in shapely_polygons)
+    else:  # union (Point can be in any polygon)
+        return any(poly.contains(point) for poly in shapely_polygons)

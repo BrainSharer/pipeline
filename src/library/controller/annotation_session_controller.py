@@ -122,7 +122,7 @@ class AnnotationSessionController:
         :param debug: whether to print the raw SQL query
         """
         fiducials = defaultdict(list)
-
+        print(f'DEBUG: {debug}')
         # Define query
         query = (
             self.session.query(AnnotationSession)
@@ -235,7 +235,6 @@ class AnnotationSessionController:
         and then do an offset. (e.g., fixing DK78)
         """
 
-        # annotation_session = self.session.query(AnnotationSession).get(session_id)
         query = (
             self.session.query(AnnotationSession)
             .filter(AnnotationSession.id == session_id)
