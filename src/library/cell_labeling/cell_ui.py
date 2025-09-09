@@ -32,7 +32,7 @@ class Cell_UI():
 
     def ng_prep(self):
         '''
-        #WIP 21-AUG-2025
+        #WIP 9-SEP-2025
         CREATES PRECOMPUTED FORMAT FROM IMAGE STACK ON SCRATCH, MOVES TO 'CH3_DIFF'
         ALSO INCLUDES HISTOGRAM (SINGLE AND COMBINED)
 
@@ -42,7 +42,7 @@ class Cell_UI():
         if self.debug:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} Start")
-        
+
         if self.task == 'segment' or (self.task == 'ng_preview' and self.set_id): #REGENERATE ENTIRE NG FROM SCRATCH
             ch_name = 'DIFF' + '_' + self.set_id
             progress_dir = Path(self.fileLocationManager.neuroglancer_data, 'progress', ch_name)
@@ -74,6 +74,9 @@ class Cell_UI():
                             sys.exit()
             else:
                 copy_with_rclone(INPUT_DIR, FINAL_PREP_DIR)
+        elif self.task == 'detect' and self.set_id:
+            #verify neuroglancer data for channels defined in meta-data exist
+            pass
         else: #e.g. 'ng_preview':
             ch_name = f"C{self.channel}"
             print('GENERATING NEUROGLANCER PREVIEW: CALLED FROM REGULAR PIPELINE')
@@ -687,7 +690,7 @@ class Cell_UI():
             annotations_dir = Path(self.fileLocationManager.neuroglancer_data, 'annotations')
             annotations_dir.mkdir(parents=True, exist_ok=True)
 
-            pattern = re.compile(r'\.precomputed$')
+            pattern = re.compile(r'_pre$')
             matching_ml_pos_folders = [
                 f for f in annotations_dir.iterdir()
                 if f.is_dir() and pattern.search(f.name)
@@ -698,6 +701,7 @@ class Cell_UI():
             #NO ANNOTATIONS WILL EXIST FOR DOWNSAMPLED IMAGES
             matching_ml_pos_folders = []
 
+        
         # GET CHANNEL NAMES FROM meta-data.json
         meta_data_file = 'meta-data.json'
         meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
@@ -809,43 +813,60 @@ class Cell_UI():
         ##################################################################################
         #COMPILE IMG SRC FOR LAYERS
         base_url = f"https://imageserv.dk.ucsd.edu/data/{self.animal}/neuroglancer_data/"
-        
+
         if self.downsample:
             desired_order = ['C1T', 'C2T', 'C3T']
         else:
-            desired_order = ['C1', 'C2', 'C3_DIFF', 'ML_POS']
+            available_channels = list(img_layers.keys())
+            # Prioritize certain names, but include all available
+            preferred_order = ['C1', 'C2', 'C3', 'C3_DIFF', 'ML_POS']
+            desired_order = [chan for chan in preferred_order if chan in available_channels]
+
+            # Add any other channels not in preferred order
+            for chan in available_channels:
+                if chan not in desired_order:
+                    desired_order.append(chan)
+
         ordered_dict = {key: img_layers[key] for key in desired_order if key in img_layers}
         # print(f'{ordered_dict=}')
         # print(f'{ordered_dict.keys()}')
+
+        # Find the largest channel number for DIFF channel naming
         channel_numbers = []
         for key in ordered_dict.keys():
             if key.startswith('C') and not key.endswith('_DIFF'):
                 # Extract digits after 'C' (split at '_' if present)
-                num_part = key[1:].split('_')[0]  # Takes '3' from 'C3_DIFF'
-                if num_part.isdigit():  # Ensure it's a valid number
+                num_part = key[1:].split('_')[0]
+                if num_part.isdigit():
                     channel_numbers.append(int(num_part))
+
         if channel_numbers:
             largest_number = max(channel_numbers)
             diff_channel_name = f'C{largest_number}_DIFF'
             print(f"Largest channel number: {largest_number}")
         else:
             print("No valid channel numbers found.")
+            diff_channel_name = None
         
+        # Create layers
         for channel_name, channel_attributes in ordered_dict.items():
-            if channel_name.endswith('_DIFF'):
-                channel_name = diff_channel_name
+            # Use the original channel_name for lookup, but create display name
+            display_name = channel_name
+            if channel_name.endswith('_DIFF') and diff_channel_name:
+                display_name = diff_channel_name
+            
             layer = {
                 "type": "image",
                 "source": f"{channel_attributes['src_type']}://{base_url}{channel_attributes['folder_name']}",
                 "tab": "rendering",
-                "name": channel_name
+                "name": display_name  # Use the display name here
             }
             ng_layers.append(layer)
-      
+
         if (self.task == 'segment' or self.task == 'ng_preview') and self.downsample == False: #ADD ANNOTATION LAYERS LAST
             for folder in matching_ml_pos_folders:
                 folder_name = folder.name
-                if folder_name.endswith('.precomputed'):
+                if folder_name.endswith('_pre'):
                     annotation_name = folder_name.replace('ML_', '').replace('.precomputed', '') + '_candidates'
                     src = 'precomputed://' + base_url + 'annotations' + '/' + str(folder_name)
                     seg_layer = {
@@ -858,7 +879,7 @@ class Cell_UI():
                     #ONLY ADD ANNOTATION LAYER OF SPECIFIC set_id
                     if self.set_id in folder_name:
                         ng_layers.append(seg_layer)
-                    
+        
         dimensions_json = {"dimensions": dimensions}
         layers_json = {"layers": ng_layers}
 

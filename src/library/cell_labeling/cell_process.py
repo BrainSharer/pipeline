@@ -1553,7 +1553,7 @@ class CellMaker(
         self.start_labels(scratch_tmp)
         print(f'Finished cell segmentation - extracting predictions')
         self.create_annotations(meta_data_info)
-        self.ng_prep()
+        # self.ng_prep() #hold off auto-gen brainsharer id
 
 
     def segment(self):
