@@ -75,7 +75,7 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal: str, channel='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', arg_uuid: str = None, debug: bool = False):
+    def __init__(self, animal: str, channel: str ='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', arg_uuid: str = None, debug: bool = False):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -173,6 +173,7 @@ class Pipeline(
         if self.channel == 1 and self.downsample:
             self.correct_multiples()
         self.extract_tiffs_from_czi()
+        
         self.reorder_scenes()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()

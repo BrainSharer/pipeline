@@ -21,6 +21,7 @@ import sys
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
+import tifffile
 from tifffile import imwrite
 from skimage import io
 from skimage.transform import EuclideanTransform, warp
@@ -232,16 +233,41 @@ def align_image_to_affine(file_key):
             sys.exit()
 
     try:
-        img = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+        # Perform the transformation. 'img' is a PIL Image object.
+        img = im0.transform(im0.size, Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
     except Exception as e:
         print(f'align image to affine: could not transform {infile}')
         print(f'Error={e}')
         sys.exit()
 
+    # Delete the original image to save memory ASAP
     del im0
 
+    # try:
+    #     img = im0.transform((im0.size), Image.Transform.AFFINE, T.flatten()[:6], resample=Image.Resampling.NEAREST, fillcolor=fillcolor)
+    # except Exception as e:
+    #     print(f'align image to affine: could not transform {infile}')
+    #     print(f'Error={e}')
+    #     sys.exit()
+
+    # del im0
+
+    # --- Use tifffile instead of PIL to save --- 
     try:
-        img.save(outfile)
+        # Convert the transformed PIL Image to a NumPy array
+        img_array = np.array(img)
+    except Exception as e:
+        print(f'Could not convert transformed PIL image to numpy array: {basepath}')
+        print(f'Error={e}')
+        sys.exit()
+
+    # Delete the PIL Image object to save memory
+    del img
+
+    try:
+        # Save the NumPy array using tifffile with BIGTIFF support
+        tifffile.imwrite(outfile, img_array, bigtiff=True, compression='LZW')
+        # img.save(outfile)
     except Exception as e:
         print(f'align image to affine: could not save {outfile}')
         print(f'Error={e}')
@@ -249,27 +275,28 @@ def align_image_to_affine(file_key):
 
     return
 
+    # TODO: remove the below code after testing
 
-    del im0
-    # Put PIL image to numpy
-    try:
-        im1 = np.asarray(im1)
-    except Exception as e:
-        print(f'could not convert file type={type(im1)}: {basepath} to numpy')
-        print(f'Error={e}')
-        sys.exit()
+    # del im0
+    # # Put PIL image to numpy
+    # try:
+    #     im1 = np.asarray(im1)
+    # except Exception as e:
+    #     print(f'could not convert file type={type(im1)}: {basepath} to numpy')
+    #     print(f'Error={e}')
+    #     sys.exit()
 
-    # The final image: im1 is now a numpy array so we can use
-    # tifffile to save the image
-    try:
-        imwrite(outfile, im1, bigtiff=True, compression='LZW')
-    except Exception as e:
-        print('could not save {outfile} with tifffile')
-        print(f'Error={e}')
-        sys.exit()
+    # # The final image: im1 is now a numpy array so we can use
+    # # tifffile to save the image
+    # try:
+    #     imwrite(outfile, im1, bigtiff=True, compression='LZW')
+    # except Exception as e:
+    #     print('could not save {outfile} with tifffile')
+    #     print(f'Error={e}')
+    #     sys.exit()
 
-    del im1
-    return
+    # del im1
+    # return
 
 
 def tif_to_png(file_key):

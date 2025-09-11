@@ -31,6 +31,7 @@ class PrepCreater:
         """Applies the inclusion and replacement results defined by the user on the Django admin portal for the Quality Control step
         to the full resolution images.  The result is stored in the animal_folder/preps/CHX/full directory
         Note: We don't want the image size when we are downsampling, only at full resolution.
+        N.B. Part of task 'mask'
         """
 
         if self.downsample:
@@ -50,22 +51,36 @@ class PrepCreater:
             if not os.path.exists(self.input):
                 return
 
-        try:
-            starting_files = os.listdir(self.input)
-        except OSError:
-            print(f"Error: Could not find the input directory: {self.input}")
-            return
-            
-        self.fileLogger.logevent(f"Input FOLDER: {self.input}")
-        self.fileLogger.logevent(f"INPUT FOLDER FILE COUNT: {len(starting_files)}")
-        self.fileLogger.logevent(f"OUTPUT FOLDER: {self.output}")
-        os.makedirs(self.output, exist_ok=True)
+        #ASSERT DB == FILE COUNT BEFORE PROCEEDING
         try:
             sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
         except:
             raise Exception('Could not get sections from database')
+
+        try:
+            # starting_files = os.listdir(self.input)
+            # starting_files = [entry.name for entry in os.scandir(self.input)]
+            file_count  = sum(1 for entry in os.scandir(self.input) if entry.is_file())
+        except OSError:
+            print(f"Error: Could not find the input directory: {self.input}")
+            return
         
-        self.fileLogger.logevent(f"DB SECTIONS [EXPECTED OUTPUT FOLDER FILE COUNT]: {len(sections)}")
+        if file_count != len(sections):
+            raise ValueError(f"Mismatch: Found {file_count} files in {self.input} but expected {sections} sections from database")
+            
+        #PROCEED IF DB == FILE COUNT
+        self.fileLogger.logevent(f"INPUT FOLDER: {self.input}, QTY FILES: {file_count}")
+        self.fileLogger.logevent(f"DB SECTIONS [SHOULD MATCH INPUT FOLDER FILE QTY]: {len(sections)}")
+        self.fileLogger.logevent(f"OUTPUT FOLDER: {self.output}")
+
+        if self.debug:
+            print(f"INPUT FOLDER: {self.input}, QTY FILES: {file_count} MATCHES DB SECTION COUNT; PROCEEDING")
+
+        Path(self.output).mkdir(parents=True, exist_ok=True)
+        #os.makedirs(self.output, exist_ok=True)
+        
+        
+        
 
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)

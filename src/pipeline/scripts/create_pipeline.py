@@ -63,7 +63,11 @@ Creating fiducials and then running the realign task will improve the alignment.
 - if you use omezarr, you will need to switch the projection in the viewer.
     crossSectionOrientation: [0, 0, 0, -1],
  
-
+**New Feature**
+After ch1 processed, chain remaining channels (and process in pairs) with channel=all
+For example:
+    python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample False --channel all --task extract
+    [this will extract all remaining channels at full resolution]
 """
 import argparse
 from pathlib import Path
@@ -80,7 +84,7 @@ from library.image_manipulation.pipeline_process import Pipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
+    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=str)
     parser.add_argument("--zarrlevel", help="Enter zarr level", required=False, default=0, type=int)
     parser.add_argument(
         "--downsample",

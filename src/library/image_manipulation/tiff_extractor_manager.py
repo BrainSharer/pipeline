@@ -1,10 +1,9 @@
-import os
+import os, sys, glob, json
 import inspect
-import glob
-import sys
 from pathlib import Path
 import hashlib
 from tqdm import tqdm
+from functools import reduce
 
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
 from library.utilities.utilities_process import DOWNSCALING_FACTOR
@@ -18,7 +17,7 @@ class TiffExtractor():
 
     def extract_tiffs_from_czi(self):
         """
-        Extracts TIFF images from CZI files for a specified channel.
+        Extracts TIFF images from CZI files for a specified channel. (or all remaining channels if channel=all)
         This method performs the following steps:
         1. Determines the output directory and scale factor based on the downsample flag.
         2. Creates the output directory if it does not exist.
@@ -44,27 +43,156 @@ class TiffExtractor():
             scale_factor = 1
 
         self.input = self.fileLocationManager.get_czi()
-        os.makedirs(self.output, exist_ok=True)
-        starting_files = glob.glob(
-            os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
-        )
-        total_files = os.listdir(self.output)
-        self.fileLogger.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
-        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
-        self.fileLogger.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
-        self.fileLogger.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
+        Path(self.output).mkdir(parents=True, exist_ok=True)
 
-        sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
-        if self.debug:
-            print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
-            print(f"OUTPUT FILES DESTINATION: {self.output}")
+        if self.channel == 'all' and self.downsample == False:
+            #PROCESS ALL CHANNELS (>1) IN FULL RESOLUTION
+            #ASSUMES COMPLETE PIPELINE ALREADY RUN ON DOWNSAMPLED CHANNEL 1
+            #GETS CHANNEL LIST FROM meta-data.json
+            meta_data_file = 'meta-data.json'
+            meta_store = os.path.join(self.fileLocationManager.prep, meta_data_file)
 
-        if len(sections) == 0:
-            print('\nError, no sections found, exiting.')
-            print("Were the CZI file names correct on birdstore?")
-            print("File names should be in the format: DK123_slideXXX_anything.czi")
-            print("Are there slides in the database but no tifs? Check the database for existing slides and missing tifs")
-            sys.exit()
+            try:
+                meta_data_info = {}
+                if os.path.isfile(meta_store):
+                    print(f'Found neuroanatomical tracing info; reading from {meta_store}')
+
+                    # verify you have >=2 required channels
+                    with open(meta_store) as fp:
+                        info = json.load(fp)
+                    self.meta_channel_mapping = info['Neuroanatomical_tracing']
+                    meta_data_info['Neuroanatomical_tracing'] = self.meta_channel_mapping
+                
+                    channel_info = [{'number': channel_number, 'name': channel_data['channel_name']} 
+                                    for channel_number, channel_data in meta_data_info['Neuroanatomical_tracing'].items()]
+
+                    print(f'PROCESSING {len(channel_info)} CHANNELS FROM meta-data.json')
+
+            except Exception as e:
+                print(f'Error reading {meta_store}, {e=}')
+                print('Exiting')
+                sys.exit()
+
+            finally:
+                assert (meta_data_info), (
+                    f"MISSING META-DATA INFO; CANNOT AUTO-PROCESS ALL CHANNELS"
+                )
+                sections = {}
+                starting_files_dict = {}  # Dictionary per channel
+                all_starting_files = []   # Flat list of all files
+
+                # Process each channel
+                for channel_data in channel_info:
+                    channel_number = channel_data['number']
+                    channel_name = channel_data['name']
+
+                    channel_sections = self.sqlController.get_sections(self.animal, channel_number, self.debug)
+                    sections[channel_name] = channel_sections
+
+                    # Get starting files for this specific channel
+                    channel_files = glob.glob(os.path.join(self.output, f"*_{channel_name}.tif"))
+                    starting_files_dict[channel_name] = channel_files
+                    all_starting_files.extend(channel_files)
+
+                    self.fileLogger.logevent(f'Channel {channel_number} ({channel_name}): {len(channel_sections)} sections, {len(channel_files)} existing files')
+
+                    if len(channel_sections) == 0:
+                        print('\nError, no sections found, exiting.')
+                        print("Were the CZI file names correct on birdstore?")
+                        print("File names should be in the format: DK123_slideXXX_anything.czi")
+                        print("Are there slides in the database but no tifs? Check the database for existing slides and missing tifs")
+                        sys.exit()
+                    elif len(channel_sections) > len(channel_files):  # Fixed: compare with channel_files instead of starting_files
+        
+                        expected_files = {section.file_name for section in channel_sections}  # Fixed: use channel_sections
+                        actual_files = {os.path.basename(path) for path in channel_files}     # Fixed: use channel_files
+                        missing_files = expected_files - actual_files  # Find missing files by set difference
+
+                        if self.debug:
+                            missing_files, extra_files = self.compare_files(channel_sections, self.output, channel_name)  # Fixed: use channel_sections and channel_name
+
+                            if len(extra_files) > 0 and self.debug:
+                                print(f"Found {len(extra_files)} unexpected files:")
+                                for file in extra_files:
+                                    print(f"  - {file}")
+
+                        if len(missing_files) > 0:
+                            if self.debug:
+                                print(f"Missing files: {len(missing_files)}")
+                                if len(missing_files) <= 20:
+                                    for file in sorted(missing_files):
+                                        print(f"  - {file}")
+                                else:
+                                    print(f"  (Too many to list individually - {len(missing_files)} files missing)")
+                            
+                            self.extract_by_section(int(channel_number), channel_sections, scale_factor)
+
+        else:
+            #SINGLE CHANNEL PROCESSING
+            sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
+            starting_files = glob.glob(
+                os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
+            )
+            self.fileLogger.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
+            self.fileLogger.logevent(f"DB SECTIONS QTY FOR CHANNEL: {len(sections)} (A.K.A. TOTAL FILES TO EXTRACT)")
+            self.fileLogger.logevent(f"EXTRACTED FILE COUNT: {len(starting_files)}")
+            
+            if len(sections) == 0:
+                print('\nError, no sections found, exiting.')
+                print("Were the CZI file names correct on birdstore?")
+                print("File names should be in the format: DK123_slideXXX_anything.czi")
+                print("Are there slides in the database but no tifs? Check the database for existing slides and missing tifs")
+                sys.exit()
+            elif len(sections) > len(starting_files):
+                
+                expected_files = {section.file_name for section in sections} # Get all expected filenames from sections
+                actual_files = {os.path.basename(path) for path in starting_files}
+                missing_files = expected_files - actual_files # Find missing files by set difference
+
+                if self.debug:
+                    missing_files, extra_files = self.compare_files(sections, self.output, self.channel)
+
+                    if len(extra_files) > 0 and self.debug:
+                        print(f"Found {len(extra_files)} unexpected files:")
+                        for file in extra_files:
+                            print(f"  - {file}")
+
+                if len(missing_files) > 0:
+                    if self.debug:
+                        print(f"Missing files: {len(missing_files)}")
+                        for file in sorted(missing_files):
+                            print(f"  - {file}")
+                    self.extract_by_section(self.channel, sections, scale_factor)
+            
+
+        # for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
+        #     czi_file = os.path.join(self.input, section.czi_file)
+        #     tif_file = os.path.basename(section.file_name)
+        #     outfile = os.path.join(self.output, tif_file)
+
+        #     if not os.path.exists(czi_file):
+        #         print(f'Error: {czi_file} does not exist.')
+        #         continue
+        #     if os.path.exists(outfile):
+        #         continue
+        #     scene = section.scene_index
+        #     if self.debug:
+        #         print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
+        #     extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
+        
+        # # Check for duplicates
+        # duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
+        # if duplicates:
+        #     self.fileLogger.logevent(f"DUPLICATE FILES FOUND: {duplicates}")
+        #     print("Duplicate scenes found:")
+        #     for duplicate in duplicates:
+        #         for file in duplicate:
+        #             print(f"{os.path.basename(file)}", end=" ")
+        #         print()
+
+
+    def extract_by_section(self, channel, sections, scale_factor):
+        '''Extracts TIFF images from CZI files for a specified channel.'''
 
         for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
             czi_file = os.path.join(self.input, section.czi_file)
@@ -79,7 +207,7 @@ class TiffExtractor():
             scene = section.scene_index
             if self.debug:
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-            extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
+            extract_tiff_from_czi([czi_file, outfile, scene, channel, scale_factor])
         
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
@@ -212,6 +340,23 @@ class TiffExtractor():
 
         update_slide_checksum(self.fileLocationManager.get_czi(), preview_outpath)
         
+
+    def compare_files(self, sections, output_dir, channel):
+        """Compare expected vs actual files and return missing files"""
+        
+        # Get expected files from sections
+        expected_files = {section.file_name for section in sections}
+        
+        # Get actual files from output directory
+        pattern = os.path.join(output_dir, f"*_C{channel}.tif")
+        actual_files = {os.path.basename(path) for path in glob.glob(pattern)}
+        
+        # Find missing files
+        missing_files = expected_files - actual_files
+        
+        return sorted(missing_files), sorted(actual_files - expected_files)
+
+
     @staticmethod
     def find_duplicates(directory):
         """Finds duplicate files in a directory."""
@@ -225,6 +370,7 @@ class TiffExtractor():
         duplicates = [files for files in files_by_hash.values() if len(files) > 1]
         return duplicates
     
+
 def calculate_hash(file_path):
     """Calculates the MD5 hash of a file."""
     
