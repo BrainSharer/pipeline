@@ -1,3 +1,4 @@
+import re
 from library.database_model.slide import Section
 
 class SectionsController():
@@ -45,10 +46,32 @@ class SectionsController():
                 .order_by(Section.scene_number.asc())
 
         if debug: # Print the raw SQL query
-            print(f'RAW SQL: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}')
+            # raw_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
+            # cleaned_sql = re.sub(r'"([a-zA-Z_][a-zA-Z0-9_]*)"', r'\1', raw_sql)
+            raw_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
+            cleaned_sql = self.ensure_backticks(raw_sql)
+            print(f'RAW SQL: {cleaned_sql}')
+            print(f'RAW SQL: \n{cleaned_sql}\n')
 
         sections = query.all()
         return sections
+
+
+    def ensure_backticks(self, sql_string):
+        """
+        Ensure all identifiers have backticks, but exclude SQL keywords
+        FOR DEBUG OF RAW SQL
+        """
+        # Remove existing quotes and backticks
+        sql_string = sql_string.replace('`', '').replace('"', '')
+        
+        # Add backticks to ALL table.column patterns
+        sql_string = re.sub(r'([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)', r'`\1`.`\2`', sql_string)
+        
+        # Add backticks to standalone table names in FROM clause
+        sql_string = re.sub(r'\b(FROM|JOIN|INTO)\s+([a-zA-Z_][a-zA-Z0-9_]*)', r'\1 `\2`', sql_string)
+        
+        return sql_string
 
 
     def get_section_count(self, animal):
