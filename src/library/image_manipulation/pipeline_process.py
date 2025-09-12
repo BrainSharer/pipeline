@@ -14,6 +14,7 @@ import psutil
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from pathlib import Path
+import uuid
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.image_manipulation.file_logger import FileLogger
@@ -34,6 +35,10 @@ from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, ge
 from library.database_model.scan_run import IMAGE_MASK
 from library.cell_labeling.cell_ui import Cell_UI
 
+from library.utilities.cell_utilities import (
+    copy_with_rclone
+)
+
 try:
     from settings import data_path, host, schema
 except ImportError:
@@ -41,7 +46,6 @@ except ImportError:
     data_path = "/net/birdstore/Active_Atlas_Data/data_root"
     host = "db.dk.ucsd.edu"
     schema = "brainsharer"
-import uuid
 
 
 class Pipeline(
@@ -292,39 +296,37 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
-        
-        #check if realigned dir exists; that takes priority - are we still using _realigned suffix?
-        # if self.channel == 1 and self.downsample:
-        #     aligned_dirs = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample)
-        #     aligned_dir = next((item for item in aligned_dirs if item.endswith('_realigned')), 
-        #            next((item for item in aligned_dirs if item.endswith('_aligned')), None))
-        #     if self.debug:
-        #         print(f'DEBUG: USING ALIGNED DIR {aligned_dirs}')
-        #     self.input = aligned_dir
-        #     if any(item.endswith('_realigned') for item in aligned_dirs): #realigned exists
-        #         self.iteration = REALIGNED
-        #     self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
-        # else:
-        #     self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
-        #     self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
 
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
-        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
-            self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
+        # self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+        #     self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch, in_contents=self.input)
         
+        if self.use_scratch:
+            SCRATCH = get_scratch_dir()
+        else:
+            SCRATCH = self.SCRATCH
+
+        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'C' + self.channel + '_ng')
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
 
-        print(f'Input: {self.input}')
-        print(f'Output: {self.output}')
+        print(f'INPUT: {self.input}')
+        print(f'USING SCRATCH SPACE: {self.use_scratch}')
+        print(f'TEMP DIR: {temp_output_path}')
+        print(f'FINAL OUTPUT: {self.output}')
         print(f'Progress: {self.progress_dir}')
-        print(f'Rechunkme: {self.rechunkme_path}')
+        # print(f'Rechunkme: {self.rechunkme_path}')
         
-        self.create_neuroglancer()
-        self.create_downsamples()
+        # self.create_neuroglancer()
+        # self.create_downsamples()
+
+        max_memory_gb = 500 #muralis testing
+        self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
         print(f'Make sure you delete {self.rechunkme_path}.')
+
+        copy_with_rclone(self.rechunkme_path, self.output)
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 

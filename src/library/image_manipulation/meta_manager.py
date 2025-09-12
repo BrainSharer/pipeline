@@ -199,10 +199,14 @@ class MetaUtilities:
 
         try:
             files = []
+            checksum_files = []
             with os.scandir(self.input) as entries:
                 for entry in entries:
                     if entry.is_file() and entry.name.lower().endswith('.czi'):
                         files.append(entry.path)
+                        checksum_filename = Path(entry.path).stem + '.sha256'
+                        checksum_filepath = Path(self.checksum, checksum_filename)
+                        checksum_files.append(checksum_filepath)
             files.sort()
             nfiles = len(files)
             if nfiles == 0:
@@ -214,23 +218,18 @@ class MetaUtilities:
             print(e)
             sys.exit()
 
-        input_basename = Path(self.input).name
-        sha256_filename = f"{input_basename}.sha256"
-        checksum_filepath = Path(self.checksum, sha256_filename)
-        if not checksum_filepath.exists():
-            self.fileLogger.logevent(f"Calculating checksums for {nfiles} files...")
+        if self.downsample == False: #checksums take considerable time; only full-resolution for now
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                sha256_results = loop.run_until_complete(
-                    self.calculate_hashes_async(files, workers)
+                loop.run_until_complete(
+                    self.calculate_all_hashes_async(files, checksum_files, workers)
                 )
-                self.save_hashes_to_file(checksum_filepath, files, sha256_results)
+            except Exception as e:
+                print(f"Error in parallel processing: {e}")
             finally:
                 loop.close()
-        else:
-            self.fileLogger.logevent(f"Checksum file already exists: {checksum_filepath}")
-            
+
         return files
 
 
@@ -440,48 +439,56 @@ class MetaUtilities:
         self.session.commit()
 
 
-    async def calculate_hashes_async(self, file_paths, workers: int):
-        """Calculate SHA256 hashes asynchronously with concurrency limit"""
-        semaphore = asyncio.Semaphore(workers)
-
-        async def calculate_single_sha256(file_path):
-            async with semaphore:  # ← This limits how many run concurrently
-                sha256_hash = hashlib.sha256()
-                async with aiofiles.open(file_path, "rb") as f:
-                    while True:
-                        chunk = await f.read(4096)
-                        if not chunk:
-                            break
-                        sha256_hash.update(chunk)
-                return sha256_hash.hexdigest()
-
-        tasks = [calculate_single_sha256(path) for path in file_paths]
+    async def calculate_all_hashes_async(self, files, checksum_files, max_concurrent):
+        """Calculate hashes for all files in parallel with limited concurrency"""
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def process_single_file(file_path, checksum_filepath):
+            async with semaphore:  
+                start_time = time.time()
+                filename = Path(file_path).name
+                if not checksum_filepath.exists():
+                    self.fileLogger.logevent(f"Calculating checksum for {filename}...")
+                    try:
+                        sha256_result = await self.calculate_single_hash_async(file_path)
+                        # Save ONLY the hash (no filename) to the checksum file
+                        async with aiofiles.open(checksum_filepath, 'w') as f:
+                            await f.write(f"{sha256_result}\n")
+                        end_time = time.time()
+                        return f"FINISHED: {filename} in {end_time-start_time:.2f}s -> {sha256_result[:16]}..."
+                    except Exception as e:
+                        return f"Error processing {filename}: {str(e)}"
+                else:
+                    # Read existing hash to log it
+                    async with aiofiles.open(checksum_filepath, 'r') as f:
+                        existing_hash = (await f.read()).strip()
+                    return f"Skipped: {filename} (exists) -> {existing_hash[:16]}..."
+        
+        # Create tasks for all files
+        tasks = []
+        for file_path, checksum_filepath in zip(files, checksum_files):
+            tasks.append(process_single_file(file_path, checksum_filepath))
+        
+        # Run all tasks concurrently with error handling
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        sha256_results = {}
-        for path, result in zip(file_paths, results):
-            filename = os.path.basename(path)
+        # Log results
+        for result in results:
             if isinstance(result, Exception):
-                print(f"Error calculating hash for {filename}: {result}")
-                sha256_results[filename] = "ERROR"
+                self.fileLogger.logevent(f"Error: {str(result)}")
             else:
-                sha256_results[filename] = result
+                self.fileLogger.logevent(result)
         
-        return sha256_results
+        return results
 
 
-    def save_hashes_to_file(self, checksum_filepath, file_paths, hashes):
-        """Save hashes to a checksum file"""
-        try:
-            with open(checksum_filepath, 'w') as f:
-                f.write(f"# SHA256 checksums for files in {self.input}\n")
-                f.write(f"# Generated on: {datetime.datetime.now().isoformat()}\n\n")
-                
-                for file_path in file_paths:
-                    filename = os.path.basename(file_path)
-                    if filename in hashes:
-                        f.write(f"{hashes[filename]}  {filename}\n")
-            
-            self.fileLogger.logevent(f"Checksums saved to: {checksum_filepath}")
-        except IOError as e:
-            print(f"Error saving checksum file: {e}")
+    async def calculate_single_hash_async(self, file_path):
+        """Calculate SHA256 for a single file asynchronously"""
+        sha256_hash = hashlib.sha256()
+        async with aiofiles.open(file_path, "rb") as f:
+            while True:
+                chunk = await f.read(4096)
+                if not chunk:
+                    break
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
