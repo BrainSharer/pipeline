@@ -415,7 +415,7 @@ class MetaUtilities:
             .filter(SlideCziTif.active == 1)\
             .distinct()
         channels = [channel[0] for channel in channels]
-        print(f"DEBUG: Reordering scenes for channels: {channels}")
+        # print(f"DEBUG: Reordering scenes for channels: {channels}")
 
         for channel in channels:
             scenes = self.sqlController.session.query(SlideCziTif)\

@@ -1,9 +1,17 @@
-import os
-import sys
+import os, sys, json
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 
+from pathlib import Path
+import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
+import psutil
+import gc
+from library.utilities.cell_utilities import (
+    copy_with_rclone
+)
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import test_dir
@@ -93,6 +101,9 @@ class NgPrecomputedMaker:
 
         workers = self.get_nworkers()
         if self.debug:
+            workers = 1
+
+        if self.debug:
             for file_key in file_keys:
                 ng.process_image(file_key=file_key)
         else:
@@ -154,3 +165,228 @@ class NgPrecomputedMaker:
                 tasks = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
             tq.insert(tasks)
             tq.execute()
+
+
+    def create_precomputed(self, input, temp_output_path, OUTPUT_DIR, progress_dir, max_memory_gb: int = 100):
+        """
+        REVISED NEUROGLANCER METHOD - COMBINES 'rechunkme' (MIP=0) WITH DOWNSAMPLING (MIP>0)
+        
+        create the Seung lab cloud volume format from the image stack
+        For a large isotropic data set, Allen uses chunks = [128,128,128]
+        self.input and self.output are defined in the pipeline_process
+        """
+        performance_lab = self.sqlController.histology.FK_lab_id
+        image_manager = ImageManager(input)
+        shape = image_manager.volume_size
+        src_dtype = image_manager.dtype
+        num_channels = image_manager.num_channels
+        if self.downsample or image_manager.size < 100000000:
+            mips = 4
+        else:
+            mips = 7
+
+        if self.downsample:
+            self.xy_chunk = int(XY_CHUNK//2)
+            chunks = [self.xy_chunk, self.xy_chunk, 1]
+        else:
+            chunks = [image_manager.height//16, image_manager.width//16, 1] # 1796x984
+
+        adjusted_chunk_size = chunks
+        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
+
+        encoding="raw"
+        scales = self.get_scales()
+        max_workers = self.get_nworkers()
+        if self.debug:
+            max_workers = 1
+
+        print(f'Creating precomputed annotations in {temp_output_path}')
+        print(f"{shape=}")
+        print(f"{scales=}")
+        
+        info = CloudVolume.create_new_info(
+            num_channels=1,
+            layer_type='image', 
+            data_type=src_dtype, 
+            encoding=encoding,
+            resolution=scales,
+            voxel_offset=(0, 0, 0),
+            chunk_size=adjusted_chunk_size,
+            volume_size=shape,  # x, y, z
+        )
+
+        vol = CloudVolume(f'file://{temp_output_path}', progress=True, info=info, parallel=True, non_aligned_writes=False, provenance={})
+        vol.commit_info()
+
+        # Generate and write volume data in parallel
+        optimal_chunk_size = self.calculate_optimal_chunk_size(
+            image_manager, max_memory_gb, max_workers
+        )
+        
+        print(f"Using chunk size: {optimal_chunk_size} slices per chunk")
+        self.generate_volume_parallel(vol, image_manager, max_workers, optimal_chunk_size)
+        
+
+        ################################################
+        # CREATE/MODIFY PROVENANCE FILE WITH META-DATA
+        ################################################
+        try:
+            with open(prov_path, 'r') as f:
+                prov = json.load(f)
+        except Exception as e:
+            prov = {}
+        prov_path = Path(temp_output_path, 'provenance')
+        prov['description'] = f"IMAGE VOL"
+        prov['sources'] = [f"subject={self.animal}, neuroglancer task"]
+
+        current_processing = {
+            'method': {
+                'task': 'PyramidGeneration',
+                'mips': mips,
+                'chunk_size': [int(x) for x in adjusted_chunk_size],
+                'encoding': encoding
+                }
+            }
+
+        prov['processing'] = [current_processing]
+        prov['owners'] = [f'PERFORMANCE LAB: {performance_lab}']
+        with open(prov_path, 'w') as f:
+            json.dump(prov, f, indent=2)
+        
+        #################################################
+        # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) IN-PLACE
+        #################################################
+        cloudpath = f"file://{temp_output_path}" #full-resolution (already generated)
+
+        tq = LocalTaskQueue(parallel=max_workers)
+        tasks = tc.create_downsampling_tasks(
+                                            layer_path=cloudpath, 
+                                            mip=0, 
+                                            num_mips=mips, 
+                                            compress=True,
+                                            encoding=encoding,
+                                            sparse=True,
+                                            fill_missing=True,
+                                            delete_black_uploads=True,
+                                            chunk_size=adjusted_chunk_size
+                                            )
+        tq.insert(tasks)
+        tq.execute()
+        
+        #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
+        copy_with_rclone(temp_output_path, OUTPUT_DIR)
+
+
+        def calculate_optimal_chunk_size(self, image_manager, max_memory_gb, max_workers):
+            """
+            Calculate optimal chunk size based on available memory and image size
+            """
+            # Get memory info
+            available_memory_gb = psutil.virtual_memory().available / (1024 ** 3)
+            safe_memory_gb = min(available_memory_gb * 0.7, max_memory_gb)
+            
+            # Estimate memory per slice
+            slice_memory_bytes = (image_manager.height * image_manager.width * 
+                                image_manager.num_channels * np.dtype(image_manager.dtype).itemsize)
+            slice_memory_gb = slice_memory_bytes / (1024 ** 3)
+            
+            # Calculate max slices that fit in memory
+            max_slices = int(safe_memory_gb / slice_memory_gb)
+            
+            # Consider worker parallelism
+            chunk_size = max(1, max_slices // max_workers)
+            
+            # Limit chunk size for responsiveness
+            chunk_size = min(chunk_size, 20)
+            
+            return chunk_size
+
+
+        def generate_volume_parallel(self, vol, image_manager, max_workers, chunk_size):
+            """
+            Generate volume data from image stack in parallel [in memory-managed chunks]
+            """
+            z_slices = image_manager.section_count
+    
+            # Process in chunks
+            for chunk_start in range(0, z_slices, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, z_slices)
+                
+                print(f"Processing slices {chunk_start} to {chunk_end-1}")
+                self.print_memory_usage("Before loading chunk")
+                
+                # Process this chunk
+                self.process_chunk_with_memory_management(
+                    vol, image_manager, chunk_start, chunk_end, max_workers
+                )
+                
+                # Clean up memory
+                gc.collect()
+                print_memory_usage("After processing chunk")
+
+
+        def print_memory_usage(self, stage):
+            """
+            Print current memory usage
+            """
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / (1024 ** 2)
+            print(f"Memory usage {stage}: {memory_mb:.1f} MB")
+
+
+        def process_chunk_with_memory_management(self, vol, image_manager, start_z, end_z, max_workers):
+            """
+            Process a chunk of slices with careful memory management
+            """
+            chunk_size = end_z - start_z
+            
+            # Pre-allocate memory for the entire chunk
+            chunk_shape = (image_manager.num_channels, image_manager.height, 
+                        image_manager.width, chunk_size)
+            chunk_data = np.zeros(chunk_shape, dtype=image_manager.dtype)
+            
+            # Load slices into pre-allocated array
+            self.load_slices_into_preallocated(image_manager, start_z, end_z, chunk_data, max_workers)
+            
+            # Write the entire chunk to CloudVolume
+            vol[:, :, start_z:end_z] = chunk_data
+            
+            # Explicitly free memory
+            del chunk_data
+
+
+        def load_slices_into_preallocated(self, image_manager, start_z, end_z, chunk_data, max_workers):
+            """
+            Load slices directly into pre-allocated memory using threads
+            """
+            z_indices = list(range(start_z, end_z))
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                
+                for i, z in enumerate(z_indices):
+                    future = executor.submit(
+                        self.load_slice_to_position, image_manager, z, chunk_data, i
+                    )
+                    futures.append(future)
+                
+                # Wait for all loads to complete
+                for future in tqdm(as_completed(futures), total=len(futures), 
+                                desc="Loading slices"):
+                    future.result()
+
+
+        def load_slice_to_position(self, image_manager, z, chunk_data, position):
+            """
+            Load a single slice into a specific position in the pre-allocated array
+            """
+            slice_data = image_manager.get_slice(z)
+            
+            # Handle different image formats
+            if len(slice_data.shape) == 2:  # Grayscale
+                chunk_data[0, :, :, position] = slice_data
+            elif len(slice_data.shape) == 3:  # RGB
+                if slice_data.shape[2] == 3:  # RGB
+                    chunk_data[:, :, :, position] = slice_data.transpose(2, 0, 1)
+                else:  # RGBA or other
+                    chunk_data[:slice_data.shape[2], :, :, position] = slice_data.transpose(2, 0, 1)
