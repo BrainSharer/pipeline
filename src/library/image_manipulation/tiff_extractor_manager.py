@@ -3,12 +3,15 @@ import inspect
 from pathlib import Path
 import hashlib
 from tqdm import tqdm
-from functools import reduce
+import shutil
+import traceback
+from collections import defaultdict
 
 from library.image_manipulation.czi_manager import extract_tiff_from_czi, extract_png_from_czi
-from library.utilities.utilities_process import DOWNSCALING_FACTOR
-
-
+from library.utilities.utilities_process import DOWNSCALING_FACTOR, get_scratch_dir, use_scratch_dir
+from library.utilities.cell_utilities import (
+    copy_with_rclone
+)
 class TiffExtractor():
     """Includes methods to extract tiff images from czi source files and generate png files for quick viewing of
     downsampled images in stack
@@ -77,17 +80,34 @@ class TiffExtractor():
                 assert (meta_data_info), (
                     f"MISSING META-DATA INFO; CANNOT AUTO-PROCESS ALL CHANNELS"
                 )
+
                 sections = {}
                 starting_files_dict = {}  # Dictionary per channel
                 all_starting_files = []   # Flat list of all files
 
-                # Process each channel
+                extraction_tasks = []
                 for channel_data in channel_info:
                     channel_number = channel_data['number']
                     channel_name = channel_data['name']
 
+                    if self.debug:
+                        print(f"PROCESSING CHANNEL {channel_number} ({channel_name})")
+                        print(f"==========================================")
+
+                    # Get sections for THIS specific channel
                     channel_sections = self.sqlController.get_sections(self.animal, channel_number, self.debug)
                     sections[channel_name] = channel_sections
+
+                    if self.debug:
+                        print(f"Sections found: {len(channel_sections)}")
+                        # Check if any files are missing for this channel
+                        expected_files = {section.file_name for section in channel_sections}
+                        actual_files = {os.path.basename(f) for f in glob.glob(os.path.join(self.output, f"*_C{channel_number}.tif"))}
+                        missing_files = expected_files - actual_files
+                        print(f"Missing files for channel {channel_number}: {len(missing_files)}")
+                        if missing_files and len(missing_files) <= 5:
+                            for f in missing_files:
+                                print(f"  - {f}")
 
                     # Get starting files for this specific channel
                     channel_files = glob.glob(os.path.join(self.output, f"*_{channel_name}.tif"))
@@ -109,24 +129,27 @@ class TiffExtractor():
                         missing_files = expected_files - actual_files  # Find missing files by set difference
 
                         if self.debug:
-                            missing_files, extra_files = self.compare_files(channel_sections, self.output, channel_name)  # Fixed: use channel_sections and channel_name
-
-                            if len(extra_files) > 0 and self.debug:
-                                print(f"Found {len(extra_files)} unexpected files:")
-                                for file in extra_files:
-                                    print(f"  - {file}")
+                            print(f"Missing files for channel {channel_number}: {len(missing_files)}")
+                            if missing_files and len(missing_files) <= 5:
+                                for f in missing_files:
+                                    print(f"  - {f}")
 
                         if len(missing_files) > 0:
                             if self.debug:
-                                print(f"Missing files: {len(missing_files)}")
+                                print(f"Missing files for channel {channel_number}: {len(missing_files)}")
                                 if len(missing_files) <= 20:
                                     for file in sorted(missing_files):
                                         print(f"  - {file}")
                                 else:
                                     print(f"  (Too many to list individually - {len(missing_files)} files missing)")
                             
-                            self.extract_by_section(int(channel_number), channel_sections, scale_factor)
+                            extraction_tasks.append((channel_number, channel_sections))
+                            #self.extract_by_section(int(channel_number), channel_sections, scale_factor, 'multi')
 
+                for channel_number, channel_sections in extraction_tasks:
+                    if self.debug:
+                        print(f"Executing extraction for channel {channel_number}")
+                    self.extract_by_section(int(channel_number), channel_sections, scale_factor, 'multi')
         else:
             #SINGLE CHANNEL PROCESSING
             sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
@@ -163,52 +186,153 @@ class TiffExtractor():
                         for file in sorted(missing_files):
                             print(f"  - {file}")
                     self.extract_by_section(self.channel, sections, scale_factor)
-            
-
-        # for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
-        #     czi_file = os.path.join(self.input, section.czi_file)
-        #     tif_file = os.path.basename(section.file_name)
-        #     outfile = os.path.join(self.output, tif_file)
-
-        #     if not os.path.exists(czi_file):
-        #         print(f'Error: {czi_file} does not exist.')
-        #         continue
-        #     if os.path.exists(outfile):
-        #         continue
-        #     scene = section.scene_index
-        #     if self.debug:
-        #         print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-        #     extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
-        
-        # # Check for duplicates
-        # duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
-        # if duplicates:
-        #     self.fileLogger.logevent(f"DUPLICATE FILES FOUND: {duplicates}")
-        #     print("Duplicate scenes found:")
-        #     for duplicate in duplicates:
-        #         for file in duplicate:
-        #             print(f"{os.path.basename(file)}", end=" ")
-        #         print()
 
 
-    def extract_by_section(self, channel, sections, scale_factor):
+    def extract_by_section(self, channel, sections, scale_factor, mode = 'single'):
         '''Extracts TIFF images from CZI files for a specified channel.'''
 
-        for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
-            czi_file = os.path.join(self.input, section.czi_file)
-            tif_file = os.path.basename(section.file_name)
-            outfile = os.path.join(self.output, tif_file)
-
-            if not os.path.exists(czi_file):
-                print(f'Error: {czi_file} does not exist.')
-                continue
-            if os.path.exists(outfile):
-                continue
-            scene = section.scene_index
-            if self.debug:
-                print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-            extract_tiff_from_czi([czi_file, outfile, scene, channel, scale_factor])
+        if self.use_scratch:
+            #can /scratch hold first czi (*1.5)
+            scratch_tmp = get_scratch_dir(Path(self.input, sections[0].czi_file))
+        else:
+            scratch_tmp = str(Path('/', 'data'))
         
+        #TEMP OVERRIDE
+        scratch_tmp = str(Path('/', 'data'))
+        
+        tmp_path = Path(scratch_tmp, 'pipeline_tmp', self.animal, 'local_czi')
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        
+        if self.debug:
+            print(f'Temp storage location: {scratch_tmp}')
+
+        # Track which CZI files we've copied locally for cleanup
+        locally_copied_files = []
+
+        try:
+            czi_task_groups = defaultdict(list) # Key: czi_filename, Value: list of sections from that file
+            for section in sections:
+                czi_task_groups[section.czi_file].append(section)
+
+            for czi_filename, section_list in czi_task_groups.items():
+                remote_czi_path = os.path.join(self.input, czi_filename)
+                local_czi_path = Path(tmp_path, czi_filename)
+
+                # 1. COPY THE CZI FILE (if needed and if in multi mode)
+                if mode == 'multi':
+                    if not local_czi_path.exists():
+                        if not os.path.exists(remote_czi_path):
+                            print(f'Error: Source file {remote_czi_path} does not exist. Skipping.')
+                            continue # Skip all sections from this missing CZI
+                        if self.debug:
+                            print(f'Copying {remote_czi_path} to {local_czi_path}')
+                        
+                        shutil.copy2(remote_czi_path, local_czi_path)
+                        locally_copied_files.append(local_czi_path)
+                    czi_file_to_use = str(local_czi_path)
+                else:
+                    # In 'single' mode, use the file directly from the network
+                    czi_file_to_use = remote_czi_path
+                    if not os.path.exists(czi_file_to_use):
+                        print(f'Error: {czi_file_to_use} does not exist. Skipping.')
+                        continue
+
+                # 2. PROCESS ALL SECTIONS (scenes) FROM THIS CZI FILE
+                disable_progress = False if self.debug else (len(section_list) == 1)
+                for section in tqdm(section_list, desc=f"Extracting from {czi_filename}", disable=disable_progress):
+                    tif_file = os.path.basename(section.file_name)
+                    outfile = os.path.join(self.output, tif_file)
+                    
+                    if self.debug:
+                        print(f"DEBUG - Processing: {tif_file}")
+                        print(f"DEBUG - Channel: {channel}, Output path: {outfile}")
+                        print(f"DEBUG - File exists: {os.path.exists(outfile)}")
+                        
+                    if os.path.exists(outfile):
+                        if self.debug:
+                            print(f"Skipping existing file: {outfile}")
+                        continue
+
+                    scene = section.scene_index
+
+                    if self.debug:
+                        print(f"Extracting from {czi_filename}, scene {scene}, channel {channel}, to {tif_file}")
+                        print(f"DEBUG - Calling extract_tiff_from_czi with:")
+                        print(f"  CZI: {czi_file_to_use}")
+                        print(f"  Output: {outfile}") 
+                        print(f"  Scene: {scene}")
+                        print(f"  Channel: {channel}")
+                        print(f"  Scale: {scale_factor}")
+
+                    try:
+                        extract_tiff_from_czi((czi_file_to_use, outfile, scene, channel, scale_factor))
+
+                        if self.debug:
+                            # Immediately check if file was created
+                            if os.path.exists(outfile):
+                                if self.debug:
+                                    print(f"SUCCESS: File created: {outfile}")
+                            else:
+                                if self.debug:
+                                    print(f"ERROR: File was not created: {outfile}")
+                                
+                    except Exception as e:
+                        print(f"ERROR in extract_tiff_from_czi: {e}")
+                        traceback.print_exc()
+
+            # for section in tqdm(sections, desc="Extracting TIFFs", disable=self.debug):
+            #     if mode == 'multi':
+            #         remote_czi = os.path.join(self.input, section.czi_file)
+            #         local_czi = Path(tmp_path, section.czi_file)
+            #         if not os.path.exists(local_czi):
+            #             if not os.path.exists(remote_czi):
+            #                 print(f'Error: {remote_czi} does not exist.')
+            #                 continue
+            #             if self.debug:
+            #                 print(f'Copying {remote_czi} to {local_czi}')
+            #             os.system(f'cp "{remote_czi}" "{local_czi}"')
+            #             czi_file = str(local_czi)
+            #     else:
+            #         czi_file = os.path.join(self.input, section.czi_file)
+            #         if not os.path.exists(czi_file):
+            #             print(f'Error: {czi_file} does not exist.')
+            #             continue
+
+            #     tif_file = os.path.basename(section.file_name)
+            #     outfile = os.path.join(self.output, tif_file)
+                
+            #     if os.path.exists(outfile):
+            #         continue
+            #     scene = section.scene_index
+            #     if self.debug:
+            #         print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
+            #     extract_tiff_from_czi([czi_file, outfile, scene, channel, scale_factor])
+            
+        finally:
+            # --- CLEANUP: Remove all locally copied CZI files ---
+            if mode == 'multi' and locally_copied_files:
+                if self.debug:
+                    print(f"Cleaning up {len(locally_copied_files)} local CZI copies...")
+                
+                if not self.debug:
+                    for local_czi_path in locally_copied_files:
+                        try:
+                            if local_czi_path.exists():
+                                local_czi_path.unlink()
+                                if self.debug:
+                                    print(f"Deleted local copy: {local_czi_path}")
+                        except Exception as e:
+                            print(f"Warning: Could not delete {local_czi_path}: {e}")
+                    
+                    # Optional: Remove the temporary directory if it's empty
+                    try:
+                        if tmp_path.exists() and not any(tmp_path.iterdir()):
+                            tmp_path.rmdir()
+                            if self.debug:
+                                print(f"Removed empty directory: {tmp_path}")
+                    except Exception as e:
+                        print(f"Warning: Could not remove directory {tmp_path}: {e}")
+
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
         if duplicates:

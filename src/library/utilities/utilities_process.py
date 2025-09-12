@@ -41,6 +41,7 @@ def use_scratch_dir(directory: str) -> bool:
     """
     Determines if there is enough free space in the /data directory to accommodate
     the specified directory with a buffer factor applied.
+
     Args:
     :param directory (str): The path to the directory whose size needs to be checked.
     :return: bool: True if there is enough free space in the /data directory, False otherwise.
@@ -197,11 +198,23 @@ def get_cpus():
         usecpus = cpus[hostname]
     return usecpus
 
-def get_scratch_dir():
+def get_scratch_dir(contents_path: str = None) -> str:
     """Helper method to return the scratch dir
     /scratch is not big enough on any of the workstations. Use /data instead
+
+    contents_path is dir that needs to be stored on local 'scratch' storage
+    if provided, we check the size of that file or directory and compare to
+    /scratch [PRIMARY] - if enough space to store scratch_path='/scratch'
+    /data [SECONDARY] - same, scratch_path='/data'
+
     """
 
+    if contents_path:
+        dir_size = get_directory_size(contents_path)
+        total, used, free = shutil.disk_usage("/scratch")
+        if free > dir_size * 1.25:
+            tmp_dir = "/scratch"
+    else:
     # usedir = {}
     # usedir['ratto'] = "/data"
 
@@ -212,7 +225,7 @@ def get_scratch_dir():
     #     tmp_dir = "/data"
     
     #/data created on all servers (device or symbolic link to space with enough storage)
-    tmp_dir = "/data"
+        tmp_dir = "/data"
 
     return tmp_dir
 
