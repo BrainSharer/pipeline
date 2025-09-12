@@ -58,30 +58,21 @@ class PrepCreater:
             raise Exception('Could not get sections from database')
 
         try:
-            # starting_files = os.listdir(self.input)
-            # starting_files = [entry.name for entry in os.scandir(self.input)]
-            file_count  = sum(1 for entry in os.scandir(self.input) if entry.is_file())
+            starting_files = os.listdir(self.input)
         except OSError:
             print(f"Error: Could not find the input directory: {self.input}")
             return
         
-        if file_count != len(sections):
-            raise ValueError(f"Mismatch: Found {file_count} files in {self.input} but expected {sections} sections from database")
+        # if len(starting_files) != len(sections):
+        #     raise ValueError(f"Mismatch: Found {len(starting_files)} files in {self.input} but expected {len(sections)} sections from database")
             
         #PROCEED IF DB == FILE COUNT
-        self.fileLogger.logevent(f"INPUT FOLDER: {self.input}, QTY FILES: {file_count}")
+        self.fileLogger.logevent(f"INPUT FOLDER: {self.input}, QTY FILES: {len(starting_files)}")
         self.fileLogger.logevent(f"DB SECTIONS [SHOULD MATCH INPUT FOLDER FILE QTY]: {len(sections)}")
         self.fileLogger.logevent(f"OUTPUT FOLDER: {self.output}")
 
-        if self.debug:
-            print(f"INPUT FOLDER: {self.input}, QTY FILES: {file_count} MATCHES DB SECTION COUNT; PROCEEDING")
-
         Path(self.output).mkdir(parents=True, exist_ok=True)
-        #os.makedirs(self.output, exist_ok=True)
         
-        
-        
-
         for section_number, section in enumerate(sections):
             infile = os.path.basename(section.file_name)
             input_path = os.path.join(self.input, infile)
