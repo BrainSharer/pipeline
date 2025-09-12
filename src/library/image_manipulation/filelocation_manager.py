@@ -156,7 +156,8 @@ class FileLocationManager(object):
 
         return os.path.join(self.neuroglancer_data, f"{channel_outdir}")
 
-    def get_neuroglancer_rechunkme(self, downsample: bool = True, channel: int = 1, iteration: int = 0, use_scratch_dir: bool = False) -> str:
+
+    def get_neuroglancer_rechunkme(self, downsample: bool = True, channel: int = 1, iteration: int = 0, use_scratch_dir: bool = False, in_contents: str = None) -> str:
         """
         Generates the file path for the Neuroglancer rechunkme file based on the given parameters.
         DK37 uses 552G	for 478 images or 1.15G per image
@@ -177,7 +178,7 @@ class FileLocationManager(object):
 
         channel_outdir += f"_rechunkme_{outpath}"
         if use_scratch_dir:
-            scratch_tmp = get_scratch_dir()
+            scratch_tmp = get_scratch_dir(in_contents)
             rechunkme_dir = os.path.join(scratch_tmp, 'pipeline_tmp', self.prep_id, channel_outdir)
         else:
             rechunkme_dir = os.path.join(self.neuroglancer_data, f"{channel_outdir}")

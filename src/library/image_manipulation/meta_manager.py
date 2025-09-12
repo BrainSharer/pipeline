@@ -38,7 +38,7 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        czi_files = self.check_czi_file_exists() #AND INTEGRITY CHECK
+        czi_files = self.check_czi_file_exists(workers) #AND INTEGRITY CHECK
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
@@ -183,7 +183,7 @@ class MetaUtilities:
         return db_validation_problem, unprocessed_czifiles, processed_czifiles
 
 
-    def check_czi_file_exists(self):
+    def check_czi_file_exists(self, workers: int):
         """
         Check that the CZI files are placed in the correct location
         and src integrity check of czi files
@@ -223,7 +223,7 @@ class MetaUtilities:
             asyncio.set_event_loop(loop)
             try:
                 sha256_results = loop.run_until_complete(
-                    self.calculate_hashes_async(files)
+                    self.calculate_hashes_async(files, workers)
                 )
                 self.save_hashes_to_file(checksum_filepath, files, sha256_results)
             finally:
@@ -440,17 +440,20 @@ class MetaUtilities:
         self.session.commit()
 
 
-    async def calculate_hashes_async(self, file_paths):
-        """Calculate SHA256 hashes asynchronously"""
+    async def calculate_hashes_async(self, file_paths, workers: int):
+        """Calculate SHA256 hashes asynchronously with concurrency limit"""
+        semaphore = asyncio.Semaphore(workers)
+
         async def calculate_single_sha256(file_path):
-            sha256_hash = hashlib.sha256()
-            async with aiofiles.open(file_path, "rb") as f:
-                while True:
-                    chunk = await f.read(4096)
-                    if not chunk:
-                        break
-                    sha256_hash.update(chunk)
-            return sha256_hash.hexdigest()
+            async with semaphore:  # ← This limits how many run concurrently
+                sha256_hash = hashlib.sha256()
+                async with aiofiles.open(file_path, "rb") as f:
+                    while True:
+                        chunk = await f.read(4096)
+                        if not chunk:
+                            break
+                        sha256_hash.update(chunk)
+                return sha256_hash.hexdigest()
 
         tasks = [calculate_single_sha256(path) for path in file_paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
