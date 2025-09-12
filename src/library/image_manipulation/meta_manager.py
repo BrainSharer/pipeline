@@ -8,6 +8,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+import asyncio
+import aiofiles
+import hashlib
 
 from library.database_model.slide import Slide, SlideCziTif
 from library.image_manipulation.czi_manager import CZIManager
@@ -35,7 +38,7 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        czi_files = self.check_czi_file_exists()
+        czi_files = self.check_czi_file_exists() #AND INTEGRITY CHECK
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
@@ -108,6 +111,7 @@ class MetaUtilities:
 
         return
 
+
     def all_slide_meta_data_exists_in_database(self, czi_files):
         """Determines whether or not all the slide info is already 
         in the datbase
@@ -178,28 +182,57 @@ class MetaUtilities:
         self.session.close()
         return db_validation_problem, unprocessed_czifiles, processed_czifiles
 
+
     def check_czi_file_exists(self):
-        """Check that the CZI files are placed in the correct location
+        """
+        Check that the CZI files are placed in the correct location
+        and src integrity check of czi files
         """
         
         self.input = self.fileLocationManager.get_czi()
+        self.checksum = Path(self.fileLocationManager.www, 'checksums', 'czi')
+        self.checksum.mkdir(parents=True, exist_ok=True)
+
         if not os.path.exists(self.input):
             print(f"{self.input} does not exist, we are exiting.")
             sys.exit()
 
         try:
-            files = sorted(os.listdir(self.input))
+            files = []
+            with os.scandir(self.input) as entries:
+                for entry in entries:
+                    if entry.is_file() and entry.name.lower().endswith('.czi'):
+                        files.append(entry.path)
+            files.sort()
             nfiles = len(files)
             if nfiles == 0:
                 print(f"There are no CZI files in:\n{self.input}")
                 sys.exit()
-            self.fileLogger.logevent(f"Input FOLDER: {self.input}")
-            self.fileLogger.logevent(f"FILE COUNT: {nfiles}")
+            self.fileLogger.logevent(f"INPUT FOLDER: {self.input}, QTY FILES: {nfiles}")
+
         except OSError as e:
             print(e)
             sys.exit()
 
+        input_basename = Path(self.input).name
+        sha256_filename = f"{input_basename}.sha256"
+        checksum_filepath = Path(self.checksum, sha256_filename)
+        if not checksum_filepath.exists():
+            self.fileLogger.logevent(f"Calculating checksums for {nfiles} files...")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                sha256_results = loop.run_until_complete(
+                    self.calculate_hashes_async(files)
+                )
+                self.save_hashes_to_file(checksum_filepath, files, sha256_results)
+            finally:
+                loop.close()
+        else:
+            self.fileLogger.logevent(f"Checksum file already exists: {checksum_filepath}")
+            
         return files
+
 
     def extract_slide_scene_data(self, czi_file: str):
         """Extracts the scene data from the CZI file and creates a preview image
@@ -272,6 +305,7 @@ class MetaUtilities:
         infile, scan_id = file_key
 
         czi_file = os.path.basename(os.path.normpath(infile))
+        self.data_integrity_check(czi_file)
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
         slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
@@ -363,6 +397,7 @@ class MetaUtilities:
             self.sqlController.get_and_correct_multiples(self.sqlController.scan_run.id, slide_physical_id, self.debug)
             self.fileLogger.logevent(f'Updated tiffs to use multiple slide physical ID={slide_physical_id}')
 
+
     def reorder_scenes(self):
         """
         This method will order the scenes in the database by their scene number.
@@ -403,3 +438,47 @@ class MetaUtilities:
                     print(f"DEBUG: Scene {scene.scene_number} - File Name: {scene.file_name}")
 
         self.session.commit()
+
+
+    async def calculate_hashes_async(self, file_paths):
+        """Calculate SHA256 hashes asynchronously"""
+        async def calculate_single_sha256(file_path):
+            sha256_hash = hashlib.sha256()
+            async with aiofiles.open(file_path, "rb") as f:
+                while True:
+                    chunk = await f.read(4096)
+                    if not chunk:
+                        break
+                    sha256_hash.update(chunk)
+            return sha256_hash.hexdigest()
+
+        tasks = [calculate_single_sha256(path) for path in file_paths]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        sha256_results = {}
+        for path, result in zip(file_paths, results):
+            filename = os.path.basename(path)
+            if isinstance(result, Exception):
+                print(f"Error calculating hash for {filename}: {result}")
+                sha256_results[filename] = "ERROR"
+            else:
+                sha256_results[filename] = result
+        
+        return sha256_results
+
+
+    def save_hashes_to_file(self, checksum_filepath, file_paths, hashes):
+        """Save hashes to a checksum file"""
+        try:
+            with open(checksum_filepath, 'w') as f:
+                f.write(f"# SHA256 checksums for files in {self.input}\n")
+                f.write(f"# Generated on: {datetime.datetime.now().isoformat()}\n\n")
+                
+                for file_path in file_paths:
+                    filename = os.path.basename(file_path)
+                    if filename in hashes:
+                        f.write(f"{hashes[filename]}  {filename}\n")
+            
+            self.fileLogger.logevent(f"Checksums saved to: {checksum_filepath}")
+        except IOError as e:
+            print(f"Error saving checksum file: {e}")

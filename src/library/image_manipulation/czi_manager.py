@@ -193,6 +193,7 @@ def extract_tiff_from_czi(file_key: tuple[str, str, int, bool, str]) -> None:
         message = f"ERROR WRITING [extract_tiff_from_czi]: {czi_file=} -> {outfile=}, {scenei=}, {channel=} ... SKIPPING"
         write_image(outfile, data, message=message)
 
+
 def extract_png_from_czi(file_key: tuple, normalize: bool = True):
     """This method creates a PNG file from the TIFF file. This is used for viewing
     on a web page.
