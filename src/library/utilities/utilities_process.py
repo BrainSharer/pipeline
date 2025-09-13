@@ -57,13 +57,25 @@ def use_scratch_dir(directory: str) -> bool:
     return False 
 
 
-def get_directory_size(directory):
+def get_directory_size_old(directory):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(directory):
         for filename in filenames:
             file_path = os.path.join(dirpath, filename)
             if not os.path.islink(file_path):
                 total_size += os.path.getsize(file_path)
+    return total_size
+
+
+def get_directory_size(directory: str) -> int:
+    """Get directory size using os.scandir() - fastest method"""
+    total_size = 0
+    with os.scandir(directory) as it:
+        for entry in it:
+            if entry.is_file(follow_symlinks=False):
+                total_size += entry.stat().st_size
+            elif entry.is_dir(follow_symlinks=False):
+                total_size += get_directory_size(entry.path)
     return total_size
     
 

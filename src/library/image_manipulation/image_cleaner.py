@@ -7,6 +7,7 @@ import shutil
 import sys
 from PIL import Image
 from cloudvolume import CloudVolume
+from pathlib import Path
 
 Image.MAX_IMAGE_PIXELS = None
 import numpy as np
@@ -18,7 +19,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, get_image_box, mask_with_contours, place_image, rotate_image
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image, delete_in_background
 
 
 class ImageCleaner:
@@ -41,7 +42,6 @@ class ImageCleaner:
         print(f'Width and height after update width={width} height={height}')
 
 
-
     def create_cleaned_images(self):
         """This method applies the image masks that has been edited by the user to 
         extract the tissue image from the surrounding
@@ -52,6 +52,10 @@ class ImageCleaner:
         4. Place images in image size with correct background color
         """
 
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+
         if self.downsample:
             INPUT = self.fileLocationManager.get_thumbnail(self.channel)
             MASKS = self.fileLocationManager.get_thumbnail_masked(channel=1)
@@ -59,7 +63,7 @@ class ImageCleaner:
             INPUT = self.fileLocationManager.get_full(self.channel)
             MASKS = self.fileLocationManager.get_full_masked(channel=1)
 
-        CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
+        CLEANED = Path(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR))
 
         compare_directories(INPUT, MASKS)
 
@@ -69,23 +73,32 @@ class ImageCleaner:
             print(f"Error: Could not find the input directory: {INPUT}")
             return
 
-        current_function_name = inspect.currentframe().f_code.co_name
-        self.fileLogger.logevent(f"{self.__class__.__name__}::{current_function_name} Input FOLDER: {INPUT} FILE COUNT: {len(starting_files)} MASK FOLDER: {MASKS}")
-        if self.downsample and os.path.exists(CLEANED):
-            print(f'Removing {CLEANED}')
-            shutil.rmtree(CLEANED)        
-        os.makedirs(CLEANED, exist_ok=True)
+        self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}, QTY FILES: {len(starting_files)}")
+        self.fileLogger.logevent(f"MASK FOLDER: {MASKS}")
+        self.fileLogger.logevent(f"CLEANED [OUTPUT] FOLDER: {CLEANED}")
+                
+        if self.downsample and CLEANED.exists():
+            try:
+                delete_in_background(CLEANED)
+            except Exception as e:
+                print(f"Non-critical Error deleting directory: {e}")
+        CLEANED.mkdir(parents=True, exist_ok=True)  
+        
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
 
-    def parallel_create_cleaned(self, INPUT, CLEANED, MASKS):
+    def parallel_create_cleaned(self, input_path: str, cleaned_path: Path, masks_path: str):
         """Do the image cleaning in parallel
 
         :param INPUT: str of file location input
         :param CLEANED: str of file location output
         :param MASKS: str of file location of masks
         """
-        image_manager = ImageManager(INPUT)
+        if self.debug:
+            current_function_name = inspect.currentframe().f_code.co_name
+            print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
+
+        image_manager = ImageManager(input_path )
         self.bgcolor = image_manager.get_bgcolor()
         print(f'Background color for cleaning is {self.bgcolor} for animal {self.animal} channel {self.channel} downsample={self.downsample}')
 
@@ -97,16 +110,16 @@ class ImageCleaner:
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
-        test_dir(self.animal, INPUT, self.section_count, self.downsample, same_size=False)
-        files = sorted(os.listdir(INPUT))
+        test_dir(self.animal, input_path, self.section_count, self.downsample, same_size=False)
+        files = sorted(os.listdir(input_path ))
 
         file_keys = []
         for file in files:
-            infile = os.path.join(INPUT, file)
-            outfile = os.path.join(CLEANED, file)  # regular-birdstore
+            infile = Path(input_path, file)
+            outfile = Path(cleaned_path, file)  # regular-birdstore
             if os.path.exists(outfile):
                 continue
-            maskfile = os.path.join(MASKS, file)
+            maskfile = Path(masks_path, file)
             file_keys.append(
                 [
                     infile,

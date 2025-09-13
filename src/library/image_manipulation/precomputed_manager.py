@@ -14,7 +14,7 @@ from library.utilities.cell_utilities import (
 )
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.utilities.utilities_process import test_dir
+from library.utilities.utilities_process import test_dir, read_image
 from library.image_manipulation.image_manager import ImageManager
 XY_CHUNK = 128
 Z_CHUNK = 64
@@ -224,7 +224,7 @@ class NgPrecomputedMaker:
         )
         
         print(f"Using chunk size: {optimal_chunk_size} slices per chunk")
-        self.generate_volume_parallel(vol, image_manager, max_workers, optimal_chunk_size)
+        self.generate_volume_parallel(vol, image_manager, max_workers, optimal_chunk_size, shape, input)
         
 
         ################################################
@@ -277,116 +277,162 @@ class NgPrecomputedMaker:
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
 
 
-        def calculate_optimal_chunk_size(self, image_manager, max_memory_gb, max_workers):
-            """
-            Calculate optimal chunk size based on available memory and image size
-            """
-            # Get memory info
-            available_memory_gb = psutil.virtual_memory().available / (1024 ** 3)
-            safe_memory_gb = min(available_memory_gb * 0.7, max_memory_gb)
-            
-            # Estimate memory per slice
-            slice_memory_bytes = (image_manager.height * image_manager.width * 
-                                image_manager.num_channels * np.dtype(image_manager.dtype).itemsize)
-            slice_memory_gb = slice_memory_bytes / (1024 ** 3)
-            
-            # Calculate max slices that fit in memory
-            max_slices = int(safe_memory_gb / slice_memory_gb)
-            
-            # Consider worker parallelism
-            chunk_size = max(1, max_slices // max_workers)
-            
-            # Limit chunk size for responsiveness
-            chunk_size = min(chunk_size, 20)
-            
-            return chunk_size
+    def calculate_optimal_chunk_size(self, image_manager, max_memory_gb, max_workers):
+        """
+        Calculate optimal chunk size based on available memory and image size
+        """
+        # Get memory info
+        available_memory_gb = psutil.virtual_memory().available / (1024 ** 3)
+        safe_memory_gb = min(available_memory_gb * 0.7, max_memory_gb)
+        
+        # Estimate memory per slice
+        slice_memory_bytes = (image_manager.height * image_manager.width * 
+                            image_manager.num_channels * np.dtype(image_manager.dtype).itemsize)
+        slice_memory_gb = slice_memory_bytes / (1024 ** 3)
+        
+        # Calculate max slices that fit in memory
+        max_slices = int(safe_memory_gb / slice_memory_gb)
+        
+        # Consider worker parallelism
+        chunk_size = max(1, max_slices // max_workers)
+        
+        # Limit chunk size for responsiveness
+        chunk_size = min(chunk_size, 20)
+        
+        return chunk_size
 
 
-        def generate_volume_parallel(self, vol, image_manager, max_workers, chunk_size):
-            """
-            Generate volume data from image stack in parallel [in memory-managed chunks]
-            """
-            z_slices = image_manager.section_count
-    
-            # Process in chunks
-            for chunk_start in range(0, z_slices, chunk_size):
-                chunk_end = min(chunk_start + chunk_size, z_slices)
+    def generate_volume_parallel(self, vol, image_manager, max_workers, optimal_chunk_size, shape, input):
+        """
+        Generate volume in parallel with dual progress bars
+        """
+        total_slices = shape[2]
+        chunk_size = optimal_chunk_size
+        total_chunks = (total_slices + chunk_size - 1) // chunk_size
+        
+        print(f"Total slices: {total_slices}, Chunk size: {chunk_size}, Total chunks: {total_chunks}")
+        
+        # Main progress bar for chunks
+        with tqdm(total=total_slices, desc="Overall progress", unit="slice") as pbar:
+            for start_z in range(0, total_slices, chunk_size):
+                end_z = min(start_z + chunk_size, total_slices)
+                current_chunk_size = end_z - start_z
                 
-                print(f"Processing slices {chunk_start} to {chunk_end-1}")
-                self.print_memory_usage("Before loading chunk")
+                print(f"\nProcessing chunk {start_z//chunk_size + 1}/{total_chunks} (slices {start_z}-{end_z-1})")
                 
-                # Process this chunk
                 self.process_chunk_with_memory_management(
-                    vol, image_manager, chunk_start, chunk_end, max_workers
+                    vol, image_manager, start_z, end_z, max_workers, input
                 )
                 
-                # Clean up memory
-                gc.collect()
-                print_memory_usage("After processing chunk")
-
-
-        def print_memory_usage(self, stage):
-            """
-            Print current memory usage
-            """
-            process = psutil.Process()
-            memory_mb = process.memory_info().rss / (1024 ** 2)
-            print(f"Memory usage {stage}: {memory_mb:.1f} MB")
-
-
-        def process_chunk_with_memory_management(self, vol, image_manager, start_z, end_z, max_workers):
-            """
-            Process a chunk of slices with careful memory management
-            """
-            chunk_size = end_z - start_z
-            
-            # Pre-allocate memory for the entire chunk
-            chunk_shape = (image_manager.num_channels, image_manager.height, 
-                        image_manager.width, chunk_size)
-            chunk_data = np.zeros(chunk_shape, dtype=image_manager.dtype)
-            
-            # Load slices into pre-allocated array
-            self.load_slices_into_preallocated(image_manager, start_z, end_z, chunk_data, max_workers)
-            
-            # Write the entire chunk to CloudVolume
-            vol[:, :, start_z:end_z] = chunk_data
-            
-            # Explicitly free memory
-            del chunk_data
-
-
-        def load_slices_into_preallocated(self, image_manager, start_z, end_z, chunk_data, max_workers):
-            """
-            Load slices directly into pre-allocated memory using threads
-            """
-            z_indices = list(range(start_z, end_z))
-            
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
+                # Update overall progress
+                pbar.update(current_chunk_size)
                 
-                for i, z in enumerate(z_indices):
-                    future = executor.submit(
-                        self.load_slice_to_position, image_manager, z, chunk_data, i
-                    )
-                    futures.append(future)
-                
-                # Wait for all loads to complete
-                for future in tqdm(as_completed(futures), total=len(futures), 
-                                desc="Loading slices"):
-                    future.result()
+                # Show memory usage
+                memory_usage = psutil.Process().memory_info().rss / 1024 / 1024
+                print(f"Memory usage: {memory_usage:.1f} MB")
 
 
-        def load_slice_to_position(self, image_manager, z, chunk_data, position):
-            """
-            Load a single slice into a specific position in the pre-allocated array
-            """
-            slice_data = image_manager.get_slice(z)
+    def print_memory_usage(self, stage):
+        """
+        Print current memory usage
+        """
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / (1024 ** 2)
+        print(f"Memory usage {stage}: {memory_mb:.1f} MB")
+
+
+    def process_chunk_with_memory_management(self, vol, image_manager, start_z, end_z, max_workers, input):
+        """
+        Process a chunk of slices with careful memory management
+        """
+        chunk_size = end_z - start_z
+        
+        # Pre-allocate memory for the entire chunk
+        chunk_shape = (image_manager.num_channels, image_manager.height, 
+                    image_manager.width, chunk_size)
+        chunk_data = np.zeros(chunk_shape, dtype=image_manager.dtype)
+        
+        # Load slices into pre-allocated array
+        self.load_slices_into_preallocated(start_z, end_z, chunk_data, max_workers, input)
+        
+        # Write the entire chunk to CloudVolume [with transpose]
+        # chunk_data shape: [Channels, Height, Width, Z_slices]
+        # neuroglancer shape: [Height, Width, Z_slices, Channels]
+        transposed_chunk = chunk_data.transpose(1, 2, 3, 0)  # [H, W, Z, C]
+
+        # Swap height and width dimensions if needed
+        if transposed_chunk.shape[0] != vol.shape[0] or transposed_chunk.shape[1] != vol.shape[1]:
+            transposed_chunk = transposed_chunk.transpose(1, 0, 2, 3)  # Swap H and W
+        
+        vol[:, :, start_z:end_z] = transposed_chunk
+        
+        # Explicitly free memory
+        del chunk_data
+
+
+    def load_slices_into_preallocated(self, start_z, end_z, chunk_data, max_workers, input):
+        """
+        Load slices directly into pre-allocated memory using threads
+        """
+        z_indices = list(range(start_z, end_z))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            
+            for i, z in enumerate(z_indices):
+                future = executor.submit(
+                    self.load_slice_to_position, z, chunk_data, i, input
+                )
+                futures.append(future)
+            
+            # Wait for all loads to complete
+            for future in tqdm(as_completed(futures), total=len(futures), 
+                            desc="Loading slices"):
+                future.result()
+
+
+    def load_slice_to_position(self, z, chunk_data, position, input):
+        """
+        Load a single slice into a specific position in the pre-allocated array
+        """
+        try:
+            file_path = Path(input, f"{z:03d}.tif")
+            slice_data = read_image(file_path)
+
+            # Validate shapes match expected chunk dimensions
+            expected_height, expected_width = chunk_data.shape[1:3]
+            
+            if slice_data.shape[0] != expected_height or slice_data.shape[1] != expected_width:
+                print(f"Shape mismatch for {file_path}:")
+                print(f"  Expected: ({expected_height}, {expected_width})")
+                print(f"  Got: {slice_data.shape}")
+                # Optionally resize or skip
+                return False
             
             # Handle different image formats
-            if len(slice_data.shape) == 2:  # Grayscale
-                chunk_data[0, :, :, position] = slice_data
-            elif len(slice_data.shape) == 3:  # RGB
-                if slice_data.shape[2] == 3:  # RGB
+            if slice_data.ndim == 2:  # Grayscale → add channel dimension
+                if chunk_data.shape[0] == 1:
+                    chunk_data[0, :, :, position] = slice_data
+                else:
+                    print(f"Channel mismatch: grayscale image but chunk expects {chunk_data.shape[0]} channels")
+                    return False
+                    
+            elif slice_data.ndim == 3:  # Multi-channel
+                num_slice_channels = slice_data.shape[2]
+                num_chunk_channels = chunk_data.shape[0]
+                
+                if num_slice_channels == num_chunk_channels:
                     chunk_data[:, :, :, position] = slice_data.transpose(2, 0, 1)
-                else:  # RGBA or other
-                    chunk_data[:slice_data.shape[2], :, :, position] = slice_data.transpose(2, 0, 1)
+                else:
+                    # Handle channel count mismatch
+                    num_channels = min(num_slice_channels, num_chunk_channels)
+                    chunk_data[:num_channels, :, :, position] = slice_data.transpose(2, 0, 1)[:num_channels]
+                    print(f"Channel count adjusted: {num_slice_channels} → {num_channels}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False

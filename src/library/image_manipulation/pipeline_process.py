@@ -300,15 +300,18 @@ class Pipeline(
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
+
+        #NEW WORKFLOW STORES ALL MIPS IN SAME DIRECTORY
         # self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
         #     self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch, in_contents=self.input)
         
         if self.use_scratch:
-            SCRATCH = get_scratch_dir()
+            print('CHECKING IF SCRATCH SPACE HAS ENOUGH SPACE TO STORE TASK FILES...')
+            SCRATCH = get_scratch_dir(self.input)
         else:
             SCRATCH = self.SCRATCH
 
-        temp_output_path = Path(self.SCRATCH, 'pipeline_tmp', self.animal, 'C' + self.channel + '_ng')
+        temp_output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'C' + self.channel + '_ng')
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
 
