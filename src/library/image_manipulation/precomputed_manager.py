@@ -257,21 +257,41 @@ class NgPrecomputedMaker:
         # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) IN-PLACE
         #################################################
         cloudpath = f"file://{temp_output_path}" #full-resolution (already generated)
-
         tq = LocalTaskQueue(parallel=max_workers)
-        tasks = tc.create_downsampling_tasks(
-                                            layer_path=cloudpath, 
-                                            mip=0, 
-                                            num_mips=mips, 
-                                            compress=True,
-                                            encoding=encoding,
-                                            sparse=True,
-                                            fill_missing=True,
-                                            delete_black_uploads=True,
-                                            chunk_size=adjusted_chunk_size
-                                            )
-        tq.insert(tasks)
-        tq.execute()
+
+        # Process each MIP level sequentially
+        for mip_level in range(mips):
+            print(f"Processing MIP level {mip_level}...")
+            
+            tasks = tc.create_downsampling_tasks(
+                layer_path=cloudpath, 
+                mip=mip_level,  # Start from current MIP level
+                num_mips=1,     # Process only one MIP at a time
+                compress=True,
+                encoding=encoding,
+                sparse=True,
+                fill_missing=True,
+                delete_black_uploads=True,
+                chunk_size=adjusted_chunk_size,
+            )
+            tq.insert(tasks)
+            tq.execute()
+            
+            print(f"Completed MIP level {mip_level}")
+
+        # tasks = tc.create_downsampling_tasks(
+        #                                     layer_path=cloudpath, 
+        #                                     mip=0, 
+        #                                     num_mips=mips, 
+        #                                     compress=True,
+        #                                     encoding=encoding,
+        #                                     sparse=True,
+        #                                     fill_missing=True,
+        #                                     delete_black_uploads=True,
+        #                                     chunk_size=adjusted_chunk_size,
+        #                                     )
+        # tq.insert(tasks)
+        # tq.execute()
         
         #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)

@@ -220,13 +220,14 @@ def get_scratch_dir(contents_path: str = None) -> str:
     /data [SECONDARY] - same, scratch_path='/data'
 
     """
+    tmp_dir = "/data"
 
     if contents_path:
         dir_size = get_directory_size(contents_path)
         total, used, free = shutil.disk_usage("/scratch")
         if free > dir_size * 1.25:
             tmp_dir = "/scratch"
-    else:
+    
     # usedir = {}
     # usedir['ratto'] = "/data"
 
@@ -237,7 +238,7 @@ def get_scratch_dir(contents_path: str = None) -> str:
     #     tmp_dir = "/data"
     
     #/data created on all servers (device or symbolic link to space with enough storage)
-        tmp_dir = "/data"
+        
 
     return tmp_dir
 

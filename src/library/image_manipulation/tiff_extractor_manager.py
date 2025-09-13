@@ -91,7 +91,7 @@ class TiffExtractor():
                 scene = section.scene_index
                 if self.debug:
                     print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
-                extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
+                extract_tiff_from_czi([czi_file, outfile, scene, int(self.channel), scale_factor])
             
 
             # Check for duplicates
