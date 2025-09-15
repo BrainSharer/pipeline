@@ -260,7 +260,7 @@ class NgPrecomputedMaker:
         tq = LocalTaskQueue(parallel=max_workers)
 
         # Process each MIP level sequentially
-        for mip_level in range(mips):
+        for mip_level in range(mips - 1):
             print(f"Processing MIP level {mip_level}...")
             
             tasks = tc.create_downsampling_tasks(
