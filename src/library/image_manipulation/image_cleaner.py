@@ -65,7 +65,8 @@ class ImageCleaner:
 
         CLEANED = Path(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR))
 
-        compare_directories(INPUT, MASKS)
+        #15-SEP-2025 testing - Duane
+        # compare_directories(INPUT, MASKS)
 
         try:
             starting_files = os.listdir(INPUT)
@@ -98,7 +99,7 @@ class ImageCleaner:
             current_function_name = inspect.currentframe().f_code.co_name
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
-        image_manager = ImageManager(input_path )
+        image_manager = ImageManager(input_path)
         self.bgcolor = image_manager.get_bgcolor()
         print(f'Background color for cleaning is {self.bgcolor} for animal {self.animal} channel {self.channel} downsample={self.downsample}')
 
@@ -112,7 +113,7 @@ class ImageCleaner:
         flip = self.sqlController.scan_run.flip
         test_dir(self.animal, input_path, self.section_count, self.downsample, same_size=False)
         files = sorted(os.listdir(input_path ))
-
+        
         file_keys = []
         for file in files:
             infile = Path(input_path, file)
@@ -133,7 +134,7 @@ class ImageCleaner:
                     self.bgcolor
                 ]
             )
-
+        
         # Cleaning images takes up around 20-25GB per full resolution image
         # so we cut the workers in half here
         workers = self.get_nworkers() // 2
