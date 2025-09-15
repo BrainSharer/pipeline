@@ -14,6 +14,7 @@ from tifffile import imread, imwrite
 from concurrent.futures import Future
 import random
 import string
+from tifffile import TiffFileError
 
 #TODO: CONSOLIDATE ANY HARD-CODED VARIABLES IN SINGLE FILE?
 SCALING_FACTOR = 32.0
@@ -324,11 +325,21 @@ def read_image(file_path: str):
     img = None
     try:
         img = io.imread(file_path)
-    except (OSError, ValueError) as e:
-        errno, strerror = e.args
-        print(f'\tCould not open {file_path} {errno} {strerror}')
-    except:
-        print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
+    except TiffFileError as e:
+        print(f"ERROR: Corrupted TIFF file detected: {file_path}")
+        print(f"Error details: {e}")
+        # Return None to skip processing this file
+        return None
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading {file_path}: {e}")
+        return None
+
+
+    # except (OSError, ValueError) as e:
+    #     errno, strerror = e.args
+    #     print(f'\tCould not open {file_path} {errno} {strerror}')
+    # except:
+    #     print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
 
     if img is None or img.shape[0] == 0 or img.shape[1] == 0:
         img = imread(file_path)

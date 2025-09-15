@@ -301,7 +301,14 @@ def clean_and_rotate_image(file_key):
     infile, outfile, maskfile, rotation, flip, max_width, max_height, channel, bgcolor = file_key
 
     img = read_image(infile)
+    if img is None:
+        print(f"Skipping corrupted file: {infile}")
+        return  # Skip processing this file
     mask = read_image(maskfile)
+    if mask is None:
+        print(f"Skipping due to corrupted mask: {maskfile}")
+        return  # Skip if mask is also corrupted
+    
     # Ensure mask is binary and uint8
     _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
     mask = mask.astype(np.uint8)
