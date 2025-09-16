@@ -890,15 +890,19 @@ class CellAnnotations():
         if self.debug:
             print(f'{expected_shape=}, {volume.shape=}')
 
-        # Draw circles for each valid point
         for row in valid_df.iter_rows(named=True):
             x = int(row['x'])
             y = int(row['y'])
             z = int(row['section'])  # This is your Z coordinate
-            
-            # Draw circle on the specific Z-slice
+
+            # Draw circles for each valid point (WIP)
+            # trial 1: Calculate radius as a percentage of image size - still very small
+            #height, width = volume[z].shape[:2]
+            #CIRCLE_RADIUS  = int(min(height, width) * 0.01)  # 1% of smaller dimension
+            CIRCLE_RADIUS = 15
+
             # Note: volume[z] gives us the 2D slice at depth z
-            cv2.circle(volume[z], center=(x, y), radius=2, color=1, thickness=-1)  # radius=2, filled circle
+            cv2.circle(volume[z], center=(x, y), radius=CIRCLE_RADIUS, color=1, thickness=-1)  # thickness=-1: Fills the circle (solid)
         print(f"Drew {len(valid_df)} circles in volume")
 
             # Assign unique IDs to each point
@@ -909,9 +913,6 @@ class CellAnnotations():
             #single point annotation
             # if 0 <= x < w and 0 <= y < h and 0 <= z < z_length:
             #     volume[z][y, x] = 1 # Set a single pixel to label value 1
-
-        # Draw a small circle to make the point more visible
-        # cv2.circle(volume[z], center=(x, y), radius=1, color=1, thickness=-1)  # label = 1
         
         # num_annotations = create_neuroglancer_annotations(
         #     valid_df=valid_df,
@@ -930,12 +931,6 @@ class CellAnnotations():
         # ################################################
         # # PRECOMPUTED FORMAT CREATION - SEGMENTATION
         # ################################################
-        
-
-        # print(f'Creating precomputed annotations in {temp_output_path}')
-        # print(f"{shape=}")
-        # print(f"{scales=}")
-        # print(f"{adjusted_chunk_size=}")
 
         info = CloudVolume.create_new_info(
             num_channels=1,

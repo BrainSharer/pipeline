@@ -1550,7 +1550,7 @@ class CellMaker(
             f"MISSING META-DATA INFO"
         )
         
-        self.start_labels(scratch_tmp)
+        # self.start_labels(scratch_tmp)
         print(f'Finished cell segmentation - extracting predictions')
         self.create_annotations(meta_data_info)
         # self.ng_prep() #hold off auto-gen brainsharer id

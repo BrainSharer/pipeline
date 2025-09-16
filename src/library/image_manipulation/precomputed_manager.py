@@ -212,7 +212,7 @@ class NgPrecomputedMaker:
             resolution=scales,
             voxel_offset=(0, 0, 0),
             chunk_size=adjusted_chunk_size,
-            volume_size=shape,  # x, y, z
+            volume_size=shape  # x, y, z
         )
 
         vol = CloudVolume(f'file://{temp_output_path}', progress=True, info=info, parallel=True, non_aligned_writes=False, provenance={})
@@ -260,40 +260,45 @@ class NgPrecomputedMaker:
         
 
         # Process each MIP level sequentially (NOT WORKING @ 15-SEP-2025)
-        # tq = LocalTaskQueue(parallel=max_workers)
-        # for mip_level in range(mips - 1):
-        #     print(f"Processing downsampling from MIP {mip_level} to MIP {mip_level + 1}...")
-    
-        #     tasks = tc.create_downsampling_tasks(
-        #         layer_path=cloudpath, 
-        #         mip=mip_level,  # Start from current MIP level
-        #         num_mips=1,     # Only create the next MIP level
-        #         compress=True,
-        #         encoding=encoding,
-        #         sparse=True,
-        #         fill_missing=True,
-        #         delete_black_uploads=True,
-        #         chunk_size=adjusted_chunk_size,
-        #     )
-        #     tq.insert(tasks)
-        #     tq.execute()
-        
-        #     print(f"Completed MIP level {mip_level}")
+        tq = LocalTaskQueue(parallel=1)  # Use 1 core to avoid memory spikes
+        # Process mips in smaller batches (2-3 at a time)
+        batch_size = 2  # Adjust based on your memory constraints
+        for start_mip in range(0, mips - 1, batch_size):
+            end_mip = min(start_mip + batch_size, mips - 1)
+            num_mips_in_batch = end_mip - start_mip
+            
+            print(f"Processing downsampling from MIP {start_mip} to MIP {end_mip}...")
+            
+            tasks = tc.create_downsampling_tasks(
+                layer_path=cloudpath, 
+                mip=start_mip, 
+                num_mips=num_mips_in_batch,  # Process fewer mips at a time
+                compress=True,
+                encoding=encoding,
+                sparse=True,
+                fill_missing=True,
+                delete_black_uploads=True,
+                chunk_size=adjusted_chunk_size,
+            )
+            tq.insert(tasks)
+            tq.execute()
+            
+            print(f"Completed MIP levels {start_mip} to {end_mip}")
 
-        tq = LocalTaskQueue(parallel=1) #ONLY USE 1 CORE DUE TO MEMORY SPIKE ISSUE
-        tasks = tc.create_downsampling_tasks(
-                                            layer_path=cloudpath, 
-                                            mip=0, 
-                                            num_mips=mips, 
-                                            compress=True,
-                                            encoding=encoding,
-                                            sparse=True,
-                                            fill_missing=True,
-                                            delete_black_uploads=True,
-                                            chunk_size=adjusted_chunk_size,
-                                            )
-        tq.insert(tasks)
-        tq.execute()
+        # tq = LocalTaskQueue(parallel=1) #ONLY USE 1 CORE DUE TO MEMORY SPIKE ISSUE
+        # tasks = tc.create_downsampling_tasks(
+        #                                     layer_path=cloudpath, 
+        #                                     mip=0, 
+        #                                     num_mips=mips, 
+        #                                     compress=True,
+        #                                     encoding=encoding,
+        #                                     sparse=True,
+        #                                     fill_missing=True,
+        #                                     delete_black_uploads=True,
+        #                                     chunk_size=adjusted_chunk_size,
+        #                                     )
+        # tq.insert(tasks)
+        # tq.execute()
         
         #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
