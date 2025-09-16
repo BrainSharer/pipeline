@@ -327,9 +327,9 @@ class Pipeline(
 
         max_memory_gb = 500 #muralis testing
         self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
-        print(f'Make sure you delete {self.rechunkme_path}.')
+        # print(f'Make sure you delete {self.rechunkme_path}.')
 
-        copy_with_rclone(self.rechunkme_path, self.output)
+        copy_with_rclone(temp_output_path, self.output)
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 
