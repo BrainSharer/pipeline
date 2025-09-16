@@ -71,13 +71,19 @@ def get_directory_size_old(directory):
 def get_directory_size(directory: str) -> int:
     """Get directory size using os.scandir() - fastest method"""
     total_size = 0
-    with os.scandir(directory) as it:
-        for entry in it:
-            if entry.is_file(follow_symlinks=False):
-                total_size += entry.stat().st_size
-            elif entry.is_dir(follow_symlinks=False):
-                total_size += get_directory_size(entry.path)
-    return total_size
+    try:
+        with os.scandir(directory) as it:
+            for entry in it:
+                if entry.is_file(follow_symlinks=False):
+                    total_size += entry.stat().st_size
+                elif entry.is_dir(follow_symlinks=False):
+                    total_size += get_directory_size(entry.path)
+        
+    except Exception as e:
+        print(f"Error calculating size for directory {directory}: {e}")
+        
+    finally:
+        return total_size
     
 
 def get_hostname() -> str:
