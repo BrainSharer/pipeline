@@ -66,7 +66,7 @@ class ImageCleaner:
         CLEANED = Path(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR))
 
         #15-SEP-2025 testing - Duane
-        # compare_directories(INPUT, MASKS)
+        compare_directories(INPUT, MASKS)
 
         try:
             starting_files = os.listdir(INPUT)
@@ -80,7 +80,9 @@ class ImageCleaner:
                 
         if self.downsample and CLEANED.exists():
             try:
-                delete_in_background(CLEANED)
+                print('DEBUG: WOULD HAVE REMOVED CHANNEL FILES IN TIF FOLDER')
+                pass #TODO - Duane (suspect this may be deleting all files in tif folder)
+                # delete_in_background(CLEANED)
             except Exception as e:
                 print(f"Non-critical Error deleting directory: {e}")
         CLEANED.mkdir(parents=True, exist_ok=True)  

@@ -257,41 +257,43 @@ class NgPrecomputedMaker:
         # PRECOMPUTED FORMAT PYRAMID (DOWNSAMPLED) IN-PLACE
         #################################################
         cloudpath = f"file://{temp_output_path}" #full-resolution (already generated)
-        tq = LocalTaskQueue(parallel=max_workers)
+        
 
-        # Process each MIP level sequentially
-        for mip_level in range(mips - 1):
-            print(f"Processing MIP level {mip_level}...")
-            
-            tasks = tc.create_downsampling_tasks(
-                layer_path=cloudpath, 
-                mip=mip_level,  # Start from current MIP level
-                num_mips=1,     # Process only one MIP at a time
-                compress=True,
-                encoding=encoding,
-                sparse=True,
-                fill_missing=True,
-                delete_black_uploads=True,
-                chunk_size=adjusted_chunk_size,
-            )
-            tq.insert(tasks)
-            tq.execute()
-            
-            print(f"Completed MIP level {mip_level}")
+        # Process each MIP level sequentially (NOT WORKING @ 15-SEP-2025)
+        # tq = LocalTaskQueue(parallel=max_workers)
+        # for mip_level in range(mips - 1):
+        #     print(f"Processing downsampling from MIP {mip_level} to MIP {mip_level + 1}...")
+    
+        #     tasks = tc.create_downsampling_tasks(
+        #         layer_path=cloudpath, 
+        #         mip=mip_level,  # Start from current MIP level
+        #         num_mips=1,     # Only create the next MIP level
+        #         compress=True,
+        #         encoding=encoding,
+        #         sparse=True,
+        #         fill_missing=True,
+        #         delete_black_uploads=True,
+        #         chunk_size=adjusted_chunk_size,
+        #     )
+        #     tq.insert(tasks)
+        #     tq.execute()
+        
+        #     print(f"Completed MIP level {mip_level}")
 
-        # tasks = tc.create_downsampling_tasks(
-        #                                     layer_path=cloudpath, 
-        #                                     mip=0, 
-        #                                     num_mips=mips, 
-        #                                     compress=True,
-        #                                     encoding=encoding,
-        #                                     sparse=True,
-        #                                     fill_missing=True,
-        #                                     delete_black_uploads=True,
-        #                                     chunk_size=adjusted_chunk_size,
-        #                                     )
-        # tq.insert(tasks)
-        # tq.execute()
+        tq = LocalTaskQueue(parallel=1) #ONLY USE 1 CORE DUE TO MEMORY SPIKE ISSUE
+        tasks = tc.create_downsampling_tasks(
+                                            layer_path=cloudpath, 
+                                            mip=0, 
+                                            num_mips=mips, 
+                                            compress=True,
+                                            encoding=encoding,
+                                            sparse=True,
+                                            fill_missing=True,
+                                            delete_black_uploads=True,
+                                            chunk_size=adjusted_chunk_size,
+                                            )
+        tq.insert(tasks)
+        tq.execute()
         
         #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
