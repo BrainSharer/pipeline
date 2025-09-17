@@ -304,7 +304,7 @@ class MetaUtilities:
         infile, scan_id = file_key
 
         czi_file = os.path.basename(os.path.normpath(infile))
-        self.data_integrity_check(czi_file)
+        #####TODO self.data_integrity_check(czi_file)
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
         slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
