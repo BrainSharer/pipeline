@@ -283,7 +283,7 @@ class Pipeline(
         print(f'Finished {self.TASK_REALIGN}.')
 
 
-    def neuroglancer(self):
+    def neuroglancerNEW(self):
         """This is the main method to run the entire neuroglancer process.
         We also define the input, output and progress directories.
         This method may be run from the command line as a task, or it may
@@ -327,11 +327,49 @@ class Pipeline(
         # self.create_neuroglancer()
         # self.create_downsamples()
 
-        max_memory_gb = 100 #muralis testing
+        #neuroglancer took 392.81 seconds. with DK37 with methods below on ratto
+        # took 141 seconds on my laptop
+        max_memory_gb = 500 #muralis testing
         self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
         # print(f'Make sure you delete {self.rechunkme_path}.')
 
         copy_with_rclone(temp_output_path, self.output)
+        print(f'Finished {self.TASK_NEUROGLANCER}.')
+
+
+    def neuroglancer(self):
+        """This is the main method to run the entire neuroglancer process.
+        We also define the input, output and progress directories.
+        This method may be run from the command line as a task, or it may
+        also be run from the align and realign methods
+        with DK37 on my laptop took 167.77 seconds.
+        """
+
+        self.check_ram()
+        self.iteration = self.get_alignment_status()
+        if self.iteration is None:
+            print('No alignment iterations found.  Please run the alignment steps first.')
+            return
+        
+        print(self.TASK_NEUROGLANCER)
+        
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
+        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
+        self.use_scratch = use_scratch_dir(self.input)
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+            self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
+        
+        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
+        os.makedirs(self.progress_dir, exist_ok=True)
+
+        print(f'Input: {self.input}')
+        print(f'Output: {self.output}')
+        print(f'Progress: {self.progress_dir}')
+        print(f'Rechunkme: {self.rechunkme_path}')
+        
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 
