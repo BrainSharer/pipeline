@@ -38,7 +38,7 @@ class MetaUtilities:
 
         #START VERIFICATION OF PROGRESS & VALIDATION OF FILES
         self.input = self.fileLocationManager.get_czi()
-        czi_files = self.check_czi_file_exists(workers) #AND INTEGRITY CHECK
+        czi_files = self.check_czi_file_exists(workers)
         self.scan_id = self.sqlController.scan_run.id
         self.czi_directory_validation(czi_files) #CHECK FOR existing files and DUPLICATE SLIDES
         db_validation_status, unprocessed_czifiles, processed_czifiles = self.all_slide_meta_data_exists_in_database(czi_files) #CHECK FOR DB SECTION ENTRIES
@@ -186,7 +186,6 @@ class MetaUtilities:
     def check_czi_file_exists(self, workers: int):
         """
         Check that the CZI files are placed in the correct location
-        and src integrity check of czi files
         """
         
         self.input = self.fileLocationManager.get_czi()
@@ -218,17 +217,17 @@ class MetaUtilities:
             print(e)
             sys.exit()
 
-        if self.downsample == False: #checksums take considerable time; only full-resolution for now
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(
-                    self.calculate_all_hashes_async(files, checksum_files, workers)
-                )
-            except Exception as e:
-                print(f"Error in parallel processing: {e}")
-            finally:
-                loop.close()
+        # if self.downsample == False: #checksums take considerable time; only full-resolution for now
+        #     loop = asyncio.new_event_loop()
+        #     asyncio.set_event_loop(loop)
+        #     try:
+        #         loop.run_until_complete(
+        #             self.calculate_all_hashes_async(files, checksum_files, workers)
+        #         )
+        #     except Exception as e:
+        #         print(f"Error in parallel processing: {e}")
+        #     finally:
+        #         loop.close()
 
         return files
 
