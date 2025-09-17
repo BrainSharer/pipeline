@@ -343,6 +343,7 @@ class Pipeline(
         This method may be run from the command line as a task, or it may
         also be run from the align and realign methods
         with DK37 on my laptop took 167.77 seconds.
+        on ratto took 222.74 seconds.
         """
 
         self.check_ram()
@@ -353,7 +354,7 @@ class Pipeline(
         
         print(self.TASK_NEUROGLANCER)
         
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)         
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
         self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
