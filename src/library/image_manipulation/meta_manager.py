@@ -67,9 +67,6 @@ class MetaUtilities:
             for file_key in tqdm(file_keys, desc="Extracting slide metadata and inserting into database"):
                 self.parallel_extract_slide_meta_data_and_insert_to_database(file_key)
 
-            # the treads bit is not working, so I'm taking it out for now
-            #self.run_commands_with_threads(self.parallel_extract_slide_meta_data_and_insert_to_database, file_keys, workers)
-            
         else:
             self.fileLogger.logevent("NOTHING TO PROCESS - SKIPPING")
 
@@ -303,7 +300,6 @@ class MetaUtilities:
         infile, scan_id = file_key
 
         czi_file = os.path.basename(os.path.normpath(infile))
-        #####TODO self.data_integrity_check(czi_file)
         czi = CZIManager(infile)
         czi_metadata = czi.extract_metadata_from_czi_file(czi_file, infile)
         slide_physical_id = int(re.findall(r"slide\d+", infile)[0][5:])
@@ -324,7 +320,7 @@ class MetaUtilities:
         
         checksum_file = os.path.join(self.checksum, str(slide.file_name).replace('.czi', '.sha256'))
         if os.path.isfile(checksum_file):
-            with open(checksum_file) as f: # The with keyword automatically closes the file when you are done
+            with open(checksum_file) as f: 
                 readable_hash = f.read()
             slide.checksum = readable_hash
         
@@ -332,7 +328,6 @@ class MetaUtilities:
         self.session.add(slide)
         self.session.commit()
 
-    
         """Add entry to the table that prepares the user Quality Control interface"""
         for series_index in range(slide.scenes):
             scene_number = series_index + 1

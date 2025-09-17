@@ -327,7 +327,7 @@ class Pipeline(
         # self.create_neuroglancer()
         # self.create_downsamples()
 
-        max_memory_gb = 500 #muralis testing
+        max_memory_gb = 100 #muralis testing
         self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
         # print(f'Make sure you delete {self.rechunkme_path}.')
 

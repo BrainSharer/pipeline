@@ -224,18 +224,19 @@ class NgPrecomputedMaker:
         )
         
         print(f"Using chunk size: {optimal_chunk_size} slices per chunk")
-        self.generate_volume_parallel(vol, image_manager, max_workers, optimal_chunk_size, shape, input)
-        
+        self.generate_volume_parallel(vol, image_manager, max_workers, optimal_chunk_size, shape, input, progress_dir)
+        file_name = 'mip0_complete'
+        Path(progress_dir, file_name).touch()
 
         ################################################
         # CREATE/MODIFY PROVENANCE FILE WITH META-DATA
         ################################################
+        prov_path = Path(temp_output_path, 'provenance')
         try:
             with open(prov_path, 'r') as f:
                 prov = json.load(f)
         except Exception as e:
             prov = {}
-        prov_path = Path(temp_output_path, 'provenance')
         prov['description'] = f"IMAGE VOL"
         prov['sources'] = [f"subject={self.animal}, neuroglancer task"]
 
@@ -258,16 +259,20 @@ class NgPrecomputedMaker:
         #################################################
         cloudpath = f"file://{temp_output_path}" #full-resolution (already generated)
         
-
-        # Process each MIP level sequentially (NOT WORKING @ 15-SEP-2025)
+        # Process each MIP level sequentially (NOT WORKING @ 17-SEP-2025)
         tq = LocalTaskQueue(parallel=1)  # Use 1 core to avoid memory spikes
+        max_mip = len(vol.available_mips)
+
         # Process mips in smaller batches (2-3 at a time)
         batch_size = 2  # Adjust based on your memory constraints
         for start_mip in range(0, mips - 1, batch_size):
             end_mip = min(start_mip + batch_size, mips - 1)
             num_mips_in_batch = end_mip - start_mip
-            
-            print(f"Processing downsampling from MIP {start_mip} to MIP {end_mip}...")
+
+            if start_mip >= max_mip:
+                break
+            else:
+                print(f"Processing downsampling from MIP {start_mip} to MIP {end_mip}...")
             
             tasks = tc.create_downsampling_tasks(
                 layer_path=cloudpath, 
@@ -284,6 +289,8 @@ class NgPrecomputedMaker:
             tq.execute()
             
             print(f"Completed MIP levels {start_mip} to {end_mip}")
+            file_name = f'{end_mip}_complete'
+            Path(progress_dir, file_name).touch()
 
         # tq = LocalTaskQueue(parallel=1) #ONLY USE 1 CORE DUE TO MEMORY SPIKE ISSUE
         # tasks = tc.create_downsampling_tasks(
@@ -300,6 +307,8 @@ class NgPrecomputedMaker:
         # tq.insert(tasks)
         # tq.execute()
         
+        
+
         #MOVE PRECOMPUTED [ALL MIPS] FILES TO FINAL LOCATION
         copy_with_rclone(temp_output_path, OUTPUT_DIR)
 
@@ -329,7 +338,7 @@ class NgPrecomputedMaker:
         return chunk_size
 
 
-    def generate_volume_parallel(self, vol, image_manager, max_workers, optimal_chunk_size, shape, input):
+    def generate_volume_parallel(self, vol, image_manager, max_workers, optimal_chunk_size, shape, input, progress_dir):
         """
         Generate volume in parallel with dual progress bars
         """
@@ -348,7 +357,7 @@ class NgPrecomputedMaker:
                 print(f"\nProcessing chunk {start_z//chunk_size + 1}/{total_chunks} (slices {start_z}-{end_z-1})")
                 
                 self.process_chunk_with_memory_management(
-                    vol, image_manager, start_z, end_z, max_workers, input
+                    vol, image_manager, start_z, end_z, max_workers, input, progress_dir
                 )
                 
                 # Update overall progress
@@ -368,7 +377,7 @@ class NgPrecomputedMaker:
         print(f"Memory usage {stage}: {memory_mb:.1f} MB")
 
 
-    def process_chunk_with_memory_management(self, vol, image_manager, start_z, end_z, max_workers, input):
+    def process_chunk_with_memory_management(self, vol, image_manager, start_z, end_z, max_workers, input, progress_dir):
         """
         Process a chunk of slices with careful memory management
         """
@@ -380,7 +389,7 @@ class NgPrecomputedMaker:
         chunk_data = np.zeros(chunk_shape, dtype=image_manager.dtype)
         
         # Load slices into pre-allocated array
-        self.load_slices_into_preallocated(start_z, end_z, chunk_data, max_workers, input)
+        self.load_slices_into_preallocated(start_z, end_z, chunk_data, max_workers, input, progress_dir)
         
         # Write the entire chunk to CloudVolume [with transpose]
         # chunk_data shape: [Channels, Height, Width, Z_slices]
@@ -397,7 +406,7 @@ class NgPrecomputedMaker:
         del chunk_data
 
 
-    def load_slices_into_preallocated(self, start_z, end_z, chunk_data, max_workers, input):
+    def load_slices_into_preallocated(self, start_z, end_z, chunk_data, max_workers, input, progress_dir):
         """
         Load slices directly into pre-allocated memory using threads
         """
@@ -408,7 +417,7 @@ class NgPrecomputedMaker:
             
             for i, z in enumerate(z_indices):
                 future = executor.submit(
-                    self.load_slice_to_position, z, chunk_data, i, input
+                    self.load_slice_to_position, z, chunk_data, i, input, progress_dir
                 )
                 futures.append(future)
             
@@ -418,9 +427,10 @@ class NgPrecomputedMaker:
                 future.result()
 
 
-    def load_slice_to_position(self, z, chunk_data, position, input):
+    def load_slice_to_position(self, z, chunk_data, position, input, progress_dir):
         """
         Load a single slice into a specific position in the pre-allocated array
+        Note: 'slice' is synonymous with single 2D image in the stack
         """
         try:
             file_path = Path(input, f"{z:03d}.tif")
@@ -456,6 +466,9 @@ class NgPrecomputedMaker:
                     chunk_data[:num_channels, :, :, position] = slice_data.transpose(2, 0, 1)[:num_channels]
                     print(f"Channel count adjusted: {num_slice_channels} → {num_channels}")
             
+            progress_marker = Path(progress_dir, f"section_{z:06d}_add")
+            progress_marker.touch(exist_ok=True)    
+
             return True
             
         except Exception as e:
