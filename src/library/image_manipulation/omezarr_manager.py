@@ -179,7 +179,6 @@ class OmeZarrManager():
         if self.debug:
             exit(1)
 
-
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)

@@ -71,6 +71,8 @@ def get_directory_size_old(directory):
 def get_directory_size(directory: str) -> int:
     """Get directory size using os.scandir() - fastest method"""
     total_size = 0
+    if not os.path.exists(directory):
+        return total_size
     try:
         with os.scandir(directory) as it:
             for entry in it:

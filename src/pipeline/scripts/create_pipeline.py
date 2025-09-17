@@ -84,7 +84,7 @@ from library.image_manipulation.pipeline_process import Pipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
-    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=str)
+    parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
     parser.add_argument("--zarrlevel", help="Enter zarr level", required=False, default=0, type=int)
     parser.add_argument(
         "--downsample",

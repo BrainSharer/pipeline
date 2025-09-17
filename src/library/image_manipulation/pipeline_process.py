@@ -18,7 +18,7 @@ import uuid
 
 from library.image_manipulation.elastix_manager import ElastixManager
 from library.image_manipulation.file_logger import FileLogger
-from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, FileLocationManager
+from library.image_manipulation.filelocation_manager import ALIGNED, ALIGNED_DIR, CLEANED_DIR, REALIGNED, REALIGNED_DIR, FileLocationManager
 from library.image_manipulation.histogram_maker import HistogramMaker
 from library.image_manipulation.image_cleaner import ImageCleaner
 from library.image_manipulation.mask_manager import MaskManager
@@ -269,11 +269,12 @@ class Pipeline(
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
+            print('Cleaning up realignment and creating fiducial points and within stack transformations')
             self.cleanup_fiducials()
             self.create_fiducial_points()
             self.create_within_stack_transformations()
@@ -297,7 +298,8 @@ class Pipeline(
         
         print(self.TASK_NEUROGLANCER)
 
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)  
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)  
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
 
@@ -311,7 +313,7 @@ class Pipeline(
         else:
             SCRATCH = self.SCRATCH
 
-        temp_output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'C' + self.channel + '_ng')
+        temp_output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'C' + str(self.channel) + '_ng')
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
 
