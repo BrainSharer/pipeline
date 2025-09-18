@@ -31,13 +31,10 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 from library.utilities.utilities_mask import compare_directories
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 from library.cell_labeling.cell_ui import Cell_UI
 
-from library.utilities.cell_utilities import (
-    copy_with_rclone
-)
 
 try:
     from settings import data_path, host, schema
@@ -281,60 +278,6 @@ class Pipeline(
 
         self.start_image_alignment()
         print(f'Finished {self.TASK_REALIGN}.')
-
-
-    def neuroglancerNEW(self):
-        """This is the main method to run the entire neuroglancer process.
-        We also define the input, output and progress directories.
-        This method may be run from the command line as a task, or it may
-        also be run from the align and realign methods
-        """
-
-        self.check_ram()
-        self.iteration = self.get_alignment_status()
-        if self.iteration is None:
-            print('No alignment iterations found.  Please run the alignment steps first.')
-            return
-        
-        print(self.TASK_NEUROGLANCER)
-
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)  
-        self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
-        self.use_scratch = use_scratch_dir(self.input)
-
-        #NEW WORKFLOW STORES ALL MIPS IN SAME DIRECTORY
-        # self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
-        #     self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch, in_contents=self.input)
-        
-        if self.use_scratch:
-            print('CHECKING IF SCRATCH SPACE HAS ENOUGH SPACE TO STORE TASK FILES...')
-            SCRATCH = get_scratch_dir(self.input)
-        else:
-            SCRATCH = self.SCRATCH
-
-        temp_output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'C' + str(self.channel) + '_ng')
-        self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
-        os.makedirs(self.progress_dir, exist_ok=True)
-
-        print(f'INPUT: {self.input}')
-        print(f'USING SCRATCH SPACE: {self.use_scratch}')
-        print(f'TEMP DIR: {temp_output_path}')
-        print(f'FINAL OUTPUT: {self.output}')
-        print(f'Progress: {self.progress_dir}')
-        # print(f'Rechunkme: {self.rechunkme_path}')
-        
-        # self.create_neuroglancer()
-        # self.create_downsamples()
-
-        #neuroglancer took 392.81 seconds. with DK37 with methods below on ratto
-        # took 141 seconds on my laptop
-        max_memory_gb = 500 #muralis testing
-        self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
-        # print(f'Make sure you delete {self.rechunkme_path}.')
-
-        copy_with_rclone(temp_output_path, self.output)
-        print(f'Finished {self.TASK_NEUROGLANCER}.')
 
 
     def neuroglancer(self):
