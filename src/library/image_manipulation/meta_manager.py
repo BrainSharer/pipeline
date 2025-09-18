@@ -46,7 +46,7 @@ class MetaUtilities:
             print(f'DEBUG: unprocessed czi files:  {sorted(unprocessed_czifiles)}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
-            print("ERROR IN CZI FILES OR DB COUNTS")
+            print(f"Error in CZI files or DB counts, we are exiting.")
             sys.exit()
 
         #FOR CZI FILES ALREADY PROCESSED; CHECK FOR SLIDE PREVIEW
@@ -336,7 +336,6 @@ class MetaUtilities:
             except KeyError:
                 print(f'Channel error with slide file name={slide.file_name} file system name= {file_name}')
                 sys.exit()
-            #channel_counter = 0
             try:
                 width, height = czi_metadata[file_name][series_index]["dimensions"]
             except KeyError:

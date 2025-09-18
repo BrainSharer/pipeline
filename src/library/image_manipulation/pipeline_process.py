@@ -169,11 +169,36 @@ class Pipeline(
 
 
     def extract(self):
+        """
+        Extracts image data and related metadata from source files, processes them, and inserts into the DB.
+        This method performs the following steps:
+        1. If processing the first channel and downsampling is enabled:
+            - Extracts slide metadata and inserts it into the database.
+            - Generates a slide preview image.
+            - Corrects for multiple entries if necessary.
+        2. Extracts TIFF images from CZI files for the current channel.
+        3. If there are multiple channels, iterates through each additional channel and extracts TIFF images.
+        4. Checks for duplicate images.
+        5. Reorders scenes as needed.
+        6. If processing the first channel and downsampling is enabled:
+            - Creates web-friendly images and preview images.
+            - Generates checksums for the images.
+            - Creates symbolic links to extracted thumbnail images if they do not already exist.
+        Prints progress and completion messages throughout the process.
+        """
         print(self.TASK_EXTRACT)
-        self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
         if self.channel == 1 and self.downsample:
+            self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
             self.correct_multiples()
-        self.extract_tiffs_from_czi()
+        if self.channel == 1:
+            self.extract_tiffs_from_czi()
+        # IF channel is greater than 1, we assume channel 1 has already been extracted and extract the remaining channels
+        if self.channel > 1:
+            channels = self.sqlController.scan_run.channels_per_scene
+            for i in range(2, channels+1):
+                self.channel = i
+                self.extract_tiffs_from_czi()
+
         self.check_for_duplicates()
         
         self.reorder_scenes()
