@@ -27,7 +27,7 @@ class TiffExtractor():
         5. For each section, extracts the TIFF image from the corresponding CZI file if it does not already exist.
         6. Logs and prints errors if CZI files are missing or if no sections are found.
         7. Checks for duplicate files in the output directory and logs and prints any duplicates found.
-        :raise: SystemExit: If no sections are found in the database or if duplicate files are found.
+        If no sections are found in the database or if duplicate files are found.
 
         Note, it cannot be run with threads.
         """
@@ -45,19 +45,9 @@ class TiffExtractor():
 
         self.input = self.fileLocationManager.get_czi()
         os.makedirs(self.output, exist_ok=True)
-        starting_files = glob.glob(
-            os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
-        )
-        total_files = os.listdir(self.output)
-        self.fileLogger.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
-        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
-        self.fileLogger.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
-        self.fileLogger.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
+        self.check_startingfiles()
 
         sections = self.sqlController.get_sections(self.animal, self.channel, self.debug)
-        if self.debug:
-            print(f"DEBUG: DB SECTION COUNT: {len(sections)}")
-            print(f"OUTPUT FILES DESTINATION: {self.output}")
 
         if len(sections) == 0:
             print('\nError, no sections found, exiting.')
@@ -80,21 +70,28 @@ class TiffExtractor():
             if self.debug:
                 print(f"extracting from {os.path.basename(czi_file)}, {scene=}, to {outfile}")
             extract_tiff_from_czi([czi_file, outfile, scene, self.channel, scale_factor])
-        
+
+    def check_startingfiles(self):
+        starting_files = glob.glob(
+            os.path.join(self.output, "*_C" + str(self.channel) + ".tif")
+        )
+        total_files = os.listdir(self.output)
+        self.fileLogger.logevent(f"TIFF EXTRACTION FOR CHANNEL: {self.channel}")
+        self.fileLogger.logevent(f"Output FOLDER: {self.output}")
+        self.fileLogger.logevent(f"FILE COUNT [FOR CHANNEL {self.channel}]: {len(starting_files)}")
+        self.fileLogger.logevent(f"TOTAL FILE COUNT [FOR DIRECTORY]: {len(total_files)}")
+       
+
+    def check_for_duplicates(self):
         # Check for duplicates
         duplicates = self.find_duplicates(self.fileLocationManager.thumbnail_original)
         if duplicates:
             self.fileLogger.logevent(f"DUPLICATE FILES FOUND: {duplicates}")
-            print("\nDUPLICATE FILES FOUND:")
+            print("Duplicate scenes found:")
             for duplicate in duplicates:
-                print()
                 for file in duplicate:
                     print(f"{os.path.basename(file)}", end=" ")
-            print("\n\nDuplicate files found, please fix. Exiting.")                                
-            sys.exit()
-                
-            print()
-
+                print()
 
     def create_web_friendly_image(self):
         """Create downsampled version of full size tiff images that can be 

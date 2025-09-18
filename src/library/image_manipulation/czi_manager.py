@@ -212,14 +212,17 @@ def extract_png_from_czi(file_key: tuple, normalize: bool = True):
         im = Image.fromarray(data)
         im.save(outfile)
 
-        #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
+    except Exception as e:
+        czi.logevent(f"ERROR READING SCENE - [extract_png_from_czi] IN FILE {infile}; {e=}")
+
+    #CHECKSUM FOR FILE (STORED IN CHECKSUMS DIRECTORY)
+    try:
         if not os.path.exists(checksum_filepath):
             org_file = Path(outfile)
             with open(org_file, 'rb') as f:
                 bytes = f.read()  # Read the entire file as bytes
                 readable_hash = hashlib.sha256(bytes).hexdigest()
-                with open(checksum_filepath, 'w') as f:
-                    f.write(readable_hash)
-
+            with open(checksum_filepath, 'w') as f:
+                f.write(readable_hash)
     except Exception as e:
-        czi.logevent(f"ERROR READING SCENE - [extract_png_from_czi] IN FILE {infile}; {e=}")
+        print(f"Error generating checksum for {outfile}: {e}")        

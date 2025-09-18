@@ -174,6 +174,7 @@ class Pipeline(
         if self.channel == 1 and self.downsample:
             self.correct_multiples()
         self.extract_tiffs_from_czi()
+        self.check_for_duplicates()
         
         self.reorder_scenes()
         if self.channel == 1 and self.downsample:
