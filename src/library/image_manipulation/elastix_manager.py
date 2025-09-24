@@ -395,11 +395,8 @@ class ElastixManager():
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         transformations0 = self.get_transformations(iteration=ALIGNED)
-        if self.iteration == REALIGNED:
-            transformations1 = self.get_transformations(iteration=REALIGNED)
-            transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
-        else:
-            transformations = transformations0
+        transformations1 = self.get_transformations(iteration=REALIGNED)
+        transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
 
         if self.downsample:
             transformations = rescale_transformations(transformations, 1)

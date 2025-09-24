@@ -292,7 +292,10 @@ class Pipeline(
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        if self.channel == 1 and self.downsample:
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        else:
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
 

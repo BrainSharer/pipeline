@@ -88,7 +88,7 @@ class FileLocationManager(object):
 
         return aligments[iteration]
 
-    def get_alignment_directories(self, channel, downsample, iteration=0):
+    def get_alignment_directories(self, channel, downsample, iteration=ALIGNED):
 
         if downsample:
             resolution = "thumbnail"
