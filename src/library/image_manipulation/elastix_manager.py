@@ -110,7 +110,8 @@ class ElastixManager():
         nchanges = len(fiducials)
         if nchanges == 0:
             print('No fiducial points were found. Performing an extra alignment with no fiducials.')
-            return nchanges
+            print('The program is exiting as you were expecting fiducial points but none were found')
+            exit(1)
 
         for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
