@@ -14,9 +14,10 @@ from library.utilities.cell_utilities import (
 )
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.utilities.dask_utilities import closest_divisors_to_target
 from library.utilities.utilities_process import test_dir, read_image
 from library.image_manipulation.image_manager import ImageManager
-XY_CHUNK = 128
+XY_CHUNK = 64
 Z_CHUNK = 64
 
 
@@ -66,6 +67,18 @@ class NgPrecomputedMaker:
         """create the Seung lab cloud volume format from the image stack
         For a large isotropic data set, Allen uses chunks = [128,128,128]
         self.input and self.output are defined in the pipeline_process
+        Using chunks=[4172, 2552, 1] for neuroglancer rechunkme transfer step
+        Finished Creating Neuroglancer data.
+        neuroglancer took 1549.0 seconds.
+        14142608	/data/pipeline_tmp/CTB016/C1_rechunkme_aligned/
+        ############
+        Using chunks=[66752, 40832, 1] for neuroglancer rechunkme transfer step
+        Finished Creating Neuroglancer data.
+        neuroglancer took 1349.48 seconds.
+        15001680	/data/pipeline_tmp/CTB016/C1_rechunkme_aligned/
+        ####
+        Using chunks=[1856, 2086, 1] for neuroglancer rechunkme transfer step
+        neuroglancer took 1579.27 seconds.
         """
         image_manager = ImageManager(self.input)
 
@@ -73,15 +86,20 @@ class NgPrecomputedMaker:
             self.xy_chunk = int(XY_CHUNK//2)
             chunks = [self.xy_chunk, self.xy_chunk, 1]
         else:
-            chunks = [image_manager.height//16, image_manager.width//16, 1] # 1796x984
+            target_chunk = 2048
+            chunk_x = closest_divisors_to_target(image_manager.width, target=target_chunk)
+            chunk_y = closest_divisors_to_target(image_manager.height, target=target_chunk)
+            chunks = [chunk_x, chunk_y, 1] # 1796x984x1, xyz
 
-        test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
+        chunks = [image_manager.width, image_manager.height, 1] # 1796x984x1, xyz
+
+        #test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         scales = self.get_scales()
         print(f'scales={scales} scaling_factor={self.scaling_factor} downsample={self.downsample}')
         num_channels = image_manager.num_channels
         print(image_manager.width, image_manager.height, image_manager.len_files, image_manager.shape)
         print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels} and size={image_manager.size}')
-        
+        print(f'Using chunks={chunks} for neuroglancer rechunkme transfer step')
         ng = NumpyToNeuroglancer(
             self.animal,
             None,
