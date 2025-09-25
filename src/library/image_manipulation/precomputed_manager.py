@@ -83,7 +83,7 @@ class NgPrecomputedMaker:
         image_manager = ImageManager(self.input)
 
         if self.downsample:
-            self.xy_chunk = CHUNK
+            self.xy_chunk = XY_CHUNK
             chunks = [image_manager.width, image_manager.height, 1]
         else:
             target_chunk = 4096
