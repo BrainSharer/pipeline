@@ -86,12 +86,11 @@ class NgPrecomputedMaker:
             self.xy_chunk = int(XY_CHUNK//2)
             chunks = [self.xy_chunk, self.xy_chunk, 1]
         else:
-            target_chunk = 2048
+            target_chunk = 4096
             chunk_x = closest_divisors_to_target(image_manager.width, target=target_chunk)
             chunk_y = closest_divisors_to_target(image_manager.height, target=target_chunk)
             chunks = [chunk_x, chunk_y, 1] # 1796x984x1, xyz
 
-        chunks = [image_manager.width, image_manager.height, 1] # 1796x984x1, xyz
 
         #test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         scales = self.get_scales()
