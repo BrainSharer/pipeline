@@ -83,8 +83,8 @@ class NgPrecomputedMaker:
         image_manager = ImageManager(self.input)
 
         if self.downsample:
-            self.xy_chunk = int(XY_CHUNK//2)
-            chunks = [self.xy_chunk, self.xy_chunk, 1]
+            self.xy_chunk = CHUNK
+            chunks = [image_manager.width, image_manager.height, 1]
         else:
             target_chunk = 4096
             chunk_x = closest_divisors_to_target(image_manager.width, target=target_chunk)
@@ -97,7 +97,7 @@ class NgPrecomputedMaker:
         print(f'scales={scales} scaling_factor={self.scaling_factor} downsample={self.downsample}')
         num_channels = image_manager.num_channels
         print(image_manager.width, image_manager.height, image_manager.len_files, image_manager.shape)
-        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels} and size={image_manager.size}')
+        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels}')
         print(f'Using chunks={chunks} for neuroglancer rechunkme transfer step')
         ng = NumpyToNeuroglancer(
             self.animal,
@@ -134,13 +134,14 @@ class NgPrecomputedMaker:
 
         image_manager = ImageManager(self.input)
 
-        chunks = [XY_CHUNK, XY_CHUNK, Z_CHUNK]
-        if self.downsample:
-            chunks = [self.xy_chunk, self.xy_chunk, self.xy_chunk]
 
-        if not self.downsample and self.section_count < 100:
-            z_chunk = int(XY_CHUNK)//2
-            chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
+
+        if image_manager.len_files < Z_CHUNK:
+            z_chunk = image_manager.len_files
+        else:
+            z_chunk = Z_CHUNK
+
+        chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
         if self.downsample or image_manager.size < 100000000:
             mips = 4
@@ -162,10 +163,10 @@ class NgPrecomputedMaker:
         tq = LocalTaskQueue(parallel=workers)
 
         if image_manager.num_channels > 2:
-            print(f'Creating non-sharded transfer tasks with chunks={chunks} and section count={self.section_count}')
+            print(f'Creating non-sharded transfer tasks with chunks={chunks} and file count={image_manager.len_files}')
             tasks = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
         else:
-            print(f'Creating sharded transfer tasks with chunks={chunks} and section count={self.section_count}')
+            print(f'Creating sharded transfer tasks with chunks={chunks} and file count={image_manager.len_files}')
             tasks = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks)
 
         tq.insert(tasks)
