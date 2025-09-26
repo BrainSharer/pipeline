@@ -119,14 +119,8 @@ class Pipeline(
         self.available_memory = int(total_mem * 0.65) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
         self.section_count = self.get_section_count()
 
-        #self.mips = 7 
-        #if self.downsample:
-        #    self.mips = 4
-
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        #self.report_status()
-        #self.check_settings()
         if not hasattr(self, 'SCRATCH'):
             self.SCRATCH = get_scratch_dir()
         if arg_uuid:
