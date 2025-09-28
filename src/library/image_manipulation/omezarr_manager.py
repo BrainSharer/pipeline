@@ -15,11 +15,16 @@ import os
 import inspect
 import dask
 import dask.config
-from dask.distributed import Client
 from distributed import LocalCluster
+try:
+    from dask_cuda import LocalCUDACluster
+except ImportError:
+    print("dask-cuda not found, LocalCUDACluster will not be available")
+    from dask.distributed import Client
 from timeit import default_timer as timer
 from tqdm import tqdm
 import zarr
+
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
 from library.utilities.dask_utilities import closest_divisors_to_target
@@ -174,7 +179,8 @@ class OmeZarrManager():
         dask.config.set({'logging.distributed': 'info', 'temporary_directory': self.scratch_space})
         n_workers = os.cpu_count() // 6
         threads_per_worker = 4
-        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        #cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        cluster = LocalCUDACluster()
         print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
