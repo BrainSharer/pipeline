@@ -61,8 +61,6 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
 
         self.pyramidMap = {}
         target_chunk = 64
-        # setup the rechunks chunks
-        xy_chunk = 2048 if self.originalChunkSize[2] >= 2048 else self.originalChunkSize[2]
         original_y_chunk = self.originalChunkSize[1]
         original_x_chunk = self.originalChunkSize[2]
         # setup the transfer chunks
@@ -70,7 +68,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         # pyramidMap at -2 is for the initial transfer of the original chunk size
         self.pyramidMap[-2] = {'chunk': (1, 1, *self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
         # pyramidMap at -1 is for the rechunking of the transfer
-        self.pyramidMap[-1] = {'chunk': (1, 1, z_chunk, original_y_chunk//2, original_x_chunk//2), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[-1] = {'chunk': (1, 1, z_chunk, original_y_chunk, original_x_chunk//4), 'resolution': resolution, 'downsample': (1, 1, 1)}
         self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, 256, 256), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
