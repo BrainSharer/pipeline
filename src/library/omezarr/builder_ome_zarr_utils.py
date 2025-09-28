@@ -35,7 +35,8 @@ class BuilderOmeZarrUtils:
             ]
             
         datasets = [] 
-        for mip in range(0, len(self.pyramidMap) - 1):
+        # We use -2 below as there are two levels prior to mip building
+        for mip in range(0, len(self.pyramidMap) - 2):
 
             scale = {}
             scale["path"] = str(mip)

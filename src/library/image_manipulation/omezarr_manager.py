@@ -189,15 +189,25 @@ class OmeZarrManager():
         threads_per_worker = 4
         cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
         print(f"Using Dask cluster for remainder with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
-
+        
         with Client(cluster) as client:
+            """Transfer complete, now rechunk to final chunk size and create mips
+            """
+            # Transfer 0
+            print('Starting transfer 0')
             input_path = omezarr.transfer_path
+            output_path = omezarr.rechunkme_path
+            omezarr.write_rechunk_transfer(client, input_path, output_path, level=-1)
+            # Transfer 1
+            print('Starting transfer 1')
+            input_path = omezarr.rechunkme_path
             output_path = os.path.join(omezarr.output, str(0))
-            omezarr.write_rechunk_transfer(client, input_path, output_path)
+            omezarr.write_rechunk_transfer(client, input_path, output_path, level=0)
         
             pyramids = len(omezarr.pyramidMap) - 1
             for mip in range(1, pyramids):
-                omezarr.write_mips(mip, client)
+                print(f'Creating mip {mip} of {pyramids}')
+                #omezarr.write_mips(mip, client)
 
         cluster.close()
         omezarr.cleanup()
