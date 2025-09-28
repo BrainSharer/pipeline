@@ -15,12 +15,7 @@ import os
 import inspect
 import dask
 import dask.config
-try:
-    from dask_cuda import LocalCUDACluster
-except ImportError:
-    print("dask-cuda not found, LocalCUDACluster will not be available")
-    from distributed import LocalCluster
-    
+from distributed import LocalCluster    
 from dask.distributed import Client
 from timeit import default_timer as timer
 from tqdm import tqdm
