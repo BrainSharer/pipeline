@@ -176,7 +176,7 @@ class OmeZarrManager():
         n_workers = os.cpu_count() // 6
         threads_per_worker = 4
         #cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        cluster = LocalCUDACluster()
+        cluster = LocalCluster()
         print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
         if self.debug:
             exit(1)
