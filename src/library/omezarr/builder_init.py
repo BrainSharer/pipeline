@@ -60,9 +60,9 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
             self.rechunkme_path = os.path.join(scratch_parent, f"C{channel}T_rechunkme")
 
         self.pyramidMap = {}
-
+        target_chunk = 64
         # setup the transfer chunks
-        z_chunk = 128 if len(files) >= 128 else len(self.files)
+        z_chunk = target_chunk if len(files) >= target_chunk else len(self.files)
         # pyramidMap at -1 is for the initial transfer of the original chunk size
         self.pyramidMap[-1] = {'chunk': (1, 1, *self.originalChunkSize), 'resolution': resolution, 'downsample': (1, 1, 1)}
         # setup the rechunks chunks
@@ -74,15 +74,15 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
 
             if mip < 3:
-                if len(self.files) < 128:
+                if len(self.files) < target_chunk:
                     z_chunk = len(self.files)
-                chunks = (1, self.channels, z_chunk, 128, 128)
+                chunks = (1, self.channels, z_chunk, target_chunk, target_chunk)
             else:
-                z_chunk = 64 if len(files) >= 64 else len(self.files)
-                chunks = (1, self.channels, z_chunk, 64, 64)
+                z_chunk = target_chunk if len(files) >= target_chunk else len(self.files)
+                chunks = (1, self.channels, z_chunk, target_chunk, target_chunk)
 
             if downsample:
-                chunks = (1, self.channels, 64, 64, 64)
+                chunks = (1, self.channels, target_chunk, target_chunk, target_chunk)
 
             resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
             self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}
