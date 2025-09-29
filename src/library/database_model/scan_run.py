@@ -26,7 +26,7 @@ class ScanRun(Base, AtlasModel):
     scan_date = Column(Date)
     file_type = Column(Enum("CZI", "JPEG2000", "NDPI", "NGR"))
     scenes_per_slide = Column(Enum("1", "2", "3", "4", "5", "6"))
-    section_schema = Column(Enum("L to R", "R to L"))
+    section_schema = Column(Enum("asc", "desc", "manual"), default="asc")
     channels_per_scene = Column(Integer, default=3)
     slide_folder_path = Column(String)
     converted_status = Column(Enum("not started", "converted", "converting", "error"))
