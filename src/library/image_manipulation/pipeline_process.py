@@ -223,12 +223,14 @@ class Pipeline(
         
 
     def clean(self):
+        """I am taking out the set width and height as we might need to manually adjust this
+        """
         print(self.TASK_CLEAN)
         print('SKIPPING RAM CHECK')
         # self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-            self.set_max_width_and_height()
+            #####TODOself.set_max_width_and_height()
 
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')

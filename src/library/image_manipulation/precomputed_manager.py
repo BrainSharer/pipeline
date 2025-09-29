@@ -86,10 +86,9 @@ class NgPrecomputedMaker:
         
         ng.init_precomputed(self.rechunkme_path, image_manager.volume_size)
         file_keys = []
-        orientation = self.sqlController.histology.orientation
         for i, f in enumerate(image_manager.files):
             filepath = os.path.join(self.input, f)
-            file_keys.append([i, filepath, orientation, self.progress_dir, False, 0, 0]) #added is_blank, height, width
+            file_keys.append([i, filepath, self.progress_dir, False, 0, 0]) #added is_blank, height, width
 
         workers = self.get_nworkers()
         if self.debug:

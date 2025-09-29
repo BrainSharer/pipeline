@@ -16,7 +16,7 @@ class SectionsController():
 
         :returns: list of sections in order
         """
-        slide_orderby = self.scanrun.slide_order
+        slide_orderby = self.scan_run.section_schema
         slide_orderby = slide_orderby.lower().strip()
 
         if slide_orderby == 'desc':
