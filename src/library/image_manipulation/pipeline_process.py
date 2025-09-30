@@ -115,8 +115,7 @@ class Pipeline(
         self.bgcolor = 0
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
-        total_mem = psutil.virtual_memory().total
-        self.available_memory = int(total_mem * 0.65) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
+        self.available_memory = self.get_available_ram_gb() 
         self.section_count = self.get_section_count()
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
@@ -127,7 +126,17 @@ class Pipeline(
             self.set_id = arg_uuid #for debug of prev. uuid
         else:
             self.set_id = uuid.uuid4().hex
-        
+
+    @staticmethod
+    def get_available_ram_gb():
+        """
+        Retrieves the available RAM in gigabytes using the psutil library.
+        """
+        virtual_memory = psutil.virtual_memory()
+        available_ram_bytes = virtual_memory.available
+        available_ram_gb = available_ram_bytes / (1024**3)  # Convert bytes to GB
+        available_ram_gb = round(available_ram_gb,2)
+        return available_ram_gb
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -230,7 +239,7 @@ class Pipeline(
         # self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
-            #####TODOself.set_max_width_and_height()
+            self.set_max_width_and_height()
 
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
@@ -357,7 +366,7 @@ class Pipeline(
         layer. However, this is currently only supported if that dimension is not chunked, i.e. the chunk size must be 3 in your case.
         """
         print(self.TASK_OMEZARR)
-        self.check_ram()
+        #self.check_ram()
 
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample) 
         self.scratch_space = os.path.join('/data', 'pipeline_tmp', self.animal, 'dask-scratch-space')
@@ -525,7 +534,7 @@ class Pipeline(
 
         if not self.downsample and self.available_memory < 50:
             error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
-            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
+            error += '\n(Available RAM is calculated by running "free -h" on the command line.)'
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
             error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
             

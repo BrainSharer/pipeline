@@ -176,8 +176,9 @@ class OmeZarrManager():
         n_workers = os.cpu_count() // 6
         threads_per_worker = 4
         #cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        cluster = LocalCluster()
-        print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        memory_limit = str(int(self.available_memory / n_workers)) + 'GB'
+        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=memory_limit)
+        print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} GB available memory")
         if self.debug:
             exit(1)
 
@@ -185,12 +186,12 @@ class OmeZarrManager():
             print(f"Client dashboard: {client.dashboard_link}")
             omezarr.write_transfer(client)
 
-        cluster.close()
+        #cluster.close()
         ## The number of workers needs to be reduced for the remainder of the process
-        n_workers = n_workers // 2 if n_workers > 2 else 1
-        threads_per_worker = 4
-        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        print(f"Using Dask cluster for remainder with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        #n_workers = n_workers // 2 if n_workers > 2 else 1
+        #threads_per_worker = 4
+        #cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
+        #print(f"Using Dask cluster for remainder with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} HN available memory")
         
         with Client(cluster) as client:
             """Transfer complete, now rechunk to final chunk size and create mips
@@ -206,10 +207,10 @@ class OmeZarrManager():
             output_path = os.path.join(omezarr.output, str(0))
             omezarr.write_rechunk_transfer(client, input_path, output_path, level=0)
         
-            pyramids = len(omezarr.pyramidMap) - 1
+            pyramids = len(omezarr.pyramidMap)
             for mip in range(1, pyramids):
                 print(f'Creating mip {mip} of {pyramids}')
-                #omezarr.write_mips(mip, client)
+                omezarr.write_mips(mip, client)
 
         cluster.close()
         omezarr.cleanup()
