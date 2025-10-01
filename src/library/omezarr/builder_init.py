@@ -60,29 +60,30 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
             self.rechunkme_path = os.path.join(scratch_parent, f"C{channel}T_rechunkme")
 
         self.pyramidMap = {}
-        target_chunk = 64
+        target_chunks = [256, 128, 64, 64, 64, 64, 64, 64]
         original_y_chunk = self.originalChunkSize[1]
         original_x_chunk = self.originalChunkSize[2]
         # setup the transfer chunks
         # pyramidMap at -2 is for the initial transfer of the original chunk size
         # pyramidMap at -1 is for the rechunking of the transfer
-        z_chunk = target_chunk if len(files) >= target_chunk else len(self.files)
+        z_chunk = target_chunks[-1] if len(files) >= target_chunks[-1] else len(self.files)
         self.pyramidMap[-2] = {'chunk': (1, 1, 1, original_y_chunk, original_x_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
         self.pyramidMap[-1] = {'chunk': (1, 1, z_chunk, original_y_chunk, original_x_chunk//4), 'resolution': resolution, 'downsample': (1, 1, 1)}
-        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, 256, 256), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, target_chunks[0], target_chunks[0]), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
-
+            chunks = (1, self.channels, z_chunk, target_chunks[mip], target_chunks[mip])
+            """
             if mip < 3:
                 if len(self.files) < target_chunk:
                     z_chunk = len(self.files)
                 chunks = (1, self.channels, z_chunk, target_chunk, target_chunk)
             else:
-                z_chunk = target_chunk if len(files) >= target_chunk else len(self.files)
+                #z_chunk = target_chunk if len(files) >= target_chunk else len(self.files)
                 chunks = (1, self.channels, z_chunk, target_chunk, target_chunk)
-
+            """
             if downsample:
-                chunks = (1, self.channels, target_chunk, target_chunk, target_chunk)
+                chunks = (1, self.channels, target_chunks[-1], target_chunks[-1], target_chunks[-1])
 
             resolution = (resolution[0], previous_resolution[1] * 2, previous_resolution[2] * 2)
             self.pyramidMap[mip] = {'chunk': chunks, 'resolution': resolution, 'downsample': (1, 2, 2)}

@@ -9,7 +9,10 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import asyncio
-import aiofiles
+try:
+    import aiofiles
+except ImportError:
+    pass
 import hashlib
 
 from library.database_model.slide import Slide, SlideCziTif
