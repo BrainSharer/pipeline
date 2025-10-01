@@ -68,7 +68,7 @@ class builder(BuilderOmeZarrUtils, BuilderMultiscaleGenerator):
         # pyramidMap at -1 is for the rechunking of the transfer
         z_chunk = target_chunks[-1] if len(files) >= target_chunks[-1] else len(self.files)
         self.pyramidMap[-2] = {'chunk': (1, 1, 1, original_y_chunk, original_x_chunk), 'resolution': resolution, 'downsample': (1, 1, 1)}
-        self.pyramidMap[-1] = {'chunk': (1, 1, z_chunk, original_y_chunk, original_x_chunk//4), 'resolution': resolution, 'downsample': (1, 1, 1)}
+        self.pyramidMap[-1] = {'chunk': (1, 1, z_chunk, target_chunks[0], original_x_chunk//4), 'resolution': resolution, 'downsample': (1, 1, 1)}
         self.pyramidMap[0] = {'chunk': (1, self.channels, z_chunk, target_chunks[0], target_chunks[0]), 'resolution': resolution, 'downsample': (1, 1, 1)}
         for mip in range(1, mips):
             previous_resolution = self.pyramidMap[mip-1]['resolution']            
