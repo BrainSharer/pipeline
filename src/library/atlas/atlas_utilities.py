@@ -8,7 +8,8 @@ from scipy.spatial import Delaunay
 
 from scipy.spatial.transform import Rotation as R
 from skimage.filters import gaussian
-from scipy.ndimage import affine_transform
+from scipy.ndimage import affine_transform, binary_erosion, zoom, center_of_mass, shift
+
 from scipy.interpolate import splprep, splev
 
 import shapely
@@ -544,9 +545,13 @@ def center_images_to_largest_volume(images):
             continue
 
         # Calculate center transform
-        transform = sitk.CenteredTransformInitializer(reference_image, img,
-                                                      sitk.Euler3DTransform(), 
-                                                      sitk.CenteredTransformInitializerFilter.MOMENTS)
+        try:
+            transform = sitk.CenteredTransformInitializer(reference_image, img,
+                                                        sitk.Euler3DTransform(), 
+                                                        sitk.CenteredTransformInitializerFilter.MOMENTS)
+        except Exception as e:
+            print(f"Error initializing transform for image {i}: {e}")
+            exit(1)
 
         # Resample image
         resampled = sitk.Resample(img,
@@ -768,7 +773,8 @@ def adjust_volume(volume, allen_id):
     """
     The commands below produce really nice STLs
     """
-    upper = 100
+    #upper = 100
+    upper = np.quantile(volume, 0.725)
     volume = gaussian(volume, 4.0)            
     volume[(volume > upper) ] = allen_id
     volume[(volume != allen_id)] = 0
@@ -897,7 +903,6 @@ def get_evenly_spaced_vertices_from_volume(mask, num_points=20):
     return vertices
 
 def get_edge_coordinates(array):
-    from scipy.ndimage import binary_erosion
     """
     Returns the coordinates of non-zero edge pixels in a 2D binary array.
     """
@@ -1080,7 +1085,6 @@ def center_3d_volume(volume: np.ndarray) -> np.ndarray:
     Returns:
     np.ndarray: The centered 3D volume.
     """
-    from scipy.ndimage import zoom, center_of_mass, shift
 
     if volume.ndim != 3:
         raise ValueError("Input volume must be a 3D numpy array")
@@ -1127,4 +1131,134 @@ def crop_nonzero_3d(volume):
     
     return cropped_volume
 
+"""Tests using PCA to get an average volume"""
+def mask_pca_axes(mask):
+    """
+    Compute centroid and principal axes (3x3 matrix whose columns are eigenvectors)
+    from non-zero voxels of a binary mask.
+    Returns centroid (3,), axes (3,3) (columns are principal axes), and 'size_metric' (mean std along axes).
+    """
+    coords = np.column_stack(np.nonzero(mask))  # shape (N, 3)
+    if coords.shape[0] == 0:
+        raise ValueError("Mask is empty.")
+    centroid = coords.mean(axis=0)
+    centered = coords - centroid
+    cov = np.cov(centered, rowvar=False)
+    eigvals, eigvecs = np.linalg.eigh(cov)  # ascending eigenvalues
+    # Reorder to descending
+    order = eigvals.argsort()[::-1]
+    eigvecs = eigvecs[:, order]
+    eigvals = eigvals[order]
+    # Ensure right-handed coordinate system (determinant = +1)
+    if np.linalg.det(eigvecs) < 0:
+        eigvecs[:, -1] *= -1
+    # Size metric: mean of std along principal axes
+    proj = centered.dot(eigvecs)  # coords in PCA frame
+    stds = proj.std(axis=0)
+    size_metric = stds.mean()
+    return centroid, eigvecs, size_metric
+
+
+def average_rotation_from_axes_list(axes_list):
+    """
+    Given a list of axes matrices (3x3, columns are eigenvectors), compute average rotation.
+    Uses quaternion averaging (make sure quaternions are consistently oriented).
+    Returns a 3x3 rotation matrix.
+    """
+    rots = [R.from_matrix(a) for a in axes_list]
+    quats = np.array([r.as_quat() for r in rots])  # xyzw order (scipy uses x,y,z,w)
+    # Ensure hemisphere alignment: flip quaternions so scalar parts have same sign (or dot with first > 0)
+    base = quats[0]
+    for i in range(1, len(quats)):
+        if np.dot(base, quats[i]) < 0:
+            quats[i] = -quats[i]
+    mean_quat = quats.mean(axis=0)
+    mean_quat /= np.linalg.norm(mean_quat)
+    mean_rot = R.from_quat(mean_quat).as_matrix()
+    return mean_rot
+
+
+def transform_mask_affine(mask, A, center_in, center_out, out_shape=None, order=1):
+    """
+    Apply affine transform (3x3 matrix A) and translation to resample mask into an output grid.
+    We want: x_in = inv(A) @ (x_out - center_out) + center_in
+    So for scipy.ndimage.affine_transform we provide matrix = inv(A) and offset = center_in - inv(A) @ center_out
+    mask: input 3D array
+    A: 3x3 transform applied to coordinates relative to centers (A = scale * rotation)
+    center_in: center in input index coords (3,)
+    center_out: desired center in output grid (3,)
+    out_shape: shape of output volume (if None, use mask.shape)
+    order: interpolation order (0 nearest, 1 trilinear)
+    """
+    if out_shape is None:
+        out_shape = mask.shape
+    A = np.asarray(A)
+    invA = np.linalg.inv(A)
+    # scipy affine_transform expects matrix mapping output coords to input coords:
+    matrix = invA
+    offset = center_in - invA.dot(center_out)
+    # Use affine_transform on float array
+    res = affine_transform(mask.astype(np.float32),
+                                   matrix=matrix,
+                                   offset=offset,
+                                   output_shape=out_shape,
+                                   order=order, mode='constant', cval=0.0)
+    # Threshold back to binary (0.5)
+    return (res >= 0.5).astype(np.uint8)
+
+
+def align_masks_numpy(masks):
+    """
+    masks: list of 3D numpy arrays (binary)
+    returns aligned_masks: list of aligned 3D numpy arrays (same shape)
+    """
+    n = len(masks)
+    if n == 0:
+        return []
+
+    # 1) Compute PCA axes and centroids/sizes for each mask
+    props = []
+    for i, m in enumerate(masks):
+        centroid, axes, size_metric = mask_pca_axes(m)
+        props.append({'centroid': centroid, 'axes': axes, 'size': size_metric})
+
+    axes_list = [p['axes'] for p in props]
+    mean_axes = average_rotation_from_axes_list(axes_list)  # 3x3
+
+    # 2) Compute average size (we will scale isotropically)
+    sizes = np.array([p['size'] for p in props])
+    avg_size = sizes.mean()
+
+    # 3) Prepare output grid parameters (use same shape as inputs)
+    buffer = 0
+    mx = max(s.shape[0] for s in masks) + buffer
+    my = max(s.shape[1] for s in masks) + buffer
+    mz = max(s.shape[2] for s in masks) + buffer
+    
+    out_shape = (mx,my,mz)
+    center_out = np.array(out_shape) / 2.0
+
+    aligned = []
+    for i, m in enumerate(masks):
+        centroid = props[i]['centroid']
+        axes = props[i]['axes']
+        size_i = props[i]['size']
+        # Rotation to map mask's axes into mean_axes:
+        # R_needed = mean_axes @ axes.T
+        R_needed = mean_axes.dot(axes.T)
+        # scale factor (isotropic)
+        if size_i == 0:
+            scale = 1.0
+        else:
+            scale = (avg_size / size_i)
+        #scale = 1
+        A = scale * R_needed  # combined affine (applied about centers)
+        # transform
+        res = transform_mask_affine(m, A=A,
+                                    center_in=centroid,
+                                    center_out=center_out,
+                                    out_shape=out_shape,
+                                    order=1)
+        aligned.append(res)
+    return aligned
 

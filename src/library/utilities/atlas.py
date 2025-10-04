@@ -1,7 +1,8 @@
 '''
 Trimmed down version of the original atlas utilities and also utilities_atlas_lite
 '''
-import sys
+from colorsys import hsv_to_rgb
+import random
 import numpy as np
 import vtk
 from vtk.util import numpy_support
@@ -85,7 +86,8 @@ def volume_to_polygon(volume, origin, times_to_simplify=0, min_vertices=200):
     vol_padded = np.pad(volume, ((5, 5), (5, 5), (5, 5)), 'constant')
     # more than 5 times faster than skimage.marching_cube + correct_orientation
     vertices, faces = mcubes.marching_cubes(vol_padded, 0)
-    vertices = vertices + origin - (5, 5, 5)
+    buffer = 0
+    vertices = vertices + origin - (buffer, buffer, buffer)
     polydata = mesh_to_polydata(vertices, faces)
 
     for _ in range(times_to_simplify):
@@ -234,6 +236,104 @@ def simplify_polydata(polydata, num_simplify_iter=0, smooth=False):
             break
 
     return polydata
+
+def generate_random_rgb_color():
+  """Generates a random color in RGB format (tuple of three integers)."""
+  red = random.randint(0, 255)
+  green = random.randint(0, 255)
+  blue = random.randint(0, 255)
+  return (red, green, blue)
+
+def number_to_rgb(number):
+    """
+    Converts a number from 1 to 65000 to an RGB color.
+    The number is mapped to the hue of an HSV color.
+    """
+    if not 1 <= number <= 65000:
+        raise ValueError("Number must be between 1 and 65000")
+
+    # Normalize the number to a value between 0 and 1
+    # We subtract 1 from the numerator and denominator to handle the 1-max(allen ID) range.
+    normalized = (number - 1) / 1000
+
+    # Convert normalized value to a hue in the range [0, 1]
+    # Keep saturation and value at 1 for the full color spectrum
+    r, g, b = hsv_to_rgb(normalized, 1.0, 1.0)
+
+    # Scale the RGB values from [0, 1] to [0, 255]
+    red = int(r * 255)
+    green = int(g * 255)
+    blue = int(b * 255)
+
+    return (red, green, blue)
+
+def mask_to_mesh(mask: np.ndarray, origin: tuple, ply_filename: str, color=(255, 0, 0)):
+    """
+    This is a simpler way to create 3D meshes from volumes. Instead of creating stl files, it creates ply files.
+    ply files can have color and it is much faster.
+    Convert a 3D numpy mask to a mesh and export as PLY.
+    
+    Parameters
+    ----------
+    mask : np.ndarray
+        3D numpy array, binary or integer labels.
+    ply_filename : str
+        Path to output .ply file.
+    color : tuple of 3 ints
+        RGB color for the mesh (0–255).
+    """
+    # Ensure binary
+    spacing = (1.0, 1.0, 1.0)  # Set voxel spacing if needed
+    mask = (mask > 0).astype(np.uint32)
+
+    # Convert numpy array to VTK image
+    depth_array = numpy_support.numpy_to_vtk(
+        num_array=mask.ravel(order='F'),
+        deep=True,
+        array_type=vtk.VTK_UNSIGNED_CHAR
+    )
+    vtk_image = vtk.vtkImageData()
+    vtk_image.SetDimensions(mask.shape)  # Note: VTK uses (x, y, z), our data is already in (x, y, z) order
+    vtk_image.SetSpacing(spacing)
+    vtk_image.SetOrigin(origin)
+    vtk_image.GetPointData().SetScalars(depth_array)
+
+    # Extract surface using marching cubes
+    mc = vtk.vtkMarchingCubes()
+    mc.SetInputData(vtk_image)
+    mc.SetValue(0, 0.5)  # isosurface at 0.5 for binary mask
+    mc.Update()
+
+    # Use the windowed sinc filter for less shrinkage
+    smoother = vtk.vtkWindowedSincPolyDataFilter()
+    smoother.SetInputConnection(mc.GetOutputPort())    
+    smoother.SetNumberOfIterations(200)
+    smoother.BoundarySmoothingOn()
+    smoother.FeatureEdgeSmoothingOn()
+    smoother.SetFeatureAngle(45.0)
+    smoother.SetPassBand(0.1)  # Controls the filter's strength, 0.1 is strong
+    smoother.Update()
+
+    polydata = smoother.GetOutput()
+
+    # Add color
+    colors = vtk.vtkUnsignedCharArray()
+    colors.SetNumberOfComponents(3)
+    colors.SetName("Colors")
+    for _ in range(polydata.GetNumberOfPoints()):
+        colors.InsertNextTuple3(*color)
+    polydata.GetPointData().SetScalars(colors)
+
+    # Write to PLY
+    writer = vtk.vtkPLYWriter()
+    writer.SetFileName(ply_filename)
+    writer.SetInputData(polydata)
+    writer.SetFileTypeToBinary()
+    writer.SetArrayName("Colors")
+    writer.SetColorModeToDefault()
+    writer.Update()
+    writer.Write()
+
 
 #    'Pn_L': 771,
 #    'Pn_R': 771,
