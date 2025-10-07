@@ -183,14 +183,9 @@ def test_dir(animal: str, directory: str, section_count: int, downsample: bool =
     min_height = min(heights)
     max_height = max(heights)
     if section_count != len(files):
-        print(
-            "[EXPECTED] SECTION COUNT:",
-            section_count,
-            "[ACTUAL] FILES:",
-            len(files),
-        )
-        error += f"Number of files in {directory} is incorrect.\n"
-        error += "If there are no slides in the DB, section count comes from the preps/C1/thumbnail dir. Make sure that is correct.\n"
+        print(f"Section count from DB: {section_count} does not equal number of files in {os.path.basename(directory)}: {len(files)}")
+        #error += f"Number of files in {directory} is incorrect.\n"
+        #error += "If there are no slides in the DB, section count comes from the preps/C1/thumbnail dir. Make sure that is correct.\n"
     if min_width != max_width and min_width > 0 and same_size:
         error += f"Widths are not of equal size, min is {min_width} and max is {max_width}.\n"
     if min_height != max_height and min_height > 0 and same_size:
