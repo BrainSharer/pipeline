@@ -477,6 +477,11 @@ if __name__ == '__main__':
         
         # convert to uint8 mask
         m = (prob >= args.threshold).astype(np.uint8) * 255
+        m = m.astype(np.uint8)
+        ids, counts = np.unique(m, return_counts=True)
+        print(f'Unique mask ids: {ids}')
+        print(f'Unique mask counts: {counts}')
+        exit(1)
         outputmask_path = os.path.join(output_dir, f'mask_{args.predict}')
         tiff.imwrite(outputmask_path, m.astype(np.uint8))
         print(f'Saved mask to {outputmask_path}')
