@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     # Train (this will save best model to unet_model.pt)
     model_path = os.path.join(data_path, "unet_model.h5")
-    _ = train_unet(train_loader, val_loader, device, epochs=epochs, lr=1e-3, model_save_path=model_path, in_channels=3, out_channels=1, features=[32,64,128])
+    _ = train_unet(train_loader, val_loader, device, epochs=epochs, lr=1e-3, model_save_path=model_path, in_channels=1, out_channels=1, features=[32,64,128])
 
 # Inference + contour drawing example (run after training or if you have a saved model)
 # Load model checkpoint and run inference on a single image, then draw contours and show/save the result.
