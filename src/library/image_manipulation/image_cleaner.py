@@ -110,6 +110,7 @@ class ImageCleaner:
         if self.downsample:
             max_width = int(np.round(max_width / self.scaling_factor))
             max_height = int(np.round(max_height / self.scaling_factor))
+        print(f'Using max width={max_width} and max height={max_height} for placing cleaned images')
 
         rotation = self.sqlController.scan_run.rotation
         flip = self.sqlController.scan_run.flip
