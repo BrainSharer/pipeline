@@ -172,7 +172,7 @@ class BrainSectionDataset(Dataset):
         if img.max() > 0:
             img = img / img.max()
 
-        """
+        
         if self.patch_size is not None:
             h, w = img.shape
             ph, pw = self.patch_size
@@ -189,7 +189,7 @@ class BrainSectionDataset(Dataset):
                 mask = np.pad(mask, ((0, pad_h), (0, pad_w)), mode='constant')
                 img = img[:ph, :pw]
                 mask = mask[:ph, :pw]
-        """
+        
         # transforms
         if self.transform:
             img = self.transform(img)
@@ -269,7 +269,6 @@ def train_unet(model_save_dir: str,
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
-        print(f'type of train_loader: {type(train_loader)}')
         for imgs, masks in tqdm(train_loader, desc=f"Train Epoch {epoch}"):
             imgs = imgs.to(device)
             masks = masks.to(device)
@@ -285,7 +284,7 @@ def train_unet(model_save_dir: str,
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for imgs, masks in val_loader:
+            for imgs, masks in tqdm(val_loader, desc=f"Val Epoch {epoch}"):
                 imgs = imgs.to(device)
                 masks = masks.to(device)
                 logits = model(imgs)
