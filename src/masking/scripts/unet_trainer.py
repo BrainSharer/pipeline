@@ -145,12 +145,14 @@ class BrainSectionDataset(Dataset):
                 msk = os.path.join(masks_path, mask_path)
                 if img and msk:
                     self.samples.append((img, msk))
+
         self.transform = transform
         self.target_transform = target_transform
         self.patch_size = patch_size
 
     def __len__(self):
-        return len(self.samples)
+        l = len(self.samples)
+        return l
 
     def __getitem__(self, idx):
         img_path, mask_path = self.samples[idx]
@@ -170,6 +172,7 @@ class BrainSectionDataset(Dataset):
         if img.max() > 0:
             img = img / img.max()
 
+        """
         if self.patch_size is not None:
             h, w = img.shape
             ph, pw = self.patch_size
@@ -186,7 +189,7 @@ class BrainSectionDataset(Dataset):
                 mask = np.pad(mask, ((0, pad_h), (0, pad_w)), mode='constant')
                 img = img[:ph, :pw]
                 mask = mask[:ph, :pw]
-
+        """
         # transforms
         if self.transform:
             img = self.transform(img)
@@ -251,7 +254,6 @@ def train_unet(model_save_dir: str,
 
     train_ds = BrainSectionDataset(transform=aug, target_transform=lambda m: torch.from_numpy(m).unsqueeze(0).float(), patch_size=patch_size)
     val_ds = BrainSectionDataset(transform=lambda x: torch.from_numpy(x).unsqueeze(0).float(), target_transform=lambda m: torch.from_numpy(m).unsqueeze(0).float(), patch_size=patch_size)
-
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -267,6 +269,7 @@ def train_unet(model_save_dir: str,
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
+        print(f'type of train_loader: {type(train_loader)}')
         for imgs, masks in tqdm(train_loader, desc=f"Train Epoch {epoch}"):
             imgs = imgs.to(device)
             masks = masks.to(device)
@@ -407,6 +410,7 @@ def probmap_to_contours(probmap: np.ndarray, threshold: float = 0.5) -> List[np.
     for c in found:
         # c is array shape (N,2) with (row, col)
         coords = np.stack([c[:, 1], c[:, 0]], axis=1)  # (x,y)
+        print(coords)
         contours.append(coords)
     return contours
 
@@ -431,7 +435,6 @@ def draw_contours_on_image(image: np.ndarray, contours: List[np.ndarray], line_w
         draw.line(pts + [pts[0]], width=line_width, fill=(255, 0, 0))
     return im
 
-
 # -----------------------------
 # CLI & example usage
 # -----------------------------
@@ -441,7 +444,6 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=2)
     parser.add_argument('--predict', type=str, help='Path to a TIFF to run inference on')
     parser.add_argument('--out_mask', type=str, help='Path to save predicted mask (.tif)')
-    parser.add_argument('--out_overlay', type=str, help='Path to save overlay PNG with contours')
     parser.add_argument('--threshold', type=float, default=0.5)
     args = parser.parse_args()
 
@@ -457,24 +459,39 @@ if __name__ == '__main__':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model = UNet(n_channels=1, n_classes=1, base_c=32)
         model_path = os.path.join(model_dir, 'best_unet.pth')
+        if os.path.isfile(model_path):
+            print(f'Loading model from {model_path}')
+        else:
+            print(f'Model file not found: {model_path}')
+            exit(1)        
+        output_dir = os.path.join(data_path, 'predictions')
+        os.makedirs(output_dir, exist_ok=True)
         ck = torch.load(model_path, map_location=device)
         model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
-        prob = predict_large_tif(args.predict, model, device=device, tile_size=512, overlap=64)
-        # save mask
-        if args.out_mask:
-            # convert to uint8 mask
-            m = (prob >= args.threshold).astype(np.uint8) * 255
-            tiff.imwrite(args.out_mask, m.astype(np.uint8))
-            print(f'Saved mask to {args.out_mask}')
+        infile = os.path.join(data_path, 'thumbnail_aligned', args.predict)
+        if os.path.isfile(infile):
+            print(f'Predicting: {infile}')
+        else:
+            print(f'Input file not found: {infile}')
+            exit(1)
+        prob = predict_large_tif(infile, model, device=device, tile_size=512, overlap=64)
+        
+        # convert to uint8 mask
+        m = (prob >= args.threshold).astype(np.uint8) * 255
+        outputmask_path = os.path.join(output_dir, f'mask_{args.predict}')
+        tiff.imwrite(outputmask_path, m.astype(np.uint8))
+        print(f'Saved mask to {outputmask_path}')
         # extract contours and save overlay
         contours = probmap_to_contours(prob, threshold=args.threshold)
-        if args.out_overlay:
-            img = tiff.imread(args.predict).astype(np.float32)
-            if img.ndim == 3:
-                img = img[..., 0]
-            overlay = draw_contours_on_image(img, contours)
-            overlay.save(args.out_overlay)
-            print(f'Saved overlay to {args.out_overlay}')
+        print(f'Found {len(contours)} contours')
+        img = tiff.imread(infile).astype(np.float32)
+        if img.ndim == 3:
+            img = img[..., 0]
+        overlay = draw_contours_on_image(img, contours)
+        output_path = os.path.join(output_dir, f'overlay_{args.predict}')
+        #overlay.save(output_path)
+        tiff.imwrite(output_path, prob)
+        print(f'Saved overlay to {output_path}')
 
-    if not (args.train or (args.predict and args.checkpoint)):
-        print('No action requested. Use --train to train or --predict with --checkpoint to predict.')
+    if not (args.train or args.predict):
+        print('No action requested. Use --train to train or --predict  to predict.')
