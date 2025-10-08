@@ -99,14 +99,15 @@ class StructureDataset(torch.utils.data.Dataset):
     def __init__(self, root, transforms=None):
         self.root = root
         self.transforms = transforms
-        self.imgdir = 'thumbnail_aligned'
-        self.maskdir = 'thumbnail_masked'
-        self.imgs = sorted(os.listdir(os.path.join(root, self.imgdir)))
-        self.masks = sorted(os.listdir(os.path.join(root, self.maskdir)))
+        self.img_root = os.path.join(self.root, 'thumbnail_aligned')
+        self.mask_root = os.path.join(self.root, 'thumbnail_masked')
+        self.imgs = sorted(os.listdir(self.img_root))
+        self.masks = sorted(os.listdir(self.mask_root))
+                            
     def __getitem__(self, idx):
         # load images and bounding boxes
-        img_path = os.path.join(self.root, self.imgdir, self.imgs[idx])
-        mask_path = os.path.join(self.root, self.maskdir, self.masks[idx])
+        img_path = os.path.join(self.img_root, self.imgs[idx])
+        mask_path = os.path.join(self.mask_root, self.masks[idx])
         img = Image.open(img_path) # L = grayscale, doesn't work with 16bit images
         img = np.array(img)
         if img.dtype == np.uint16:

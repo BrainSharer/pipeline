@@ -104,7 +104,8 @@ class MaskTrainer():
     def train(self):
 
         if self.structures:
-            structure_root = os.path.join(self.root, 'structures')
+            structure_root = os.path.join(self.root, 'structures', 'TG')
+            print(f'Training structure masks from {structure_root}')
             dataset = StructureDataset(structure_root, transforms = get_transform(train=True))
         else:
             dataset = MaskDataset(self.root, animal, transforms = get_transform(train=True))
@@ -142,14 +143,15 @@ class MaskTrainer():
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
-        modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
+        if self.structures:
+            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/mask.model.train.pth'
+        else:
+            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
         if os.path.exists(modeldictpath):
             print(f"Loading model dictionary from {modeldictpath}")
             model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
         else:
             print(f"Model dictionary not found at {modeldictpath}")
-            print("Exiting, make sure there is a symbolic link from the last good model to 'mask.model.train.pth'")
-            sys.exit()
 
         # move model to the right device
         model.to(self.device)
@@ -210,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--test', help='train or test model', required=False, default='false', type=str)
     parser.add_argument('--structures', help='Use TG or structure masking', required=False, default='false', type=str)
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
-    parser.add_argument('--num_classes', help='# of structures', required=False, default=2, type=int)
+    parser.add_argument('--num_classes', help='# of structures', required=False, default=1, type=int)
     
     args = parser.parse_args()
     structures = bool({'true': True, 'false': False}[args.structures.lower()])

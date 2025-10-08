@@ -224,13 +224,12 @@ class DiceLoss(nn.Module):
 # Training function
 # -----------------------------
 
-def train_unet(model_save_dir: str,
-               epochs: int = 30,
-               batch_size: int = 8,
-               patch_size: Tuple[int, int] = (512, 512),
-               lr: float = 1e-3,
-               device: str = None):
-    
+def train_unet(model_save_dir: str, epochs: int = 30):
+
+    batch_size = 8
+    patch_size = (512, 512)
+    lr = 1e-3
+
     if torch.cuda.is_available(): 
         device = torch.device('cuda') 
         print('Using Nvidia graphics card GPU.')
