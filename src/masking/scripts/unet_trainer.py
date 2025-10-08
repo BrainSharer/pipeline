@@ -2,7 +2,7 @@ import os
 from glob import glob
 from pathlib import Path
 import warnings
-
+from tifffile import imread
 
 import numpy as np
 from PIL import Image
@@ -45,6 +45,7 @@ class BrainMaskDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path, mask_path = self.files[idx]
+        """
         img = Image.open(img_path).convert('RGB')
         mask = Image.open(mask_path).convert('L')
 
@@ -54,7 +55,10 @@ class BrainMaskDataset(Dataset):
 
         img = np.array(img).astype(np.float32) / 255.0
         mask = np.array(mask).astype(np.float32) / 255.0
-        # if mask is 0/255, dividing by 255 converts to 0/1
+        """
+        img = imread(img_path).astype(np.float32) / 255.0
+        mask = imread(mask_path).astype(np.float32) / 255.0
+         # if mask is 0/255, dividing by 255 converts to 0/1
         if mask.max() > 1.0:
             mask = (mask > 127).astype(np.float32)
 
