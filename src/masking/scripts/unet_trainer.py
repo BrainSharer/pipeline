@@ -1,322 +1,478 @@
+"""
+UNet training and inference script for contouring specific brain areas from grayscale TIFF sections.
+
+Features:
+- PyTorch U-Net implementation (single-channel input, single-channel sigmoid output)
+- Dataset class that loads TIFF grayscale images and binary masks
+- Training function with Dice+BCE loss, checkpointing, and simple metric logging
+- Inference function that supports arbitrary-size TIFFs using tiled sliding-window inference with overlap and Gaussian blending
+- Contour extraction using skimage.measure.find_contours (returns subpixel contours)
+- Example usage at the bottom
+
+Dependencies:
+- torch, torchvision
+- numpy, tifffile, Pillow
+- scikit-image (skimage), opencv-python (optional), tqdm
+
+Run example:
+    python unet_brain_contour.py --train --data_csv my_dataset.csv --epochs 40
+
+where my_dataset.csv has two columns: "image_path","mask_path" (absolute or relative paths)
+
+"""
+
 import os
-from glob import glob
+import math
+import random
+import argparse
 from pathlib import Path
-import warnings
-from tifffile import imread
+from typing import List, Tuple
 
 import numpy as np
+from tqdm import tqdm
 from PIL import Image
-
+import tifffile as tiff
 
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms.functional as TF
+import torch.optim as optim
+from torchvision import transforms
 
+from skimage import measure
 
-from tqdm import tqdm
-import cv2
-import argparse
-
-
-
-# Dataset class
-class BrainMaskDataset(Dataset):
-    """Dataset that returns (image_tensor, mask_tensor). Expects matching filenames in two folders."""
-    def __init__(self, images_dir, masks_dir, transform=None, resize=None):
-        self.images_dir = Path(images_dir)
-        self.masks_dir = Path(masks_dir)
-        self.transform = transform
-        self.resize = resize
-
-        # Build list of files by matching basenames
-        image_files = sorted(self.images_dir.glob('*'))
-        # Keep only files that have a matching mask
-        self.files = []
-        for img_path in image_files:
-            mask_path = self.masks_dir / img_path.name
-            if mask_path.exists():
-                self.files.append((img_path, mask_path))
-        if len(self.files) == 0:
-            raise RuntimeError(f'No paired images/masks found in {images_dir} and {masks_dir}')
-
-    def __len__(self):
-        return len(self.files)
-
-    def __getitem__(self, idx):
-        img_path, mask_path = self.files[idx]
-        """
-        img = Image.open(img_path).convert('RGB')
-        mask = Image.open(mask_path).convert('L')
-
-        if self.resize is not None:
-            img = img.resize(self.resize, resample=Image.BILINEAR)
-            mask = mask.resize(self.resize, resample=Image.NEAREST)
-
-        img = np.array(img).astype(np.float32) / 255.0
-        mask = np.array(mask).astype(np.float32) / 255.0
-        """
-        img = imread(img_path).astype(np.float32) / 255.0
-        mask = imread(mask_path).astype(np.float32) / 255.0
-         # if mask is 0/255, dividing by 255 converts to 0/1
-        if mask.max() > 1.0:
-            mask = (mask > 127).astype(np.float32)
-
-        # HWC -> CHW
-        #img = np.transpose(img, (2,0,1))
-        mask = np.expand_dims(mask, 0)
-
-        img_tensor = torch.from_numpy(img)
-        mask_tensor = torch.from_numpy(mask)
-
-        if self.transform is not None:
-            img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
-
-        return img_tensor, mask_tensor
-
-# Basic U-Net implementation
+# -----------------------------
+# Model: U-Net (small, configurable)
+# -----------------------------
 class DoubleConv(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch, out_ch, mid_ch=None):
         super().__init__()
+        if not mid_ch:
+            mid_ch = out_ch
         self.double_conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_ch),
+            nn.Conv2d(in_ch, mid_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_ch),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
+            nn.Conv2d(mid_ch, out_ch, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
         )
+
     def forward(self, x):
         return self.double_conv(x)
 
-class UNet(nn.Module):
-    def __init__(self, in_channels=3, out_channels=1, features=[64,128,256,512]):
+
+class Down(nn.Module):
+    def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.downs = nn.ModuleList()
-        self.ups = nn.ModuleList()
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        # Down part
-        for feat in features:
-            self.downs.append(DoubleConv(in_channels, feat))
-            in_channels = feat
-
-        # Up part
-        for feat in reversed(features):
-            self.ups.append(nn.ConvTranspose2d(feat*2, feat, kernel_size=2, stride=2))
-            self.ups.append(DoubleConv(feat*2, feat))
-
-        self.bottleneck = DoubleConv(features[-1], features[-1]*2)
-        self.final_conv = nn.Conv2d(features[0], out_channels, kernel_size=1)
+        self.pool_conv = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(in_ch, out_ch)
+        )
 
     def forward(self, x):
-        skip_connections = []
-        for down in self.downs:
-            x = down(x)
-            skip_connections.append(x)
-            x = self.pool(x)
+        return self.pool_conv(x)
 
-        x = self.bottleneck(x)
-        skip_connections = skip_connections[::-1]
 
-        for idx in range(0, len(self.ups), 2):
-            up_transpose = self.ups[idx]
-            up_double = self.ups[idx+1]
-            x = up_transpose(x)
-            skip = skip_connections[idx//2]
-            # pad if needed
-            if x.shape != skip.shape:
-                x = TF.resize(x, skip.shape[2:])
-            x = torch.cat((skip, x), dim=1)
-            x = up_double(x)
-
-        return torch.sigmoid(self.final_conv(x))
-
-def dice_coeff(pred, target, eps=1e-7):
-    # pred and target are tensors with shape [B,1,H,W]
-    pred = (pred > 0.5).float()
-    inter = (pred * target).sum(dim=(1,2,3))
-    union = pred.sum(dim=(1,2,3)) + target.sum(dim=(1,2,3))
-    dice = (2*inter + eps) / (union + eps)
-    return dice.mean().item()
-
-class DiceBCELoss(nn.Module):
-    def __init__(self, alpha=0.5):
+class Up(nn.Module):
+    def __init__(self, in_ch, out_ch, bilinear=True):
         super().__init__()
-        self.alpha = alpha
-        self.bce = nn.BCELoss()
-    def forward(self, pred, target):
-        bce_loss = self.bce(pred, target)
-        # soft dice
-        smooth = 1.
-        pred_flat = pred.view(pred.size(0), -1)
-        target_flat = target.view(target.size(0), -1)
-        intersection = (pred_flat * target_flat).sum(1)
-        dice_score = (2.*intersection + smooth) / (pred_flat.sum(1) + target_flat.sum(1) + smooth)
-        dice_loss = 1 - dice_score.mean()
-        return self.alpha * bce_loss + (1 - self.alpha) * dice_loss
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.conv = DoubleConv(in_ch, out_ch, mid_ch=in_ch // 2)
+        else:
+            self.up = nn.ConvTranspose2d(in_ch // 2, in_ch // 2, kernel_size=2, stride=2)
+            self.conv = DoubleConv(in_ch, out_ch)
 
-def train_unet(
-    train_loader,
-    val_loader,
-    device,
-    epochs=30,
-    lr=1e-3,
-    model_save_path='unet_model.pt',
-    in_channels=3,
-    out_channels=1,
-    features=[32,64,128],
-    print_every=1
-):
-    model = UNet(in_channels=in_channels, out_channels=out_channels, features=features).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = DiceBCELoss(alpha=0.5)
-
-    best_val_dice = 0.0
-    for epoch in range(1, epochs+1):
-        model.train()
-        train_loss = 0.0
-        for imgs, masks in tqdm(train_loader, desc=f'Epoch {epoch} Train'):
-            imgs = imgs.to(device)
-            masks = masks.to(device)
-            preds = model(imgs)
-            loss = criterion(preds, masks)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item() * imgs.size(0)
-        train_loss = train_loss / len(train_loader.dataset)
-
-        # Validation
-        model.eval()
-        val_loss = 0.0
-        val_dice = 0.0
-        with torch.no_grad():
-            for imgs, masks in val_loader:
-                imgs = imgs.to(device)
-                masks = masks.to(device)
-                preds = model(imgs)
-                val_loss += criterion(preds, masks).item() * imgs.size(0)
-                val_dice += dice_coeff(preds, masks) * imgs.size(0)
-        val_loss = val_loss / len(val_loader.dataset)
-        val_dice = val_dice / len(val_loader.dataset)
-
-        if epoch % print_every == 0:
-            print(f'Epoch {epoch}/{epochs} | Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | Val Dice: {val_dice:.4f}')
-
-        # Save best
-        if val_dice > best_val_dice:
-            best_val_dice = val_dice
-            torch.save({'model_state_dict': model.state_dict(), 'features': features, 'in_channels': in_channels, 'out_channels': out_channels}, model_save_path)
-
-    print('Training finished. Best val Dice:', best_val_dice)
-    return model
-
-def predict_image(model, device, img_np, resize=None):
-    # img_np: HxWxC float [0..1]
-    model.eval()
-    img = img_np.copy()
-    if resize is not None:
-        img = cv2.resize(img, tuple(resize[::-1]))
-    tensor = torch.from_numpy(np.transpose(img, (2,0,1))).float().unsqueeze(0).to(device)
-    with torch.no_grad():
-        pred = model(tensor)
-    pred_np = pred.squeeze().cpu().numpy()  # [H,W]
-    return pred_np
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # pad if needed
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+        if diffY != 0 or diffX != 0:
+            x1 = nn.functional.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
 
 
-def extract_contours_from_mask(bin_mask, min_area=10):
-    # bin_mask expected binary 0/1 or 0/255, uint8
-    if bin_mask.dtype != np.uint8:
-        bin_mask = (bin_mask > 0).astype(np.uint8) * 255
-    contours, hierarchy = cv2.findContours(bin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    filtered = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area >= min_area:
-            filtered.append(c)
-    return filtered
+class UNet(nn.Module):
+    def __init__(self, n_channels=1, n_classes=1, base_c=32, bilinear=True):
+        super().__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = DoubleConv(n_channels, base_c)
+        self.down1 = Down(base_c, base_c * 2)
+        self.down2 = Down(base_c * 2, base_c * 4)
+        self.down3 = Down(base_c * 4, base_c * 8)
+        factor = 2 if bilinear else 1
+        self.down4 = Down(base_c * 8, base_c * 16 // factor)
+        self.up1 = Up(base_c * 16, base_c * 8 // factor, bilinear)
+        self.up2 = Up(base_c * 8, base_c * 4 // factor, bilinear)
+        self.up3 = Up(base_c * 4, base_c * 2 // factor, bilinear)
+        self.up4 = Up(base_c * 2, base_c, bilinear)
+        self.outc = nn.Conv2d(base_c, n_classes, kernel_size=1)
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x)
+        return logits
 
 
-# Example: set up data loaders and run training (adjust paths and hyperparams)
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Work on Animal')
-    parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
-    args = parser.parse_args()
-    epochs = args.epochs
-    # Paths - change to your dataset location
-    data_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG"
-    images_dir = os.path.join(data_path, "thumbnail_aligned")
-    masks_dir = os.path.join(data_path, "thumbnail_masked")
-    image_paths = sorted(glob(os.path.join(images_dir, "*.tif")))
-    mask_paths = sorted(glob(os.path.join(masks_dir, "*.tif")))
+# -----------------------------
+# Dataset
+# -----------------------------
+class BrainSectionDataset(Dataset):
+    def __init__(self, transform=None, target_transform=None, patch_size=None):
+        self.samples = []
+        data_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG"
+        images_path = os.path.join(data_path, 'thumbnail_aligned')
+        masks_path = os.path.join(data_path, 'thumbnail_masked')
+        images = sorted(os.listdir(images_path))
+        masks = sorted(os.listdir(masks_path))
 
-    # Create dataset and split
-    full_ds = BrainMaskDataset(images_dir, masks_dir, resize=(256,256))
-    n = len(full_ds)
-    n_val = max(1, int(0.1 * n))
-    n_train = n - n_val
-    train_ds, val_ds = torch.utils.data.random_split(full_ds, [n_train, n_val])
-    print(f'Total images: {n}, train: {n_train}, val: {n_val}')
+        for image_path, mask_path in zip(images, masks):
+                img = os.path.join(images_path, image_path)
+                msk = os.path.join(masks_path, mask_path)
+                if img and msk:
+                    self.samples.append((img, msk))
+        self.transform = transform
+        self.target_transform = target_transform
+        self.patch_size = patch_size
 
-    train_loader = DataLoader(train_ds, batch_size=8, shuffle=True, num_workers=2, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2, pin_memory=True)
+    def __len__(self):
+        return len(self.samples)
 
+    def __getitem__(self, idx):
+        img_path, mask_path = self.samples[idx]
+        img = tiff.imread(img_path)
+        mask = tiff.imread(mask_path)
+        # ensure 2D
+        if img.ndim == 3:
+            # take first channel if multi-channel
+            img = img[..., 0]
+        if mask.ndim == 3:
+            mask = mask[..., 0]
+
+        img = img.astype(np.float32)
+        mask = (mask > 0).astype(np.float32)
+
+        # normalize image to 0-1
+        if img.max() > 0:
+            img = img / img.max()
+
+        if self.patch_size is not None:
+            h, w = img.shape
+            ph, pw = self.patch_size
+            if h >= ph and w >= pw:
+                top = random.randint(0, h - ph)
+                left = random.randint(0, w - pw)
+                img = img[top:top + ph, left:left + pw]
+                mask = mask[top:top + ph, left:left + pw]
+            else:
+                # pad
+                pad_h = max(0, ph - h)
+                pad_w = max(0, pw - w)
+                img = np.pad(img, ((0, pad_h), (0, pad_w)), mode='constant')
+                mask = np.pad(mask, ((0, pad_h), (0, pad_w)), mode='constant')
+                img = img[:ph, :pw]
+                mask = mask[:ph, :pw]
+
+        # transforms
+        if self.transform:
+            img = self.transform(img)
+        else:
+            img = torch.from_numpy(img).unsqueeze(0)  # 1,H,W
+        if self.target_transform:
+            mask = self.target_transform(mask)
+        else:
+            mask = torch.from_numpy(mask).unsqueeze(0)
+
+        return img.float(), mask.float()
+
+
+# -----------------------------
+# Loss & metric
+# -----------------------------
+
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1e-6):
+        super().__init__()
+        self.smooth = smooth
+
+    def forward(self, logits, targets):
+        probs = torch.sigmoid(logits)
+        num = 2 * (probs * targets).sum(dim=(2, 3)) + self.smooth
+        den = probs.sum(dim=(2, 3)) + targets.sum(dim=(2, 3)) + self.smooth
+        dice = (num / den).mean()
+        return 1 - dice
+
+
+# -----------------------------
+# Training function
+# -----------------------------
+
+def train_unet(model_save_dir: str,
+               epochs: int = 30,
+               batch_size: int = 8,
+               patch_size: Tuple[int, int] = (512, 512),
+               lr: float = 1e-3,
+               device: str = None):
+    
     if torch.cuda.is_available(): 
         device = torch.device('cuda') 
         print('Using Nvidia graphics card GPU.')
     else:
-        warnings.filterwarnings("ignore")
         device = torch.device('cpu')
         print('No Nvidia card found, using CPU.')
 
+    os.makedirs(model_save_dir, exist_ok=True)
 
-    # Train (this will save best model to unet_model.pt)
-    model_path = os.path.join(data_path, "unet_model.h5")
-    _ = train_unet(train_loader, val_loader, device, epochs=epochs, lr=1e-3, model_save_path=model_path, in_channels=1, out_channels=1, features=[32,64,128])
+    # basic transforms: random flips/rotations
+    def aug(img):
+        # img is numpy HxW
+        if random.random() > 0.5:
+            img = np.fliplr(img).copy()
+        if random.random() > 0.5:
+            img = np.flipud(img).copy()
+        # small rotations
+        k = random.choice([0, 1, 2, 3])
+        img = np.rot90(img, k).copy()
+        return torch.from_numpy(img).unsqueeze(0).float()
 
-# Inference + contour drawing example (run after training or if you have a saved model)
-# Load model checkpoint and run inference on a single image, then draw contours and show/save the result.
+    train_ds = BrainSectionDataset(transform=aug, target_transform=lambda m: torch.from_numpy(m).unsqueeze(0).float(), patch_size=patch_size)
+    val_ds = BrainSectionDataset(transform=lambda x: torch.from_numpy(x).unsqueeze(0).float(), target_transform=lambda m: torch.from_numpy(m).unsqueeze(0).float(), patch_size=patch_size)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+
+    model = UNet(n_channels=1, n_classes=1, base_c=32)
+    model = model.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
+    bce = nn.BCEWithLogitsLoss()
+    dice = DiceLoss()
+
+    best_val_loss = 1e9
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        train_loss = 0.0
+        for imgs, masks in tqdm(train_loader, desc=f"Train Epoch {epoch}"):
+            imgs = imgs.to(device)
+            masks = masks.to(device)
+            logits = model(imgs)
+            loss = 0.5 * bce(logits, masks) + 0.5 * dice(logits, masks)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item() * imgs.size(0)
+        train_loss /= len(train_loader.dataset)
+
+        # validation
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for imgs, masks in val_loader:
+                imgs = imgs.to(device)
+                masks = masks.to(device)
+                logits = model(imgs)
+                loss = 0.5 * bce(logits, masks) + 0.5 * dice(logits, masks)
+                val_loss += loss.item() * imgs.size(0)
+        val_loss /= len(val_loader.dataset)
+        scheduler.step(val_loss)
+
+        print(f"Epoch {epoch}: train_loss={train_loss:.5f} val_loss={val_loss:.5f}")
+
+        # save checkpoint
+        ckpt_path = os.path.join(model_save_dir, f"unet_epoch{epoch:03d}_vl{val_loss:.4f}.pth")
+        torch.save({'epoch': epoch, 'model_state': model.state_dict(), 'optimizer_state': optimizer.state_dict()}, ckpt_path)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_path = os.path.join(model_save_dir, 'best_unet.pth')
+            torch.save({'epoch': epoch, 'model_state': model.state_dict(), 'optimizer_state': optimizer.state_dict()}, best_path)
+            print(f"Saved best model: {best_path}")
+
+    return model
 
 
-# Example usage:
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# model = load_model_from_checkpoint('unet_model.pt', device)
-# img_path = 'dataset/images/sample_001.png'
-# img = np.array(Image.open(img_path).convert('RGB')).astype(np.float32) / 255.0
-# pred_mask = predict_image(model, device, img, resize=(256,256))
-# bin_mask = (pred_mask > 0.5).astype(np.uint8) * 255
-# contours = extract_contours_from_mask(bin_mask, min_area=20)
-# # draw contours on original (resized) image
-# disp = (cv2.resize((img*255).astype(np.uint8), bin_mask.shape[::-1]))
-# cv2.drawContours(disp, contours, -1, (0,255,0), 2)
-# plt.imshow(cv2.cvtColor(disp, cv2.COLOR_BGR2RGB))
-# plt.axis('off')
+# -----------------------------
+# Inference: tiled sliding window with blending
+# -----------------------------
 
-import json
+def _make_gaussian_weight(h, w, sigma_scale=0.25):
+    """Create a 2D Gaussian weight window for blending tiles"""
+    y = np.linspace(-1, 1, h)
+    x = np.linspace(-1, 1, w)
+    xv, yv = np.meshgrid(x, y)
+    sigma = sigma_scale
+    gauss = np.exp(-((xv ** 2 + yv ** 2) / (2 * sigma ** 2)))
+    return gauss.astype(np.float32)
 
-def predict_folder_and_save_polygons(model, device, images_folder, out_json='polygons.json', resize=(256,256), threshold=0.5, min_area=50):
-    images = sorted(glob(os.path.join(images_folder, '*')))
-    records = []
-    for p in images:
-        orig = np.array(Image.open(p).convert('RGB')).astype(np.float32) / 255.0
-        pred = predict_image(model, device, orig, resize=resize)
-        bin_mask = (pred > threshold).astype(np.uint8) * 255
-        contours = extract_contours_from_mask(bin_mask, min_area=min_area)
-        # convert contours to simplified polygon list in original image coordinates
-        h0, w0 = orig.shape[:2]
-        h1, w1 = bin_mask.shape
-        scale_x = w0 / w1
-        scale_y = h0 / h1
-        polys = []
-        for c in contours:
-            pts = c.squeeze().tolist()
-            if len(pts) == 0:
-                continue
-            # scale to original coordinates
-            scaled = [[int(pt[0]*scale_x), int(pt[1]*scale_y)] for pt in pts]
-            polys.append(scaled)
-        records.append({'image': os.path.basename(p), 'polygons': polys})
-    with open(out_json, 'w') as f:
-        json.dump(records, f)
-    print('Wrote polygons to', out_json)
+
+def predict_large_tif(image_path: str,
+                      model: torch.nn.Module,
+                      device: str = None,
+                      tile_size: int = 512,
+                      overlap: int = 64,
+                      batch_size: int = 4):
+    """
+    Predict probability map for a possibly very large grayscale TIFF using tiled inference.
+    Returns a float32 numpy array with values [0,1].
+    """
+    device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+    model.eval()
+
+    img = tiff.imread(image_path)
+    if img.ndim == 3:
+        img = img[..., 0]
+    img = img.astype(np.float32)
+    if img.max() > 0:
+        img = img / img.max()
+    H, W = img.shape
+
+    stride = tile_size - overlap
+    ys = list(range(0, max(H - tile_size + 1, 1), stride))
+    xs = list(range(0, max(W - tile_size + 1, 1), stride))
+    if ys[-1] + tile_size < H:
+        ys.append(H - tile_size)
+    if xs[-1] + tile_size < W:
+        xs.append(W - tile_size)
+
+    output = np.zeros((H, W), dtype=np.float32)
+    weight = np.zeros((H, W), dtype=np.float32)
+    wtile = _make_gaussian_weight(tile_size, tile_size)
+
+    tiles = []
+    coords = []
+    for y in ys:
+        for x in xs:
+            tile = img[y:y + tile_size, x:x + tile_size]
+            if tile.shape != (tile_size, tile_size):
+                # pad
+                th, tw = tile.shape
+                pad_h = tile_size - th
+                pad_w = tile_size - tw
+                tile = np.pad(tile, ((0, pad_h), (0, pad_w)), mode='constant')
+            tiles.append(tile)
+            coords.append((y, x))
+
+    # batch inference
+    with torch.no_grad():
+        for i in range(0, len(tiles), batch_size):
+            batch_tiles = tiles[i:i + batch_size]
+            batch_coords = coords[i:i + batch_size]
+            batch_arr = np.stack(batch_tiles, axis=0)  # B,H,W
+            batch_arr = torch.from_numpy(batch_arr).unsqueeze(1).to(device)
+            logits = model(batch_arr)
+            probs = torch.sigmoid(logits).squeeze(1).cpu().numpy()  # B,H,W
+            for p, (y, x) in zip(probs, batch_coords):
+                ph, pw = p.shape
+                if ph != tile_size or pw != tile_size:
+                    p = p[:tile_size, :tile_size]
+                output[y:y + tile_size, x:x + tile_size] += (p * wtile)
+                weight[y:y + tile_size, x:x + tile_size] += wtile
+
+    # avoid div by zero
+    nz = weight > 0
+    output[nz] = output[nz] / weight[nz]
+    output[~nz] = 0.0
+    return output
+
+
+# -----------------------------
+# Contour extraction
+# -----------------------------
+
+def probmap_to_contours(probmap: np.ndarray, threshold: float = 0.5) -> List[np.ndarray]:
+    """Convert a probability map to a list of contours (Nx2 arrays in image coordinates).
+    Uses skimage.measure.find_contours which returns subpixel coordinates in (row, col) format.
+    We'll convert to (x,y) as (col, row) for typical plotting.
+    """
+    mask = (probmap >= threshold).astype(np.uint8)
+    contours = []
+    # find_contours on the binary mask gives coordinates for each isocontour
+    found = measure.find_contours(mask, 0.5)
+    for c in found:
+        # c is array shape (N,2) with (row, col)
+        coords = np.stack([c[:, 1], c[:, 0]], axis=1)  # (x,y)
+        contours.append(coords)
+    return contours
+
+
+# Optionally draw contours onto an image using PIL
+from PIL import ImageDraw
+
+def draw_contours_on_image(image: np.ndarray, contours: List[np.ndarray], line_width: int = 2) -> Image.Image:
+    """Return a PIL image (RGB) with contours overlaid on the grayscale image."""
+    if image.max() > 0:
+        norm = (image / image.max() * 255).astype(np.uint8)
+    else:
+        norm = (image * 255).astype(np.uint8)
+    if norm.ndim == 2:
+        im = Image.fromarray(norm).convert('RGB')
+    else:
+        im = Image.fromarray(norm)
+    draw = ImageDraw.Draw(im)
+    for c in contours:
+        # convert to list of tuples
+        pts = [(float(x), float(y)) for x, y in c]
+        draw.line(pts + [pts[0]], width=line_width, fill=(255, 0, 0))
+    return im
+
+
+# -----------------------------
+# CLI & example usage
+# -----------------------------
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train', action='store_true')
+    parser.add_argument('--model_dir', type=str, default='models')
+    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--predict', type=str, help='Path to a TIFF to run inference on')
+    parser.add_argument('--checkpoint', type=str, help='Path to model checkpoint (.pth)')
+    parser.add_argument('--out_mask', type=str, help='Path to save predicted mask (.tif)')
+    parser.add_argument('--out_overlay', type=str, help='Path to save overlay PNG with contours')
+    parser.add_argument('--threshold', type=float, default=0.5)
+    args = parser.parse_args()
+
+    if args.train:
+        print('Starting training...')
+        train_unet(args.model_dir, epochs=args.epochs)
+        print('Training done.')
+
+    if args.predict and args.checkpoint:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        model = UNet(n_channels=1, n_classes=1, base_c=32)
+        ck = torch.load(args.checkpoint, map_location=device)
+        model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
+        prob = predict_large_tif(args.predict, model, device=device, tile_size=512, overlap=64)
+        # save mask
+        if args.out_mask:
+            # convert to uint8 mask
+            m = (prob >= args.threshold).astype(np.uint8) * 255
+            tiff.imwrite(args.out_mask, m.astype(np.uint8))
+            print(f'Saved mask to {args.out_mask}')
+        # extract contours and save overlay
+        contours = probmap_to_contours(prob, threshold=args.threshold)
+        if args.out_overlay:
+            img = tiff.imread(args.predict).astype(np.float32)
+            if img.ndim == 3:
+                img = img[..., 0]
+            overlay = draw_contours_on_image(img, contours)
+            overlay.save(args.out_overlay)
+            print(f'Saved overlay to {args.out_overlay}')
+
+    if not (args.train or (args.predict and args.checkpoint)):
+        print('No action requested. Use --train to train or --predict with --checkpoint to predict.')
