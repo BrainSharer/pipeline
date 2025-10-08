@@ -236,6 +236,10 @@ def extract_contours_from_mask(bin_mask, min_area=10):
 
 # Example: set up data loaders and run training (adjust paths and hyperparams)
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Work on Animal')
+    parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
+    args = parser.parse_args()
+    epochs = args.epochs
     # Paths - change to your dataset location
     data_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG"
     images_dir = os.path.join(data_path, "thumbnail_aligned")
@@ -249,6 +253,7 @@ if __name__ == '__main__':
     n_val = max(1, int(0.1 * n))
     n_train = n - n_val
     train_ds, val_ds = torch.utils.data.random_split(full_ds, [n_train, n_val])
+    print(f'Total images: {n}, train: {n_train}, val: {n_val}')
 
     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2, pin_memory=True)
@@ -262,9 +267,9 @@ if __name__ == '__main__':
         print('No Nvidia card found, using CPU.')
 
 
-
     # Train (this will save best model to unet_model.pt)
-    _ = train_unet(train_loader, val_loader, device, epochs=20, lr=1e-3, model_save_path='unet_model.pt', in_channels=3, out_channels=1, features=[32,64,128])
+    model_path = os.path.join(data_path, "unet_model.h5")
+    _ = train_unet(train_loader, val_loader, device, epochs=epochs, lr=1e-3, model_save_path=model_path, in_channels=3, out_channels=1, features=[32,64,128])
 
 # Inference + contour drawing example (run after training or if you have a saved model)
 # Load model checkpoint and run inference on a single image, then draw contours and show/save the result.
