@@ -144,7 +144,7 @@ class MaskTrainer():
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
         if self.structures:
-            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/mask.model.train.pth'
+            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/mask.model.pth'
         else:
             modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
         if os.path.exists(modeldictpath):
