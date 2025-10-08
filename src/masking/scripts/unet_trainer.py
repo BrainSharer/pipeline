@@ -438,24 +438,26 @@ def draw_contours_on_image(image: np.ndarray, contours: List[np.ndarray], line_w
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', action='store_true')
-    parser.add_argument('--model_dir', type=str, default='models')
     parser.add_argument('--epochs', type=int, default=2)
     parser.add_argument('--predict', type=str, help='Path to a TIFF to run inference on')
-    parser.add_argument('--checkpoint', type=str, help='Path to model checkpoint (.pth)')
     parser.add_argument('--out_mask', type=str, help='Path to save predicted mask (.tif)')
     parser.add_argument('--out_overlay', type=str, help='Path to save overlay PNG with contours')
     parser.add_argument('--threshold', type=float, default=0.5)
     args = parser.parse_args()
 
+    data_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG"
+    model_dir = os.path.join(data_path, 'models')
+    os.makedirs(model_dir, exist_ok=True)
     if args.train:
         print('Starting training...')
-        train_unet(args.model_dir, epochs=args.epochs)
+        train_unet(model_dir, epochs=args.epochs)
         print('Training done.')
 
-    if args.predict and args.checkpoint:
+    if args.predict:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model = UNet(n_channels=1, n_classes=1, base_c=32)
-        ck = torch.load(args.checkpoint, map_location=device)
+        model_path = os.path.join(model_dir, 'best_unet.pth')
+        ck = torch.load(model_path, map_location=device)
         model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
         prob = predict_large_tif(args.predict, model, device=device, tile_size=512, overlap=64)
         # save mask
