@@ -63,7 +63,7 @@ class BrainMaskDataset(Dataset):
             mask = (mask > 127).astype(np.float32)
 
         # HWC -> CHW
-        img = np.transpose(img, (2,0,1))
+        #img = np.transpose(img, (2,0,1))
         mask = np.expand_dims(mask, 0)
 
         img_tensor = torch.from_numpy(img)
