@@ -133,7 +133,7 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelpath = os.path.join(self.root, f'mask.model.{self.created}.pth')
+        modelpath = os.path.join(self.root, 'models', f'mask.model.train.pth')
         # create logging file
         logpath = os.path.join(self.root, f'mask.{self.created}.logger.txt')
         logfile = open(logpath, "w")
@@ -142,14 +142,19 @@ class MaskTrainer():
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
-        modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
+        if self.structures:
+            print(f"Training structure masks for {self.num_classes} structures.")
+            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/models/mask.model.train.pth'
+        else:
+            print("Training tissue masks.")
+            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
+
+        # load model dictionary if it exists
         if os.path.exists(modeldictpath):
             print(f"Loading model dictionary from {modeldictpath}")
             model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
         else:
             print(f"Model dictionary not found at {modeldictpath}")
-            #print("Exiting, make sure there is a symbolic link from the last good model to 'mask.model.train.pth'")
-            #sys.exit()
 
         # move model to the right device
         model.to(self.device)
