@@ -371,7 +371,7 @@ if __name__ == '__main__':
     mask_root = os.path.join(data_path, 'thumbnail_masked')
     model_root = os.path.join(data_path, 'models')
     out_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK78/preps/predictions"
-    os.makedirs(model_root, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
     # example file lists (replace with your paths)
     all_imgs = sorted(os.listdir(img_root))
     all_masks = sorted(os.listdir(mask_root))
