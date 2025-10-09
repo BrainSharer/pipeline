@@ -147,7 +147,7 @@ class MaskTrainer():
         # load model dictionary if it exists
         if os.path.exists(modelpath):
             print(f"Loading model dictionary from {modelpath}")
-            model.load_state_dict(torch.load(modelpath, map_location = self.device, weights_only=False))
+            model.load_state_dict(torch.load(modelpath, map_location = self.device, weights_only=True))
         else:
             print(f"Model dictionary not found at {modelpath}")
 
@@ -185,7 +185,7 @@ class MaskTrainer():
         print('Creating loss chart')
 
         fig = plt.figure()
-        output_path = os.path.join(self.root, f'loss_plot.{self.created}.png')
+        output_path = os.path.join(structure_root, f'loss_plot.{self.created}.png')
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]

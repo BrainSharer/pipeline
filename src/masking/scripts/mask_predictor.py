@@ -61,8 +61,8 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/best_model.pth")
-    loaded_model = get_model_instance_segmentation(num_classes=1)
+    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/mask.model.train.pth")
+    loaded_model = get_model_instance_segmentation(num_classes=2)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -92,8 +92,8 @@ def predict(animal, debug=False):
     print(f'Writing output to {output}')
     os.makedirs(output, exist_ok=True)
     transform = torchvision.transforms.ToTensor()
-    threshold = 0.25
-    for file in tqdm(files[100:110], disable=debug):
+    threshold = 0.75
+    for file in tqdm(files, disable=debug):
         filepath = os.path.join(input, file)
         img = Image.open(filepath)
         testimg = np.array(img)
