@@ -133,28 +133,23 @@ class MaskTrainer():
             print_freq = 100
         print(f"We have: {n_files} images to train from {dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelpath = os.path.join(self.root, 'models', f'mask.model.train.pth')
+        modelname = 'mask.model.train.pth'
+        modelpath = os.path.join(structure_root, 'models', modelname)
         # create logging file
-        logpath = os.path.join(self.root, f'mask.{self.created}.logger.txt')
+        logpath = os.path.join(structure_root, f'mask.{self.created}.logger.txt')
         logfile = open(logpath, "w")
         logheader = f"Masking {datetime.now()} with {epochs} epochs from {dataset.img_root} with {n_files} files.\n"
         logfile.write(logheader)
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(num_classes)
-        if self.structures:
-            print(f"Training structure masks for {self.num_classes} structures.")
-            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/models/mask.model.train.pth'
-        else:
-            print("Training tissue masks.")
-            modeldictpath = f'/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.train.pth'
 
         # load model dictionary if it exists
-        if os.path.exists(modeldictpath):
-            print(f"Loading model dictionary from {modeldictpath}")
-            model.load_state_dict(torch.load(modeldictpath, map_location = self.device, weights_only=False))
+        if os.path.exists(modelpath):
+            print(f"Loading model dictionary from {modelpath}")
+            model.load_state_dict(torch.load(modelpath, map_location = self.device, weights_only=False))
         else:
-            print(f"Model dictionary not found at {modeldictpath}")
+            print(f"Model dictionary not found at {modelpath}")
 
         # move model to the right device
         model.to(self.device)
