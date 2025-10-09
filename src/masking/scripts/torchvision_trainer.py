@@ -109,7 +109,6 @@ class TiffMaskDataset(Dataset):
         assert len(images) == len(masks)
         self.images = images
         self.masks = masks
-        self.patch_size = patch_size
         self.augment = augment
 
     def __len__(self):
@@ -130,7 +129,6 @@ class TiffMaskDataset(Dataset):
                                  interpolation=cv2.INTER_LINEAR)
         mask_resized = cv2.resize(mask, (self.patch_size, self.patch_size),
                                   interpolation=cv2.INTER_NEAREST)
-
         if self.augment is not None:
             augmented = self.augment(image=img_resized, mask=mask_resized)
             img_resized = augmented['image']
@@ -215,7 +213,7 @@ class UNet(nn.Module):
 def train_unet(train_images: List[str], train_masks: List[str],
                val_images: List[str], val_masks: List[str],
                out_dir: str,
-               patch_size: int = 512,
+            patch_size: int = 512,
                batch_size: int = 8,
                epochs: int = 50,
                lr: float = 1e-3,

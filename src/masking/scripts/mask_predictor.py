@@ -61,8 +61,8 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/best_unet.pth")
-    #loaded_model = get_model_instance_segmentation(num_classes=1)
+    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/best_model.pth")
+    loaded_model = get_model_instance_segmentation(num_classes=1)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -71,7 +71,6 @@ def predict(animal, debug=False):
 
     if os.path.exists(modelpath):
         print(f'Loading model from {modelpath}')
-        loaded_model = UNet(n_channels=1, n_classes=1, base_c=32)
         ck = torch.load(modelpath, map_location=device)
         loaded_model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
 
