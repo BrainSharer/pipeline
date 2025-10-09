@@ -288,7 +288,6 @@ def train_unet(train_images: List[str], train_masks: List[str],
             best_val = val_loss
             torch.save({'epoch': epoch, 'model_state': model.state_dict(),
                         'optim_state': optimizer.state_dict()}, os.path.join(out_dir, 'best_model.pth'))
-            print(f"  Saved new best model (val_loss={best_val:.4f})")
 
         if epoch % save_every == 0:
             torch.save({'epoch': epoch, 'model_state': model.state_dict(),
