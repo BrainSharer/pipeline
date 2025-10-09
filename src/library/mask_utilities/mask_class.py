@@ -151,7 +151,7 @@ class StructureDataset(torch.utils.data.Dataset):
         num_objs = len(obj_ids)
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        #labels = torch.ones((num_objs,), dtype=torch.int64) # just one class
+        labels = torch.ones((num_objs,), dtype=torch.int64) # just one class
         # there are multiple classes/labels/structures
         masks = torch.as_tensor(masks, dtype=torch.uint8)
         image_id = torch.tensor([idx])
@@ -160,7 +160,7 @@ class StructureDataset(torch.utils.data.Dataset):
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
         target = {}
         target["boxes"] = boxes
-        target["labels"] = torch.as_tensor(labels, dtype=torch.int64) 
+        target["labels"] = labels
         target["masks"] = masks
         target["image_id"] = image_id
         target["area"] = area
@@ -168,7 +168,6 @@ class StructureDataset(torch.utils.data.Dataset):
 
         if self.transforms is not None:
             pimg8, target = self.transforms(pimg8, target)
-            return pimg8, target
 
         return pimg8, target
 

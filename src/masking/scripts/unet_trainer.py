@@ -467,6 +467,7 @@ if __name__ == '__main__':
         ck = torch.load(model_path, map_location=device)
         model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
         infile = os.path.join(data_path, 'thumbnail_aligned', args.predict)
+        infile = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK78/preps/C1/thumbnail_aligned/101.tif"
         if os.path.isfile(infile):
             print(f'Predicting: {infile}')
         else:

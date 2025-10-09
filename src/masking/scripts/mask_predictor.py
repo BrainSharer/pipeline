@@ -1,9 +1,11 @@
 import argparse
 import os
+from pyexpat import model
 import sys
 import numpy as np
 import torch
 from PIL import Image
+
 Image.MAX_IMAGE_PIXELS = None
 import cv2
 from tqdm import tqdm
@@ -15,6 +17,7 @@ PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.utilities.utilities_mask import combine_dims
+from masking.scripts.unet_trainer import UNet
 
 
 def merge_mask(image, mask):
@@ -58,8 +61,8 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/mask.model.pth")
-    loaded_model = get_model_instance_segmentation(num_classes=2)
+    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/best_unet.pth")
+    #loaded_model = get_model_instance_segmentation(num_classes=1)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -68,7 +71,10 @@ def predict(animal, debug=False):
 
     if os.path.exists(modelpath):
         print(f'Loading model from {modelpath}')
-        loaded_model.load_state_dict(torch.load(modelpath, map_location = device))
+        loaded_model = UNet(n_channels=1, n_classes=1, base_c=32)
+        ck = torch.load(modelpath, map_location=device)
+        loaded_model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
+
     else:
         print('No model to load.')
         return
@@ -87,7 +93,8 @@ def predict(animal, debug=False):
     print(f'Writing output to {output}')
     os.makedirs(output, exist_ok=True)
     transform = torchvision.transforms.ToTensor()
-    for file in tqdm(files, disable=debug):
+    threshold = 0.25
+    for file in tqdm(files[100:110], disable=debug):
         filepath = os.path.join(input, file)
         img = Image.open(filepath)
         testimg = np.array(img)
@@ -99,7 +106,7 @@ def predict(animal, debug=False):
         loaded_model.eval()
         with torch.no_grad():
             prediction = loaded_model(torch_input)
-        masks = [(prediction[0]["masks"] > 0).squeeze().detach().cpu().numpy()]
+        masks = [(prediction[0]["masks"] > threshold).squeeze().detach().cpu().numpy()]
         mask = masks[0]
         if mask.shape[0] == 0:
             continue
@@ -109,12 +116,13 @@ def predict(animal, debug=False):
         raw_img = np.array(img)
         mask = mask.astype(np.uint8)
         mask[mask > 0] = 255
-        #merged_img = merge_mask(raw_img, mask)
-        del mask
-        outpath = os.path.join(output, file)
-        cv2.imwrite(outpath, mask)
+        merged_img = merge_mask(raw_img, mask)
+        mask_outpath = os.path.join(output, f'mask_{file}')
+        cv2.imwrite(mask_outpath, mask)
+        merged_outpath = os.path.join(output, f'merged_{file}')
+        cv2.imwrite(merged_outpath, merged_img)
         if debug:
-            print(f'Wrote {outpath}')
+            print(f'Wrote {mask_outpath}')
 
 
 if __name__ == "__main__":
