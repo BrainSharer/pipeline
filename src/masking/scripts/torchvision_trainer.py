@@ -233,7 +233,7 @@ def train_unet(train_images: List[str], train_masks: List[str],
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.RandomRotate90(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=20, p=0.5),
+        A.Affine(scale=(0.8, 1.2), translate_percent=0.1, rotate=(-15, 15), shear=(-10, 10), p=0.5),
         A.RandomBrightnessContrast(p=0.3),
     ])
     val_aug = None
@@ -354,11 +354,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', choices=['train','predict'], default='train', required=False, type=str)
     parser.add_argument('--epochs', help='# of epochs', required=False, default=2, type=int)
+    parser.add_argument('--samples', help='# of samples for debugging', required=False, default=10, type=int)
     parser.add_argument('--debug', help='test model', required=False, default='false', type=str)
     args = parser.parse_args()
 
     task = args.task
     epochs = args.epochs
+    samples = args.samples
     debug = bool({'true': True, 'false': False}[args.debug.lower()])
     input_tif = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK78/preps/C1/thumbnail_aligned/101.tif"
     all_imgs = []
@@ -369,6 +371,7 @@ if __name__ == '__main__':
     mask_root = os.path.join(data_path, 'thumbnail_masked')
     model_root = os.path.join(data_path, 'models')
     out_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK78/preps/predictions"
+    os.makedirs(model_root, exist_ok=True)
     # example file lists (replace with your paths)
     all_imgs = sorted(os.listdir(img_root))
     all_masks = sorted(os.listdir(mask_root))
@@ -377,9 +380,8 @@ if __name__ == '__main__':
     all_imgs = sorted([os.path.join(img_root, f) for f in all_imgs])
     all_masks = sorted([os.path.join(mask_root, f) for f in all_masks])
     if debug:
-        all_imgs = all_imgs[:100]
-        all_masks = all_masks[:100]
-        epochs = 10
+        all_imgs = all_imgs[:samples]
+        all_masks = all_masks[:samples]
     combined = list(zip(all_imgs, all_masks))
     random.shuffle(combined)
     split = int(0.8 * len(combined))
@@ -387,6 +389,8 @@ if __name__ == '__main__':
     val_pairs = combined[split:]
     train_images, train_masks = zip(*train_pairs)
     val_images, val_masks = zip(*val_pairs)
+
+    print(f"Training on {len(train_images)} images, validating on {len(val_images)} images.")
 
     best_path = train_unet(list(train_images), list(train_masks),
                            list(val_images), list(val_masks),
