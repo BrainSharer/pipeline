@@ -403,7 +403,7 @@ if __name__ == '__main__':
 
     # save outputs
     save_tif(pred_mask, os.path.join(out_dir, "pred_mask_example.tif"))
-    tifffile.imwrite(os.path.join(out_dir, "overlay_example.png"), overlay)
+    tifffile.imwrite(os.path.join(out_dir, "overlay_example.tif"), overlay)
     print("Saved example outputs to", out_dir)
 
 
