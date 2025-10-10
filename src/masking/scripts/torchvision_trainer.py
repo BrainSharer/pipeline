@@ -116,7 +116,7 @@ class TiffMaskDataset(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        """
+        
         img = read_tif_gray(self.images[idx])  # float32 0..1
         mask = tifffile.imread(self.masks[idx]).astype(np.float32)
         if mask.ndim == 3:
@@ -140,7 +140,7 @@ class TiffMaskDataset(Dataset):
         img_tensor = torch.from_numpy(img_resized).unsqueeze(0).float()  # 1xHxW
         mask_tensor = torch.from_numpy(mask_resized).unsqueeze(0).float()
         #return img_tensor, mask_tensor
-        """
+        
 
         img = Image.open(self.images[idx]) # L = grayscale, doesn't work with 16bit images
         img = np.array(img)
@@ -170,7 +170,7 @@ class TiffMaskDataset(Dataset):
             ymin = np.min(pos[0])
             ymax = np.max(pos[0])
             # Check if area is larger than a threshold
-            A = abs((xmax-xmin) * (ymax-ymin)) 
+            A = abs((xmax-xmin) * (ymax-ymin))
             #print(f"Min area to look for {A}")
             if A < 5:
                 print('Nr before deletion:', num_objs)
