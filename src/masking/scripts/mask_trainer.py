@@ -63,11 +63,7 @@ class MaskTrainer():
             self.dataset = MaskDataset(self.root, animal, augment=augmentations if A is not None else None)
 
 
-
     def train(self):
-
-
-
 
         indices = torch.randperm(len(self.dataset)).tolist()
 
@@ -88,24 +84,26 @@ class MaskTrainer():
             collate_fn=collate_fn)
 
         n_files = len(torch_dataset)
-        print_freq = 1
+        print_freq = 100
         if n_files > 1000:
-            print_freq = 10
+            print_freq = 1000
         print(f"We have: {n_files} images to train from {self.dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
-        modelname = 'mask.model.train.pth'
+        model_train_name = 'mask.model.train.pth'
+        model_final_name = 'mask.model.pth'
         model_dir = os.path.join(self.root, 'models')
-        modelpath = os.path.join(model_dir, modelname)
+        model_train_path = os.path.join(model_dir, model_train_name)
+        model_final_path = os.path.join(model_dir, model_final_name)
         # get the model using our helper function
         mask_manager = MaskManager()
         model = mask_manager.get_model_instance_segmentation(self.num_classes)
 
         # load model dictionary if it exists
-        if os.path.exists(modelpath):
-            print(f"Loading model dictionary weights from {modelpath}")
-            model.load_state_dict(torch.load(modelpath, map_location = self.device, weights_only=True))
+        if os.path.exists(model_train_path):
+            print(f"Loading model dictionary weights from {model_train_path}")
+            model.load_state_dict(torch.load(model_train_path, map_location = self.device, weights_only=True))
         else:
-            print(f"Model dictionary not found at {modelpath}")
+            print(f"Model training model not found at {model_train_path}")
 
         # move model to the right device
         model.to(self.device)
@@ -130,14 +128,12 @@ class MaskTrainer():
             loss_list.append([loss, loss_mask])
             # update the learning rate
             lr_scheduler.step()
-            if not self.debug:
-                torch.save(model.state_dict(), modelpath)
 
             model.eval()
             if loss < best_val:
                 best_val = loss
-                torch.save(model.state_dict(), os.path.join(model_dir, f'best_model_{epoch}_{best_val:.4f}.pth'))
-                print(f"Saved new best model (val_loss={best_val:.4f})")
+                torch.save(model.state_dict(), model_final_path)
+                print(f"Saved new best model (val_loss={best_val:.4f} at epoch {epoch}) to {model_final_path}")
 
         print('Creating loss chart')
         fig = plt.figure()
