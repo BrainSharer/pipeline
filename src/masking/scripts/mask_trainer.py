@@ -135,6 +135,7 @@ class MaskTrainer():
                 torch.save(model.state_dict(), model_final_path)
                 print(f"Saved new best model (val_loss={best_val:.4f} at epoch {epoch}) to {model_final_path}")
 
+        print(f"\nBest model had a loss of: val_loss={best_val:.4f}\n")
         print('Creating loss chart')
         fig = plt.figure()
         output_path = os.path.join(str(self.root), f'loss_plot.{self.created}.png')
