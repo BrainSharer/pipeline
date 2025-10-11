@@ -28,7 +28,7 @@ class MaskTrainer():
     def __init__(self, animal, structure, epochs, num_classes, debug=False):
         data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
         self.workers = 2
-        self.batch_size = 8
+        self.batch_size = 4
         self.animal = animal
         self.structure = structure
         self.epochs = epochs
