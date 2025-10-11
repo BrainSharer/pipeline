@@ -61,7 +61,7 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/mask.model.train.pth")
+    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/TG/models/mask.model.pth")
     loaded_model = get_model_instance_segmentation(num_classes=2)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -75,7 +75,7 @@ def predict(animal, debug=False):
         loaded_model.load_state_dict(ck['model_state'] if 'model_state' in ck else ck)
 
     else:
-        print('No model to load.')
+        print(f'No model to load at {modelpath}')
         return
     base_path = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps'
     input = os.path.join(base_path, 'C1/thumbnail_aligned')

@@ -20,8 +20,8 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.mask_utilities.mask_class import MaskDataset, StructureDataset
 from library.image_manipulation.mask_manager import MaskManager
-from library.mask_utilities.utils import collate_fn
-from library.mask_utilities.engine import train_one_epoch
+from library.mask_utilities.utils import MetricLogger, collate_fn, reduce_dict
+from library.mask_utilities.engine import evaluate, train_one_epoch
 
 class MaskTrainer():
 
@@ -58,36 +58,36 @@ class MaskTrainer():
         ])
 
         if self.structure == 'structures':
-            self.dataset = StructureDataset(self.root)
+            self.train_dataset = StructureDataset(self.root)
         else:
-            self.dataset = MaskDataset(self.root, animal, augment=augmentations if A is not None else None)
+            self.train_dataset = MaskDataset(self.root, animal, augment=augmentations if A is not None else None)
 
 
     def train(self):
 
-        indices = torch.randperm(len(self.dataset)).tolist()
+        indices = torch.randperm(len(self.train_dataset)).tolist()
 
         if self.debug:
             test_cases = 12
             torch.manual_seed(1)
-            torch_dataset = torch.utils.data.Subset(self.dataset, indices[0:test_cases])
+            training_dataset = torch.utils.data.Subset(self.train_dataset, indices[0:test_cases])
         else:
-            torch_dataset = torch.utils.data.Subset(self.dataset, indices)
+            training_dataset = torch.utils.data.Subset(self.train_dataset, indices)
 
         ## the line below is very important for data on an NFS file system!
         torch.multiprocessing.set_sharing_strategy('file_system')
 
 
         # define training and validation data loaders
-        data_loader = torch.utils.data.DataLoader(
-            torch_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.workers,
+        training_loader = torch.utils.data.DataLoader(
+            training_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.workers,
             collate_fn=collate_fn)
 
-        n_files = len(torch_dataset)
+        n_files = len(training_dataset)
         print_freq = 100
         if n_files > 1000:
             print_freq = 1000
-        print(f"We have: {n_files} images to train from {self.dataset.img_root} and printing loss info every {print_freq} iterations.")
+        print(f"We have: {n_files} images to train from {self.train_dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
         model_train_name = 'mask.model.train.pth'
         model_final_name = 'mask.model.pth'
@@ -115,9 +115,10 @@ class MaskTrainer():
         loss_list = []
         
         best_val = float('inf')
+        best_epoch = 999
         for epoch in range(epochs):
             # train for one epoch, printing every 10 iterations
-            mlogger = train_one_epoch(model, optimizer, data_loader, self.device, epoch, print_freq=print_freq)
+            mlogger = train_one_epoch(model, optimizer, training_loader, self.device, epoch, print_freq=print_freq)
             loss_txt = str(mlogger.loss)
             x = loss_txt.split()
             loss = float(x[0])
@@ -129,13 +130,15 @@ class MaskTrainer():
             # update the learning rate
             lr_scheduler.step()
 
-            model.eval()
             if loss < best_val:
                 best_val = loss
+                best_epoch = epoch
                 torch.save(model.state_dict(), model_final_path)
                 print(f"Saved new best model (val_loss={best_val:.4f} at epoch {epoch}) to {model_final_path}")
 
-        print(f"\nBest model had a loss of: val_loss={best_val:.4f}\n")
+
+
+        print(f"\nBest model had a loss of: val_loss={best_val:.4f} at epoch {best_epoch}\n")
         print('Creating loss chart')
         fig = plt.figure()
         output_path = os.path.join(str(self.root), f'loss_plot.{self.created}.png')
@@ -148,7 +151,7 @@ class MaskTrainer():
         plt.xticks(np.arange(min(x), max(x)+1, 1.0))
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        plt.title(f'Loss over {len(x)} epochs with {len(self.dataset)} images')
+        plt.title(f'Loss over {len(x)} epochs with {len(self.train_dataset)} images')
         plt.legend()
         plt.close()
         fig.savefig(output_path, bbox_inches="tight")
