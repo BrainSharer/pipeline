@@ -28,7 +28,7 @@ class MaskTrainer():
     def __init__(self, animal, structure, epochs, num_classes, debug=False):
         data_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks'
         self.workers = 2
-        self.batch_size = 4
+        self.batch_size = 8
         self.animal = animal
         self.structure = structure
         self.epochs = epochs
@@ -68,7 +68,7 @@ class MaskTrainer():
         indices = torch.randperm(len(self.train_dataset)).tolist()
 
         if self.debug:
-            test_cases = 12
+            test_cases = 9
             torch.manual_seed(1)
             training_dataset = torch.utils.data.Subset(self.train_dataset, indices[0:test_cases])
         else:
@@ -77,16 +77,13 @@ class MaskTrainer():
         ## the line below is very important for data on an NFS file system!
         torch.multiprocessing.set_sharing_strategy('file_system')
 
-
         # define training and validation data loaders
         training_loader = torch.utils.data.DataLoader(
             training_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.workers,
             collate_fn=collate_fn)
 
         n_files = len(training_dataset)
-        print_freq = 100
-        if n_files > 1000:
-            print_freq = 1000
+        print_freq = n_files // self.batch_size
         print(f"We have: {n_files} images to train from {self.train_dataset.img_root} and printing loss info every {print_freq} iterations.")
         # our dataset has two classs, tissue or 'not tissue'
         model_train_name = 'mask.model.train.pth'
