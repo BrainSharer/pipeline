@@ -147,7 +147,7 @@ class ElastixManager():
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
 
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.2)
+        R.SetMetricSamplingPercentage(0.8)
         # Optimizer
         R.SetOptimizerAsRegularStepGradientDescent(
             learningRate=2,
@@ -229,6 +229,14 @@ class ElastixManager():
             else:
                 return 0.0, 0.0, 0.0, 0.0
 
+        total_voxels = np.prod(fixed.GetSize())
+        n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
+        # Set number of spatial samples and sampler type
+        #param_map["NumberOfSpatialSamples"] = [str(n_samples)]
+        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", [str(n_samples)])
+        #param_map["ImageSampler"] = ["RandomCoordinate"]  # random sampling is more robust when tissue missing
+
+
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
         
@@ -237,6 +245,7 @@ class ElastixManager():
         if self.debug and moving_index == '001':
             elastixImageFilter.PrintParameterMap()
         
+        elastixImageFilter.PrintParameterMap()
         # Execute the registration on GPU
         elastixImageFilter.Execute()
 
