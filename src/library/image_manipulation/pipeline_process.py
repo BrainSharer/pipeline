@@ -541,7 +541,6 @@ class Pipeline(
         
         if len(error) > 0:
             print(error)
-            sys.exit()
 
     @staticmethod
     def check_url(animal):
