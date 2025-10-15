@@ -229,8 +229,8 @@ class ElastixManager():
             else:
                 return 0.0, 0.0, 0.0, 0.0
 
-        total_voxels = np.prod(fixed.GetSize())
-        n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
+        #total_voxels = np.prod(fixed.GetSize())
+        #n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
         # Set number of spatial samples and sampler type
         #param_map["NumberOfSpatialSamples"] = [str(n_samples)]
         #elastixImageFilter.SetParameter("NumberOfSpatialSamples", [str(n_samples)])
@@ -245,7 +245,6 @@ class ElastixManager():
         if self.debug and moving_index == '001':
             elastixImageFilter.PrintParameterMap()
         
-        elastixImageFilter.PrintParameterMap()
         # Execute the registration on GPU
         elastixImageFilter.Execute()
 
