@@ -18,6 +18,10 @@ Explanation for the tasks:
     e.g., the TG_L and TG_R, and merge them into a volume. 
 - neuroglancer - This takes the merged volume and moves the origins into Allen space. A neuroglancer view is then created from \
     all these merged volumes.
+- draw - This will draw the volumes on top of the downsampled images so you can check the placement.
+- save_atlas - This will save the atlas volume to birdstore so it can be used by other programs.
+- create_atlas - This will create the atlas volume from the saved volumes on birdstore.
+- update_coms - This will update the COMs in the atlas database from the
 """
 
 import argparse
