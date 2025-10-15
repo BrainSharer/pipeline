@@ -15,11 +15,12 @@ import os
 import inspect
 import dask
 import dask.config
+from distributed import LocalCluster    
 from dask.distributed import Client
-from distributed import LocalCluster
 from timeit import default_timer as timer
 from tqdm import tqdm
 import zarr
+
 from library.image_manipulation.image_manager import ImageManager
 from library.omezarr.builder_init import builder
 from library.utilities.dask_utilities import closest_divisors_to_target
@@ -130,7 +131,7 @@ class OmeZarrManager():
         else:
             storefile = f'C{self.channel}.zarr'
             scaling_factor = 1  
-            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 2)
+            chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
             mips = 8
 
 
@@ -172,31 +173,30 @@ class OmeZarrManager():
             channel=self.channel,
         )
         dask.config.set({'logging.distributed': 'info', 'temporary_directory': self.scratch_space})
-        n_workers = os.cpu_count() // 6
+        n_workers = 1
         threads_per_worker = 4
-        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
+        memory_limit = str(int(self.available_memory / n_workers) * 0.85) + 'GB'
+        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=memory_limit)
+        print(f"Using Dask cluster for transfer with {n_workers} workers and {threads_per_worker} threads/per worker with {memory_limit} available memory/worker")
         if self.debug:
             exit(1)
 
         with Client(cluster) as client:
             print(f"Client dashboard: {client.dashboard_link}")
+            # Create transfer, level -2
             omezarr.write_transfer(client)
 
-        cluster.close()
-        ## The number of workers needs to be reduced for the remainder of the process
-        n_workers = n_workers // 2 if n_workers > 2 else 1
-        threads_per_worker = 4
-        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=self.available_memory)
-        print(f"Using Dask cluster for remainder with {n_workers} workers and {threads_per_worker} threads/per worker with {self.available_memory} bytes available memory")
-
-        with Client(cluster) as client:
+            # Create transfer to rechunkme level -1
             input_path = omezarr.transfer_path
+            output_path = omezarr.rechunkme_path
+            omezarr.write_rechunk_transfer(client, input_path, output_path, level=-1)
+
+            # Create rechunkme to C1.zarr/0
+            input_path = omezarr.rechunkme_path
             output_path = os.path.join(omezarr.output, str(0))
-            omezarr.write_rechunk_transfer(client, input_path, output_path)
+            omezarr.write_rechunk_transfer(client, input_path, output_path, level=0)
         
-            pyramids = len(omezarr.pyramidMap) - 1
-            for mip in range(1, pyramids):
+            for mip in range(1, omezarr.mips):
                 omezarr.write_mips(mip, client)
 
         cluster.close()

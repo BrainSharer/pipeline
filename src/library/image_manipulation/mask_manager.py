@@ -155,7 +155,7 @@ class MaskManager:
         """Load the CNN model used to generate image masks
         """
 
-        modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/mask.model.pth")
+        modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/brain/models/mask.model.pth")
         self.loaded_model = self.get_model_instance_segmentation(num_classes=2)
         workers = 2
         batch_size = 4
@@ -167,8 +167,9 @@ class MaskManager:
         if os.path.exists(modelpath):
             self.loaded_model.load_state_dict(torch.load(modelpath, map_location = device, weights_only=False))
         else:
-            print("no model to load")
-            return
+            print(f"No model to load, make sure the model is at {modelpath}")
+            print("We are exiting, fix the missing model issue and try again.")
+            exit(1)
 
     def create_full_resolution_mask(self):
         """Upsample the masks created for the downsampled images to the full resolution

@@ -9,7 +9,10 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import asyncio
-import aiofiles
+try:
+    import aiofiles
+except ImportError:
+    pass
 import hashlib
 
 from library.database_model.slide import Slide, SlideCziTif
@@ -46,7 +49,7 @@ class MetaUtilities:
             print(f'DEBUG: unprocessed czi files:  {sorted(unprocessed_czifiles)}')
         if db_validation_status:
             self.fileLogger.logevent("ERROR IN CZI FILES OR DB COUNTS")
-            print("ERROR IN CZI FILES OR DB COUNTS")
+            print(f"Error in CZI files or DB counts, we are exiting.")
             sys.exit()
 
         #FOR CZI FILES ALREADY PROCESSED; CHECK FOR SLIDE PREVIEW
@@ -332,19 +335,17 @@ class MetaUtilities:
         for series_index in range(slide.scenes):
             scene_number = series_index + 1
             try:
-                #channels = range(czi_metadata[slide.file_name][series_index]["channels"])
-                channels = range(czi_metadata[file_name][series_index]["channels"])
+                channels = czi_metadata[file_name][series_index]["channels"]
             except KeyError:
                 print(f'Channel error with slide file name={slide.file_name} file system name= {file_name}')
                 sys.exit()
-            channel_counter = 0
             try:
                 width, height = czi_metadata[file_name][series_index]["dimensions"]
             except KeyError:
                 print(f'Width, height error with slide file name={slide.file_name} file system name= {file_name}')
                 sys.exit()
             tif_list = []
-            for _ in channels:
+            for channel in range(0, channels):
                 tif = SlideCziTif()
                 tif.FK_slide_id = slide.id
                 ##### The czifile in the slide_czi_to_tif table is needed!
@@ -358,7 +359,7 @@ class MetaUtilities:
                 tif.width = width
                 tif.height = height
                 tif.scene_index = series_index
-                channel_counter += 1
+                channel_counter = channel + 1
                 newtif = "{}_S{}_C{}.tif".format(infile, scene_number, channel_counter)
                 newtif = newtif.replace(".czi", "").replace("__", "_")
                 tif.file_name = os.path.basename(newtif)

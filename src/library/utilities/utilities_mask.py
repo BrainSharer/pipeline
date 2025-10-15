@@ -54,6 +54,7 @@ def place_image(img, file: str, max_width, max_height, bgcolor):
     ## check for problems
     if startr < 0 or startc < 0:
         print(f'Error placing {file} start row {startr=} < 0 or start column {startc=} < 0')
+        print(f'Image shape is {img.shape}, max height {max_height}, max width {max_width} zmidr {zmidr}, zmidc {zmidc}')
         sys.exit()
     
     if img.ndim == 2:

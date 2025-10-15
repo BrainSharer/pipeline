@@ -1,5 +1,4 @@
 import ast
-import math
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +9,6 @@ import cv2
 import json
 import pandas as pd
 from scipy.ndimage import center_of_mass, zoom
-from skimage.filters import gaussian
 
 from cloudvolume import CloudVolume
 import sqlalchemy
@@ -31,12 +29,10 @@ from library.atlas.atlas_utilities import (
     affine_transform_point,
     compute_affine_transformation,
     get_evenly_spaced_vertices,
-    get_evenly_spaced_vertices_from_slice,
     get_min_max_mean,
     get_physical_center,
     list_coms,
     ORIGINAL_ATLAS,
-    load_transformation,
     order_points_concave_hull,
     interpolate_points
 )
@@ -886,6 +882,7 @@ class BrainStructureManager:
                 if animal == "MD589" and section == 296:
                     offset = offset + np.array([8, 29])
 
+
                 points = np.array(points) + offset
                 unaligned_padded_structures[structure][section] = points.tolist()
 
@@ -893,6 +890,11 @@ class BrainStructureManager:
                     points, section_transform[section]
                 )  # create_alignment transform
                 aligned_padded_structures[structure][section] = points.tolist()
+
+        if debug:
+            data = aligned_padded_structures['IC']
+            for section, points in sorted(data.items()):
+                print(f"{animal} {section} {len(points)} points")
 
         if not debug:
 
@@ -1177,9 +1179,9 @@ class BrainStructureManager:
         origin = np.array([min_x, min_y, min_z]).astype(np.float32)
         if transform is not None:
             R = np.array(transform.GetParameters()[0:9]).reshape(3, 3)
-            print('R', R)
+            #print('R', R)
             scale = np.linalg.norm(R, axis=0)
-            print('scale', scale)
+            #print('scale', scale)
             affine_transform = sitk.AffineTransform(3)
             affine_transform.SetMatrix(R.ravel())
             #translation = transform.GetInverse().GetParameters()[9:]
@@ -1190,7 +1192,7 @@ class BrainStructureManager:
             #ref_img = sitk.Image(new_size, sitk.sitkFloat32)
             center = get_physical_center(volume)
             offset = translation - R @ center + center
-            print(f'offset: {offset}')
+            #print(f'offset: {offset}')
             affine_transform.SetTranslation(offset)
             resampled_subvolume = sitk.Resample(
                 volume,

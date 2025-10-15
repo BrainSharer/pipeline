@@ -37,7 +37,7 @@ class ScanRunController():
         width *= scaling_factor
         height *= scaling_factor
         width_buffer = int(width * 0.005)
-        height_buffer = int(height * 0.005)
+        height_buffer = int(height * 0.05)
         width = roundtochunk(width + width_buffer)
         height = roundtochunk(height + height_buffer)
         if (rotation % 2) == 0:

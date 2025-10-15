@@ -21,13 +21,12 @@ class BuilderMultiscaleGenerator:
         start_time = timer()
         if os.path.exists(self.transfer_path):
             print(f'Image stack to zarr data already exists at {self.transfer_path}')                
-            if self.debug:
-                store = zarr.storage.NestedDirectoryStore(self.transfer_path)
-                volume = zarr.open(store, 'r')
-                print(volume.info)
-                print(f'volume.shape={volume.shape}')
+            store = zarr.storage.NestedDirectoryStore(self.transfer_path)
+            volume = zarr.open(store, 'r')
+            print(volume.info)
+            print(f'volume.shape={volume.shape}')
             return
-        chunks = self.pyramidMap[-1]['chunk']
+        chunks = self.pyramidMap[-2]['chunk']
         print(f"Transferring data from image stack to zarr to {self.transfer_path}")
         imread = dask.delayed(skimage.io.imread, pure=True)  # Lazy version of imread
         lazy_images = [imread(path) for path in sorted(self.files)]   # Lazily evaluate imread on each path
@@ -77,7 +76,7 @@ class BuilderMultiscaleGenerator:
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"Transfer from TIF stack to zarr completed in {total_elapsed_time} seconds")
 
-    def write_rechunk_transfer(self, client, input_path, write_storepath):
+    def write_rechunk_transfer(self, client, input_path, write_storepath, level):
         print()
         start_time = timer()
         
@@ -87,14 +86,13 @@ class BuilderMultiscaleGenerator:
         
         if os.path.exists(write_storepath):
             print(f'Rechunked data exists at {write_storepath}')
-            if self.debug:
-                store = store = zarr.storage.NestedDirectoryStore(write_storepath)
-                volume = zarr.open(store, 'r')
-                print(volume.info)
-                print(f'volume.shape={volume.shape}')
+            store = store = zarr.storage.NestedDirectoryStore(write_storepath)
+            volume = zarr.open(store, 'r')
+            print(volume.info)
+            print(f'volume.shape={volume.shape}')
             return
 
-        chunks = self.pyramidMap[0]['chunk']
+        chunks = self.pyramidMap[level]['chunk']
         print(f"Building rechunked zarr store with {chunks=}:")
         print(f"\tfrom {input_path}")
         print(f"\tto {write_storepath}")
@@ -135,11 +133,10 @@ class BuilderMultiscaleGenerator:
         chunks = self.pyramidMap[mip]['chunk']
         if os.path.exists(write_storepath):
             print(f'Resolution {mip} exists at {write_storepath}')
-            if self.debug:
-                store = store = zarr.storage.NestedDirectoryStore(write_storepath)
-                volume = zarr.open(store, 'r')
-                print(volume.info)
-                print(f'volume.shape={volume.shape}')
+            store = store = zarr.storage.NestedDirectoryStore(write_storepath)
+            volume = zarr.open(store, 'r')
+            print(volume.info)
+            print(f'volume.shape={volume.shape}')
             return
 
         print(f"Building downsampled zarr store for resolution {mip}:")

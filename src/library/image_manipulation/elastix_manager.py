@@ -63,6 +63,8 @@ class ElastixManager():
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
                 rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
+                #rotation, xshift, yshift, metric = self.register_sections(fixed_index, moving_index)
+                
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
     def cleanup_fiducials(self):
@@ -110,7 +112,8 @@ class ElastixManager():
         nchanges = len(fiducials)
         if nchanges == 0:
             print('No fiducial points were found. Performing an extra alignment with no fiducials.')
-            return nchanges
+            print('The program is exiting as you were expecting fiducial points but none were found')
+            exit(1)
 
         for section, points in fiducials.items():
             section = str(int(section)).zfill(3)
@@ -124,6 +127,51 @@ class ElastixManager():
                     f.write('\n')
 
 
+    def register_sections(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
+        # Load fixed and moving images
+        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+        fixed_image = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
+        moving_file = os.path.join(self.input, f"{moving_index}.tif")
+        moving_image = sitk.ReadImage(moving_file, sitk.sitkFloat32)
+
+        # Initial alignment of the centers of the two volumes
+        initial_transform = sitk.CenteredTransformInitializer(
+            fixed_image, 
+            moving_image, 
+            sitk.Euler2DTransform(),
+            sitk.CenteredTransformInitializerFilter.MOMENTS
+        )
+
+        # Set up the registration method
+        R = sitk.ImageRegistrationMethod()
+        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+
+        R.SetMetricSamplingStrategy(R.RANDOM)
+        R.SetMetricSamplingPercentage(0.8)
+        # Optimizer
+        R.SetOptimizerAsRegularStepGradientDescent(
+            learningRate=2,
+            minStep=1e-4,
+            numberOfIterations=250,
+            gradientMagnitudeTolerance=1e-8
+        )
+        R.SetOptimizerScalesFromPhysicalShift()
+
+        # Interpolator
+        R.SetInterpolator(sitk.sitkLinear)
+
+        # Initial transform
+        R.SetInitialTransform(initial_transform, inPlace=False)
+        R.SetShrinkFactorsPerLevel([4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        # Execute registration
+        final_transform = R.Execute(fixed_image, moving_image)
+        metric_value = R.GetMetricValue()
+        rotation, xshift, yshift = final_transform.GetParameters()
+        return float(rotation), float(xshift), float(yshift), float(metric_value)
+    
     def align_images_elastix(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         """
         Aligns two images using the Elastix registration algorithm with GPU acceleration.
@@ -180,6 +228,14 @@ class ElastixManager():
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
             else:
                 return 0.0, 0.0, 0.0, 0.0
+
+        #total_voxels = np.prod(fixed.GetSize())
+        #n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
+        # Set number of spatial samples and sampler type
+        #param_map["NumberOfSpatialSamples"] = [str(n_samples)]
+        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", [str(n_samples)])
+        #param_map["ImageSampler"] = ["RandomCoordinate"]  # random sampling is more robust when tissue missing
+
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
@@ -395,11 +451,8 @@ class ElastixManager():
             print(f"DEBUG: {self.__class__.__name__}::{current_function_name} START")
 
         transformations0 = self.get_transformations(iteration=ALIGNED)
-        if self.iteration == REALIGNED:
-            transformations1 = self.get_transformations(iteration=REALIGNED)
-            transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
-        else:
-            transformations = transformations0
+        transformations1 = self.get_transformations(iteration=REALIGNED)
+        transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
 
         if self.downsample:
             transformations = rescale_transformations(transformations, 1)

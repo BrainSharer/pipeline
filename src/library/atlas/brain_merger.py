@@ -13,8 +13,9 @@ from scipy.ndimage import center_of_mass
 from tqdm import tqdm
 
 from library.atlas.atlas_utilities import adjust_volume, average_images
+from library.atlas.brain_structure_manager import BrainStructureManager
 from library.image_manipulation.filelocation_manager import data_path
-from library.utilities.atlas import volume_to_polygon, save_mesh
+from library.utilities.atlas import generate_random_rgb_color, mask_to_mesh, number_to_rgb
 from library.utilities.atlas import singular_structures
 
 
@@ -22,6 +23,7 @@ class BrainMerger():
 
     def __init__(self, animal):
         self.animal = animal
+        self.brain_structure_manager = BrainStructureManager(animal)
         self.symmetry_list = singular_structures
         self.coms_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
@@ -87,15 +89,18 @@ class BrainMerger():
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
+            allen_id = self.brain_structure_manager.get_allen_id(structure)
+            adjusted_volume = adjust_volume(volume, allen_id)
+
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, volume)
+            np.save(volume_filepath, adjusted_volume)
 
             #mesh STL file
             relative_origin = (origin_allen - origins_mean)
-            aligned_structure = volume_to_polygon(volume=volume, origin=relative_origin, times_to_simplify=3)
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
-            save_mesh(aligned_structure, mesh_filepath)
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
+            color = number_to_rgb(allen_id)
+            mask_to_mesh(volume, relative_origin, mesh_filepath, color=color)
 
     def save_atlas_meshes_origins_volumes(self, um):
         #coms = {structure: self.get_mean_coordinates(com) for structure, com in self.coms_to_merge.items()}
@@ -103,7 +108,7 @@ class BrainMerger():
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         desc = "Saving atlas meshes/origins/volumes"
-        for structure in tqdm(self.volumes.keys(), desc=desc):
+        for structure in tqdm(self.volumes.keys()):
             origin_allen = origins[structure]
             volume = self.volumes[structure]
             com = center_of_mass(volume)
@@ -113,20 +118,16 @@ class BrainMerger():
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
+            allen_id = self.get_allen_id(structure)
+            adjusted_volume = adjust_volume(volume, allen_id)
+
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, volume)
-            
-            #mesh stl files for 3D slicer
-            if structure == 'cerebellum':
-                mesh_volume = volume
-            else:
-                mesh_volume = adjust_volume(volume, 100)
+            np.save(volume_filepath, adjusted_volume)
             relative_origin = (origin_allen - origins_mean)
-            aligned_structure = volume_to_polygon(volume=mesh_volume, origin=relative_origin, times_to_simplify=3)
-            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.stl')
-            save_mesh(aligned_structure, mesh_filepath)
-
+            mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
+            color = number_to_rgb(allen_id)
+            mask_to_mesh(adjusted_volume, relative_origin, mesh_filepath, color=color)
             
     def fetch_allen_origins(self):
         structures = {

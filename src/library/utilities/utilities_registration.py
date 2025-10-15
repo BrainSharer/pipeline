@@ -118,6 +118,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     # the AdvancedMattesMutualInformation metric really helps with the alignment
     rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
+    
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     rigid_params["ResultImageFormat"] = ["tif"]

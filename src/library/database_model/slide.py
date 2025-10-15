@@ -71,5 +71,6 @@ class Section(Base, AtlasModel):
     scene_index = Column(Integer, nullable=False)
     channel = Column(Integer, nullable=False)
     channel_index = Column(Integer, nullable=False)
+    scene_order = Column(Integer, nullable=False)
     FK_slide_id = Column(Integer, ForeignKey('slide.id'), nullable=False)
 

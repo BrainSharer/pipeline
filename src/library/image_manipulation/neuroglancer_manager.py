@@ -304,7 +304,7 @@ class NumpyToNeuroglancer():
         :param file_key: file_key: tuple
         """
 
-        index, infile, _, progress_dir, is_blank, height, width = file_key
+        index, infile, progress_dir, is_blank, height, width = file_key
 
         if is_blank and infile is None:
             img = np.zeros((height, width), dtype=np.uint8)
@@ -314,20 +314,8 @@ class NumpyToNeuroglancer():
             if os.path.exists(progress_file):
                 print(f"Section {index} has already been processed, skipping.")
                 return
-            
-        #test_img = read_image(infile)
-        #print(f'{os.path.basename(infile)} shape={test_img.shape} dtype={test_img.dtype} ndim={test_img.ndim}')
-        #return
-
-        # try:
-        #with Image.open(infile) as img:
-        #    img_array = np.array(img, dtype=self.precomputed_vol.dtype)
 
             img = read_image(infile)
-            #img=img_array
-
-            #img = read_image(infile)
-            #img = tifffile.imread(infile)
             if img.ndim > 2:
                 img = np.squeeze(img)
                 img = img.reshape(img.shape[0], img.shape[1], 1, img.shape[2])

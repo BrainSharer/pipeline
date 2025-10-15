@@ -31,13 +31,10 @@ from library.image_manipulation.prep_manager import PrepCreater
 from library.controller.sql_controller import SqlController
 from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 from library.utilities.utilities_mask import compare_directories
-from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, delete_in_background
+from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 from library.cell_labeling.cell_ui import Cell_UI
 
-from library.utilities.cell_utilities import (
-    copy_with_rclone
-)
 
 try:
     from settings import data_path, host, schema
@@ -109,7 +106,12 @@ class Pipeline(
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.iteration = None
-        self.mask_image = self.sqlController.scan_run.mask
+        try:
+            self.mask_image = self.sqlController.scan_run.mask
+        except Exception as e:
+            print(f"Error occurred while fetching mask image: {e}")
+            print(f"Make sure there is a valid scan run for animal: {self.animal}")
+            exit(1)
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
         self.multiple_slides = []
         self.channel = channel
@@ -118,25 +120,28 @@ class Pipeline(
         self.bgcolor = 0
         self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
         self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
-        total_mem = psutil.virtual_memory().total
-        self.available_memory = int(total_mem * 0.65) ##### that 0.85 should match the dask config in your home directory ~/.config/dask/distributed.yaml
+        self.available_memory = self.get_available_ram_gb() 
         self.section_count = self.get_section_count()
-
-        #self.mips = 7 
-        #if self.downsample:
-        #    self.mips = 4
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        #self.report_status()
-        #self.check_settings()
         if not hasattr(self, 'SCRATCH'):
             self.SCRATCH = get_scratch_dir()
         if arg_uuid:
             self.set_id = arg_uuid #for debug of prev. uuid
         else:
             self.set_id = uuid.uuid4().hex
-        
+
+    @staticmethod
+    def get_available_ram_gb():
+        """
+        Retrieves the available RAM in gigabytes using the psutil library.
+        """
+        virtual_memory = psutil.virtual_memory()
+        available_ram_bytes = virtual_memory.available
+        available_ram_gb = available_ram_bytes / (1024**3)  # Convert bytes to GB
+        available_ram_gb = round(available_ram_gb,2)
+        return available_ram_gb
 
     def report_status(self):
         print("RUNNING PREPROCESSING-PIPELINE WITH THE FOLLOWING SETTINGS:")
@@ -172,11 +177,37 @@ class Pipeline(
 
 
     def extract(self):
+        """
+        Extracts image data and related metadata from source files, processes them, and inserts into the DB.
+        This method performs the following steps:
+        1. If processing the first channel and downsampling is enabled:
+            - Extracts slide metadata and inserts it into the database.
+            - Generates a slide preview image.
+            - Corrects for multiple entries if necessary.
+        2. Extracts TIFF images from CZI files for the current channel.
+        3. If there are multiple channels, iterates through each additional channel and extracts TIFF images.
+        4. Checks for duplicate images.
+        5. Reorders scenes as needed.
+        6. If processing the first channel and downsampling is enabled:
+            - Creates web-friendly images and preview images.
+            - Generates checksums for the images.
+            - Creates symbolic links to extracted thumbnail images if they do not already exist.
+        Prints progress and completion messages throughout the process.
+        """
         print(self.TASK_EXTRACT)
-        self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
         if self.channel == 1 and self.downsample:
+            self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
             self.correct_multiples()
-        self.extract_tiffs_from_czi()
+        if self.channel == 1:
+            self.extract_tiffs_from_czi()
+        # IF channel is greater than 1, we assume channel 1 has already been extracted and extract the remaining channels
+        if self.channel > 1:
+            channels = self.sqlController.scan_run.channels_per_scene
+            for i in range(2, channels+1):
+                self.channel = i
+                self.extract_tiffs_from_czi()
+
+        self.check_for_duplicates()
         
         self.reorder_scenes()
         if self.channel == 1 and self.downsample:
@@ -206,13 +237,15 @@ class Pipeline(
         
 
     def clean(self):
+        """I am taking out the set width and height as we might need to manually adjust this
+        """
         print(self.TASK_CLEAN)
-        print('SKIPPING RAM CHECK')
-        # self.check_ram()
+        
+        self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
             self.set_max_width_and_height()
-
+        
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
 
@@ -269,7 +302,10 @@ class Pipeline(
         self.pixelType = sitk.sitkFloat32
         self.iteration = REALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        if self.channel == 1 and self.downsample:
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
+        else:
+            self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
 
@@ -288,6 +324,8 @@ class Pipeline(
         We also define the input, output and progress directories.
         This method may be run from the command line as a task, or it may
         also be run from the align and realign methods
+        with DK37 on my laptop took 167.77 seconds.
+        on ratto took 222.74 seconds.
         """
 
         self.check_ram()
@@ -297,44 +335,26 @@ class Pipeline(
             return
         
         print(self.TASK_NEUROGLANCER)
-
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)  
+        
+        self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)         
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
-
-        #NEW WORKFLOW STORES ALL MIPS IN SAME DIRECTORY
-        # self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
-        #     self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch, in_contents=self.input)
+        self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
+            self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
         
-        if self.use_scratch:
-            print('CHECKING IF SCRATCH SPACE HAS ENOUGH SPACE TO STORE TASK FILES...')
-            SCRATCH = get_scratch_dir(self.input)
-        else:
-            SCRATCH = self.SCRATCH
-
-        temp_output_path = Path(SCRATCH, 'pipeline_tmp', self.animal, 'C' + str(self.channel) + '_ng')
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
 
-        print(f'INPUT: {self.input}')
-        print(f'USING SCRATCH SPACE: {self.use_scratch}')
-        print(f'TEMP DIR: {temp_output_path}')
-        print(f'FINAL OUTPUT: {self.output}')
+        print(f'Input: {self.input}')
+        print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
-        # print(f'Rechunkme: {self.rechunkme_path}')
+        print(f'Rechunkme: {self.rechunkme_path}')
         
-        # self.create_neuroglancer()
-        # self.create_downsamples()
-
-        #neuroglancer took 392.81 seconds. with DK37 with methods below on ratto
-        # took 141 seconds on my laptop
-        max_memory_gb = 500 #muralis testing
-        self.create_precomputed(self.input, temp_output_path, self.output, self.progress_dir, max_memory_gb)
-        # print(f'Make sure you delete {self.rechunkme_path}.')
-
-        copy_with_rclone(temp_output_path, self.output)
+        self.create_neuroglancer()
+        self.create_downsamples()
+        print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
+
 
     def omezarr(self):
         """Note for RGB ndim=3 images!!!!
@@ -351,7 +371,7 @@ class Pipeline(
         layer. However, this is currently only supported if that dimension is not chunked, i.e. the chunk size must be 3 in your case.
         """
         print(self.TASK_OMEZARR)
-        self.check_ram()
+        #self.check_ram()
 
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample) 
         self.scratch_space = os.path.join('/data', 'pipeline_tmp', self.animal, 'dask-scratch-space')
@@ -519,14 +539,13 @@ class Pipeline(
 
         if not self.downsample and self.available_memory < 50:
             error += f'\nThere is not enough memory to run this process at full resolution with only: {self.available_memory}GB RAM'
-            error += '\n(Available RAM is calculated as free RAM * 0.8. You can check this by running "free -h" on the command line.)'
+            error += '\n(Available RAM is calculated by running "free -h" on the command line.)'
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
             error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
             
         
         if len(error) > 0:
             print(error)
-            sys.exit()
 
     @staticmethod
     def check_url(animal):

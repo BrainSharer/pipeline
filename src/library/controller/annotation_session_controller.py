@@ -122,7 +122,6 @@ class AnnotationSessionController:
         :param debug: whether to print the raw SQL query
         """
         fiducials = defaultdict(list)
-        print(f'DEBUG: {debug}')
         # Define query
         query = (
             self.session.query(AnnotationSession)

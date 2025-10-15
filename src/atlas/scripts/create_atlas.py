@@ -18,6 +18,10 @@ Explanation for the tasks:
     e.g., the TG_L and TG_R, and merge them into a volume. 
 - neuroglancer - This takes the merged volume and moves the origins into Allen space. A neuroglancer view is then created from \
     all these merged volumes.
+- draw - This will draw the volumes on top of the downsampled images so you can check the placement.
+- save_atlas - This will save the atlas volume to birdstore so it can be used by other programs.
+- create_atlas - This will create the atlas volume from the saved volumes on birdstore.
+- update_coms - This will update the COMs in the atlas database from the
 """
 
 import argparse
@@ -54,6 +58,8 @@ class AtlasManager():
         All data is downsampled by 1/32=SCALING_FACTOR. This is also the same size
         as the downsampled images.
         """
+        if self.debug:
+            self.foundation_brains = ['MD585']
         for animal in self.foundation_brains:
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.create_brain_json(animal, self.debug)
@@ -63,7 +69,9 @@ class AtlasManager():
         # 2nd step, this takes the JSON files and creates the brain volumes and origins
         """
         start_time = timer()
-        self.brainManager.fixed_brain = BrainStructureManager('MD589', debug)
+        self.brainManager.fixed_brain = BrainStructureManager('MD589', self.debug)
+        if self.debug:
+            self.foundation_brains = ['MD585']
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
@@ -83,33 +91,36 @@ class AtlasManager():
         # All foundation COM brain data is under: Beth ID=2"
         """
         start_time = timer()
-        """
+        
+        
         polygon_annotator_id = 1
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
             self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
-        """
+        
         # Note, for DK78, The C1 source is C1.v1
         
         
-        brains = ['MD585']
-        for animal in brains:
-            transform = load_transformation(animal, self.um, self.um)
+        #brains = ['MD585']
+        for animal in self.foundation_brains:
+            #transform = load_transformation(animal, self.um, self.um)
+            transform = None
             structure_coms = list_coms(animal)
             structures = sorted(structure_coms.keys())
-            structures = ['SC']
+            #structures = ['SC']
             for structure in structures:
+                print(f'Processing {animal} {structure}')
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
         
         other_brains = ['DK78', 'DK79']
         other_structures = ['TG_L', 'TG_R']
 
-        #for animal in other_brains:
-        #    transform = load_transformation(animal, self.um, self.um)
-        #    for structure in other_structures:
-        #        self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
+        for animal in other_brains:
+            transform = load_transformation(animal, self.um, self.um)
+            for structure in other_structures:
+                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
 
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
