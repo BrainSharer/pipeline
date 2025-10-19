@@ -435,36 +435,36 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = [
-                "thumbnail_original",
-                f"masks/C1/thumbnail_colored",
-                f"masks/C1/thumbnail_masked",
-                f"C{self.channel}/thumbnail",
-                "C1/normalized",
-                f"C{self.channel}/thumbnail_cleaned",
-                f"C{self.channel}/thumbnail_aligned",
-            ]
+            directories = {
+                "thumbnail_original": False,
+                f"masks/C1/thumbnail_colored": True,
+                f"masks/C1/thumbnail_masked": True,
+                f"C{self.channel}/thumbnail": True,
+                "C1/normalized": True,
+                f"C{self.channel}/thumbnail_cleaned": True,
+                f"C{self.channel}/thumbnail_aligned": True,
+            }
             ndirectory = f"C{self.channel}T"
         else:
-            directories = [
-                f"masks/C1/full_masked",
-                f"C{self.channel}/full",
-                f"C{self.channel}/full_cleaned",
-                f"C{self.channel}/full_aligned",
-            ]
+            directories = {
+                f"masks/C1/full_masked": True,
+                f"C{self.channel}/full": True,
+                f"C{self.channel}/full_cleaned": True,
+                f"C{self.channel}/full_aligned": True,
+            }
             ndirectory = f"C{self.channel}"
 
-        directories.append(self.fileLocationManager.get_czi() )
+        directories[self.fileLocationManager.get_czi()] = False
 
-        for directory in directories:
+        for directory, check in directories.items():
             dir = os.path.join(prep, directory)
             if os.path.exists(dir):
                 filecount = len(os.listdir(dir))
                 print(f'Dir={directory} exists with {filecount} files.', end=' ')
-                if 'czi' in directory:
-                    print()
-                else:
+                if check:
                     print(f'Sections count matches directory count: {section_count == filecount}')
+                else:
+                    print()
             else:
                 print(f'Non-existent dir={dir}')
         del dir, directory, directories

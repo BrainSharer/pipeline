@@ -83,7 +83,7 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     return T
 
 
-def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=False, iteration=0):
+def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     """
     Create and return a dictionary of rigid registration parameters for elastixImageFilter.
     The iterations have been reduced as we are doing two alignment processes.
@@ -122,11 +122,6 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0", debug=F
     rigid_params["UseRandomSampleRegion"] = ["true"]
     rigid_params["SampleRegionSize"] = ["50"]
     rigid_params["ResultImageFormat"] = ["tif"]
-    if debug:
-        rigid_params["MaximumNumberOfIterations"] = ["250"]
-    else:
-        rigid_params["MaximumNumberOfIterations"] = ["1500"]
-
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
     rigid_params["ImageSampler"] = ["Random"]

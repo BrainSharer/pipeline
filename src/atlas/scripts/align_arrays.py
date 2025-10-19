@@ -3,10 +3,12 @@ import sys
 import numpy as np
 import SimpleITK as sitk
 from pathlib import Path
+
 PIPELINE_ROOT = Path('./src').absolute()
 PIPELINE_ROOT = PIPELINE_ROOT.as_posix()
 sys.path.append(PIPELINE_ROOT)
 print(PIPELINE_ROOT)
+
 
 from library.atlas.atlas_utilities import center_images_to_largest_volume
 
@@ -26,19 +28,21 @@ def rigid_register(fixed, moving):
     registration_method.SetOptimizerAsGradientDescent(
         learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10
     )
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    print(f'Moving image size: {moving.GetSize()}, Fixed image size: {fixed.GetSize()}')
+    print(f'Moving image spacing: {moving.GetSpacing()}, Fixed image spacing: {fixed.GetSpacing()}')
+
+    initial_transform = sitk.CenteredTransformInitializer(
+        fixed, 
+        moving, 
+        sitk.Euler3DTransform(),
+        sitk.CenteredTransformInitializerFilter.GEOMETRY
+    )
+
     registration_method.SetInterpolator(sitk.sitkLinear)
     registration_method.SetOptimizerScalesFromPhysicalShift()
-
-    # Set initial transform (rigid)
-    initial_transform = sitk.VersorRigid3DTransform()
-    initial_transform.SetCenter(fixed.TransformContinuousIndexToPhysicalPoint(np.array(fixed.GetSize()) / 2.0))
     registration_method.SetInitialTransform(initial_transform, inPlace=False)
-
-
-
-    #registration_method.SetInitialTransform(sitk.CenteredTransformInitializer(
-    #    fixed, moving, sitk.Euler3DTransform(), sitk.CenteredTransformInitializerFilter.MOMENTS
-    #))
     registration_method.SetMetricSamplingPercentage(0.2, sitk.sitkWallClock)
     registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
     registration_method.SetShrinkFactorsPerLevel([4,2,1])
@@ -61,9 +65,9 @@ def average_transforms(transforms):
     ])
     return avg
 
-def groupwise_registration(arrays, iterations=3):
+def groupwise_registration(sitk_images, iterations=3):
     """Align multiple 3D binary arrays without a fixed reference."""
-    sitk_images = [numpy_to_sitk(a) for a in arrays]
+    #sitk_images = [numpy_to_sitk(a) for a in arrays]
     transforms = [sitk.Euler3DTransform() for _ in sitk_images]
 
     for it in range(iterations):
@@ -77,6 +81,7 @@ def groupwise_registration(arrays, iterations=3):
         # Register each image to this average (not a fixed reference)
         new_transforms = []
         for img, t_init in zip(sitk_images, transforms):
+            print(f'type of img: {type(img)}, type of avg_img: {type(avg_img)}')
             transform = rigid_register(avg_img, img)
             # Combine with previous transform
             new_t = sitk.Euler3DTransform()
@@ -94,6 +99,8 @@ def groupwise_registration(arrays, iterations=3):
 
     return sitk_to_numpy(avg_final), [t.GetParameters() for t in transforms]
 
+
+
 # -------------------------------
 # Example usage
 # -------------------------------
@@ -108,27 +115,15 @@ if __name__ == "__main__":
         arr = np.load(inpath)
         print(f'Loaded {inpath} with shape {arr.shape} with dtype {arr.dtype}')
         sitk_arr = numpy_to_sitk(arr)
-        #del arr
+        del arr
         unaligned_arrays.append(sitk_arr)
 
     centered_images = center_images_to_largest_volume(unaligned_arrays)
-
-
-    """
-    registered, consensus, transforms = groupwise_registration(centered_images, max_iterations=3)
-    for i in registered:
-        print(f'Registered shape: {i.shape}, dtype: {i.dtype}')
-    print("Registration complete.")
-
-    result = np.mean(registered, axis=0)
-    print(f"Result shape: {result.shape}, dtype: {result.dtype}")
-    ids, counts = np.unique(result, return_counts=True)
-    print(f"Unique ids in result: {ids}, counts: {counts}")
-    print(f"Consensus shape: {consensus.shape}, dtype: {consensus.dtype}")
-    """
-    centered_images = [sitk_to_numpy(img) for img in centered_images]
     for c in centered_images:
-        print(f'Centered shape: {c.shape}, dtype: {c.dtype}')
+        print(f'Centered image size: {c.GetSize()}, spacing: {c.GetSpacing()}')
+
+
+    exit(1)
     avg, transforms = groupwise_registration(centered_images, iterations=3)
 
     print("Final average shape:", avg.shape)
@@ -136,5 +131,3 @@ if __name__ == "__main__":
     for t in transforms:
         print(np.round(t, 3))
 
-    exit(1)
- 
