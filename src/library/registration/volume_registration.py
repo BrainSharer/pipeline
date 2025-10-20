@@ -572,6 +572,8 @@ class VolumeRegistration:
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
         z_resolution = self.sqlController.scan_run.zresolution / self.z_um
+        print(f'Using images from {self.thumbnail_aligned} to create volume at {self.moving_volume_path}')
+        print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
 
         change_z = z_resolution
         change_y = xy_resolution
@@ -579,6 +581,9 @@ class VolumeRegistration:
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+
+        if self.debug:
+            return
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
