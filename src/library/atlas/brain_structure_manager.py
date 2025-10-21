@@ -65,6 +65,7 @@ class BrainStructureManager:
         self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, "atlas_data")
         self.structure_path = os.path.join(data_path, "pipeline_data", "structures")
+        self.bbox_path = os.path.join(self.data_path, self.animal, "bbox") 
         self.com_path = os.path.join(self.data_path, self.animal, "com") 
         self.registered_com_path = os.path.join(self.data_path, self.animal, "registered_com")
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
@@ -94,6 +95,7 @@ class BrainStructureManager:
         )
         self.atlas_box_center = self.atlas_box_size / 2
 
+        os.makedirs(self.bbox_path, exist_ok=True)
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
@@ -640,6 +642,8 @@ class BrainStructureManager:
             origin_allen = origin_um / self.um
             volume = np.swapaxes(volume, 0, 2) # put into x,y,z order
             volume_allen = zoom(volume, scale_allen)
+            bbox = self.create_bounding_box_from_volume(origin_allen, volume_allen)
+            
 
             if debug:
                 if structure == 'SC':
@@ -650,6 +654,33 @@ class BrainStructureManager:
                 brainMerger.coms[structure] = com_um
                 brainMerger.origins[structure] = origin_allen
                 brainMerger.volumes[structure] = volume_allen
+                brainMerger.bboxes[structure] = bbox
+
+    @staticmethod
+    def create_bounding_box_from_volume(origin, volume):
+        """
+        Creates a 3D bounding box (min_coords, max_coords) from a 3D origin and a NumPy volume.
+
+        Args:
+            origin (tuple or list or np.ndarray): A 3-element sequence (x, y, z) representing the origin.
+            volume (np.ndarray): A 3D NumPy array representing the volume.
+
+        Returns:
+            tuple: A tuple containing two np.ndarray: (min_coords, max_coords)
+                where min_coords = [x_min, y_min, z_min] and max_coords = [x_max, y_max, z_max].
+        """
+        origin = np.array(origin)
+        x0, y0, z0 = origin
+        
+        # Get the dimensions of the volume (depth, height, width)
+        # Assuming volume.shape is (z, y, x)
+        z_dim, y_dim, x_dim = volume.shape
+
+        # Calculate the maximum coordinates
+        x1, y1, z1 = origin + np.array([x_dim, y_dim, z_dim])
+
+        return np.array([x0, y0, z0, x1, y1, z1])
+
 
     @staticmethod
     def save_volume_origin(animal, structure, volume, xyz_offsets):

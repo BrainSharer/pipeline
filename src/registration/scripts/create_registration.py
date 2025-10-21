@@ -75,6 +75,7 @@ if __name__ == '__main__':
                         'volume2tif': volumeRegistration.volume2tif,
                         'downsample_stack': volumeRegistration.downsample_stack,
                         'points_within_polygons': volumeRegistration.points_within_polygons,
+                        'transform_subvolumes': volumeRegistration.transform_subvolumes
     }
 
     if task in function_mapping:

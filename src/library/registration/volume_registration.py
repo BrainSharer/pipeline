@@ -694,35 +694,90 @@ class VolumeRegistration:
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.01)
+        R.SetMetricSamplingPercentage(0.2)
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
-            learningRate=1, 
+            learningRate=1.0, 
             numberOfIterations=300, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
         R.SetOptimizerScalesFromPhysicalShift()
-        R.SetInitialTransform(initial_transform, inPlace=False)
         R.SetShrinkFactorsPerLevel([4, 2, 1])
         R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SetInitialTransform(initial_transform, inPlace=False)
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
         # Perform registration
-        transform = R.Execute(fixed_image, moving_image)
+        affine_transform = R.Execute(fixed_image, moving_image)
         print("Final metric value: ", R.GetMetricValue())
         print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
         # Resample moving image onto fixed image grid
-        resampled = sitk.Resample(moving_image, fixed_image, transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
-        sitk.WriteTransform(transform, self.transform_filepath)
+        sitk.WriteTransform(affine_transform, self.transform_filepath)
         print(f"Registration written to {self.transform_filepath}")
         return
+    
+    def transform_subvolumes(self):
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_volume_path}")
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
+        print(f"Read moving image: {self.moving_volume_path}")
+        atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
+        origin_path = os.path.join(atlas_path, self.moving, 'origin')
+        masks_path = os.path.join(atlas_path, self.moving, 'structure')
+        origins = sorted([f for f in os.listdir(origin_path)])
+        masks = sorted([f for f in os.listdir(masks_path)])
+        if not os.path.exists(origin_path):
+            print(f'{origin_path} does not exist, exiting.')
+            sys.exit()
+        if not os.path.exists(self.transform_filepath):
+            print(f'{self.transform_filepath} does not exist, exiting.')
+            sys.exit()
+        print(f'Using transform from {self.transform_filepath}')
+        affine_transform = sitk.ReadTransform(self.transform_filepath)
+        registered_masks = []
+        for origin, mask in zip(origins, masks):
+            mask_path = os.path.join(masks_path, mask)
+            origin_path = os.path.join(origin_path, origin)
+            origin = np.loadtxt(origin_path)
+            mask_np = np.load(mask_path)
+            mask_np[mask_np > 0] = 255
+            mask_np = mask_np.astype(np.uint8)
+            mask_np = np.swapaxes(mask_np, 0, 2)
+            # Create SimpleITK image for mask
+            mask_sitk = sitk.GetImageFromArray(mask_np)
+            mask_sitk.SetOrigin(origin) # very important!!!!
+
+            # Apply affine transform
+            resampled_mask = sitk.Resample(
+                mask_sitk,
+                fixed_image,
+                affine_transform,
+                sitk.sitkNearestNeighbor,   # Important for binary masks!
+                0.0,
+                sitk.sitkUInt8
+            )
+            registered_masks.append(resampled_mask)        
+
+        combined_mask = sitk.Cast(sitk.Maximum(registered_masks[0], registered_masks[0]*0), sitk.sitkUInt8)
+        for m in registered_masks:
+            combined_mask = sitk.Maximum(combined_mask, m)
+
+        # ----------------------------
+        # Overlay registered masks onto fixed volume
+        # ----------------------------
+        overlay = sitk.LabelOverlay(sitk.Cast(fixed_image, sitk.sitkUInt8), combined_mask)
+        output_overlay_path = os.path.join(self.atlas_path, self.moving, 'test_overlay.tif')
+        sitk.WriteImage(overlay, output_overlay_path)
+        print(f"Overlay saved to {output_overlay_path}")
+
+
 
 
 

@@ -197,7 +197,7 @@ if __name__ == '__main__':
                         'status': pipeline.brainManager.report_status,
                         'update_volumes': pipeline.brainManager.fetch_create_volumes,
                         'precomputed': pipeline.create_precomputed,
-                        'atlas2allen': pipeline.brainManager.atlas2allen,
+                        'atlas2allen': pipeline.brainManager.atlas2allen
     }
 
     if task in function_mapping:
