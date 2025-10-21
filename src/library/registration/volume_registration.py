@@ -742,9 +742,15 @@ class VolumeRegistration:
         print(f'Using transform from {self.transform_filepath}')
         affine_transform = sitk.ReadTransform(self.transform_filepath)
         registered_masks = []
-        for origin, mask in zip(origins, masks):
+        for origin, mask in tqdm(zip(origins, masks), total=len(masks), desc='Registering masks'):
             mask_path = os.path.join(masks_path, mask)
             origin_path = os.path.join(origin_path, origin)
+            if not os.path.exists(mask_path):
+                print(f'{mask_path} does not exist, skipping.')
+                continue
+            if not os.path.exists(origin_path):
+                print(f'{origin_path} does not exist, skipping.')
+                continue
             origin = np.loadtxt(origin_path)
             mask_np = np.load(mask_path)
             mask_np[mask_np > 0] = 255
