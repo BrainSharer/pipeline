@@ -71,6 +71,8 @@ class BrainStructureManager:
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
+        self.registered_mask_path = os.path.join(self.data_path, self.animal, "registered_mask")
+        self.registered_origin_path = os.path.join(self.data_path, self.animal, "registered_origin")
 
         self.debug = debug
         self.um = um  # size in um of allen atlas
@@ -355,39 +357,25 @@ class BrainStructureManager:
         return compute_affine_transformation(moving_src, fixed_src)
 
     def create_atlas_volume(self):
-        self.check_for_existing_dir(self.com_path)
-        self.check_for_existing_dir(self.volume_path)
+        self.check_for_existing_dir(self.registered_origin_path)
+        self.check_for_existing_dir(self.registered_mask_path)
 
-        ### test using aligned images from foundation brain
-        if 'MD' in self.animal:
-            xy_resolution = self.sqlController.scan_run.resolution * SCALING_FACTOR /  self.um
-            z_resolution = self.sqlController.scan_run.zresolution / self.um
-            input_path = os.path.join(self.fileLocationManager.prep, "C1", "thumbnail_aligned")
-            image_manager = ImageManager(input_path)
-            self.atlas_box_size = image_manager.volume_size
-            self.atlas_box_size = np.array([int(self.atlas_box_size[0] * xy_resolution), 
-                                               int(self.atlas_box_size[1] * xy_resolution),
-                                               int(self.atlas_box_size[2] * z_resolution)])
         atlas_volume = np.zeros((self.atlas_box_size), dtype=np.uint32)
         print(f"atlas box size={self.atlas_box_size} shape={atlas_volume.shape}")
-        print(f"Using data from {self.com_path}")
-        coms = sorted(os.listdir(self.com_path)) # registered COMs are in micrometers/self.um
-        origins = sorted(os.listdir(self.origin_path)) # origins are in micrometers/self.um
-        volumes = sorted(os.listdir(self.volume_path))
-        if len(coms) != len(volumes):
-            print(f'The number of coms: {len(coms)} does not match the number of volumes: {len(volumes)}')
+        origins = sorted(os.listdir(self.registered_origin_path)) # origins are in micrometers/self.um
+        volumes = sorted(os.listdir(self.registered_mask_path))
+        if len(origins) != len(volumes):
+            print(f'The number of origins: {len(origins)} does not match the number of volumes: {len(volumes)}')
             sys.exit()
 
-        print(f"Working with {len(coms)} coms/volumes from {self.com_path}")
+        print(f"Working with {len(volumes)} coms/volumes from {self.registered_origin_path}")
         ids = {}
-        if self.affine:
-            transformation_matrix = self.get_transformation_matrix()
 
-        for com_file, origin_file, volume_file in zip(coms, origins, volumes):
-            if Path(com_file).stem != Path(volume_file).stem:
-                print(f"{Path(com_file).stem} and {Path(volume_file).stem} do not match")
+        for origin_file, volume_file in zip(origins, volumes):
+            if Path(origin_file).stem != Path(volume_file).stem:
+                print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
-            structure = Path(com_file).stem
+            structure = Path(origin_file).stem
             allen_id = self.get_allen_id(structure)
             try:
                 ids[structure] = allen_id
@@ -395,42 +383,14 @@ class BrainStructureManager:
                 print(f"Problem with index error: {structure=} {allen_id=} in database")
                 sys.exit()
 
-            com0 = np.loadtxt(os.path.join(self.com_path, com_file))
-            # origin0 is already in 10um space
-            origin0 = np.loadtxt(os.path.join(self.origin_path, origin_file))
-            # com0 is in micrometers, so convert to allen space
-            com0 = com0 / self.um
+            origin = np.loadtxt(os.path.join(self.registered_origin_path, origin_file))
+            volume = np.load(os.path.join(self.volume_path, volume_file))
 
-            volume0 = np.load(os.path.join(self.volume_path, volume_file))
             if self.animal == ORIGINAL_ATLAS:
                 volume = np.rot90(volume, axes=(0, 1))
                 volume = np.flip(volume, axis=0)
 
-            volume = adjust_volume(volume0, allen_id)
-            #x_start, y_start, z_start = self.get_start_positions(volume, com0)
-
-            if self.affine:
-                com = affine_transform_point(com0, transformation_matrix)
-                origin = affine_transform_point(origin0, transformation_matrix)
-                #x_start, y_start, z_start = affine_transform_point((x_start, y_start, z_start), transformation_matrix)
-            else:
-                com = com0
-                origin = origin0
-
-            if structure in ['TG_L', 'TG_R']:
-                #origin = [1048, 157, 191]
-                #origin =(1006.4404940906367, 66.58640497850439, 201.97515475575017)
-                volume = volume0.astype(np.uint32)
-                upper = 100
-                volume[(volume > 0)] = allen_id
-                #volume[(volume != allen_id)] = 0
-                #volume = volume.astype(np.uint32)
-
-                com = com0
-                origin = origin0
-                print(f"Using {structure} origin {origin} com {com}")
-
-            #x_start, y_start, z_start = self.get_start_positions(volume, com)
+            volume = adjust_volume(volume, allen_id)
 
             # Using the origin makes the structures appear a bit too far up
             x_start = int(round(origin[0]))
@@ -442,7 +402,7 @@ class BrainStructureManager:
             z_end = z_start + volume.shape[2]
 
             if self.debug:
-                print(f"{structure} com={np.round(com)}", end = " ")
+                print(f"{structure} origin={np.round(origin)}", end = " ")
                 nids, ncounts = np.unique(volume, return_counts=True)
                 print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end} ids={nids}, counts={ncounts} allen IDs={allen_id} dtype={volume.dtype}")
                 if x_end > atlas_volume.shape[0]:
@@ -456,13 +416,7 @@ class BrainStructureManager:
                     atlas_volume[x_start:x_end, y_start:y_end, z_start:z_end] += volume
                 except ValueError as ve:
                     print(f"Error adding {structure} to atlas: {ve}")
-                    print(f"{structure} com={np.round(com)}", end = " ") 
                     print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end}")
-                    #sys.exit()
-
-
-        if self.affine:        
-            print(f"Transformation matrix\n {transformation_matrix}")
 
         print(f"Atlas volume shape={atlas_volume.shape} dtype={atlas_volume.dtype}")
         return atlas_volume, ids
@@ -642,7 +596,6 @@ class BrainStructureManager:
             origin_allen = origin_um / self.um
             volume = np.swapaxes(volume, 0, 2) # put into x,y,z order
             volume_allen = zoom(volume, scale_allen)
-            bbox = self.create_bounding_box_from_volume(origin_allen, volume_allen)
             
 
             if debug:
@@ -654,32 +607,6 @@ class BrainStructureManager:
                 brainMerger.coms[structure] = com_um
                 brainMerger.origins[structure] = origin_allen
                 brainMerger.volumes[structure] = volume_allen
-                brainMerger.bboxes[structure] = bbox
-
-    @staticmethod
-    def create_bounding_box_from_volume(origin, volume):
-        """
-        Creates a 3D bounding box (min_coords, max_coords) from a 3D origin and a NumPy volume.
-
-        Args:
-            origin (tuple or list or np.ndarray): A 3-element sequence (x, y, z) representing the origin.
-            volume (np.ndarray): A 3D NumPy array representing the volume.
-
-        Returns:
-            tuple: A tuple containing two np.ndarray: (min_coords, max_coords)
-                where min_coords = [x_min, y_min, z_min] and max_coords = [x_max, y_max, z_max].
-        """
-        origin = np.array(origin)
-        x0, y0, z0 = origin
-        
-        # Get the dimensions of the volume (depth, height, width)
-        # Assuming volume.shape is (z, y, x)
-        z_dim, y_dim, x_dim = volume.shape
-
-        # Calculate the maximum coordinates
-        x1, y1, z1 = origin + np.array([x_dim, y_dim, z_dim])
-
-        return np.array([x0, y0, z0, x1, y1, z1])
 
 
     @staticmethod

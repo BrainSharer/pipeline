@@ -102,8 +102,8 @@ class AtlasManager():
         # Note, for DK78, The C1 source is C1.v1
         
         
-        #brains = ['MD585']
-        for animal in self.foundation_brains:
+        brains = []
+        for animal in brains:
             #transform = load_transformation(animal, self.um, self.um)
             transform = None
             structure_coms = list_coms(animal)
@@ -114,7 +114,7 @@ class AtlasManager():
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
         
-        other_brains = ['DK78', 'DK79']
+        other_brains = []
         other_structures = ['TG_L', 'TG_R']
 
         for animal in other_brains:

@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import ants
+from anyio import value
 import numpy as np
 from skimage import io
 import dask.array as da
@@ -23,7 +24,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import affine_transform_point, average_images, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, average_images, compute_affine_transformation, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -726,65 +727,104 @@ class VolumeRegistration:
     def transform_subvolumes(self):
         fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
         print(f"Read fixed image: {self.fixed_volume_path}")
-        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
-        print(f"Read moving image: {self.moving_volume_path}")
         atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
+        com_path = os.path.join(atlas_path, self.moving, 'com')
         origin_path = os.path.join(atlas_path, self.moving, 'origin')
         masks_path = os.path.join(atlas_path, self.moving, 'structure')
+        registered_mask_path = os.path.join(self.atlas_path, self.moving, 'registered_mask')
+        os.makedirs(registered_mask_path, exist_ok=True)
+        registered_origin_path = os.path.join(self.atlas_path, self.moving, 'registered_origin')
+        os.makedirs(registered_origin_path, exist_ok=True)
         origins = sorted([f for f in os.listdir(origin_path)])
+        coms = sorted([f for f in os.listdir(com_path)])
         masks = sorted([f for f in os.listdir(masks_path)])
         if not os.path.exists(origin_path):
             print(f'{origin_path} does not exist, exiting.')
             sys.exit()
-        if not os.path.exists(self.transform_filepath):
-            print(f'{self.transform_filepath} does not exist, exiting.')
-            sys.exit()
-        print(f'Using transform from {self.transform_filepath}')
-        affine_transform = sitk.ReadTransform(self.transform_filepath)
-        registered_masks = []
-        for origin, mask in tqdm(zip(origins, masks), total=len(masks), desc='Registering masks'):
-            mask_path = os.path.join(masks_path, mask)
-            origin_path = os.path.join(origin_path, origin)
-            if not os.path.exists(mask_path):
-                print(f'{mask_path} does not exist, skipping.')
+        if os.path.exists(self.transform_filepath):
+            print(f'Using transform from {self.transform_filepath}')
+            affine_transform = sitk.ReadTransform(self.transform_filepath)
+        else:
+            print('Creating affine transform from coms in the database')
+            threeD_transform = self.create_affine_transformation()
+            affine_transform = self.convert_transformation(threeD_transform)
+        for com, origin, mask in tqdm(zip(coms, origins, masks), total=len(masks), desc='Registering masks'):
+            if origin.split('.')[0] != mask.split('.')[0]:
+                print(f'Origin {origin} and mask {mask} do not match, skipping.')
                 continue
-            if not os.path.exists(origin_path):
+            structure = mask.split('.')[0]
+            
+            com_filepath = os.path.join(com_path, com)
+            mask_filepath = os.path.join(masks_path, mask)
+            origin_filepath = os.path.join(origin_path, origin)
+            if not os.path.exists(mask_filepath):
+                print(f'{mask_filepath} does not exist, skipping.')
+                continue
+            if not os.path.exists(origin_filepath):
                 print(f'{origin_path} does not exist, skipping.')
                 continue
-            origin = np.loadtxt(origin_path)
-            mask_np = np.load(mask_path)
-            mask_np[mask_np > 0] = 255
-            mask_np = mask_np.astype(np.uint8)
-            mask_np = np.swapaxes(mask_np, 0, 2)
+            com = np.loadtxt(com_filepath) / self.xy_um
+            origin = np.loadtxt(origin_filepath)
+            mask_np = np.load(mask_filepath)
+            #mask_np[mask_np > 0] = 255
+            #mask_np = mask_np.astype(np.uint8)
+            #mask_np = np.swapaxes(mask_np, 0, 2)
             # Create SimpleITK image for mask
             mask_sitk = sitk.GetImageFromArray(mask_np)
-            mask_sitk.SetOrigin(origin) # very important!!!!
+            #mask_sitk.SetOrigin(origin) # very important!!!! if placing within a bigger fixed image
+            mask_sitk.SetOrigin((0,0,0))
 
             # Apply affine transform
-            resampled_mask = sitk.Resample(
+            registered_mask = sitk.Resample(
                 mask_sitk,
                 fixed_image,
                 affine_transform,
                 sitk.sitkNearestNeighbor,   # Important for binary masks!
                 0.0,
-                sitk.sitkUInt8
+                sitk.sitkUInt32
             )
-            registered_masks.append(resampled_mask)        
 
-        combined_mask = sitk.Cast(sitk.Maximum(registered_masks[0], registered_masks[0]*0), sitk.sitkUInt8)
-        for m in registered_masks:
-            combined_mask = sitk.Maximum(combined_mask, m)
+            new_origin = affine_transform.TransformPoint(origin)
+            registered_mask_pathfile = os.path.join(registered_mask_path, f'{structure}.npy')
+            mask_np = sitk.GetArrayFromImage(registered_mask)
+            ids, counts = np.unique(mask_np, return_counts=True)
+            print(f'Structure: {structure}, unique IDs in registered mask: {ids}')
+            print(f'counts {ids}')
+            np.save(registered_mask_pathfile, sitk.GetArrayFromImage(registered_mask).astype(np.uint32))
 
-        # ----------------------------
-        # Overlay registered masks onto fixed volume
-        # ----------------------------
-        overlay = sitk.LabelOverlay(sitk.Cast(fixed_image, sitk.sitkUInt8), combined_mask)
-        output_overlay_path = os.path.join(self.atlas_path, self.moving, 'test_overlay.tif')
-        sitk.WriteImage(overlay, output_overlay_path)
-        print(f"Overlay saved to {output_overlay_path}")
+            registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
+            np.savetxt(registered_origin_pathfile, new_origin)
 
 
+    def convert_transformation(self, transformation):
 
+        if isinstance(transformation, np.ndarray):
+            matrix = transformation[0:3, 0:3].flatten()
+            # Extract translation (top-right 3x1)
+            translation = transformation[0:3, 3]
+            # Create SimpleITK affine transform
+            affine_transformation = sitk.AffineTransform(3)
+            affine_transformation.SetMatrix(matrix)
+            affine_transformation.SetTranslation(translation)
+        else:
+            raise ValueError("Transformation must be a numpy ndarray.")
+
+        return affine_transformation
+
+    def create_affine_transformation(self):
+
+        moving_all = fetch_coms(self.moving, scaling_factor=self.xy_um)
+        fixed_all = list_coms(self.fixed, scaling_factor=self.xy_um)
+
+        bad_keys = ('RtTg', 'AP')
+
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+        moving_src = np.array([moving_all[s] for s in good_keys])
+        fixed_src = np.array([fixed_all[s] for s in good_keys])
+
+        threeD_transform = compute_affine_transformation(moving_src, fixed_src)
+        return threeD_transform
 
 
     def register_volume_elastix(self):

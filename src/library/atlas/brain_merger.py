@@ -31,10 +31,8 @@ class BrainMerger():
         self.coms = {}
         self.origins = {}
         self.volumes = {}
-        self.bboxes = {}
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
         
-        self.bbox_path = os.path.join(self.data_path, 'bbox')
         self.com_path = os.path.join(self.data_path, 'com')
         self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
@@ -48,7 +46,6 @@ class BrainMerger():
         self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
-        os.makedirs(self.bbox_path, exist_ok=True)
         os.makedirs(self.com_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
@@ -83,14 +80,12 @@ class BrainMerger():
     def save_foundation_brain_coms_meshes_origins_volumes(self):
         """COMs and saved as um, volumes and origins as 10um, mesh origin is allen origin - mean"""
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
-        desc = f"Saving {self.animal} bboxes/coms/meshes/origins/volumes"
+        desc = f"Saving {self.animal} coms/meshes/origins/volumes"
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             origin_allen = self.origins[structure]
             com_um = self.coms[structure]
-            bbox = self.bboxes[structure]
 
-            bbox_filepath = os.path.join(self.bbox_path, f'{structure}.txt')
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
@@ -98,7 +93,6 @@ class BrainMerger():
             allen_id = self.brain_structure_manager.get_allen_id(structure)
             adjusted_volume = adjust_volume(volume, allen_id)
 
-            np.savetxt(bbox_filepath, bbox)
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
             np.save(volume_filepath, adjusted_volume)
@@ -125,7 +119,7 @@ class BrainMerger():
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            allen_id = self.get_allen_id(structure)
+            allen_id = self.brain_structure_manager.get_allen_id(structure)
             adjusted_volume = adjust_volume(volume, allen_id)
 
             np.savetxt(com_filepath, com_um)
