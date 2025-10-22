@@ -24,7 +24,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import affine_transform_point, average_images, compute_affine_transformation, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, average_images, compute_affine_transformation, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -727,8 +727,8 @@ class VolumeRegistration:
     def transform_subvolumes(self):
         #fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
         #print(f"Read fixed image: {self.fixed_volume_path}")
+        brain_manager = BrainStructureManager(self.moving)
         atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
-        com_path = os.path.join(atlas_path, self.moving, 'com')
         origin_path = os.path.join(atlas_path, self.moving, 'origin')
         masks_path = os.path.join(atlas_path, self.moving, 'structure')
         registered_mask_path = os.path.join(self.atlas_path, self.moving, 'registered_mask')
@@ -736,7 +736,6 @@ class VolumeRegistration:
         registered_origin_path = os.path.join(self.atlas_path, self.moving, 'registered_origin')
         os.makedirs(registered_origin_path, exist_ok=True)
         origins = sorted([f for f in os.listdir(origin_path)])
-        coms = sorted([f for f in os.listdir(com_path)])
         masks = sorted([f for f in os.listdir(masks_path)])
         if not os.path.exists(origin_path):
             print(f'{origin_path} does not exist, exiting.')
@@ -748,16 +747,20 @@ class VolumeRegistration:
             print('Creating affine transform from coms in the database')
             threeD_transform = self.create_affine_transformation()
             affine_transform = self.convert_transformation(threeD_transform)
-        for com, origin, mask in tqdm(zip(coms, origins, masks), total=len(masks), desc='Registering masks'):
+
+        notranslation_affine_transform = sitk.AffineTransform(3)
+        notranslation_affine_transform.SetMatrix(affine_transform.GetMatrix())
+        notranslation_affine_transform.SetTranslation((0.0, 0.0, 0.0))
+            
+        for origin, mask in tqdm(zip(origins, masks), total=len(masks), desc='Registering masks', disable=self.debug):
             if origin.split('.')[0] != mask.split('.')[0]:
                 print(f'Origin {origin} and mask {mask} do not match, skipping.')
                 continue
             structure = mask.split('.')[0]
             if self.debug:
-                if structure != 'SC':
+                if structure not in ['SC']:
                     continue
             
-            com_filepath = os.path.join(com_path, com)
             mask_filepath = os.path.join(masks_path, mask)
             origin_filepath = os.path.join(origin_path, origin)
             if not os.path.exists(mask_filepath):
@@ -766,42 +769,38 @@ class VolumeRegistration:
             if not os.path.exists(origin_filepath):
                 print(f'{origin_path} does not exist, skipping.')
                 continue
-            com = np.loadtxt(com_filepath) / self.xy_um
             origin = np.loadtxt(origin_filepath)
             mask_np = np.load(mask_filepath)
-            mask_np[mask_np > 0] = 255
-            mask_np = mask_np.astype(np.uint8)
-            #mask_np = np.swapaxes(mask_np, 0, 2)
-            if self.debug:
-                print(f'Structure: {structure}, COM (scaled): {com}, Origin: {origin}, Mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
-                ids, counts = np.unique(mask_np, return_counts=True)
-                print(f'Unique IDs in mask before registration: {len(ids)}')
+            allen_id = brain_manager.get_allen_id(structure)
+            #mask_np = np.swapaxes(mask_np, 0, 2)  # Swap axes to match z,y,x
+            mask_np = adjust_volume(mask_np, allen_id)
             # Create SimpleITK image for mask
             mask_sitk = sitk.GetImageFromArray(mask_np)
-
-            #mask_sitk.SetOrigin(origin) # very important!!!! if placing within a bigger fixed image
-            mask_sitk.SetOrigin((0,0,0))
-
+            #mask_sitk.SetOrigin(origin) # very important!!!!
             # Apply affine transform
             registered_mask = sitk.Resample(
                 mask_sitk,
                 mask_sitk,
-                affine_transform,
+                notranslation_affine_transform,
                 sitk.sitkNearestNeighbor,   # Important for binary masks!
                 0.0,
-                sitk.sitkUInt8
+                sitk.sitkUInt32
             )
 
             new_origin = affine_transform.TransformPoint(origin)
             registered_mask_pathfile = os.path.join(registered_mask_path, f'{structure}.npy')
             mask_np = sitk.GetArrayFromImage(registered_mask)
+            #mask_np = np.swapaxes(mask_np, 0, 2)  # Swap axes to match original orientation
+            ids = np.unique(mask_np, return_counts=False)
+
             if self.debug:
                 print(f'Structure: {structure}, Registered mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
                 ids, counts = np.unique(mask_np, return_counts=True)
-                print(f'Structure: {structure}, unique IDs in registered mask: {ids}')
-                print(f'counts {counts}')
+                print(f'\toriginal origin: {origin} new origin: {new_origin}')
+                print(f'\tunique IDs in registered mask: {ids}')
+                print(f'\tcounts {counts}')
             else:
-                np.save(registered_mask_pathfile, sitk.GetArrayFromImage(registered_mask).astype(np.uint32))
+                np.save(registered_mask_pathfile, mask_np)
                 registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
                 np.savetxt(registered_origin_pathfile, new_origin)
 

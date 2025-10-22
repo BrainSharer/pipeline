@@ -384,13 +384,13 @@ class BrainStructureManager:
                 sys.exit()
 
             origin = np.loadtxt(os.path.join(self.registered_origin_path, origin_file))
-            volume = np.load(os.path.join(self.volume_path, volume_file))
+            volume = np.load(os.path.join(self.registered_mask_path, volume_file))
 
             if self.animal == ORIGINAL_ATLAS:
                 volume = np.rot90(volume, axes=(0, 1))
                 volume = np.flip(volume, axis=0)
 
-            volume = adjust_volume(volume, allen_id)
+            #volume = adjust_volume(volume, allen_id)
 
             # Using the origin makes the structures appear a bit too far up
             x_start = int(round(origin[0]))
