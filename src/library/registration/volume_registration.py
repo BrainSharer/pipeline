@@ -753,6 +753,9 @@ class VolumeRegistration:
                 print(f'Origin {origin} and mask {mask} do not match, skipping.')
                 continue
             structure = mask.split('.')[0]
+            if self.debug:
+                if structure != 'SC':
+                    continue
             
             com_filepath = os.path.join(com_path, com)
             mask_filepath = os.path.join(masks_path, mask)
@@ -769,6 +772,10 @@ class VolumeRegistration:
             #mask_np[mask_np > 0] = 255
             #mask_np = mask_np.astype(np.uint8)
             #mask_np = np.swapaxes(mask_np, 0, 2)
+            if self.debug:
+                print(f'Structure: {structure}, COM (scaled): {com}, Origin: {origin}, Mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
+                ids, counts = np.unique(mask_np, return_counts=True)
+                print(f'Unique IDs in mask before registration: {len(ids)}')
             # Create SimpleITK image for mask
             mask_sitk = sitk.GetImageFromArray(mask_np)
             #mask_sitk.SetOrigin(origin) # very important!!!! if placing within a bigger fixed image
@@ -787,13 +794,15 @@ class VolumeRegistration:
             new_origin = affine_transform.TransformPoint(origin)
             registered_mask_pathfile = os.path.join(registered_mask_path, f'{structure}.npy')
             mask_np = sitk.GetArrayFromImage(registered_mask)
-            ids, counts = np.unique(mask_np, return_counts=True)
-            print(f'Structure: {structure}, unique IDs in registered mask: {ids}')
-            print(f'counts {ids}')
-            np.save(registered_mask_pathfile, sitk.GetArrayFromImage(registered_mask).astype(np.uint32))
-
-            registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
-            np.savetxt(registered_origin_pathfile, new_origin)
+            if self.debug:
+                print(f'Structure: {structure}, Registered mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
+                ids, counts = np.unique(mask_np, return_counts=True)
+                print(f'Structure: {structure}, unique IDs in registered mask: {ids}')
+                print(f'counts {counts}')
+            else:
+                np.save(registered_mask_pathfile, sitk.GetArrayFromImage(registered_mask).astype(np.uint32))
+                registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
+                np.savetxt(registered_origin_pathfile, new_origin)
 
 
     def convert_transformation(self, transformation):
