@@ -725,8 +725,8 @@ class VolumeRegistration:
         return
     
     def transform_subvolumes(self):
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
-        print(f"Read fixed image: {self.fixed_volume_path}")
+        #fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        #print(f"Read fixed image: {self.fixed_volume_path}")
         atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
         com_path = os.path.join(atlas_path, self.moving, 'com')
         origin_path = os.path.join(atlas_path, self.moving, 'origin')
@@ -769,8 +769,8 @@ class VolumeRegistration:
             com = np.loadtxt(com_filepath) / self.xy_um
             origin = np.loadtxt(origin_filepath)
             mask_np = np.load(mask_filepath)
-            #mask_np[mask_np > 0] = 255
-            #mask_np = mask_np.astype(np.uint8)
+            mask_np[mask_np > 0] = 255
+            mask_np = mask_np.astype(np.uint8)
             #mask_np = np.swapaxes(mask_np, 0, 2)
             if self.debug:
                 print(f'Structure: {structure}, COM (scaled): {com}, Origin: {origin}, Mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
@@ -778,17 +778,18 @@ class VolumeRegistration:
                 print(f'Unique IDs in mask before registration: {len(ids)}')
             # Create SimpleITK image for mask
             mask_sitk = sitk.GetImageFromArray(mask_np)
+
             #mask_sitk.SetOrigin(origin) # very important!!!! if placing within a bigger fixed image
             mask_sitk.SetOrigin((0,0,0))
 
             # Apply affine transform
             registered_mask = sitk.Resample(
                 mask_sitk,
-                fixed_image,
+                mask_sitk,
                 affine_transform,
                 sitk.sitkNearestNeighbor,   # Important for binary masks!
                 0.0,
-                sitk.sitkUInt32
+                sitk.sitkUInt8
             )
 
             new_origin = affine_transform.TransformPoint(origin)
