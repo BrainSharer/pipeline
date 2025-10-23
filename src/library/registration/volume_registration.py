@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import ants
+#from anyio import value
 import numpy as np
 from skimage import io
 import dask.array as da
@@ -23,7 +24,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import affine_transform_point, average_images, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, average_images, compute_affine_transformation, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -572,6 +573,8 @@ class VolumeRegistration:
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
         z_resolution = self.sqlController.scan_run.zresolution / self.z_um
+        print(f'Using images from {self.thumbnail_aligned} to create volume at {self.moving_volume_path}')
+        print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
 
         change_z = z_resolution
         change_y = xy_resolution
@@ -579,6 +582,9 @@ class VolumeRegistration:
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+
+        if self.debug:
+            return
         with open(self.changes_path, 'w') as f:
             json.dump(changes, f)            
         
@@ -689,36 +695,145 @@ class VolumeRegistration:
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.01)
+        R.SetMetricSamplingPercentage(0.2)
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
-            learningRate=1, 
+            learningRate=1.0, 
             numberOfIterations=300, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
         R.SetOptimizerScalesFromPhysicalShift()
-        R.SetInitialTransform(initial_transform, inPlace=False)
         R.SetShrinkFactorsPerLevel([4, 2, 1])
         R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SetInitialTransform(initial_transform, inPlace=False)
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
         # Perform registration
-        transform = R.Execute(fixed_image, moving_image)
+        affine_transform = R.Execute(fixed_image, moving_image)
         print("Final metric value: ", R.GetMetricValue())
         print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
         # Resample moving image onto fixed image grid
-        resampled = sitk.Resample(moving_image, fixed_image, transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
-        sitk.WriteTransform(transform, self.transform_filepath)
+        sitk.WriteTransform(affine_transform, self.transform_filepath)
         print(f"Registration written to {self.transform_filepath}")
         return
+    
+    def transform_subvolumes(self):
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_volume_path}")
+        brain_manager = BrainStructureManager(self.moving)
+        atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
+        origin_path = os.path.join(atlas_path, self.moving, 'origin')
+        masks_path = os.path.join(atlas_path, self.moving, 'structure')
+        registered_mask_path = os.path.join(self.atlas_path, self.moving, 'registered_mask')
+        os.makedirs(registered_mask_path, exist_ok=True)
+        registered_origin_path = os.path.join(self.atlas_path, self.moving, 'registered_origin')
+        os.makedirs(registered_origin_path, exist_ok=True)
+        origins = sorted([f for f in os.listdir(origin_path)])
+        masks = sorted([f for f in os.listdir(masks_path)])
+        if not os.path.exists(origin_path):
+            print(f'{origin_path} does not exist, exiting.')
+            sys.exit()
+        if os.path.exists(self.transform_filepath):
+            print(f'Using transform from {self.transform_filepath}')
+            affine_transform = sitk.ReadTransform(self.transform_filepath)
+        else:
+            print('Creating affine transform from coms in the database')
+            threeD_transform = self.create_affine_transformation()
+            affine_transform = self.convert_transformation(threeD_transform)
 
+        notranslation_affine_transform = sitk.AffineTransform(3)
+        notranslation_affine_transform.SetMatrix(affine_transform.GetMatrix())
+        notranslation_affine_transform.SetTranslation((0.0, 0.0, 0.0))
+            
+        for origin, mask in tqdm(zip(origins, masks), total=len(masks), desc='Registering masks', disable=self.debug):
+            if origin.split('.')[0] != mask.split('.')[0]:
+                print(f'Origin {origin} and mask {mask} do not match, skipping.')
+                continue
+            structure = mask.split('.')[0]
+            if self.debug:
+                if structure not in ['SC']:
+                    continue
+            
+            mask_filepath = os.path.join(masks_path, mask)
+            origin_filepath = os.path.join(origin_path, origin)
+            if not os.path.exists(mask_filepath):
+                print(f'{mask_filepath} does not exist, skipping.')
+                continue
+            if not os.path.exists(origin_filepath):
+                print(f'{origin_path} does not exist, skipping.')
+                continue
+            origin = np.loadtxt(origin_filepath)
+            mask_np = np.load(mask_filepath)
+            allen_id = brain_manager.get_allen_id(structure)
+            #mask_np = np.swapaxes(mask_np, 0, 2)  # Swap axes to match z,y,x
+            mask_np = adjust_volume(mask_np, allen_id)
+            # Create SimpleITK image for mask
+            mask_sitk = sitk.GetImageFromArray(mask_np)
+            #mask_sitk.SetOrigin(origin) # very important!!!!
+            # Apply affine transform
+            registered_mask = sitk.Resample(
+                mask_sitk,
+                fixed_image,
+                notranslation_affine_transform,
+                sitk.sitkNearestNeighbor,   # Important for binary masks!
+                0.0,
+                sitk.sitkUInt32
+            )
+
+            new_origin = affine_transform.TransformPoint(origin)
+            registered_mask_pathfile = os.path.join(registered_mask_path, f'{structure}.npy')
+            mask_np = sitk.GetArrayFromImage(registered_mask)
+            #mask_np = np.swapaxes(mask_np, 0, 2)  # Swap axes to match original orientation
+            ids = np.unique(mask_np, return_counts=False)
+
+            if self.debug:
+                print(f'Structure: {structure}, Registered mask shape: {mask_np.shape}, dtype: {mask_np.dtype}')
+                ids, counts = np.unique(mask_np, return_counts=True)
+                print(f'\toriginal origin: {origin} new origin: {new_origin}')
+                print(f'\tunique IDs in registered mask: {ids}')
+                print(f'\tcounts {counts}')
+            else:
+                np.save(registered_mask_pathfile, mask_np)
+                registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
+                np.savetxt(registered_origin_pathfile, new_origin)
+
+
+    def convert_transformation(self, transformation):
+
+        if isinstance(transformation, np.ndarray):
+            matrix = transformation[0:3, 0:3].flatten()
+            # Extract translation (top-right 3x1)
+            translation = transformation[0:3, 3]
+            # Create SimpleITK affine transform
+            affine_transformation = sitk.AffineTransform(3)
+            affine_transformation.SetMatrix(matrix)
+            affine_transformation.SetTranslation(translation)
+        else:
+            raise ValueError("Transformation must be a numpy ndarray.")
+
+        return affine_transformation
+
+    def create_affine_transformation(self):
+
+        moving_all = fetch_coms(self.moving, scaling_factor=self.xy_um)
+        fixed_all = list_coms(self.fixed, scaling_factor=self.xy_um)
+
+        bad_keys = ('RtTg', 'AP')
+
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+        moving_src = np.array([moving_all[s] for s in good_keys])
+        fixed_src = np.array([fixed_all[s] for s in good_keys])
+
+        threeD_transform = compute_affine_transformation(moving_src, fixed_src)
+        return threeD_transform
 
 
     def register_volume_elastix(self):

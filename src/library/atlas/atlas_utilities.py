@@ -548,7 +548,7 @@ def center_images_to_largest_volume(images):
         try:
             transform = sitk.CenteredTransformInitializer(reference_image, img,
                                                         sitk.Euler3DTransform(), 
-                                                        sitk.CenteredTransformInitializerFilter.MOMENTS)
+                                                        sitk.CenteredTransformInitializerFilter.GEOMETRY)
         except Exception as e:
             print(f"Error initializing transform for image {i}: {e}")
             exit(1)
@@ -1262,3 +1262,141 @@ def align_masks_numpy(masks):
         aligned.append(res)
     return aligned
 
+
+def numpy_to_sitk(arr):
+    """Convert numpy 3D array to SimpleITK image."""
+    img = sitk.GetImageFromArray(arr.astype(np.float32))
+    img.SetSpacing((1.0, 1.0, 1.0))
+    return img
+
+def sitk_to_numpy(img):
+    """Convert SimpleITK image back to numpy."""
+    return sitk.GetArrayFromImage(img)
+
+def rigid_register_elastix(fixed, moving):
+    """Perform rigid registration using mutual information."""
+    elastix = sitk.ElastixImageFilter()
+    elastix.SetFixedImage(fixed)
+    elastix.SetMovingImage(moving)
+
+    # Rigid registration parameters
+    params = sitk.GetDefaultParameterMap("rigid")
+    params["Metric"] = ["AdvancedMattesMutualInformation"]
+    params["MaximumNumberOfIterations"] = ["128"]
+    params["AutomaticTransformInitialization"] = ["true"]
+    params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+
+    params["AutomaticScalesEstimation"] = ["true"]
+    params["NumberOfSamplesForExactGradient"] = ["10000"]
+    elastix.SetParameterMap(params)
+    elastix.LogToConsoleOff()
+    elastix.Execute()
+    result = elastix.GetResultImage()
+    transform = elastix.GetTransformParameterMap()
+    return result, transform
+
+def apply_transform(moving, transform):
+    """Apply an existing transform to an image."""
+    transformix = sitk.TransformixImageFilter()
+    transformix.SetMovingImage(moving)
+    transformix.SetTransformParameterMap(transform)
+    transformix.LogToConsoleOff()
+    transformix.Execute()
+    return transformix.GetResultImage()
+
+def groupwise_registration_elastix(sitk_vols, max_iterations=5):
+    """
+    Perform groupwise registration to maximize overlap of binary volumes.
+    None of the arrays is the reference.
+    """
+    
+    # Initialize with average image
+    avg_img = sum(sitk_vols) / len(sitk_vols)
+
+    for iteration in range(max_iterations):
+        registered_imgs = []
+        transforms = []
+
+        for img in sitk_vols:
+            result, transform = rigid_register_elastix(avg_img, img)
+            registered_imgs.append(result)
+            transforms.append(transform)
+        
+        # Compute new average (consensus)
+        avg_img = sum(registered_imgs) / len(registered_imgs)
+
+        print(f"Iteration {iteration+1}/{max_iterations} complete")
+
+    # Convert results to numpy
+    registered_arrays = [sitk_to_numpy(img) for img in registered_imgs]
+    avg_array = sitk_to_numpy(avg_img)
+
+    return registered_arrays, avg_array, transforms
+
+
+def rigid_register(fixed, moving):
+    """Return the rigid transform aligning moving to fixed."""
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetMetricAsMattesMutualInformation(32)
+    registration_method.SetOptimizerAsGradientDescent(
+        learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10
+    )
+    registration_method.SetInterpolator(sitk.sitkLinear)
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+    registration_method.SetInitialTransform(sitk.CenteredTransformInitializer(
+        fixed, moving, sitk.Euler3DTransform(), sitk.CenteredTransformInitializerFilter.GEOMETRY
+    ))
+    registration_method.SetMetricSamplingPercentage(0.2, sitk.sitkWallClock)
+    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+    registration_method.SetShrinkFactorsPerLevel([4,2,1])
+    registration_method.SetSmoothingSigmasPerLevel([2,1,0])
+    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    transform = registration_method.Execute(fixed, moving)
+    return transform
+
+def average_transforms(transforms):
+    """Average multiple 3D Euler transforms."""
+    tx, ty, tz, rx, ry, rz = [], [], [], [], [], []
+    for t in transforms:
+        p = t.GetParameters()
+        rx.append(p[0]); ry.append(p[1]); rz.append(p[2])
+        tx.append(p[3]); ty.append(p[4]); tz.append(p[5])
+    avg = sitk.Euler3DTransform()
+    avg.SetParameters([
+        np.mean(rx), np.mean(ry), np.mean(rz),
+        np.mean(tx), np.mean(ty), np.mean(tz)
+    ])
+    return avg
+
+def groupwise_registration(arrays, iterations=3):
+    """Align multiple 3D binary arrays without a fixed reference."""
+    sitk_images = [numpy_to_sitk(a) for a in arrays]
+    transforms = [sitk.Euler3DTransform() for _ in sitk_images]
+
+    for it in range(iterations):
+        print(f"Iteration {it+1}/{iterations}")
+
+        # Compute the current average image in the "group space"
+        transformed_images = [sitk.Resample(img, sitk_images[0], t, sitk.sitkLinear, 0.0) 
+                              for img, t in zip(sitk_images, transforms)]
+        avg_img = sum(transformed_images) / len(transformed_images)
+
+        # Register each image to this average (not a fixed reference)
+        new_transforms = []
+        for img, t_init in zip(sitk_images, transforms):
+            transform = rigid_register(avg_img, img)
+            # Combine with previous transform
+            new_t = sitk.Euler3DTransform()
+            new_t.SetParameters(transform.GetParameters())
+            new_transforms.append(new_t)
+
+        # Average all transforms to get group consensus
+        consensus = average_transforms(new_transforms)
+        transforms = [sitk.Euler3DTransform(consensus) for _ in new_transforms]
+
+    # Apply final transforms and make averaged overlap image
+    final_images = [sitk.Resample(img, sitk_images[0], t, sitk.sitkLinear, 0.0) 
+                    for img, t in zip(sitk_images, transforms)]
+    avg_final = sum(final_images) / len(final_images)
+
+    return sitk_to_numpy(avg_final), [t.GetParameters() for t in transforms]

@@ -106,7 +106,12 @@ class Pipeline(
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.iteration = None
-        self.mask_image = self.sqlController.scan_run.mask
+        try:
+            self.mask_image = self.sqlController.scan_run.mask
+        except Exception as e:
+            print(f"Error occurred while fetching mask image: {e}")
+            print(f"Make sure there is a valid scan run for animal: {self.animal}")
+            exit(1)
         self.maskpath = self.fileLocationManager.get_thumbnail_masked(channel=1)
         self.multiple_slides = []
         self.channel = channel
@@ -193,18 +198,15 @@ class Pipeline(
         if self.channel == 1 and self.downsample:
             self.extract_slide_meta_data_and_insert_to_database() #ALSO CREATES SLIDE PREVIEW IMAGE
             self.correct_multiples()
-        if self.channel == 1:
-            self.extract_tiffs_from_czi()
-        # IF channel is greater than 1, we assume channel 1 has already been extracted and extract the remaining channels
-        if self.channel > 1:
-            channels = self.sqlController.scan_run.channels_per_scene
-            for i in range(2, channels+1):
-                self.channel = i
-                self.extract_tiffs_from_czi()
+
+        # extract tiffs per specified channel
+        self.extract_tiffs_from_czi()
 
         self.check_for_duplicates()
         
-        self.reorder_scenes()
+        # scenes only need to be set once in the beginning
+        if self.channel == 1 and self.downsample:
+            self.reorder_scenes()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()
             self.create_previews()
@@ -430,36 +432,36 @@ class Pipeline(
         print(f'Section count from DB={section_count}')
 
         if self.downsample:
-            directories = [
-                "thumbnail_original",
-                f"masks/C1/thumbnail_colored",
-                f"masks/C1/thumbnail_masked",
-                f"C{self.channel}/thumbnail",
-                "C1/normalized",
-                f"C{self.channel}/thumbnail_cleaned",
-                f"C{self.channel}/thumbnail_aligned",
-            ]
+            directories = {
+                "thumbnail_original": False,
+                f"masks/C1/thumbnail_colored": True,
+                f"masks/C1/thumbnail_masked": True,
+                f"C{self.channel}/thumbnail": True,
+                "C1/normalized": True,
+                f"C{self.channel}/thumbnail_cleaned": True,
+                f"C{self.channel}/thumbnail_aligned": True,
+            }
             ndirectory = f"C{self.channel}T"
         else:
-            directories = [
-                f"masks/C1/full_masked",
-                f"C{self.channel}/full",
-                f"C{self.channel}/full_cleaned",
-                f"C{self.channel}/full_aligned",
-            ]
+            directories = {
+                f"masks/C1/full_masked": True,
+                f"C{self.channel}/full": True,
+                f"C{self.channel}/full_cleaned": True,
+                f"C{self.channel}/full_aligned": True,
+            }
             ndirectory = f"C{self.channel}"
 
-        directories.append(self.fileLocationManager.get_czi() )
+        directories[self.fileLocationManager.get_czi()] = False
 
-        for directory in directories:
+        for directory, check in directories.items():
             dir = os.path.join(prep, directory)
             if os.path.exists(dir):
                 filecount = len(os.listdir(dir))
                 print(f'Dir={directory} exists with {filecount} files.', end=' ')
-                if 'czi' in directory:
-                    print()
-                else:
+                if check:
                     print(f'Sections count matches directory count: {section_count == filecount}')
+                else:
+                    print()
             else:
                 print(f'Non-existent dir={dir}')
         del dir, directory, directories

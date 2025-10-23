@@ -28,8 +28,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
-    parser.add_argument('--xy_um', help="xy resolution in um", required=True, default=16, type=float)
-    parser.add_argument('--z_um', help="z resolution in um", required=True, default=16, type=float)
+    parser.add_argument('--xy_um', help="xy resolution in um", required=False, default=10.0, type=float)
+    parser.add_argument('--z_um', help="z resolution in um", required=False, default=10.0, type=float)
     parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, default=1, type=int)
     parser.add_argument('--fixed', help='Enter the fixed animal|atlas', required=False, type=str)
     parser.add_argument('--orientation', help='Enter the orientation: sagittal|coronal', required=False, default='sagittal', type=str)
@@ -75,6 +75,7 @@ if __name__ == '__main__':
                         'volume2tif': volumeRegistration.volume2tif,
                         'downsample_stack': volumeRegistration.downsample_stack,
                         'points_within_polygons': volumeRegistration.points_within_polygons,
+                        'transform_subvolumes': volumeRegistration.transform_subvolumes
     }
 
     if task in function_mapping:

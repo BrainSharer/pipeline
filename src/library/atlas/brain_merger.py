@@ -38,6 +38,7 @@ class BrainMerger():
         self.mesh_path = os.path.join(self.data_path, 'mesh')
         self.volume_path = os.path.join(self.data_path, 'structure')
 
+
         self.volumes = {}
         self.coms = {}
         self.origins = {}
@@ -118,7 +119,7 @@ class BrainMerger():
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
-            allen_id = self.get_allen_id(structure)
+            allen_id = self.brain_structure_manager.get_allen_id(structure)
             adjusted_volume = adjust_volume(volume, allen_id)
 
             np.savetxt(com_filepath, com_um)

@@ -29,17 +29,18 @@ class ImageCleaner:
     """
 
     def set_max_width_and_height(self):
-        width = self.sqlController.scan_run.width
-        height = self.sqlController.scan_run.height
-        print(f'Width and height before update width={width} height={height}')
-        
-        inputpath = self.fileLocationManager.get_thumbnail(channel=1)
-        _, _, max_width, max_height = test_dir(self.animal, inputpath, self.section_count, downsample=True, same_size=False)
+        current_width = self.sqlController.scan_run.width
+        current_height = self.sqlController.scan_run.height
 
-        self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height, self.scaling_factor)
-        width = self.sqlController.scan_run.width
-        height = self.sqlController.scan_run.height
-        print(f'Width and height after update width={width} height={height}')
+        if current_width == 0 or current_height == 0:
+            inputpath = self.fileLocationManager.get_thumbnail(channel=1)
+            _, _, max_width, max_height = test_dir(self.animal, inputpath, self.section_count, downsample=True, same_size=False)
+            self.sqlController.update_width_height(self.sqlController.scan_run.id, max_width, max_height, self.scaling_factor)
+            width = self.sqlController.scan_run.width
+            height = self.sqlController.scan_run.height
+            print(f'Width and height after update width={width} height={height}')
+        else:
+            print(f'Width and height already set width={current_width} height={current_height}')
 
 
     def create_cleaned_images(self):

@@ -204,7 +204,7 @@ class ElastixManager():
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
-        rigid_params = create_rigid_parameters(elastixImageFilter, debug=self.debug, iteration=self.iteration)
+        rigid_params = create_rigid_parameters(elastixImageFilter)
         elastixImageFilter.SetParameterMap(rigid_params)
 
         if self.iteration == REALIGNED:
@@ -236,6 +236,10 @@ class ElastixManager():
         #elastixImageFilter.SetParameter("NumberOfSpatialSamples", [str(n_samples)])
         #param_map["ImageSampler"] = ["RandomCoordinate"]  # random sampling is more robust when tissue missing
 
+        if self.debug:
+            elastixImageFilter.SetParameter("MaximumNumberOfIterations",  ["500"])
+        else:
+            elastixImageFilter.SetParameter("MaximumNumberOfIterations",  ["1500"])
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
