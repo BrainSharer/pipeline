@@ -725,8 +725,8 @@ class VolumeRegistration:
         return
     
     def transform_subvolumes(self):
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
-        print(f"Read fixed image: {self.fixed_volume_path}")
+        #fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        #print(f"Read fixed image: {self.fixed_volume_path}")
         brain_manager = BrainStructureManager(self.moving)
         atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
         origin_path = os.path.join(atlas_path, self.moving, 'origin')
@@ -776,8 +776,10 @@ class VolumeRegistration:
             mask_np = adjust_volume(mask_np, allen_id)
             # Create SimpleITK image for mask
             mask_sitk = sitk.GetImageFromArray(mask_np)
+            output_size, output_origin, orig_spacing = self.create_fixed_output(mask_sitk, notranslation_affine_transform)
             #mask_sitk.SetOrigin(origin) # very important!!!!
             # Apply affine transform
+            """
             registered_mask = sitk.Resample(
                 mask_sitk,
                 fixed_image,
@@ -786,6 +788,20 @@ class VolumeRegistration:
                 0.0,
                 sitk.sitkUInt32
             )
+            """
+
+            # Resample the mask with the new, larger grid
+            registered_mask = sitk.Resample(
+                mask_sitk,
+                output_size,
+                notranslation_affine_transform,
+                sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
+                output_origin,
+                orig_spacing,
+                mask_sitk.GetDirection(),
+                0.0 # Default pixel value is 0
+            )
+
 
             new_origin = affine_transform.TransformPoint(origin)
             registered_mask_pathfile = os.path.join(registered_mask_path, f'{structure}.npy')
@@ -803,6 +819,39 @@ class VolumeRegistration:
                 np.save(registered_mask_pathfile, mask_np)
                 registered_origin_pathfile = os.path.join(registered_origin_path, f'{structure}.txt')
                 np.savetxt(registered_origin_pathfile, new_origin)
+
+
+    @staticmethod
+    def create_fixed_output(mask_image, transform):
+        # Get original image geometry
+        orig_size = mask_image.GetSize()
+        orig_spacing = mask_image.GetSpacing()
+        orig_origin = mask_image.GetOrigin()
+
+        # Find the bounding box of the transformed image
+        # Get the corners of the image in physical space
+        corners = [
+            orig_origin,
+            mask_image.TransformIndexToPhysicalPoint([orig_size[0] - 1, 0, 0]),
+            mask_image.TransformIndexToPhysicalPoint([0, orig_size[1] - 1, 0]),
+            mask_image.TransformIndexToPhysicalPoint([0, 0, orig_size[2] - 1]),
+            mask_image.TransformIndexToPhysicalPoint([orig_size[0] - 1, orig_size[1] - 1, 0]),
+            mask_image.TransformIndexToPhysicalPoint([orig_size[0] - 1, 0, orig_size[2] - 1]),
+            mask_image.TransformIndexToPhysicalPoint([0, orig_size[1] - 1, orig_size[2] - 1]),
+            mask_image.TransformIndexToPhysicalPoint([orig_size[0] - 1, orig_size[1] - 1, orig_size[2] - 1])
+        ]
+
+        # Transform the corners to find the new bounds
+        transformed_corners = [transform.TransformPoint(corner) for corner in corners]
+        transformed_min_coords = [min(c[i] for c in transformed_corners) for i in range(3)]
+        transformed_max_coords = [max(c[i] for c in transformed_corners) for i in range(3)]
+        # Define the new output image geometry
+        output_origin = transformed_min_coords
+        output_size = [
+            int(round((transformed_max_coords[i] - transformed_min_coords[i]) / orig_spacing[i]))
+            for i in range(3)
+        ]
+        return output_size, output_origin, orig_spacing
 
 
     def convert_transformation(self, transformation):
