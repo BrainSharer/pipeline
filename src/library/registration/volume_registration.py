@@ -725,8 +725,8 @@ class VolumeRegistration:
         return
     
     def transform_subvolumes(self):
-        #fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
-        #print(f"Read fixed image: {self.fixed_volume_path}")
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_volume_path}")
         brain_manager = BrainStructureManager(self.moving)
         atlas_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
         origin_path = os.path.join(atlas_path, self.moving, 'origin')
@@ -780,7 +780,7 @@ class VolumeRegistration:
             # Apply affine transform
             registered_mask = sitk.Resample(
                 mask_sitk,
-                mask_sitk,
+                fixed_image,
                 notranslation_affine_transform,
                 sitk.sitkNearestNeighbor,   # Important for binary masks!
                 0.0,
