@@ -94,18 +94,18 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
             return np.array([scan_run.resolution, scan_run.resolution, scan_run.zresolution])
 
      
-    def update_row(self, model, row, update_dict: dict)-> None:
+    def update_row(self, model, id, update_dict: dict)-> None:
         """
         Update the table with the given ID using the provided update dictionary.
 
         Args:
+            model (Base): The SQLAlchemy model class representing the table to update.
             id (int): The ID of the scan run to update.
             update_dict (dict): A dictionary containing the fields to update and their new values.
 
         Returns:
             None
         """
-        id = row.id
 
         try:
             self.session.query(model).filter(

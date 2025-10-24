@@ -204,8 +204,11 @@ class Pipeline(
 
         self.check_for_duplicates()
         
-        # scenes only need to be set once in the beginning
-        if self.channel == 1 and self.downsample:
+        """scenes only need to be set once in the beginning, but only once.
+        If the channel is 1 and downsample is True, reorder scenes. But if it is run
+        again, it will overwrite the scene ordering, so we only do this once.
+        """
+        if self.channel == 1 and self.downsample and self.sqlController.scan_run.converted_status is None:
             self.reorder_scenes()
         if self.channel == 1 and self.downsample:
             self.create_web_friendly_image()

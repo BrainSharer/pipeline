@@ -9,6 +9,8 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import asyncio
+
+from library.database_model.scan_run import ScanRun
 try:
     import aiofiles
 except ImportError:
@@ -431,7 +433,12 @@ class MetaUtilities:
                 if self.debug:
                     print(f"DEBUG: Scene {scene.scene_number} - File Name: {scene.file_name}")
 
+
         self.session.commit()
+
+        update_dict = {'converted_status': 'Converted'}
+        print('Conversion status set to Converted in the scan run table.')
+        self.sqlController.update_row(ScanRun, self.sqlController.scan_run.id, update_dict)
 
 
     async def calculate_all_hashes_async(self, files, checksum_files, max_concurrent):
