@@ -284,7 +284,7 @@ def mask_to_mesh(mask: np.ndarray, origin: tuple, ply_filename: str, color=(255,
     """
     # Ensure binary
     spacing = (1.0, 1.0, 1.0)  # Set voxel spacing if needed
-    mask = (mask > 0).astype(np.uint32)
+    mask = (mask > 0).astype(np.uint8)
 
     # Convert numpy array to VTK image
     depth_array = numpy_support.numpy_to_vtk(

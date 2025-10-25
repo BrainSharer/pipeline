@@ -12,10 +12,9 @@ from scipy.ndimage import center_of_mass
 
 from tqdm import tqdm
 
-from library.atlas.atlas_utilities import adjust_volume, average_images
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.image_manipulation.filelocation_manager import data_path
-from library.utilities.atlas import generate_random_rgb_color, mask_to_mesh, number_to_rgb
+from library.utilities.atlas import mask_to_mesh, number_to_rgb
 from library.utilities.atlas import singular_structures
 
 
@@ -58,20 +57,6 @@ class BrainMerger():
         xl, yl, zl = size_difference - np.array([xr, yr, zr])
         return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
 
-    def merge_volumes(self, structure, volumes):
-
-        lvolumes = len(volumes)
-        if lvolumes == 0:
-            print(f'{structure} has no volumes to merge')
-            return None
-            #return volumes[0]
-        elif lvolumes == 1:
-            return volumes[0]
-        elif lvolumes > 1:
-            return average_images(volumes)
-        else:
-            print(f'{structure} has no volumes to merge')
-            return None
 
     @staticmethod
     def get_mean_coordinates(xyz):
@@ -81,6 +66,10 @@ class BrainMerger():
         """COMs and saved as um, volumes and origins as 10um, mesh origin is allen origin - mean"""
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.com_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.mesh_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.origin_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.volume_path)
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             origin_allen = self.origins[structure]
@@ -91,11 +80,13 @@ class BrainMerger():
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             allen_id = self.brain_structure_manager.get_allen_id(structure)
-            adjusted_volume = adjust_volume(volume, allen_id)
+            volume[volume > 0] = 255
+            volume = volume.astype(np.uint8)
+            #adjusted_volume = adjust_volume(volume, allen_id)
 
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, adjusted_volume)
+            np.save(volume_filepath, volume)
 
             #mesh STL file
             relative_origin = (origin_allen - origins_mean)
@@ -120,15 +111,15 @@ class BrainMerger():
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             allen_id = self.brain_structure_manager.get_allen_id(structure)
-            adjusted_volume = adjust_volume(volume, allen_id)
+            #adjusted_volume = adjust_volume(volume, allen_id)
 
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, adjusted_volume)
+            np.save(volume_filepath, volume)
             relative_origin = (origin_allen - origins_mean)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
             color = number_to_rgb(allen_id)
-            mask_to_mesh(adjusted_volume, relative_origin, mesh_filepath, color=color)
+            mask_to_mesh(volume, relative_origin, mesh_filepath, color=color)
             
     def fetch_allen_origins(self):
         structures = {

@@ -636,28 +636,22 @@ def align_images_to_common_center(images):
     return aligned_images
 
 
-def average_images(volumes):
-    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
-    """
-    reference_image = max(images, key=lambda img: np.prod(img.GetSize()))
-    resampled_images = [resample_image(img, reference_image) for img in images]
-    #registered_images = [register_volume(img, reference_image, iterations, default_pixel_value) for img in resampled_images if img != reference_image]
-    resampled_images = center_images_to_largest_volume(resampled_images)
+def create_average_binary_mask(volumes):
+    if len(volumes) == 1:
+        volume = volumes[0]
+        avg_volume = volume.astype(np.uint8)
+    else:
+        images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
 
-    registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
-    avg_array = np.mean(registered_images, axis=0)
-    print(f"Average image shape: {avg_array.shape} min: {np.min(avg_array)} max: {np.max(avg_array)}")
-    """
-
-    sizes = [img.GetSize() for img in images]
-    max_size = np.max(sizes, axis=0)
-        
-    resampled_images = [resize_image(img, max_size.tolist()) for img in images]
-    resampled_images = center_images_to_largest_volume(resampled_images)
-    resampled_images = align_images_to_common_center(resampled_images)
-    avg_volume = np.mean([sitk.GetArrayFromImage(vol) for vol in resampled_images], axis=0)
-    
-    return avg_volume
+        sizes = [img.GetSize() for img in images]
+        max_size = np.max(sizes, axis=0)
+            
+        resampled_images = [resize_image(img, max_size.tolist()) for img in images]
+        resampled_images = center_images_to_largest_volume(resampled_images)
+        resampled_images = align_images_to_common_center(resampled_images)
+        avg_volume = np.mean([sitk.GetArrayFromImage(vol) for vol in resampled_images], axis=0)
+        avg_volume = adjust_volume(avg_volume, allen_id=255)
+    return avg_volume.astype(np.uint8)
 
 
 

@@ -42,7 +42,7 @@ from library.image_manipulation.filelocation_manager import (
     data_path,
     FileLocationManager,
 )
-from library.utilities.atlas import volume_to_polygon, save_mesh
+from library.utilities.atlas import mask_to_mesh, number_to_rgb, volume_to_polygon, save_mesh
 from library.utilities.utilities_process import (
     M_UM_SCALE,
     SCALING_FACTOR,
@@ -65,12 +65,15 @@ class BrainStructureManager:
         self.fileLocationManager = FileLocationManager(self.animal)
         self.data_path = os.path.join(data_path, "atlas_data")
         self.structure_path = os.path.join(data_path, "pipeline_data", "structures")
+
         self.com_path = os.path.join(self.data_path, self.animal, "com") 
         self.origin_path = os.path.join(self.data_path, self.animal, "origin")
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
+        # registered paths
         self.registered_volume_path = os.path.join(self.data_path, self.animal, "registered_structure")
         self.registered_origin_path = os.path.join(self.data_path, self.animal, "registered_origin")
+        self.registered_mesh_path = os.path.join(self.data_path, self.animal, "registered_mesh")
 
         self.debug = debug
         self.um = um  # size in um of allen atlas
@@ -99,9 +102,6 @@ class BrainStructureManager:
         os.makedirs(self.mesh_path, exist_ok=True)
         os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
-        os.makedirs(self.registered_volume_path, exist_ok=True)
-        os.makedirs(self.registered_origin_path, exist_ok=True)
-
 
     def get_origin_and_section_size(self, structure_contours):
         """Gets the origin and section size
@@ -124,7 +124,7 @@ class BrainStructureManager:
         section_size = np.array([yspan, xspan]).astype(int)
         return origin, section_size
 
-    def create_foundation_brains_origin_volume(self, brainMerger, animal):
+    def collect_foundation_brains_origin_volume(self, brainMerger, animal):
         """ """
         self.animal = animal
         com_path = os.path.join(self.data_path, self.animal, "com")
@@ -594,8 +594,7 @@ class BrainStructureManager:
             scale_allen = scale0 / self.um
             origin_allen = origin_um / self.um
             volume = np.swapaxes(volume, 0, 2) # put into x,y,z order
-            volume_allen = zoom(volume, scale_allen)
-            
+            volume_allen = zoom(volume, scale_allen)            
 
             if debug:
                 if structure == 'SC':
@@ -644,10 +643,7 @@ class BrainStructureManager:
             print(f"{input_directory} does not exist")
             sys.exit()
         drawn_directory = os.path.join(self.fileLocationManager.prep, "C1", "drawn")
-        if os.path.exists(drawn_directory):
-            print(f"Removing {drawn_directory}")
-            shutil.rmtree(drawn_directory)
-        os.makedirs(drawn_directory, exist_ok=True)
+        self.rm_existing_dir(drawn_directory)
 
         desc = f"Drawing on {animal}"
         for tif in tqdm(files, desc=desc):
@@ -1188,6 +1184,7 @@ class BrainStructureManager:
         self.check_for_existing_dir(self.volume_path)
         self.rm_existing_dir(self.registered_origin_path)
         self.rm_existing_dir(self.registered_volume_path)
+        self.rm_existing_dir(self.registered_mesh_path)
 
         origins = sorted([f for f in os.listdir(self.origin_path)])
         volumes = sorted([f for f in os.listdir(self.volume_path)])
@@ -1212,7 +1209,13 @@ class BrainStructureManager:
                 if structure not in ['SC']:
                     continue
             
-            volume = adjust_volume(volume, allen_id)
+            volume = adjust_volume(volume, 1)
+            volume = volume.astype(np.uint8)
+            if self.debug:
+                ids, counts = np.unique(volume, return_counts=True)
+                print(f'Structure: {structure}, original volume shape: {volume.shape}, dtype: {volume.dtype}')
+                print(f'\tunique IDs in original volume: {ids}')
+                print(f'\tcounts {counts}')
             # Create SimpleITK image for mask
             volume = sitk.GetImageFromArray(volume)
             output_size, output_origin, orig_spacing = self.create_fixed_output(volume, notranslation_affine_transform)
@@ -1245,6 +1248,8 @@ class BrainStructureManager:
 
             new_origin = affine_transform.TransformPoint(origin)
             registered_volume = sitk.GetArrayFromImage(registered_volume)
+            registered_volume = registered_volume.astype(np.uint32)
+            registered_volume[registered_volume > 0] = allen_id
             ids = np.unique(registered_volume, return_counts=False)
 
             if self.debug:
@@ -1259,6 +1264,11 @@ class BrainStructureManager:
                 registered_volume_pathfile = os.path.join(self.registered_volume_path, f'{structure}.npy')
                 np.savetxt(registered_origin_pathfile, new_origin)
                 np.save(registered_volume_pathfile, registered_volume)
+
+                mesh_filepath = os.path.join(self.registered_mesh_path, f'{structure}.ply')
+                color = number_to_rgb(allen_id)
+                mask_to_mesh(registered_volume, new_origin, mesh_filepath, color=color)
+
 
 
     @staticmethod
