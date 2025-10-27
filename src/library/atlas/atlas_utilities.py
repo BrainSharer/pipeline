@@ -557,7 +557,7 @@ def center_images_to_largest_volume(images):
         resampled = sitk.Resample(img,
                                   reference_image,
                                   transform,
-                                  sitk.sitkLinear,
+                                  sitk.sitkNearestNeighbor,
                                   0.0,
                                   img.GetPixelID())
 
@@ -636,24 +636,37 @@ def align_images_to_common_center(images):
     return aligned_images
 
 
-def create_average_binary_mask(volumes):
+def create_average_binary_maskXXX(volumes):
     if len(volumes) == 1:
-        volume = volumes[0]
-        avg_volume = volume.astype(np.uint8)
+        avg_volume = volumes[0]
     else:
-        images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
-
-        sizes = [img.GetSize() for img in images]
-        max_size = np.max(sizes, axis=0)
-            
-        resampled_images = [resize_image(img, max_size.tolist()) for img in images]
-        resampled_images = center_images_to_largest_volume(resampled_images)
-        resampled_images = align_images_to_common_center(resampled_images)
+        images = [sitk.GetImageFromArray(img.astype(np.uint8)) for img in volumes]
+        resampled_images = center_images_to_largest_volume(images)
         avg_volume = np.mean([sitk.GetArrayFromImage(vol) for vol in resampled_images], axis=0)
-        avg_volume = adjust_volume(avg_volume, allen_id=255)
+        #avg_volume = adjust_volume(avg_volume, allen_id=255)
     return avg_volume.astype(np.uint8)
 
 
+def create_average_binary_mask(volumes, structure=None):
+    if len(volumes) == 0:
+        raise ValueError("No volumes provided for averaging.")
+    elif len(volumes) == 1:
+        volume = volumes[0]
+    else:
+        images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
+        reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
+        # Resample all images to the reference
+        resampled_images = [resample_image(img, reference_image) for img in images]
+        registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
+        volume = np.mean(registered_images, axis=0)
+        upper = 100
+        volume = gaussian(volume, 2.0)
+        volume[(volume > upper) ] = 255
+        volume[(volume != 255)] = 0
+        dtype = np.uint8
+        volume = volume.astype(dtype)
+        
+    return volume
 
 def rigid_registration_get_matrix_translation(fixed_image, moving_image):
     """
@@ -702,13 +715,15 @@ def rigid_registration_get_matrix_translation(fixed_image, moving_image):
 
     return matrix, translation
 
-def register_volume(movingImage, fixedImage, iterations="250", default_pixel_value="0"):
+
+
+def register_volume(movingImage, fixedImage, structure):
 
     elastixImageFilter = sitk.ElastixImageFilter()
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
 
-    rigid_params = elastixImageFilter.GetDefaultParameterMap("translation")
+    rigid_params = elastixImageFilter.GetDefaultParameterMap("affine")
     rigid_params["AutomaticTransformInitialization"] = ["true"]
     rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
     rigid_params["FixedInternalImagePixelType"] = ["float"]
@@ -717,25 +732,22 @@ def register_volume(movingImage, fixedImage, iterations="250", default_pixel_val
     rigid_params["MovingImageDimension"] = ["3"]
     rigid_params["UseDirectionCosines"] = ["false"]
     rigid_params["HowToCombineTransforms"] = ["Compose"]
-    rigid_params["DefaultPixelValue"] = [default_pixel_value]
+    rigid_params["DefaultPixelValue"] = ["0"]
     rigid_params["WriteResultImage"] = ["false"]    
     rigid_params["WriteIterationInfo"] = ["false"]
     rigid_params["Resampler"] = ["DefaultResampler"]
-    rigid_params["MaximumNumberOfIterations"] = [iterations] # 250 works ok
+    rigid_params["MaximumNumberOfIterations"] = ["250"] # 250 works ok
+    rigid_params["WriteIterationInfo"] = ["false"]
 
     elastixImageFilter.SetParameterMap(rigid_params)
     elastixImageFilter.SetLogToFile(False)
-    elastixImageFilter.LogToConsoleOn()
+    elastixImageFilter.LogToConsoleOff()
 
-    elastixImageFilter.SetParameter("WriteIterationInfo",["false"])
-    elastixImageFilter.SetOutputDirectory('/tmp')
     try:
         resultImage = elastixImageFilter.Execute() 
     except Exception as e:
-        print('Exception in registration')
-        print(e)
-        sys.exit()
-        #return sitk.GetArrayFromImage(movingImage)
+        print(f'Exception in registration with {structure=}')
+        return sitk.GetArrayFromImage(movingImage)
 
     return sitk.GetArrayFromImage(resultImage)
 
@@ -767,32 +779,21 @@ def adjust_volume(volume, allen_id):
     """
     The commands below produce really nice STLs
     """
-    #upper = 100
-    upper = np.quantile(volume, 0.725)
-    volume = gaussian(volume, 4.0)            
+    upper = np.quantile(volume, 0.85)
+    try:
+        volume = gaussian(volume, 2.0)
+    except Exception as e:
+        print(f"Gaussian smoothing failed: {e}")
+        pass
     volume[(volume > upper) ] = allen_id
     volume[(volume != allen_id)] = 0
-    volume = volume.astype(np.uint32)
+    if allen_id == 255:
+        dtype = np.uint8
+    else:
+        dtype = np.uint32
+    volume = volume.astype(dtype)
     return volume
 
-
-def average_imagesV1(volumes, structure):
-    images = [sitk.GetImageFromArray(img.astype(np.float32)) for img in volumes]
-    reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
-    #max_index = images.index(reference_image_index)
-    #del images[max_index]
-    # Resample all images to the reference
-    resampled_images = [resample_image(img, reference_image) for img in images]
-    registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
-    # Convert images to numpy arrays and compute the average
-    #registered_images = [sitk.GetArrayFromImage(img) for img in resampled_images]
-    #registered_images = [sitk.GetArrayFromImage(img) for img in registered_images]
-    avg_array = np.mean(registered_images, axis=0)
-    # Convert back to SimpleITK image
-    #avg_image = sitk.GetImageFromArray(avg_array)
-    #avg_image.CopyInformation(reference_image)  # Copy metadata
-    return avg_array
-    #return sitk.GetArrayFromImage(avg_array)
 
 
 def euler_to_rigid_transform(euler_transform, rotation_order='xyz', degrees=False):
@@ -1298,34 +1299,6 @@ def apply_transform(moving, transform):
     transformix.Execute()
     return transformix.GetResultImage()
 
-def groupwise_registration_elastix(sitk_vols, max_iterations=5):
-    """
-    Perform groupwise registration to maximize overlap of binary volumes.
-    None of the arrays is the reference.
-    """
-    
-    # Initialize with average image
-    avg_img = sum(sitk_vols) / len(sitk_vols)
-
-    for iteration in range(max_iterations):
-        registered_imgs = []
-        transforms = []
-
-        for img in sitk_vols:
-            result, transform = rigid_register_elastix(avg_img, img)
-            registered_imgs.append(result)
-            transforms.append(transform)
-        
-        # Compute new average (consensus)
-        avg_img = sum(registered_imgs) / len(registered_imgs)
-
-        print(f"Iteration {iteration+1}/{max_iterations} complete")
-
-    # Convert results to numpy
-    registered_arrays = [sitk_to_numpy(img) for img in registered_imgs]
-    avg_array = sitk_to_numpy(avg_img)
-
-    return registered_arrays, avg_array, transforms
 
 
 def rigid_register(fixed, moving):
@@ -1362,35 +1335,3 @@ def average_transforms(transforms):
     ])
     return avg
 
-def groupwise_registration(arrays, iterations=3):
-    """Align multiple 3D binary arrays without a fixed reference."""
-    sitk_images = [numpy_to_sitk(a) for a in arrays]
-    transforms = [sitk.Euler3DTransform() for _ in sitk_images]
-
-    for it in range(iterations):
-        print(f"Iteration {it+1}/{iterations}")
-
-        # Compute the current average image in the "group space"
-        transformed_images = [sitk.Resample(img, sitk_images[0], t, sitk.sitkLinear, 0.0) 
-                              for img, t in zip(sitk_images, transforms)]
-        avg_img = sum(transformed_images) / len(transformed_images)
-
-        # Register each image to this average (not a fixed reference)
-        new_transforms = []
-        for img, t_init in zip(sitk_images, transforms):
-            transform = rigid_register(avg_img, img)
-            # Combine with previous transform
-            new_t = sitk.Euler3DTransform()
-            new_t.SetParameters(transform.GetParameters())
-            new_transforms.append(new_t)
-
-        # Average all transforms to get group consensus
-        consensus = average_transforms(new_transforms)
-        transforms = [sitk.Euler3DTransform(consensus) for _ in new_transforms]
-
-    # Apply final transforms and make averaged overlap image
-    final_images = [sitk.Resample(img, sitk_images[0], t, sitk.sitkLinear, 0.0) 
-                    for img, t in zip(sitk_images, transforms)]
-    avg_final = sum(final_images) / len(final_images)
-
-    return sitk_to_numpy(avg_final), [t.GetParameters() for t in transforms]

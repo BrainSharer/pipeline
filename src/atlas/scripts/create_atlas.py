@@ -101,7 +101,10 @@ class AtlasManager():
         """
         start_time = timer()
         
-        
+        self.brainManager.rm_existing_dir(self.brainManager.com_path)
+        self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
+        self.brainManager.rm_existing_dir(self.brainManager.origin_path)
+        self.brainManager.rm_existing_dir(self.brainManager.volume_path)
         polygon_annotator_id = 1
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
@@ -132,7 +135,7 @@ class AtlasManager():
         """
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
             volumes = self.atlasMerger.volumes_to_merge[structure]
-            volume = create_average_binary_mask(volumes)
+            volume = create_average_binary_mask(volumes, structure)
             self.atlasMerger.volumes[structure]= volume
 
         if len(self.atlasMerger.origins_to_merge) > 0:

@@ -71,9 +71,10 @@ class BrainStructureManager:
         self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
         self.volume_path = os.path.join(self.data_path, self.animal, "structure")
         # registered paths
-        self.registered_volume_path = os.path.join(self.data_path, self.animal, "registered_structure")
-        self.registered_origin_path = os.path.join(self.data_path, self.animal, "registered_origin")
+        self.registered_com_path = os.path.join(self.data_path, self.animal, "registered_com")
         self.registered_mesh_path = os.path.join(self.data_path, self.animal, "registered_mesh")
+        self.registered_origin_path = os.path.join(self.data_path, self.animal, "registered_origin")
+        self.registered_volume_path = os.path.join(self.data_path, self.animal, "registered_structure")
 
         self.debug = debug
         self.um = um  # size in um of allen atlas
@@ -149,11 +150,10 @@ class BrainStructureManager:
 
             if self.debug:
                 print(f"{animal} {structure} origin={np.round(origin)} com={np.round(com)}")
-            else:
-                # merge data
-                brainMerger.coms_to_merge[structure].append(com)
-                brainMerger.origins_to_merge[structure].append(origin)
-                brainMerger.volumes_to_merge[structure].append(volume)
+            # merge data
+            brainMerger.coms_to_merge[structure].append(com)
+            brainMerger.origins_to_merge[structure].append(origin)
+            brainMerger.volumes_to_merge[structure].append(volume)
 
     def get_label_ids(self, structure) -> list:
         label = self.sqlController.get_annotation_label(structure)
@@ -1178,14 +1178,19 @@ class BrainStructureManager:
             polygons = aligned_dict[structure]
             self.upsert_annotation(structure, polygons)
 
-    def atlas2allen(self):
+    def atlas2allenXXX(self):
         # check dirs first
-        self.check_for_existing_dir(self.origin_path)
-        self.check_for_existing_dir(self.volume_path)
+        self.rm_existing_dir(self.registered_com_path)
+        self.rm_existing_dir(self.registered_mesh_path)
         self.rm_existing_dir(self.registered_origin_path)
         self.rm_existing_dir(self.registered_volume_path)
-        self.rm_existing_dir(self.registered_mesh_path)
 
+        self.check_for_existing_dir(self.origin_path)
+        self.check_for_existing_dir(self.volume_path)
+        self.check_for_existing_dir(self.com_path)
+
+        
+        coms = sorted([f for f in os.listdir(self.com_path)])
         origins = sorted([f for f in os.listdir(self.origin_path)])
         volumes = sorted([f for f in os.listdir(self.volume_path)])
         print('Creating affine transform from coms in the database/disk')
@@ -1196,21 +1201,19 @@ class BrainStructureManager:
         notranslation_affine_transform.SetMatrix(affine_transform.GetMatrix())
         notranslation_affine_transform.SetTranslation((0.0, 0.0, 0.0))
 
-        for origin_file, volume_file in tqdm(zip(origins, volumes), total=len(volumes), desc='Registering structures', disable=self.debug):
+        for com_file, origin_file, volume_file in tqdm(zip(coms, origins, volumes), total=len(volumes), desc='Registering structures', disable=self.debug):
             if Path(origin_file).stem != Path(volume_file).stem:
                 print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
                 sys.exit()
             structure = Path(origin_file).stem
+            if self.debug:
+                if structure != 'SC':
+                    continue
             allen_id = self.get_allen_id(structure)
+            com = np.loadtxt(os.path.join(self.com_path, com_file)) / self.um
             origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
             volume = np.load(os.path.join(self.volume_path, volume_file))
-
-            if self.debug:
-                if structure not in ['SC']:
-                    continue
-            
-            volume = adjust_volume(volume, 1)
-            volume = volume.astype(np.uint8)
+    
             if self.debug:
                 ids, counts = np.unique(volume, return_counts=True)
                 print(f'Structure: {structure}, original volume shape: {volume.shape}, dtype: {volume.dtype}')
@@ -1222,8 +1225,8 @@ class BrainStructureManager:
             #mask_sitk.SetOrigin(origin) # very important when placing inside fixed_image space
             # Apply affine transform
             #mask_sitk = sitk.ConstantPad(mask_sitk, [40,40,200], [40,40,40], 0)
-            """
             identify_transform = sitk.AffineTransform(3)
+            """
             registered_mask = sitk.Resample(
                 mask_sitk,
                 mask_sitk,
@@ -1238,7 +1241,7 @@ class BrainStructureManager:
             registered_volume = sitk.Resample(
                 volume,
                 output_size,
-                notranslation_affine_transform,
+                identify_transform,
                 sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
                 output_origin,
                 orig_spacing,
@@ -1246,6 +1249,7 @@ class BrainStructureManager:
                 0.0 # Default pixel value is 0
             )
 
+            new_com = affine_transform.TransformPoint(com)
             new_origin = affine_transform.TransformPoint(origin)
             registered_volume = sitk.GetArrayFromImage(registered_volume)
             registered_volume = registered_volume.astype(np.uint32)
@@ -1253,15 +1257,18 @@ class BrainStructureManager:
             ids = np.unique(registered_volume, return_counts=False)
 
             if self.debug:
-                print(f'Structure: {structure}, Registered mask shape: {registered_volume.shape}, dtype: {registered_volume.dtype}')
+                print(f'\tRegistered mask shape: {registered_volume.shape}, dtype: {registered_volume.dtype}')
                 ids, counts = np.unique(registered_volume, return_counts=True)
                 print(f'\toriginal origin: {origin} new origin: {new_origin}')
+                print(f'\toriginal com: {com} new com: {new_com}')
                 print(f'\tunique IDs in registered mask: {ids}')
                 print(f'\tcounts {counts}')
             else:
                 # save to registered paths
+                registered_com_pathfile = os.path.join(self.registered_com_path, f'{structure}.txt')
                 registered_origin_pathfile = os.path.join(self.registered_origin_path, f'{structure}.txt')
                 registered_volume_pathfile = os.path.join(self.registered_volume_path, f'{structure}.npy')
+                np.savetxt(registered_com_pathfile, new_com)
                 np.savetxt(registered_origin_pathfile, new_origin)
                 np.save(registered_volume_pathfile, registered_volume)
 
@@ -1269,7 +1276,105 @@ class BrainStructureManager:
                 color = number_to_rgb(allen_id)
                 mask_to_mesh(registered_volume, new_origin, mesh_filepath, color=color)
 
+    def atlas2allen(self):
 
+        self.check_for_existing_dir(self.origin_path)
+        self.check_for_existing_dir(self.volume_path)
+        self.check_for_existing_dir(self.com_path)
+        print('Creating affine transform from coms in the database/disk')
+        threeD_transform = self.create_affine_transformation()
+        affine_transform = self.convert_transformation(threeD_transform)
+        output_dtype = np.uint8
+        pixel_type = sitk.sitkUInt8
+        zyx_direction = (0.0, 0.0, 1.0,  # New X-axis vector
+                 0.0, 1.0, 0.0,  # New Y-axis vector
+                 1.0, 0.0, 0.0)  # New Z-axis vector
+        xyz_direction = np.eye(3).ravel()
+
+        fixed_volume_shape = (self.allen_z_length, self.allen_y_length, self.allen_x_length)
+        registered_volume = np.zeros(fixed_volume_shape, dtype=output_dtype)
+        fixed_image = sitk.GetImageFromArray(registered_volume)
+        fixed_image.SetSpacing((1.0, 1.0, 1.0))
+        fixed_image.SetOrigin((0.0, 0.0, 0.0))
+        print(f'Fixed image size: {fixed_image.GetSize()}')
+        print(f'Registered volume shape: {registered_volume.shape}')
+        
+        coms = sorted([f for f in os.listdir(self.com_path)])
+        origins = sorted([f for f in os.listdir(self.origin_path)])
+        volumes = sorted([f for f in os.listdir(self.volume_path)])
+        registered_structures = []
+        for com_file, origin_file, volume_file in tqdm(zip(coms, origins, volumes), total=len(volumes), desc='Registering structures', disable=self.debug):
+            if Path(origin_file).stem != Path(volume_file).stem:
+                print(f"{Path(origin_file).stem} and {Path(volume_file).stem} do not match")
+                sys.exit()
+            structure = Path(origin_file).stem
+            if self.debug:
+                if structure != 'SC':
+                    continue
+            com = np.loadtxt(os.path.join(self.com_path, com_file)) / self.um
+            origin = np.loadtxt(os.path.join(self.origin_path, origin_file))
+            origin = affine_transform.TransformPoint(origin)
+            arr_xyz = np.load(os.path.join(self.volume_path, volume_file))
+            arr_zyx = np.transpose(arr_xyz, (2, 1, 0))
+            # Create subvolume image in physical space
+            moving_image = sitk.GetImageFromArray(arr_zyx)
+            moving_image.SetSpacing((1.0, 1.0, 1.0))  # assume same spacing
+            moving_image.SetOrigin(origin)
+            #subvol_img.SetDirection(xyz_direction)
+
+            # Apply the affine to map subvolume → fixed space
+            resampled = sitk.Resample(
+                moving_image,
+                fixed_image,
+                affine_transform,
+                sitk.sitkNearestNeighbor,
+                0.0,
+                pixel_type
+            )
+            #registered_structures.append(resampled)
+
+            # Combine into the fixed space
+            #resampled_np = sitk.GetArrayFromImage(resampled)
+            #registered_full = np.maximum(registered_full, (resampled_np > 0.5).astype(output_dtype))
+
+            resampled_np = sitk.GetArrayFromImage(resampled)
+            ids, counts = np.unique(resampled_np, return_counts=True)
+            if self.debug:
+                ids, counts = np.unique(arr_zyx, return_counts=True)
+                print(f'Structure: {structure}, original subvolume shape: {arr_zyx.shape}, dtype: {arr_zyx.dtype}')
+                print(f'\tunique IDs in original subvolume: {ids}')
+                print(f'\tcounts {counts}')
+                print(f'\tRegistered {structure} shape: {resampled_np.shape}, dtype: {resampled_np.dtype}')
+                print(f'\toriginal origin: {origin}')
+                print(f'\toriginal com: {com}')
+                print(f'\tunique IDs in registered subvolume: {ids}')
+                print(f'\tcounts {counts}')
+                if len(ids) == 1:
+                    print(f'Warning: {structure} has only ID {ids[0]} after registration')
+                    exit(1)
+            
+
+            # Simple logical combination (e.g. union)
+            registered_volume = np.maximum(registered_volume, resampled_np)
+            print(f"Subvolume {structure} registered.")
+
+            del resampled_np
+            #registered_structures.append(resampled)
+            # finished looping
+        
+        output_overlay_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/overlay_test.tif"
+        """
+        combined_mask = sitk.Cast(sitk.Maximum(registered_structures[0], registered_structures[0]*0), sitk.sitkUInt8)
+        for s in registered_structures:
+            combined_mask = sitk.Maximum(combined_mask, s)
+        overlay = sitk.LabelOverlay(sitk.Cast(fixed_image, sitk.sitkUInt8), combined_mask)
+        sitk.WriteImage(overlay, output_overlay_path)
+        """
+        write_image(output_overlay_path, registered_volume)
+        print(f"Saved overlay image to {output_overlay_path}")
+            
+
+    
 
     @staticmethod
     def create_fixed_output(mask_image, transform):
