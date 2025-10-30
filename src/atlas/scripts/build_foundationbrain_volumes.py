@@ -41,6 +41,7 @@ def save_volume_origin(animal, structure, volume, xyz_offsets):
 
 def create_volumes_and_origins(animal, debug):
     #sqlController = SqlController(animal)
+    contours = []
     jsonpath = os.path.join(DATA_PATH, 'atlas_data', animal,  'aligned_padded_structures.json')
     if not os.path.exists(jsonpath):
         print(f'{jsonpath} does not exist')
@@ -50,49 +51,9 @@ def create_volumes_and_origins(animal, debug):
     structures = list(aligned_dict.keys())
     for structure in structures:
         onestructure = aligned_dict[structure]
-        mins = []
-        maxs = []
-
-        for section_num, points in onestructure.items():
-            arr_tmp = np.array(points)
-            min_tmp = np.min(arr_tmp, axis=0)
-            max_tmp = np.max(arr_tmp, axis=0)
-            mins.append(min_tmp)
-            maxs.append(max_tmp)
-
-        min_xy = np.min(mins, axis=0)
-        max_xy = np.max(maxs, axis=0)
-        max_x = max_xy[0]
-        max_y = max_xy[1]
-        sections = [int(i) for i in onestructure.keys()]
-        min_x = min_xy[0]
-        min_y = min_xy[1]
-        min_z = min(sections)
-        xlength = max_x - min_x
-        ylength = max_y - min_y
-        PADDED_SIZE = (int(ylength), int(xlength))
-        volume = []
-        for section, points in sorted(onestructure.items()):
-            vertices = np.array(points) - np.array((min_x, min_y))
-            volume_slice = np.zeros(PADDED_SIZE, dtype=np.uint8)
-            points = (vertices).astype(np.int32)
-            #color = sqlController.get_structure_color_rgb(structure)
-            volume_slice = cv2.polylines(volume_slice, [points], isClosed=True, 
-                                         color=1, thickness=1)
-            volume_slice = cv2.fillPoly(volume_slice, pts=[points], color=1)
-
-            volume.append(volume_slice)
-        
-        # should this be a boolean?
-        volume = np.array(volume).astype(np.bool_)
-        if 'SC' in structure:
-            print(f'{animal=} {structure=} {min_x=} {min_y=} {min_z=}')
-        if not debug:
-            # we want the real center of mass in the DB
-            #sqlController.add_layer_data(abbreviation=structure, animal=animal, 
-            #                         layer='COM', x=comx, y=comy, section=comz, 
-            #                         person_id=222222, input_type_id=1)
-            save_volume_origin(animal, structure, volume, (min_x, min_y, min_z))
+        print(f'Working on {animal} {structure}')
+        for k1, v1 in onestructure.items():
+            print(k1)
 
 
 if __name__ == '__main__':
