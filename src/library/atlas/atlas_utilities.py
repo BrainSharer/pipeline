@@ -647,6 +647,35 @@ def create_average_binary_maskXXX(volumes):
     return avg_volume.astype(np.uint8)
 
 
+def create_average_nii(images, structure=None):
+    if len(images) == 0:
+        raise ValueError("No volumes provided for averaging.")
+    elif len(images) == 1:
+        volume = images[0]
+    else:
+        pixel_type = sitk.sitkUInt8
+        reference_image_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
+        # Accumulate pixel values
+        #resampled_images = [resample_image(img, reference_image) for img in images]
+        origins = []
+        for image in images:
+            origin = image.GetOrigin()
+            origins.append(origin)
+        mean_origin = np.mean(origins, axis=0)
+        resampled_images = center_images_to_largest_volume(images)
+        registered_images = [register_volume(img, reference_image, structure) for img in resampled_images if img != reference_image]
+        volume = np.mean(registered_images, axis=0)
+        volume = sitk.GetImageFromArray(volume.astype(np.uint8))
+        volume = sitk.Cast(volume, pixel_type)
+        volume = sitk.BinaryThreshold(volume, lowerThreshold=1, upperThreshold=255, insideValue=255, outsideValue=0)
+        #num_images = len(images)
+        #volume = sum_image / num_images
+        volume.SetSpacing(reference_image.GetSpacing())
+        volume.SetOrigin(mean_origin)
+        volume.SetDirection(reference_image.GetDirection())
+
+    return volume
+
 def create_average_binary_mask(volumes, structure=None):
     if len(volumes) == 0:
         raise ValueError("No volumes provided for averaging.")
@@ -717,7 +746,7 @@ def rigid_registration_get_matrix_translation(fixed_image, moving_image):
 
 
 
-def register_volume(movingImage, fixedImage, structure):
+def register_volume(movingImage, fixedImage, structure=None):
 
     elastixImageFilter = sitk.ElastixImageFilter()
     elastixImageFilter.SetFixedImage(fixedImage)
@@ -747,6 +776,7 @@ def register_volume(movingImage, fixedImage, structure):
         resultImage = elastixImageFilter.Execute() 
     except Exception as e:
         print(f'Exception in registration with {structure=}')
+        print(e)
         return sitk.GetArrayFromImage(movingImage)
 
     return sitk.GetArrayFromImage(resultImage)

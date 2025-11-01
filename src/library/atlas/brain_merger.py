@@ -9,6 +9,7 @@ import os
 import numpy as np
 from collections import defaultdict
 from scipy.ndimage import center_of_mass
+import SimpleITK as sitk
 
 from tqdm import tqdm
 
@@ -25,6 +26,7 @@ class BrainMerger():
         self.brain_structure_manager = BrainStructureManager(animal)
         self.symmetry_list = singular_structures
         self.coms_to_merge = defaultdict(list)
+        self.niis_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
         self.volumes_to_merge = defaultdict(list)
         self.coms = {}
@@ -33,21 +35,24 @@ class BrainMerger():
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
         
         self.com_path = os.path.join(self.data_path, 'com')
-        self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
+        self.nii_path = os.path.join(self.data_path, 'nii')
+        self.origin_path = os.path.join(self.data_path, 'origin')
         self.volume_path = os.path.join(self.data_path, 'structure')
 
 
-        self.volumes = {}
         self.coms = {}
         self.origins = {}
+        self.niis = {}
+        self.volumes = {}
         self.margin = 50
         self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
         os.makedirs(self.com_path, exist_ok=True)
-        os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.nii_path, exist_ok=True)
+        os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
 
 
@@ -68,14 +73,17 @@ class BrainMerger():
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
         self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.com_path)
         self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.mesh_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.nii_path)
         self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.origin_path)
         self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.volume_path)
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             origin_allen = self.origins[structure]
             com_um = self.coms[structure]
+            nii = self.niis[structure]
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
+            nii_filepath = os.path.join(self.nii_path, f'{structure}.nii')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
@@ -84,6 +92,7 @@ class BrainMerger():
             volume = volume.astype(np.uint8)
             #adjusted_volume = adjust_volume(volume, allen_id)
 
+            sitk.WriteImage(nii, nii_filepath)
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
             np.save(volume_filepath, volume)
@@ -103,12 +112,14 @@ class BrainMerger():
         for structure in tqdm(self.volumes.keys(), desc=desc, disable=False):
             origin = origins[structure]
             volume = self.volumes[structure]
+            nii = self.niis[structure]
             com = center_of_mass(volume)
             com_um = (com + origin) * um # get COM in um
                         
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
+            nii_filepath =  os.path.join(self.nii_path, f'{structure}.nii')
 
             allen_id = self.brain_structure_manager.get_allen_id(structure)
             #adjusted_volume = adjust_volume(volume, allen_id)
@@ -116,6 +127,7 @@ class BrainMerger():
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
+            sitk.WriteImage(nii, nii_filepath)
             relative_origin = (origin - origins_mean)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
             color = number_to_rgb(allen_id)

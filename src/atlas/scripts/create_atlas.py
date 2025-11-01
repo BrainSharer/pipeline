@@ -23,7 +23,7 @@ Explanation for the tasks:
 - create_atlas - This will create the atlas volume from the saved volumes on birdstore.
 - update_coms - This will update the COMs in the atlas database from the
 """
-
+import os
 import argparse
 import sys
 from pathlib import Path
@@ -34,7 +34,7 @@ from tqdm import tqdm
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.atlas.atlas_utilities import create_average_binary_mask, list_coms, load_transformation
+from library.atlas.atlas_utilities import create_average_binary_mask, create_average_nii, list_coms, load_transformation
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.utilities.utilities_process import SCALING_FACTOR
@@ -103,6 +103,7 @@ class AtlasManager():
         
         self.brainManager.rm_existing_dir(self.brainManager.com_path)
         self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
+        self.brainManager.rm_existing_dir(self.brainManager.nii_path)
         self.brainManager.rm_existing_dir(self.brainManager.origin_path)
         self.brainManager.rm_existing_dir(self.brainManager.volume_path)
         polygon_annotator_id = 1
@@ -136,7 +137,11 @@ class AtlasManager():
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
             volumes = self.atlasMerger.volumes_to_merge[structure]
             volume = create_average_binary_mask(volumes, structure)
+
+            volume_niis = self.atlasMerger.niis_to_merge[structure]
+            volume_nii = create_average_nii(volume_niis, structure)
             self.atlasMerger.volumes[structure]= volume
+            self.atlasMerger.niis[structure]= volume_nii
 
         if len(self.atlasMerger.origins_to_merge) > 0:
             self.atlasMerger.save_atlas_meshes_origins_volumes(self.um)

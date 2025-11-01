@@ -24,7 +24,7 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import adjust_volume, affine_transform_point, average_images, compute_affine_transformation, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -573,7 +573,7 @@ class VolumeRegistration:
         image_manager = ImageManager(self.thumbnail_aligned)
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
         z_resolution = self.sqlController.scan_run.zresolution / self.z_um
-        print(f'Using images from {self.thumbnail_aligned} to create volume at {self.moving_volume_path}')
+        print(f'Using images from {self.thumbnail_aligned} to create volume')
         print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
 
         change_z = z_resolution
@@ -1034,136 +1034,6 @@ class VolumeRegistration:
         write_image(save_atlas_path, avg_array.astype(np.uint8))
 
 
-
-    def create_average_volumeXXX(self):
-        """ Instructions for creating an average volume
-
-        1. Create a volume for each brain using the create_volume method with the same um and orientation.
-        2. Run the create_brain_coms method to generate COM files for each brain.
-        3. Copy each volume from the above step to the AtlasV8/AtlasV8_10um_sagittal.tif. You are basically
-           creating a copy of the volume for each brain in the AtlasV8 directory and registering it to itself with the new COM coordinates
-           created in the create_atlas script.
-           cp -vi MD585/MD585_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
-           python src/registration/scripts/create_registration.py --moving MD585 --fixed AtlasV8 --um 10 --task register_volume
-           cp -vi MD589/MD589_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
-           python src/registration/scripts/create_registration.py --moving MD589 --fixed AtlasV8 --um 10 --task register_volume
-           cp -vi MD594/MD594_10um_sagittal.tif ./AtlasV8/AtlasV8_10um_sagittal.tif
-           python src/registration/scripts/create_registration.py --moving MD594 --fixed AtlasV8 --um 10 --task register_volume
-        4. Run the register_volume method to register each brain to the AtlasV8 volume.
-
-        Using just a rigid transform on the above 3 brains works well in aligned the COMs, but the spinal cord and ocular are off a bit.
-
-        """
-
-
-        moving_brains = ['MD585', 'MD594', 'MD589']
-        fixed_brain = 'AtlasV8'
-
-        volumes = {}
-        for brain in moving_brains:
-            brainpath = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
-            if not os.path.exists(brainpath):
-                print(f'{brainpath} does not exist, exiting.')
-                continue
-            brainimg = read_image(brainpath)
-            volumes[brain] = sitk.GetImageFromArray(brainimg.astype(np.float32))
-
-        fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
-        if not os.path.exists(fixed_path):
-            fixed_brain = 'MD589'
-            print(f'{fixed_path} does not exist, using {fixed_brain}')
-            fixed_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
-        fixed_img = read_image(fixed_path)
-        volumes[fixed_brain] = sitk.GetImageFromArray(fixed_img.astype(np.float32))
-        reference_image = volumes[fixed_brain]
-        fixed_brain = 'AtlasV8'
-        fixed_point_path = os.path.join(self.registration_path, fixed_brain, f'{fixed_brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
-        fixed_brain = 'MD589'
-        affineParameterMap = sitk.GetDefaultParameterMap('affine')
-
-        bsplineParameterMap = sitk.GetDefaultParameterMap('bspline')
-        bsplineParameterMap["Optimizer"] = ["StandardGradientDescent"]
-        bsplineParameterMap["FinalGridSpacingInVoxels"] = [f"{self.um}"]
-        bsplineParameterMap["MaximumNumberOfIterations"] = ["2500"]
-        bsplineParameterMap["MaximumNumberOfSamplingAttempts"] = ["10"]
-        if self.um > 20:
-            bsplineParameterMap["NumberOfResolutions"]= ["6"]
-            affineParameterMap["NumberOfResolutions"]= ["6"] # Takes lots of RAM
-            bsplineParameterMap["GridSpacingSchedule"] = ["6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-        else:
-            affineParameterMap["NumberOfResolutions"]= ["8"] # Takes lots of RAM
-            bsplineParameterMap["NumberOfResolutions"]= ["8"]
-            bsplineParameterMap["GridSpacingSchedule"] = ["11.066214285714288", "8.3785", "6.219", "4.1", "2.8", "1.9", "1.4", "1.0"]
-
-        del bsplineParameterMap["FinalGridSpacingInPhysicalUnits"]
-        bsplineParameterMap["MaximumNumberOfIterations"] = [self.affineIterations]
-        registered_images = []
-        savepath = os.path.join(self.registration_path, 'AtlasV8')
-        for brain, image in volumes.items():
-            if brain == fixed_brain:
-                print(f'Skipping {brain} = {fixed_brain}')
-                continue
-            else:
-                print(f'Processing {brain} to {fixed_brain}')
-            elastixImageFilter = sitk.ElastixImageFilter()
-            elastixImageFilter.SetFixedImage(reference_image)
-            elastixImageFilter.SetMovingImage(image)
-
-            moving_point_path = os.path.join(self.registration_path, brain, f'{brain}_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.pts')
-            if os.path.exists(fixed_point_path) and os.path.exists(moving_point_path):
-                with open(fixed_point_path, 'r') as fp:
-                    fixed_count = len(fp.readlines())
-                with open(moving_point_path, 'r') as fp:
-                    moving_count = len(fp.readlines())
-                assert fixed_count == moving_count, f'Error, the number of fixed points in {fixed_point_path} do not match {moving_point_path}'
-                print(f'Transforming points from {os.path.basename(fixed_point_path)} -> {os.path.basename(moving_point_path)}')
-                affineParameterMap["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-                affineParameterMap["Metric"] =  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"]
-                affineParameterMap["Metric0Weight"] = ["0.05"] # the weight of 1st metric
-                affineParameterMap["Metric1Weight"] =  ["0.95"] # the weight of 2nd metric
-
-                elastixImageFilter.SetFixedPointSetFileName(fixed_point_path)
-                elastixImageFilter.SetMovingPointSetFileName(moving_point_path)
-            else:
-                print(f'No point files found for {brain}')
-                sys.exit()
-            
-            elastixImageFilter.SetParameterMap(affineParameterMap)
-            if self.bspline:
-                elastixImageFilter.AddParameterMap(bsplineParameterMap)
-
-            elastixImageFilter.SetParameter("ResultImageFormat", "tif")
-            elastixImageFilter.SetParameter("ComputeZYX", "true")
-            elastixImageFilter.SetParameter("DefaultPixelValue", "0")
-            elastixImageFilter.SetParameter("UseDirectionCosines", "false")
-            elastixImageFilter.SetParameter("WriteResultImage", "false")
-            elastixImageFilter.SetParameter("FixedImageDimension", "3")
-            elastixImageFilter.SetParameter("MovingImageDimension", "3")
-            elastixImageFilter.SetLogToFile(True)
-            elastixImageFilter.LogToConsoleOff()
-            elastixImageFilter.SetLogFileName('elastix.log')
-            elastixImageFilter.SetOutputDirectory(savepath)
-            elastixImageFilter.PrintParameterMap()
-
-            resultImage = elastixImageFilter.Execute()
-            resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
-            registered_images.append(sitk.GetArrayFromImage(resultImage))
-            del resultImage
-
-        reference_image = sitk.Cast(sitk.RescaleIntensity(reference_image), sitk.sitkUInt8)
-        registered_images.append(sitk.GetArrayFromImage(reference_image))
-        #avg_array = np.mean(registered_images, axis=0)
-        #avg_array = gaussian(avg_array, sigma=1)
-        avg_array = average_images(registered_images, iterations="500")
-
-        #avg_array = gaussian(avg_array, 1.0)
-
-        os.makedirs(savepath, exist_ok=True)
-        save_atlas_path = os.path.join(savepath, f'AtlasV8_{self.z_um}x{self.xy_um}x{self.xy_um}_{self.orientation}.tif')
-        print(f'Saving img to {save_atlas_path}')
-        write_image(save_atlas_path, avg_array.astype(np.uint8))
-
-
     def group_volume(self):
 
         population = ['MD585', 'MD594', 'MD589']
@@ -1359,16 +1229,24 @@ class VolumeRegistration:
 
     def volume2tif(self):
         
-        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'registered_{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
+        output_dir = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal')
         if os.path.exists(output_dir):
             print(f"Output directory {output_dir} already exists. Removing.")
             shutil.rmtree(output_dir)
         os.makedirs(output_dir, exist_ok=True)
 
-        if not os.path.isfile(self.registered_volume):
-            print(f"Registered volume not found at {self.registered_volume}")
-            exit(1)
-        volume = read_image(self.registered_volume)
+        if self.fixed is not None:
+            volume_path = self.register_volume
+        else:
+            volume_path = self.moving_volume_path
+
+        if os.path.exists(volume_path):
+            print(f'Loading volume from {volume_path}')
+            volume = read_image(volume_path)
+        else:
+            print(f"{volume_path} not found, exiting.")
+            return
+
         print(f'Loading volume with shape: {volume.shape}, dtype: {volume.dtype}')
         for i in tqdm(range(int(volume.shape[0])), disable=self.debug, desc="Creating tifs from 3D volume"): # type: ignore
             section = volume[i, ...]
@@ -1385,6 +1263,39 @@ class VolumeRegistration:
 
         print(f'Saved a 3D stack at {output_dir} with {len(os.listdir(output_dir))} sections')
 
+
+    def volume2nifti(self):
+        print(f'Converting volume to nifti format')
+        print(f'Moving volume path: {self.moving_volume_path}')
+        if os.path.exists(self.moving_volume_path):
+            img = read_image(self.moving_volume_path)
+        else:
+            print(f'Moving volume not found at {self.moving_volume_path}')
+            return
+    
+        # Convert numpy array to SimpleITK image
+        sitk_img = sitk.GetImageFromArray(img)
+        
+        # Optionally set spacing (if known, e.g., microns per voxel)
+        # sitk_img.SetSpacing((0.5, 0.5, 2.0))  # example spacing (x, y, z)
+        
+        output_path = self.moving_volume_path.replace('.tif', '.nii')
+        if os.path.exists(output_path):
+            print(f"NIfTI file already exists at: {output_path}, removing.")
+            os.remove(output_path)
+
+        # Write to NIfTI format
+        voxel_size = (self.z_um, self.xy_um, self.xy_um)  # z, y, x in microns
+        origin = (0.0, 0.0, 0.0)
+        direction = np.eye(3).flatten().tolist()
+        sitk_img.SetSpacing(voxel_size)
+        sitk_img.SetOrigin(origin)
+        sitk_img.SetDirection(direction)
+        print(f'Setting spacing to: {voxel_size}')
+
+        sitk.WriteImage(sitk_img, output_path)
+        
+        print(f"✅ Saved NIfTI file to: {output_path}")        
 
 
     def tif2zarr(self):
