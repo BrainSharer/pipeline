@@ -337,10 +337,11 @@ def mask_to_mesh(mask: np.ndarray, origin: tuple, ply_filename: str, color=(255,
 
 #    'Pn_L': 771,
 #    'Pn_R': 771,
-
+# Allen/DK comparison on google drive: 
+# https://docs.google.com/spreadsheets/d/1ADi5kQuGlPyz-rvHXshT-1M9XQwj-GCjmMTwyCjYO-w/edit?usp=sharing
 allen_structures = {
-    'SC': [851],
-    'IC': [811],
+    'SC': [302,294],
+    'IC': [811,820,828],
     'AP': 207,
     'RtTg': 146,
     'SNR_L': 381,

@@ -4,12 +4,15 @@ This script will take a source brain (where the data comes from) and an image br
 to the image brain. It first aligns the point brain data to the atlas, then that data
 to the image brain. It prints out the data by default and also will insert
 into the database if given a layer name.
+Some of the structures from the Allen atlas are drastically different than the DK atlas:
+- 10N_L
 """
 import os
 import numpy as np
 from collections import defaultdict
 from scipy.ndimage import center_of_mass
 import SimpleITK as sitk
+import itk
 
 from tqdm import tqdm
 
@@ -115,7 +118,6 @@ class BrainMerger():
             nii = self.niis[structure]
             com = center_of_mass(volume)
             com_um = (com + origin) * um # get COM in um
-                        
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
@@ -124,10 +126,20 @@ class BrainMerger():
             allen_id = self.brain_structure_manager.get_allen_id(structure)
             #adjusted_volume = adjust_volume(volume, allen_id)
 
-            np.savetxt(com_filepath, com_um)
+            #####TODO, replacing with center of gravity of NII np.savetxt(com_filepath, com_um)
+
             np.savetxt(origin_filepath, origin)
             np.save(volume_filepath, volume)
             sitk.WriteImage(nii, nii_filepath)
+            image = itk.imread(nii_filepath)
+            moments = itk.ImageMomentsCalculator.New(image)
+            moments.Compute()
+            center_of_gravity = moments.GetCenterOfGravity()
+            x,y,z = center_of_gravity
+            cog = np.array((x,y,z)) * um
+            np.savetxt(com_filepath, cog)
+            continue
+            
             relative_origin = (origin - origins_mean)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
             color = number_to_rgb(allen_id)
