@@ -273,7 +273,7 @@ def normalize16(img):
         return np.round(img).astype(np.uint16) 
 
 
-def clean_and_rotate_image(file_key):
+def  clean_and_rotate_image(file_key):
     """The main function that uses the user edited mask to crop out the tissue from 
     surrounding debris. It also rotates the image to
     a usual orientation (where the olfactory bulb is facing left and the cerebellum is facing right.
@@ -367,6 +367,7 @@ def clean_and_rotate_image(file_key):
         cleaned = np.flip(cleaned, axis=1)
 
     cleaned = place_image(cleaned, infile, max_width, max_height, bgcolor=bgcolor)
+    print(f"Saving cleaned image {outfile} with shape {cleaned.shape} and dtype {cleaned.dtype} with bgcolor {bgcolor}")
 
     message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
     write_image(outfile, cleaned, message=message)
