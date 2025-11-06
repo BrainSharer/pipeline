@@ -4,18 +4,21 @@ This script will take a source brain (where the data comes from) and an image br
 to the image brain. It first aligns the point brain data to the atlas, then that data
 to the image brain. It prints out the data by default and also will insert
 into the database if given a layer name.
+Some of the structures from the Allen atlas are drastically different than the DK atlas:
+- 10N_L
 """
 import os
 import numpy as np
 from collections import defaultdict
 from scipy.ndimage import center_of_mass
+import SimpleITK as sitk
+import itk
 
 from tqdm import tqdm
 
-from library.atlas.atlas_utilities import adjust_volume, average_images
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.image_manipulation.filelocation_manager import data_path
-from library.utilities.atlas import generate_random_rgb_color, mask_to_mesh, number_to_rgb
+from library.utilities.atlas import mask_to_mesh, number_to_rgb
 from library.utilities.atlas import singular_structures
 
 
@@ -26,6 +29,7 @@ class BrainMerger():
         self.brain_structure_manager = BrainStructureManager(animal)
         self.symmetry_list = singular_structures
         self.coms_to_merge = defaultdict(list)
+        self.niis_to_merge = defaultdict(list)
         self.origins_to_merge = defaultdict(list)
         self.volumes_to_merge = defaultdict(list)
         self.coms = {}
@@ -34,21 +38,24 @@ class BrainMerger():
         self.data_path = os.path.join(data_path, 'atlas_data', self.animal)
         
         self.com_path = os.path.join(self.data_path, 'com')
-        self.origin_path = os.path.join(self.data_path, 'origin')
         self.mesh_path = os.path.join(self.data_path, 'mesh')
+        self.nii_path = os.path.join(self.data_path, 'nii')
+        self.origin_path = os.path.join(self.data_path, 'origin')
         self.volume_path = os.path.join(self.data_path, 'structure')
 
 
-        self.volumes = {}
         self.coms = {}
         self.origins = {}
+        self.niis = {}
+        self.volumes = {}
         self.margin = 50
         self.threshold = 0.25  # the closer to zero, the bigger the structures
         # a value of 0.01 results in very big close fitting structures
 
         os.makedirs(self.com_path, exist_ok=True)
-        os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.mesh_path, exist_ok=True)
+        os.makedirs(self.nii_path, exist_ok=True)
+        os.makedirs(self.origin_path, exist_ok=True)
         os.makedirs(self.volume_path, exist_ok=True)
 
 
@@ -58,20 +65,6 @@ class BrainMerger():
         xl, yl, zl = size_difference - np.array([xr, yr, zr])
         return np.pad(volume, [[xl, xr], [yl, yr], [zl, zr]])
 
-    def merge_volumes(self, structure, volumes):
-
-        lvolumes = len(volumes)
-        if lvolumes == 0:
-            print(f'{structure} has no volumes to merge')
-            return None
-            #return volumes[0]
-        elif lvolumes == 1:
-            return volumes[0]
-        elif lvolumes > 1:
-            return average_images(volumes)
-        else:
-            print(f'{structure} has no volumes to merge')
-            return None
 
     @staticmethod
     def get_mean_coordinates(xyz):
@@ -81,21 +74,31 @@ class BrainMerger():
         """COMs and saved as um, volumes and origins as 10um, mesh origin is allen origin - mean"""
         origins_mean = self.get_mean_coordinates(list(self.origins.values()))
         desc = f"Saving {self.animal} coms/meshes/origins/volumes"
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.com_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.mesh_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.nii_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.origin_path)
+        self.brain_structure_manager.rm_existing_dir(self.brain_structure_manager.volume_path)
 
         for structure, volume in tqdm(self.volumes.items(), desc=desc, disable=False):
             origin_allen = self.origins[structure]
             com_um = self.coms[structure]
+            nii = self.niis[structure]
 
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
+            nii_filepath = os.path.join(self.nii_path, f'{structure}.nii')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
 
             allen_id = self.brain_structure_manager.get_allen_id(structure)
-            adjusted_volume = adjust_volume(volume, allen_id)
+            volume[volume > 0] = 255
+            volume = volume.astype(np.uint8)
+            #adjusted_volume = adjust_volume(volume, allen_id)
 
+            sitk.WriteImage(nii, nii_filepath)
             np.savetxt(com_filepath, com_um)
             np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, adjusted_volume)
+            np.save(volume_filepath, volume)
 
             #mesh STL file
             relative_origin = (origin_allen - origins_mean)
@@ -109,26 +112,38 @@ class BrainMerger():
         origins_array = np.array(list(origins.values()))
         origins_mean = self.get_mean_coordinates(origins_array)
         desc = "Saving atlas meshes/origins/volumes"
-        for structure in tqdm(self.volumes.keys()):
-            origin_allen = origins[structure]
+        for structure in tqdm(self.volumes.keys(), desc=desc, disable=False):
+            origin = origins[structure]
             volume = self.volumes[structure]
+            nii = self.niis[structure]
             com = center_of_mass(volume)
-            com_um = (com + origin_allen) * um # get COM in um
-                        
+            com_um = (com + origin) * um # get COM in um
             com_filepath = os.path.join(self.com_path, f'{structure}.txt')
             origin_filepath = os.path.join(self.origin_path, f'{structure}.txt')
             volume_filepath = os.path.join(self.volume_path, f'{structure}.npy')
+            nii_filepath =  os.path.join(self.nii_path, f'{structure}.nii')
 
             allen_id = self.brain_structure_manager.get_allen_id(structure)
-            adjusted_volume = adjust_volume(volume, allen_id)
+            #adjusted_volume = adjust_volume(volume, allen_id)
 
-            np.savetxt(com_filepath, com_um)
-            np.savetxt(origin_filepath, origin_allen)
-            np.save(volume_filepath, adjusted_volume)
-            relative_origin = (origin_allen - origins_mean)
+            #####TODO, replacing with center of gravity of NII np.savetxt(com_filepath, com_um)
+
+            np.savetxt(origin_filepath, origin)
+            np.save(volume_filepath, volume)
+            sitk.WriteImage(nii, nii_filepath)
+            image = itk.imread(nii_filepath)
+            moments = itk.ImageMomentsCalculator.New(image)
+            moments.Compute()
+            center_of_gravity = moments.GetCenterOfGravity()
+            x,y,z = center_of_gravity
+            cog = np.array((x,y,z)) * um
+            np.savetxt(com_filepath, cog)
+            continue
+            
+            relative_origin = (origin - origins_mean)
             mesh_filepath = os.path.join(self.mesh_path, f'{structure}.ply')
             color = number_to_rgb(allen_id)
-            mask_to_mesh(adjusted_volume, relative_origin, mesh_filepath, color=color)
+            mask_to_mesh(volume, relative_origin, mesh_filepath, color=color)
             
     def fetch_allen_origins(self):
         structures = {

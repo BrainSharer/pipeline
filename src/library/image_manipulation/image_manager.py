@@ -2,9 +2,9 @@ import os
 import sys
 import numpy as np
 import tifffile
-from skimage import io
 import cv2
 import glob
+from collections import Counter
 
 from library.utilities.utilities_mask import rescaler
 from library.utilities.utilities_process import read_image
@@ -75,36 +75,59 @@ class ImageManager:
         self.volume_zyx = (self.len_files, self.height, self.width)
         self.size = self.img.size
 
-    def get_bgcolor(self):
-        """align needs either an integer or a tuple of integers for the fill color
-        Get the background color of the image based on the the 10th row and 10th column of the image.
-        This is usually the background color in the image.
+    
+    def get_bgcolor(self, border_width=10):
         """
-        debug = False
+        Returns the most common color along the border of a TIF image.
+        
+        Parameters:
+            tif_path (str): Path to the .tif image.
+            border_width (int): Number of pixels from each edge to consider as border.
+        
+        Returns:
+            color (tuple or int): The most common color along the border.
+                                Returns an RGB tuple for color images, or int for grayscale.
+        """
 
-        if self.img.ndim == 2:
-            # If the image is grayscale, return the background color as an integer
-            # Neurotrace brains are black background
-            bgcolor = int(self.img[10, 10])
-            return 0
-
-        test_image = self.img[self.img != 255]  # Get the pixel value at (10, 10)
-
-        unique_values, counts = np.unique(test_image, return_counts=True)
-        max_count_index = np.argmax(counts)
-        bgcolor = unique_values[max_count_index]
-
-        if self.img.ndim == 3 and self.img.shape[-1] > 1:
-            # If the image has multiple channels, return the background color as a tuple
-            bgcolor = (bgcolor,) * self.img.shape[-1]
-        elif self.img.ndim == 3 and self.img.shape[-1] == 1:
-            # If the image has a single channel, return the background color as an integer
-            bgcolor = int(bgcolor)
+        # Handle grayscale or color
+        if self.img.ndim == 2:  # grayscale
+            h, w = self.img.shape
+            channels = 1
+        elif self.img.ndim == 3:  # RGB or RGBA
+            h, w, channels = self.img.shape
+            if channels > 3:
+                self.img = self.img[..., :3]  # drop alpha channel if present
         else:
-            # If the image is grayscale, return the background color as an integer
-            bgcolor = int(bgcolor)
+            raise ValueError("Unsupported image shape:", self.img.shape)
 
-        return bgcolor
+        # Extract border pixels
+        if channels == 1:
+            top = self.img[:border_width, :]
+            bottom = self.img[-border_width:, :]
+            left = self.img[:, :border_width]
+            right = self.img[:, -border_width:]
+            border_pixels = np.concatenate([top.flatten(), bottom.flatten(), 
+                                            left.flatten(), right.flatten()])
+        else:
+            top = self.img[:border_width, :, :]
+            bottom = self.img[-border_width:, :, :]
+            left = self.img[:, :border_width, :]
+            right = self.img[:, -border_width:, :]
+            border_pixels = np.concatenate([
+                top.reshape(-1, 3),
+                bottom.reshape(-1, 3),
+                left.reshape(-1, 3),
+                right.reshape(-1, 3)
+            ], axis=0)
+            # Convert each RGB row to tuple for counting
+            border_pixels = [tuple(pixel) for pixel in border_pixels]
+
+        # Count and get most common color
+        counter = Counter(border_pixels)
+        most_common_color, _ = counter.most_common(1)[0]
+
+        return most_common_color
+
 
     def get_reference_image(self, maskpath):
         """Get the reference image for alignment

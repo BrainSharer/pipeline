@@ -23,7 +23,7 @@ Explanation for the tasks:
 - create_atlas - This will create the atlas volume from the saved volumes on birdstore.
 - update_coms - This will update the COMs in the atlas database from the
 """
-
+import os
 import argparse
 import sys
 from pathlib import Path
@@ -34,7 +34,7 @@ from tqdm import tqdm
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.atlas.atlas_utilities import list_coms, load_transformation
+from library.atlas.atlas_utilities import create_average_binary_mask, create_average_nii, list_coms, load_transformation
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.utilities.utilities_process import SCALING_FACTOR
@@ -64,6 +64,13 @@ class AtlasManager():
             brainManager = BrainStructureManager(animal, self.um, self.debug)
             brainManager.create_brain_json(animal, self.debug)
 
+
+        self.com_path = os.path.join(self.data_path, self.animal, "com") 
+        self.origin_path = os.path.join(self.data_path, self.animal, "origin")
+        self.mesh_path = os.path.join(self.data_path, self.animal, "mesh")
+        self.volume_path = os.path.join(self.data_path, self.animal, "structure")
+
+
     def create_brain_volumes_and_origins(self):
         """
         # 2nd step, this takes the JSON files and creates the brain volumes and origins
@@ -72,6 +79,8 @@ class AtlasManager():
         self.brainManager.fixed_brain = BrainStructureManager('MD589', self.debug)
         if self.debug:
             self.foundation_brains = ['MD585']
+        if self.animal in self.foundation_brains:
+            self.foundation_brains = [self.animal]
         for animal in self.foundation_brains:
             brainMerger = BrainMerger(animal)
             self.brainManager.create_foundation_brain_volumes_origins(brainMerger, animal, self.debug)
@@ -92,16 +101,19 @@ class AtlasManager():
         """
         start_time = timer()
         
-        
+        self.brainManager.rm_existing_dir(self.brainManager.com_path)
+        self.brainManager.rm_existing_dir(self.brainManager.mesh_path)
+        self.brainManager.rm_existing_dir(self.brainManager.nii_path)
+        self.brainManager.rm_existing_dir(self.brainManager.origin_path)
+        self.brainManager.rm_existing_dir(self.brainManager.volume_path)
         polygon_annotator_id = 1
         foundation_animal_users = [['MD585', polygon_annotator_id], ['MD589', polygon_annotator_id], ['MD594', polygon_annotator_id]]
         for animal, polygon_annotator_id in sorted(foundation_animal_users):
             self.brainManager.polygon_annotator_id = polygon_annotator_id
-            self.brainManager.create_foundation_brains_origin_volume(self.atlasMerger, animal)
+            self.brainManager.collect_foundation_brains_origin_volume(self.atlasMerger, animal)
         
-        # Note, for DK78, The C1 source is C1.v1
-        
-        
+        # Note, for DK78, The C1 source is C1.v1        
+        """
         brains = []
         for animal in brains:
             #transform = load_transformation(animal, self.um, self.um)
@@ -113,7 +125,6 @@ class AtlasManager():
                 print(f'Processing {animal} {structure}')
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
-        
         other_brains = []
         other_structures = ['TG_L', 'TG_R']
 
@@ -122,11 +133,15 @@ class AtlasManager():
             for structure in other_structures:
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
-
+        """
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
             volumes = self.atlasMerger.volumes_to_merge[structure]
-            volume = self.atlasMerger.merge_volumes(structure, volumes)
+            volume = create_average_binary_mask(volumes, structure)
+
+            volume_niis = self.atlasMerger.niis_to_merge[structure]
+            volume_nii = create_average_nii(volume_niis, structure)
             self.atlasMerger.volumes[structure]= volume
+            self.atlasMerger.niis[structure]= volume_nii
 
         if len(self.atlasMerger.origins_to_merge) > 0:
             self.atlasMerger.save_atlas_meshes_origins_volumes(self.um)
@@ -142,6 +157,9 @@ class AtlasManager():
         # optional step, this draws the brains from the cleaned images so you can check the placement of the volumes
         # The output is in /net/birdstore/Active_Atlas_Data/data_root/pipeline_data/MDXXX/preps/C1/drawn    
         """
+        if self.animal not in self.foundation_brains:
+            print(f'Test drawing only works for foundation brains: {self.foundation_brains}')
+            return
         brainManager = BrainStructureManager(self.animal, self.um, self.debug)
         brainManager.test_brain_volumes_and_origins(self.animal)
 
@@ -197,7 +215,7 @@ if __name__ == '__main__':
                         'status': pipeline.brainManager.report_status,
                         'update_volumes': pipeline.brainManager.fetch_create_volumes,
                         'precomputed': pipeline.create_precomputed,
-                        'atlas2allen': pipeline.brainManager.atlas2allen,
+                        'atlas2allen': pipeline.brainManager.transform_origins_volumes_to_allen,
                         'update_allen': pipeline.brainManager.update_allen,
     }
 
