@@ -367,7 +367,6 @@ def  clean_and_rotate_image(file_key):
         cleaned = np.flip(cleaned, axis=1)
 
     cleaned = place_image(cleaned, infile, max_width, max_height, bgcolor=bgcolor)
-    print(f"Saving cleaned image {outfile} with shape {cleaned.shape} and dtype {cleaned.dtype} with bgcolor {bgcolor}")
 
     message = f'Error in saving {outfile} with shape {cleaned.shape} img type {cleaned.dtype}'
     write_image(outfile, cleaned, message=message)

@@ -125,8 +125,12 @@ class ImageManager:
         # Count and get most common color
         counter = Counter(border_pixels)
         most_common_color, _ = counter.most_common(1)[0]
+        if isinstance(most_common_color, (tuple,list)):
+            retval = int(np.mean(most_common_color))
+        else:
+            retval = int(most_common_color)        
 
-        return most_common_color
+        return retval
 
 
     def get_reference_image(self, maskpath):

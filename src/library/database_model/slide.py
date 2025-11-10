@@ -47,11 +47,11 @@ class SlideCziTif(Base, AtlasModel):
     width = Column(Integer)
     height = Column(Integer)
     file_size = Column(Float)
-    comments = Column(String)
     channel = Column(Integer)
     scene_index = Column(Integer)
     scene_order = Column(Integer, default=99999)
     processing_duration = Column(Float, nullable=False)
+    copy_count = Column(Integer, default=0)
     
 
 class Section(Base, AtlasModel):
