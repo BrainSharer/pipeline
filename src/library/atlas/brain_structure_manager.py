@@ -1198,19 +1198,17 @@ class BrainStructureManager:
 
     def transform_origins_volumes_to_allen(self):
         # check dirs first
-        self.rm_existing_dir(self.registered_origin_path)
+        #self.rm_existing_dir(self.registered_origin_path)
         self.rm_existing_dir(self.registered_volume_path)
 
-        self.check_for_existing_dir(self.origin_path)
+        self.check_for_existing_dir(self.registered_origin_path)
         self.check_for_existing_dir(self.nii_path)
-        self.check_for_existing_dir(self.com_path)
-        print(f'Using coms from {self.com_path}')
+        print(f'Using origins from {self.registered_origin_path}')
 
         
-        origins = sorted([f for f in os.listdir(self.origin_path)])
+        origins = sorted([f for f in os.listdir(self.registered_origin_path)])
         volumes = sorted([f for f in os.listdir(self.nii_path)])
-        coms = sorted([f for f in os.listdir(self.com_path)])
-        print('Creating affine transform from coms in the database/disk')
+        print('Creating affine transform from origins in the database/disk')
         threeD_transform = self.create_affine_transformation()
         affine_transform = self.convert_transformation(threeD_transform)
         volume = sitk.ReadImage(os.path.join(self.nii_path, 'SC.nii'))
