@@ -28,6 +28,8 @@ from scipy.ndimage import center_of_mass
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
 
+from library.atlas.atlas_utilities import affine_transform_point, compute_affine_transformation, get_origins
+
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -155,10 +157,14 @@ def parse_masks(um, debug):
 
     data_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Allen"
     com_path = os.path.join(data_path, 'com')
+    origin_path = os.path.join(data_path, 'origin')
     structure_path = os.path.join(data_path, 'structure')
     if os.path.exists(com_path):
         shutil.rmtree(com_path)
     os.makedirs(com_path, exist_ok=True)
+    if os.path.exists(origin_path):
+        shutil.rmtree(origin_path)
+    os.makedirs(origin_path, exist_ok=True)
     if os.path.exists(structure_path):
         shutil.rmtree(structure_path)
     os.makedirs(structure_path, exist_ok=True)
@@ -170,12 +176,11 @@ def parse_masks(um, debug):
             if abbreviation not in ['SC', 'VLL_L', 'VLL_R']:  # just a few test structures
                 continue
 
-        bad_keys = ['RMC_L', 'RMC_R']
-
         if type(structure_id) == list:
             sid = structure_id
         else:
             sid = [structure_id]
+        # skip ones with fake allen IDs
         if sid[0] > 1000:
             continue
 
@@ -189,12 +194,11 @@ def parse_masks(um, debug):
         allen_id = sid[0]
         structure_mask = np.isin(allen_volume, all_ids)
 
-        #structure_mask = rsp.make_structure_mask(sid, direct_only=True)
-        #structure_mask = np.swapaxes(structure_mask,0,2)
         structure_mask = structure_mask.astype(np.uint32)
         structure_mask[structure_mask > 0] = allen_id
         registered_full = np.maximum(registered_full, structure_mask)
 
+        modifier = 0
 
         if abbreviation.endswith('L'):
             print(f'Left side {abbreviation}')
@@ -202,6 +206,7 @@ def parse_masks(um, debug):
         elif abbreviation.endswith('R'):
             print(f'Right side  {abbreviation}')
             structure_mask = structure_mask[:,:,midpoint:]
+            modifier = midpoint
         else:
             print(f'Singular object {abbreviation}')
 
@@ -215,7 +220,7 @@ def parse_masks(um, debug):
             max_x = np.max(x_coords)
             min_y = np.min(y_coords)
             max_y = np.max(y_coords)
-            min_z = np.min(z_coords)
+            min_z = np.min(z_coords) + modifier
             max_z = np.max(z_coords)
         except ValueError as e:
             print(f"\tNo voxels found for structure {abbreviation} with IDs {allen_id}, skipping...")
@@ -239,18 +244,40 @@ def parse_masks(um, debug):
     
         print(f"\tStructure: {structure['name']} ({structure['acronym']})")
         print(f"\tCenter of mass (x,y,z): {x}, {y}, {z}")
-        print(f'\tIDs {sid} mask dtype={structure_mask.dtype} shape={structure_mask.shape} unique values={np.unique(structure_mask)}')
+        print(f'\tOrigin microns: {min_x}, {min_y}, {min_z}')
+        print(f'\tIDs {sid} mask dtype={structure_mask.dtype} shape={structure_mask.shape}')
 
         comfile_path = os.path.join(com_path, f'{abbreviation}.txt')
-        np.savetxt(comfile_path, center_um)
-        print(f"\tWrote COM file to {comfile_path}")
-    # Save the registered full mask
-    registered_full_path = os.path.join(structure_path, 'registered_full.tif')
-    write_image(registered_full_path, registered_full.astype(np.uint32))
-    print(f"Wrote registered full mask to {registered_full_path}")
-    json.dump(ids, open(os.path.join(structure_path, 'ids.json'), 'w'))
+        originfile_path = os.path.join(origin_path, f'{abbreviation}.txt')
+        if not debug:
+            np.savetxt(comfile_path, center_um)
+            np.savetxt(originfile_path, np.array([min_x, min_y, min_z]))
+            print(f"\tWrote origin to {originfile_path}")
+    if not debug:
+        # Save the registered full mask
+        registered_full_path = os.path.join(structure_path, 'registered_full.tif')
+        write_image(registered_full_path, registered_full.astype(np.uint32))
+        print(f"Wrote registered full mask to {registered_full_path}")
+        json.dump(ids, open(os.path.join(structure_path, 'ids.json'), 'w'))
     return ids, registered_full
 
+
+def update_registered_origins(um, debug):
+    registered_origin_path = '/net/birdstore/Active_Atlas_Data/data_root/atlas_data/AtlasV8/registered_origin'
+    moving_all = get_origins('AtlasV8')
+    fixed_all = get_origins('Allen')
+    common_keys = list(moving_all.keys() & fixed_all.keys())
+    bad_keys = ('10N_L','10N_R')
+    good_keys = set(common_keys) - set(bad_keys)
+    moving_src = np.array([moving_all[s] for s in good_keys])
+    fixed_src = np.array([fixed_all[s] for s in good_keys])
+    print(len(good_keys))
+    transformation_matrix, rmse, predictions = compute_affine_transformation(moving_src, fixed_src)
+    for structure, origin in moving_all.items():
+        new_origin = affine_transform_point(origin, transformation_matrix)
+        new_origin_path = os.path.join(registered_origin_path, f'{structure}.txt')
+        print(structure, np.round(origin/10,2), np.round(new_origin,2))
+        np.savetxt(new_origin_path, new_origin)
 
 def create_neuroglancer(um, ids=None, atlas_volume=None):
     data_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Allen"
@@ -287,4 +314,4 @@ if __name__ == "__main__":
     #load_allen_nrrd()
     #get_center_of_mass(um, debug) # right is wrong, left looks good and singular structures look good.
     ids, atlas_volume = parse_masks(um, debug) # Both VLL_L and VLL_R look good.
-    create_neuroglancer(um, ids, atlas_volume)
+    #create_neuroglancer(um, ids, atlas_volume)

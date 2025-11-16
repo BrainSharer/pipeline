@@ -319,14 +319,17 @@ def affine_transform_point(point: list, matrix: np.ndarray) -> np.ndarray:
     return transformed_point[:3]
 
 def affine_transform_volume(volume: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    """Apply an affine transformation to a 3D volume."""
+    """
+    Apply an affine transformation to a 3D volume.
+    order = 0 for nearest neighbor interpolation, for binary masks
+    """
     if matrix.shape != (4, 4):
         raise ValueError("Matrix must be a 4x4 numpy array")
-    translation = (matrix[..., 3][0:3])
-    #translation = 0
+    #translation = (matrix[..., 3][0:3])
+    translation = (0,0,0)
     matrix = matrix[:3, :3]
-    transformed_volume = affine_transform(volume, matrix, offset=translation, order=1)
-    return transformed_volume
+    transformed = affine_transform(volume.astype(np.float32), matrix, offset=translation, order=0, mode='constant', cval=0)
+    return (transformed > 0.05).astype(np.uint8)
 
 def affine_transform_points(polygons: defaultdict, matrix: np.ndarray) -> defaultdict:
     """
@@ -389,6 +392,23 @@ def list_raw_coms(animal, scaling_factor=1):
         coms[k] = v
 
     return coms
+
+def get_origins(animal):
+    """
+    Fetches the origins from disk. The data is already scaled to 10um.
+    """
+    
+    origins = {}
+    dirpath = f'/net/birdstore/Active_Atlas_Data/data_root/atlas_data/{animal}/origin'
+    if not os.path.exists(dirpath):
+        return origins
+    files = sorted(os.listdir(dirpath))
+    for file in files:
+        structure = Path(file).stem
+        filepath = os.path.join(dirpath, file)
+        origin = np.loadtxt(filepath)
+        origins[structure] = origin
+    return origins
 
 
 def fetch_coms(animal, scaling_factor=1):
@@ -1365,3 +1385,79 @@ def average_transforms(transforms):
     ])
     return avg
 
+
+def average_volumes_with_fiducials(volumes, fiducials_list, transform_type="rigid"):
+    """
+    Average multiple 3D volumes by aligning them with rigid transforms derived from fiducial points.
+
+    Parameters
+    ----------
+    volumes : list of sitk.Image
+        List of 3D image volumes to be averaged.
+    fiducials : list of np.ndarray
+        List of Nx3 numpy arrays containing corresponding fiducial points for each volume.
+        fiducials[i][k] == the k-th fiducial in volume[i].
+    reference_index : int
+        Index of the volume to use as the reference space.
+
+    Returns
+    -------
+    sitk.Image
+        A 3D volume representing the average of all aligned volumes.
+    """
+
+    # Reference image and fiducials
+    images = [sitk.ReadImage(vol) for vol in volumes]
+    reference_index, reference_image = max(enumerate(images), key=lambda img: np.prod(img[1].GetSize()))
+    #fixed_image = sitk.ReadImage(volumes[0])
+    fixed_points = fiducials_list[0]
+
+    # Accumulator volume
+    acc = sitk.Image(reference_image.GetSize(), sitk.sitkFloat32)
+    acc.CopyInformation(reference_image)
+
+    initializer = sitk.LandmarkBasedTransformInitializerFilter()
+
+    if transform_type == "rigid":
+        tx = sitk.VersorRigid3DTransform()
+    elif transform_type == "affine":
+        tx = sitk.AffineTransform(3)
+    else:
+        raise ValueError("transform_type must be 'rigid' or 'affine'.")
+
+    initializer.SetTransform(tx)
+    # metric: sum of squared distances
+    initializer.SetMetricAsEuclideanDistance()
+
+    # optimizer
+    initializer.SetOptimizerAsGradientDescent(learningRate=1.0,
+                                      numberOfIterations=200,
+                                      convergenceMinimumValue=1e-6,
+                                      convergenceWindowSize=10)
+    
+
+    for i in range(1, len(volumes)):
+        print(f"Processing volume {i} ...")
+        moving_img = sitk.ReadImage(volumes[i])
+        moving_points = fiducials_list[i]        
+        final_tx = initializer.Execute(fixed_points, moving_points)
+        # Resample image to reference grid
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(reference_image)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        resampler.SetTransform(final_tx)
+
+        moved_img = resampler.Execute(moving_img)
+
+        # accumulate
+        acc += sitk.GetArrayFromImage(moved_img)
+        count += 1
+
+    # ---------------------------------------
+    # Return averaged volume in SimpleITK form
+    # ---------------------------------------
+    avg_array = acc / count
+    avg_img = sitk.GetImageFromArray(avg_array)
+    avg_img.CopyInformation(reference_image)
+
+    return avg_img
