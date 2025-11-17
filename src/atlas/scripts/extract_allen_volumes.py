@@ -24,11 +24,7 @@ import SimpleITK as sitk
 import math
 from tqdm import tqdm
 from scipy.ndimage import center_of_mass
-
-from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
-
-from library.atlas.atlas_utilities import affine_transform_point, compute_affine_transformation, get_origins
 
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -37,6 +33,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.utilities.atlas import allen_structures
 from library.utilities.utilities_process import read_image, write_image
+from library.atlas.atlas_utilities import affine_transform_point, compute_affine_transformation, get_origins
 
 def get_center_of_mass(um, debug):
     # --- step 0 clean up
@@ -171,7 +168,7 @@ def parse_masks(um, debug):
 
     ids = {}
 
-    for abbreviation, structure_id in allen_structures.items():
+    for abbreviation, structure_id in tqdm(allen_structures.items(), desc='Processing structures', disable=not debug):
         if debug:
             if abbreviation not in ['SC', 'VLL_L', 'VLL_R']:  # just a few test structures
                 continue
@@ -314,4 +311,4 @@ if __name__ == "__main__":
     #load_allen_nrrd()
     #get_center_of_mass(um, debug) # right is wrong, left looks good and singular structures look good.
     ids, atlas_volume = parse_masks(um, debug) # Both VLL_L and VLL_R look good.
-    #create_neuroglancer(um, ids, atlas_volume)
+    create_neuroglancer(um, ids, atlas_volume)

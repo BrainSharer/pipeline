@@ -652,12 +652,13 @@ class VolumeRegistration:
         scales = (scale_xy, scale_xy, scale_z)
         os.makedirs(PRECOMPUTED, exist_ok=True)
         volume = read_image(volumepath)
+        volume = volume.astype(np.uint8)
         volume = np.swapaxes(volume, 0, 2)
         num_channels = 1
         volume_size = volume.shape
         
         print(f'volume shape={volume.shape} dtype={volume.dtype} creating at {PRECOMPUTED}')
-        volume = normalize16(volume)
+        #volume = normalize16(volume)
 
         ng = NumpyToNeuroglancer(
             self.moving,
@@ -680,9 +681,10 @@ class VolumeRegistration:
 
     def register_volume(self):
         # Load fixed and moving images
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
+        pixel_type = sitk.sitkUInt16
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkUInt16)
         print(f"Read fixed image: {self.fixed_volume_path}")
-        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkUInt16)
         print(f"Read moving image: {self.moving_volume_path}")
 
         # Initial alignment of the centers of the two volumes
@@ -716,7 +718,7 @@ class VolumeRegistration:
         print("Final metric value: ", R.GetMetricValue())
         print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
         # Resample moving image onto fixed image grid
-        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, pixel_type)
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 

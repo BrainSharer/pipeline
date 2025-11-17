@@ -94,11 +94,13 @@ class AtlasManager():
 
     def create_other_brain_volumes_and_origins(self):
 
-        if self.animal is None and self.annotation_id is None:
+        if self.animal is None and self.brainManager.annotation_id is None:
             print('You must provide either an animal or an annotation ID for this task')
             sys.exit()
 
-        structure = None
+        annotation_session = self.brainManager.sqlController.get_annotation_by_id(self.brainManager.annotation_id)
+        structure = annotation_session.labels[0].label
+        print(f'Creating volumes and origins for {self.animal} {structure=} annotation ID={self.brainManager.annotation_id}')
         transform = load_transformation(self.animal, self.um, self.um)
         if transform is None:
             print('No transformation found, cannot proceed')

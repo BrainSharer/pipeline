@@ -196,7 +196,6 @@ class BrainStructureManager:
                 return
 
             annotation_sessions = [annotation_session]
-            structure = 'TG_R'
         else:
 
             try:
