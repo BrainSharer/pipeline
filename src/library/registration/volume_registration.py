@@ -681,7 +681,7 @@ class VolumeRegistration:
 
     def register_volume(self):
         # Load fixed and moving images
-        pixel_type = sitk.float32
+        pixel_type = sitk.sitkFloat32
         fixed_image = sitk.ReadImage(self.fixed_volume_path, pixel_type)
         print(f"Read fixed image: {self.fixed_volume_path}")
         moving_image = sitk.ReadImage(self.moving_volume_path, pixel_type)
