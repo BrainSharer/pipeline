@@ -64,7 +64,8 @@ class ImageCleaner:
             INPUT = self.fileLocationManager.get_full(self.channel)
             MASKS = self.fileLocationManager.get_full_masked(channel=1)
 
-        CLEANED = Path(self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR))
+        CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
+        os.makedirs(CLEANED, exist_ok=True)
 
         #15-SEP-2025 testing - Duane
         compare_directories(INPUT, MASKS)
@@ -78,16 +79,7 @@ class ImageCleaner:
         self.fileLogger.logevent(f"INPUT FOLDER: {INPUT}, QTY FILES: {len(starting_files)}")
         self.fileLogger.logevent(f"MASK FOLDER: {MASKS}")
         self.fileLogger.logevent(f"CLEANED [OUTPUT] FOLDER: {CLEANED}")
-                
-        if self.downsample and CLEANED.exists():
-            try:
-                print('DEBUG: WOULD HAVE REMOVED CHANNEL FILES IN TIF FOLDER')
-                pass #TODO - Duane (suspect this may be deleting all files in tif folder)
-                # delete_in_background(CLEANED)
-            except Exception as e:
-                print(f"Non-critical Error deleting directory: {e}")
-        CLEANED.mkdir(parents=True, exist_ok=True)  
-        
+                        
         self.parallel_create_cleaned(INPUT, CLEANED, MASKS)
 
 

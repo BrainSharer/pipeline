@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+from typing import Tuple
 import numpy as np
 from collections import defaultdict
 import cv2
@@ -65,6 +66,7 @@ class BrainStructureManager:
     def __init__(self, animal, um=10, affine=False, scaling_factor=SCALING_FACTOR, debug=False):
 
         self.animal = animal
+        self.annotation_id = 0
         self.fixed_brain = None
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(self.animal)
@@ -183,33 +185,53 @@ class BrainStructureManager:
         label_ids = self.get_label_ids(structure)
         annotator_id = 1 # hard coded to Edward
 
-        try:
-            annotation_sessions = (
-                self.sqlController.session.query(AnnotationSession)
-                .filter(AnnotationSession.active == True)
-                .filter(AnnotationSession.FK_user_id == annotator_id)
-                .filter(AnnotationSession.FK_prep_id == animal)
-                .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
-                .all()
-            )
-        except Exception as e:
-            print(f"Error occurred while fetching annotation session for {animal}: {structure}")
-            print(e)
-            return
+        query = self.sqlController.session.query(AnnotationSession)
+
+        if self.annotation_id != 0:
+            print(f'Fetching annotation session for ID={self.annotation_id} for {animal}')
+            try:
+                annotation_session = query.filter(AnnotationSession.id == self.annotation_id).one()
+            except NoResultFound:
+                print(f'Could not find annotation session for ID={self.annotation_id} for {animal}')
+                return
+
+            annotation_sessions = [annotation_session]
+            structure = 'TG_R'
+        else:
+
+            try:
+                annotation_sessions = (
+                    query.filter(AnnotationSession.active == True)
+                    .filter(AnnotationSession.FK_user_id == annotator_id)
+                    .filter(AnnotationSession.FK_prep_id == animal)
+                    .filter(AnnotationSession.labels.any(AnnotationLabel.id.in_(label_ids)))
+                    .all()
+                )
+            except NoResultFound:
+                print(f'Could not find annotation sessions for {animal} {structure}')
+                annotation_sessions = None
 
         if annotation_sessions is None:
             print(f'Did not find any data for {animal} {structure}')
             return
+        
+        print(f'Found {len(annotation_sessions)} annotation sessions for {animal} {structure}')
 
         for annotation_session in annotation_sessions:
+
+            print(f'Fetching polygons for annotation session ID={annotation_session.id} for {animal} {structure}')
 
             polygons = self.sqlController.get_annotation_volume(annotation_session.id, self.um)
             if len(polygons) == 0:
                 print(f'Found data for {animal} {structure}, but the data is empty')
                 continue
+            print(f'Processing annotation session ID={annotation_session.id} for {animal} {structure} with {len(polygons)} polygons')
 
+            origin, volume = self.create_volume_for_one_structure_from_polygons(polygons)
+            if transform is not None:
+                _, volume, allen_id = self.create_registered_structure(structure, volume, transform)
+                origin = transform.GetInverse().TransformPoint(origin.tolist())
 
-            origin, volume = self.create_volume_for_one_structure_from_polygons(polygons, transform)
             # we want to keep the origin in micrometers, so we multiply by the allen um
             #####origin = origin * self.um
 
@@ -220,16 +242,20 @@ class BrainStructureManager:
             volume = np.swapaxes(volume, 0, 2)
             com = (np.array( center_of_mass(volume) ))  + origin
             if debug:
-                print(f'ID={annotation_session.id} animal={animal} {structure} origin={np.round(origin)} com={np.round(com)} polygon len {len(polygons)}')
+                print(f'ID={annotation_session.id} animal={animal} {structure=} origin={np.round(origin)} com={np.round(com)} polygon len {len(polygons)}')
             else:
                 brainMerger.coms_to_merge[structure].append(com)
                 brainMerger.origins_to_merge[structure].append(origin)
                 brainMerger.volumes_to_merge[structure].append(volume)
 
-                structure_path = os.path.join(self.data_path, animal, "structure2allen")
-                os.makedirs(structure_path, exist_ok=True)
-                np.save(os.path.join(structure_path, f"{structure}.npy"), volume)
-
+                animal = 'AtlasV8'
+                registered_structure_path = os.path.join(self.data_path, animal, "registered_structure")
+                os.makedirs(registered_structure_path, exist_ok=True)
+                np.save(os.path.join(registered_structure_path, f"{structure}.npy"), volume)
+                registered_origin_path = os.path.join(self.data_path, animal, "registered_origin")
+                os.makedirs(registered_origin_path, exist_ok=True)
+                np.savetxt(os.path.join(registered_origin_path, f"{structure}.txt"), origin)
+                print(f'Saved registered volume and origin for {animal} {structure} to {registered_structure_path}')
 
     def save_brain_origins_and_volumes_and_meshes(self):
         """Saves everything to disk, no calculations, only saving!"""
@@ -1112,7 +1138,7 @@ class BrainStructureManager:
         return origin, subvolume
 
     @staticmethod
-    def create_volume_for_one_structure_from_polygons(polygons, transform=None):
+    def create_volume_for_one_structure_from_polygons(polygons):
         """Creates a volume from a dictionary of polygons
         The polygons are in the form of {section: [x,y]}
         """
@@ -1129,7 +1155,7 @@ class BrainStructureManager:
         xlength = max_x - min_x
         ylength = max_y - min_y
         slice_size = (int(round(ylength)), int(round(xlength)))
-        #print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
+        print(f'slice size={slice_size} {min_x=} {min_y=} {max_x=} {max_y=} {mean_vals=} {min_z=} {max_z=}')
         # You need to subtract the min_x and min_y from the points as the volume is only as big as the range of x and y
         slices = []
         points_dict = {}
@@ -1155,34 +1181,6 @@ class BrainStructureManager:
         volume = np.stack(slices, axis=0).astype(np.uint8)  # Keep this at uint8!
         ##### Transform volume with sitk, no translation
         origin = np.array([min_x, min_y, min_z]).astype(np.float32)
-        if transform is not None:
-            R = np.array(transform.GetParameters()[0:9]).reshape(3, 3)
-            #print('R', R)
-            scale = np.linalg.norm(R, axis=0)
-            #print('scale', scale)
-            affine_transform = sitk.AffineTransform(3)
-            affine_transform.SetMatrix(R.ravel())
-            #translation = transform.GetInverse().GetParameters()[9:]
-            translation = transform.GetParameters()[9:]
-            volume = sitk.GetImageFromArray(volume.astype(np.float32))
-            #old_size = volume.GetSize()
-            #new_size = (int(old_size[0] * scale[0]), int(old_size[1] * scale[1]), int(old_size[2] * scale[2]))
-            #ref_img = sitk.Image(new_size, sitk.sitkFloat32)
-            center = get_physical_center(volume)
-            offset = translation - R @ center + center
-            #print(f'offset: {offset}')
-            affine_transform.SetTranslation(offset)
-            resampled_subvolume = sitk.Resample(
-                volume,
-                volume,                   # target space
-                affine_transform,            # affine transform
-                sitk.sitkLinear,             # interpolator
-                0.0,                         # default pixel value
-                volume.GetPixelID()       # preserve pixel type
-            )
-            volume = sitk.GetArrayFromImage(resampled_subvolume)
-            #origin = origin + translation
-
         # get moving volume
         # get polygon data, get start index for sitk as the min values and the sub_size for sitk as the dimensions
         return origin, volume
@@ -1304,6 +1302,32 @@ class BrainStructureManager:
         #resampled = sitk.BinaryThreshold(resampled, lowerThreshold=1, upperThreshold=255, insideValue=255, outsideValue=0)
         return resampled                
 
+
+ 
+    def create_registered_structure(self, structure, mask, transform) -> Tuple[sitk.Image, np.ndarray]:
+        if isinstance(mask, np.ndarray):
+            mask = sitk.GetImageFromArray(mask.astype(np.uint8))
+        output_size, output_origin, orig_spacing = self.create_fixed_output(mask, transform)
+        resampled = sitk.Resample(
+            mask,
+            output_size,
+            transform.GetInverse(),
+            sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
+            output_origin,
+            orig_spacing,
+            mask.GetDirection(),
+            0.0 # Default pixel value is 0
+        )
+
+        resampled_np = sitk.GetArrayFromImage(resampled).astype(np.uint16)
+        resampled_np = binary_fill_holes(resampled_np).astype(np.uint32)
+        resampled_np = gaussian(resampled_np, sigma=1)
+        allen_id = self.get_allen_id(structure)
+        resampled_np[resampled_np > 0] = allen_id
+
+        return resampled, resampled_np, allen_id
+       
+ 
     def atlas2allen(self):
 
         self.check_for_existing_dir(self.origin_path)
@@ -1329,36 +1353,16 @@ class BrainStructureManager:
             if self.debug:
                 if structure not in ['SC', 'IC', '7n_R', '7n_L']:
                     continue
-
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
-            mask_np = sitk.GetArrayFromImage(mask)
-            output_size, output_origin, orig_spacing = self.create_fixed_output(mask, notranslation_affine_transform)
-            if self.debug:
-                print(f'output size: {output_size}, origin: {output_origin}, spacing: {orig_spacing}')
-            resampled = sitk.Resample(
-                mask,
-                output_size,
-                notranslation_affine_transform.GetInverse(),
-                sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
-                output_origin,
-                orig_spacing,
-                mask.GetDirection(),
-                0.0 # Default pixel value is 0
-            )
-
-            resampled_np = sitk.GetArrayFromImage(resampled).astype(np.uint16)
+            resampled, resampled_np, allen_id = self.create_registered_structure(structure, mask, notranslation_affine_transform)
             resampled_np = np.swapaxes(resampled_np, 0, 2)  # z,y,x to x,y,z
-            resampled_np = binary_fill_holes(resampled_np).astype(np.uint32)
-            resampled_np = gaussian(resampled_np, sigma=1)
-            allen_id = self.get_allen_id(structure)
-
-            resampled_np[resampled_np > 0] = allen_id
-            # mesh stuff
+ 
             new_origin_path = os.path.join(self.registered_origin_path, f'{structure}.txt')
             if not os.path.exists(new_origin_path):
                 print(f'No registered origin found for {structure} at {new_origin_path}')
                 continue
             if self.debug:
+                mask_np = sitk.GetArrayFromImage(mask)
                 print(f'Structure: {structure}')
                 print(f'\tNon resampled moving image size: {mask.GetSize()} origin: {mask.GetOrigin()}')
                 ids, counts = np.unique(mask_np, return_counts=True)
@@ -1503,7 +1507,13 @@ class BrainStructureManager:
             affine_transformation.SetMatrix(matrix)
             affine_transformation.SetTranslation(translation)
         else:
-            raise ValueError("Transformation must be a numpy ndarray.")
+            affine_transformation = np.eye(4)
+            parameters = transformation.GetParameters()
+            matrix = parameters[0:9]
+            translation = [0,0,0]
+            affine_transformation[0:3, 0:3] = np.array(matrix).reshape(3,3)
+            affine_transformation[0:3, 3] = np.array(translation)
+
 
         return affine_transformation
 

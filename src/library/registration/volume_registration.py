@@ -582,6 +582,7 @@ class VolumeRegistration:
         change = (change_z, change_y, change_x) 
         changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
         print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
+        print(f'Using files from {self.thumbnail_aligned} to create volume at\n\t {self.moving_volume_path}')
 
         if self.debug:
             return

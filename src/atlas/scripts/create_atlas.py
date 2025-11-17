@@ -42,10 +42,11 @@ from library.utilities.utilities_process import SCALING_FACTOR
 
 class AtlasManager():
 
-    def __init__(self, animal, task, um=10, affine=False, scaling_factor=SCALING_FACTOR, debug=False):
+    def __init__(self, animal, annotation_id, task, um=10, affine=False, scaling_factor=SCALING_FACTOR, debug=False):
 
         self.animal = animal
         self.brainManager = BrainStructureManager(animal, um, affine, scaling_factor, debug)
+        self.brainManager.annotation_id = annotation_id
         self.atlasMerger = BrainMerger(animal)
         self.task = task
         self.debug = debug
@@ -91,6 +92,19 @@ class AtlasManager():
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"{self.task} took {total_elapsed_time} seconds")
 
+    def create_other_brain_volumes_and_origins(self):
+
+        if self.animal is None and self.annotation_id is None:
+            print('You must provide either an animal or an annotation ID for this task')
+            sys.exit()
+
+        structure = None
+        transform = load_transformation(self.animal, self.um, self.um)
+        if transform is None:
+            print('No transformation found, cannot proceed')
+            sys.exit(1)
+        self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, self.animal, structure, transform, self.debug)
+
 
     def merge_all(self):
         """
@@ -112,7 +126,6 @@ class AtlasManager():
             self.brainManager.polygon_annotator_id = polygon_annotator_id
             self.brainManager.collect_foundation_brains_origin_volume(self.atlasMerger, animal)
         
-        # Note, for DK78, The C1 source is C1.v1        
         """
         brains = []
         for animal in brains:
@@ -125,13 +138,6 @@ class AtlasManager():
                 print(f'Processing {animal} {structure}')
                 self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
-        other_brains = []
-        other_structures = ['TG_L', 'TG_R']
-
-        for animal in other_brains:
-            transform = load_transformation(animal, self.um, self.um)
-            for structure in other_structures:
-                self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, animal, structure, transform, self.debug)
 
         """
         for structure in tqdm(self.atlasMerger.volumes_to_merge, desc='Merging atlas origins/volumes', disable=self.debug):
@@ -178,6 +184,7 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--animal', required=False, default='AtlasV8', type=str)
+    parser.add_argument('--annotation_id', required=False, default=0, type=int)
     parser.add_argument('--debug', required=False, default='false', type=str)
     parser.add_argument('--affine', required=False, default='false', type=str)
     parser.add_argument('--um', required=False, default=10.0, type=float)
@@ -188,6 +195,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     animal = str(args.animal).strip()
+    annotation_id = args.annotation_id
     task = str(args.task).strip().lower()
     debug = bool({'true': True, 'false': False}[args.debug.lower()])    
     affine = bool({'true': True, 'false': False}[args.affine.lower()])
@@ -199,7 +207,7 @@ if __name__ == '__main__':
         sys.exit()
 
         
-    pipeline = AtlasManager(animal, task, um, affine, scaling_factor, debug)
+    pipeline = AtlasManager(animal, annotation_id, task, um, affine, scaling_factor, debug)
 
     function_mapping = {'json': pipeline.create_brain_json,
                         'draw': pipeline.test_brain_volumes_and_origins,
@@ -218,7 +226,8 @@ if __name__ == '__main__':
                         #'atlas2allen': pipeline.brainManager.transform_origins_volumes_to_allen,
                         'atlas2allen': pipeline.brainManager.atlas2allen,
                         'update_allen': pipeline.brainManager.update_allen,
-                        'average_foundation': pipeline.brainManager.create_average_foundation_brain
+                        'average_foundation': pipeline.brainManager.create_average_foundation_brain,
+                        'other': pipeline.create_other_brain_volumes_and_origins
     }
 
     if task in function_mapping:
