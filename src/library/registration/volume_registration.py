@@ -682,9 +682,9 @@ class VolumeRegistration:
     def register_volume(self):
         # Load fixed and moving images
         pixel_type = sitk.sitkUInt16
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkUInt16)
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, pixel_type)
         print(f"Read fixed image: {self.fixed_volume_path}")
-        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkUInt16)
+        moving_image = sitk.ReadImage(self.moving_volume_path, pixel_type)
         print(f"Read moving image: {self.moving_volume_path}")
 
         # Initial alignment of the centers of the two volumes
