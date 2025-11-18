@@ -647,8 +647,8 @@ class VolumeRegistration:
             print(f'{PRECOMPUTED} exists, removing')
             shutil.rmtree(PRECOMPUTED)
 
-        scale_xy = self.xy_um * 1000
-        scale_z = self.z_um * 1000
+        scale_xy = int(self.xy_um * 1000)
+        scale_z = int(self.z_um * 1000)
         scales = (scale_xy, scale_xy, scale_z)
         os.makedirs(PRECOMPUTED, exist_ok=True)
         volume = read_image(volumepath)
@@ -697,19 +697,19 @@ class VolumeRegistration:
 
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
-        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.5)
+        R.SetMetricSamplingPercentage(0.2)
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
             learningRate=1.0, 
-            numberOfIterations=300, 
+            numberOfIterations=100, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
         R.SetOptimizerScalesFromPhysicalShift()
-        R.SetShrinkFactorsPerLevel([4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
         R.SetInitialTransform(initial_transform, inPlace=False)
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
