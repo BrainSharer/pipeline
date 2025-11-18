@@ -681,10 +681,10 @@ class VolumeRegistration:
 
     def register_volume(self):
         # Load fixed and moving images
-        pixel_type = sitk.sitkFloat32
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, pixel_type)
+        pixel_type = sitk.sitkUInt8
+        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
         print(f"Read fixed image: {self.fixed_volume_path}")
-        moving_image = sitk.ReadImage(self.moving_volume_path, pixel_type)
+        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
         print(f"Read moving image: {self.moving_volume_path}")
 
         # Initial alignment of the centers of the two volumes
@@ -718,8 +718,8 @@ class VolumeRegistration:
         print("Final metric value: ", R.GetMetricValue())
         print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
         # Resample moving image onto fixed image grid
-        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
+        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, pixel_type)
+        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), pixel_type)
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
