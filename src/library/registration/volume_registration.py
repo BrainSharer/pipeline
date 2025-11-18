@@ -699,11 +699,11 @@ class VolumeRegistration:
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.1)
+        R.SetMetricSamplingPercentage(0.5)
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
             learningRate=1.0, 
-            numberOfIterations=100, 
+            numberOfIterations=300, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
