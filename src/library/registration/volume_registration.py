@@ -720,7 +720,7 @@ class VolumeRegistration:
         # Resample moving image onto fixed image grid
         resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, pixel_type)
         resampled = sitk.Cast(sitk.RescaleIntensity(resampled), pixel_type)
-        sitk.WriteImage(resampled, self.registered_volume)
+        sitk.WriteImage(resampled, self.registered_volume, useCompression=True)
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
