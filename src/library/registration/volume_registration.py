@@ -699,11 +699,11 @@ class VolumeRegistration:
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.2)
+        R.SetMetricSamplingPercentage(0.1)
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
             learningRate=1.0, 
-            numberOfIterations=300, 
+            numberOfIterations=100, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
@@ -720,7 +720,7 @@ class VolumeRegistration:
         # Resample moving image onto fixed image grid
         resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, pixel_type)
         resampled = sitk.Cast(sitk.RescaleIntensity(resampled), pixel_type)
-        sitk.WriteImage(resampled, self.registered_volume, useCompression=True)
+        sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
