@@ -704,6 +704,9 @@ class VolumeRegistration:
                 for osz, ospc in zip(original_size, original_spacing)
             ]
 
+            print(f"Original size: {original_size}, spacing: {original_spacing}")
+            print(f"New size: {new_size}, spacing: {spacing}")
+
             return sitk.Resample(
                 img,
                 new_size,
