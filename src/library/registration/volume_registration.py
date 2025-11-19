@@ -718,20 +718,20 @@ class VolumeRegistration:
 
         # Load fixed and moving images
         pixel_type = sitk.sitkUInt8
-        fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
+        fixed_iso = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Read fixed image: {self.fixed_nii_path}")
         moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
         print(f"Read moving image: {self.moving_nii_path}")
 
         # Optional: resample both to 0.1mm (or your target resolution)
-        fixed_iso  = resample_to_isotropic(fixed, iso=10.0)
+        #fixed_iso  = resample_to_isotropic(fixed, iso=10.0)
         moving_iso = resample_to_isotropic(moving, iso=10.0)
         print("Resampled images to isotropic spacing of 10.0 um")
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------
-        fixed_iso  = sitk.Normalize(fixed_iso)
-        moving_iso = sitk.Normalize(moving_iso)
+        #fixed_iso  = sitk.Normalize(fixed_iso)
+        #moving_iso = sitk.Normalize(moving_iso)
         # ------------------------------------------------------------
         # 3. Initial alignment using center of mass
         # ------------------------------------------------------------
