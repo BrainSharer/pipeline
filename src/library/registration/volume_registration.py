@@ -69,7 +69,8 @@ class VolumeRegistration:
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-        self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
+        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
+        self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
         self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
         
         self.registration_output = os.path.join(self.moving_path, self.output_dir)
@@ -101,6 +102,7 @@ class VolumeRegistration:
             self.fixed = fixed
             self.fixed_path = os.path.join(self.registration_path, fixed)
             self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
+            self.fixed_nii_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
             self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um')
             os.makedirs(self.fixed_path, exist_ok=True)
         else:
@@ -574,10 +576,12 @@ class VolumeRegistration:
 
         """
         image_manager = ImageManager(self.thumbnail_aligned)
-        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor /  self.xy_um
-        z_resolution = self.sqlController.scan_run.zresolution / self.z_um
+
+        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor
+        z_resolution = self.sqlController.scan_run.zresolution
         print(f'Using images from {self.thumbnail_aligned} to create volume')
         print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
+        """
 
         change_z = z_resolution
         change_y = xy_resolution
@@ -595,7 +599,7 @@ class VolumeRegistration:
         if os.path.exists(self.moving_volume_path):
             print(f'{self.moving_volume_path} exists, exiting')
             return
-
+        """
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
         for ffile in tqdm(image_manager.files, desc='Creating volume'):
@@ -609,11 +613,17 @@ class VolumeRegistration:
                 farr = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
                 file_list.append(farr)
             
-        image_stack = np.stack(file_list, axis = 0)    
+        image_stack = np.stack(file_list, axis = 0)
+        sitk_image = sitk.GetImageFromArray(image_stack.astype(image_manager.dtype))    
+        sitk_image.SetOrigin((0,0,0))
+        sitk_image.SetSpacing((xy_resolution, xy_resolution, z_resolution))
+        sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
+        sitk.WriteImage(sitk_image, self.moving_nii_path)
             
-        zoomed = zoom(image_stack, change)
-        write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
-        print(f'Saved a 3D volume {self.moving_volume_path} with shape={image_stack.shape} and dtype={image_stack.dtype}')
+        #zoomed = zoom(image_stack, change)
+        
+        #write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
+        print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
 
     def downsample_stack(self):
         image_manager = ImageManager(self.full_aligned)
@@ -685,10 +695,10 @@ class VolumeRegistration:
     def register_volume(self):
         # Load fixed and moving images
         pixel_type = sitk.sitkUInt8
-        fixed_image = sitk.ReadImage(self.fixed_volume_path, sitk.sitkFloat32)
-        print(f"Read fixed image: {self.fixed_volume_path}")
-        moving_image = sitk.ReadImage(self.moving_volume_path, sitk.sitkFloat32)
-        print(f"Read moving image: {self.moving_volume_path}")
+        fixed_image = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
+        print(f"Read fixed image: {self.fixed_nii_path}")
+        moving_image = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
+        print(f"Read moving image: {self.moving_nii_path}")
 
         # Initial alignment of the centers of the two volumes
         initial_transform = sitk.CenteredTransformInitializer(
