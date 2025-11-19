@@ -82,7 +82,17 @@ sitk_transform = sitk.ReadTransform(transform_path)
 # 2) your fiducial points
 # Example: points provided as voxel indices in moving image native resolution
 moving_points_indices = [
-    (31818/32, 33238/32, 252)
+    [1009.7375175414178, 1486.8176744117604, 276.50000993162394],
+[1004.7713294625282, 1494.4760115830215, 276.50000993162394],
+[1006.0488532942076, 1492.9955343266467, 276.50000993162394],
+[1008.0206601952132, 1493.5456007927448, 276.50000993162394],
+[1013.3485417239941, 1491.9751173966415, 276.50000993162394],
+[1171.9864470740924, 1384.2815337898014, 276.50000993162394],
+[1013.809098647191, 1510.352130744841, 278.5000018775463],
+[1162.5058519152494, 1393.2321298789311, 278.5000018775463],
+[1182.9426512122154, 1366.585102323052, 280.4999938234687],
+[1153.5573643274033, 1403.601592654115, 280.4999938234687],
+
 ]
 
 # --- Convert moving fiducials to physical coordinates ---
@@ -113,5 +123,5 @@ print("Converting transformed physical points to fixed image indices...")
 fixed_indices = physical_to_fixed_index(fixed_phys, fixed_img)
 
 # Print results
-for i, (m_idx, m_phys, f_phys, f_idx) in enumerate(zip(moving_points_indices, moving_phys, fixed_phys, fixed_indices)):
-    print(f"pt {i}: moving_index={m_idx}, \nmoving_phys={m_phys}, -> fixed_phys={f_phys}\n fixed_cont_index={f_idx}")
+for (m_idx, m_phys, f_phys, f_idx) in zip(moving_points_indices, moving_phys, fixed_phys, fixed_indices):
+    print(f"moving um={np.round(m_phys, 2)} -> moving transformed 10um={np.round(f_idx,2)}")

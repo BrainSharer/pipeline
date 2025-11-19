@@ -693,13 +693,91 @@ class VolumeRegistration:
         tq.execute()
 
     def register_volume(self):
+        def resample_to_isotropic(img, iso=0.1):
+            """Resample image to isotropic spacing."""
+            spacing = [iso, iso, iso]
+            original_spacing = img.GetSpacing()
+            original_size = img.GetSize()
+
+            new_size = [
+                int(round(osz * ospc / iso))
+                for osz, ospc in zip(original_size, original_spacing)
+            ]
+
+            return sitk.Resample(
+                img,
+                new_size,
+                sitk.Transform(),
+                sitk.sitkLinear,
+                img.GetOrigin(),
+                spacing,
+                img.GetDirection(),
+                0.0,
+                img.GetPixelID(),
+            )
+
         # Load fixed and moving images
         pixel_type = sitk.sitkUInt8
-        fixed_image = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
+        fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Read fixed image: {self.fixed_nii_path}")
-        moving_image = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
+        moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
         print(f"Read moving image: {self.moving_nii_path}")
 
+        # Optional: resample both to 0.1mm (or your target resolution)
+        fixed_iso  = resample_to_isotropic(fixed, iso=10.0)
+        moving_iso = resample_to_isotropic(moving, iso=10.0)
+        print("Resampled images to isotropic spacing of 10.0 um")
+        # ------------------------------------------------------------
+        # 2. Normalize intensities (helpful for microscopy)
+        # ------------------------------------------------------------
+        fixed_iso  = sitk.Normalize(fixed_iso)
+        moving_iso = sitk.Normalize(moving_iso)
+        # ------------------------------------------------------------
+        # 3. Initial alignment using center of mass
+        # ------------------------------------------------------------
+        initial_transform = sitk.CenteredTransformInitializer(
+            fixed_iso,
+            moving_iso,
+            sitk.Euler3DTransform(),
+            sitk.CenteredTransformInitializerFilter.GEOMETRY,
+        )
+        # ------------------------------------------------------------
+        # 4. Rigid+Affine registration (MI metric)
+        # ------------------------------------------------------------
+        registration = sitk.ImageRegistrationMethod()
+
+        registration.SetMetricAsMattesMutualInformation(50)
+        registration.SetMetricSamplingStrategy(registration.RANDOM)
+        registration.SetMetricSamplingPercentage(0.05)
+
+        registration.SetInterpolator(sitk.sitkLinear)
+
+        registration.SetOptimizerAsGradientDescent(
+            learningRate=1.0,
+            numberOfIterations=200,
+            convergenceMinimumValue=1e-6,
+            convergenceWindowSize=10,
+        )
+        registration.SetOptimizerScalesFromPhysicalShift()
+
+        registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+        registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
+        registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        registration.SetInitialTransform(initial_transform, inPlace=False)
+
+        affine_transform = registration.Execute(fixed_iso, moving_iso)
+
+        print("Affine done. Final metric:", registration.GetMetricValue())
+        resampled = sitk.Resample(
+            moving,
+            fixed,
+            affine_transform,
+            sitk.sitkLinear,
+            0.0,
+            moving.GetPixelID(),
+        )
+        """
         # Initial alignment of the centers of the two volumes
         initial_transform = sitk.CenteredTransformInitializer(
             fixed_image, 
@@ -716,13 +794,13 @@ class VolumeRegistration:
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
             learningRate=1.0, 
-            numberOfIterations=300, 
+            numberOfIterations=3000, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
         R.SetOptimizerScalesFromPhysicalShift()
-        R.SetShrinkFactorsPerLevel([16, 8, 4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([8, 4, 2, 1, 0])
+        R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
         R.SetInitialTransform(initial_transform, inPlace=False)
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
@@ -733,6 +811,8 @@ class VolumeRegistration:
         # Resample moving image onto fixed image grid
         resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
         resampled = sitk.Cast(sitk.RescaleIntensity(resampled), pixel_type)
+        """
+
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
@@ -1427,19 +1507,21 @@ class VolumeRegistration:
         rows = []
         props = ["#00FF00", 1, 1, 5, 3, 1]
         parentAnnotationId = random_string()
-        for child in childJsons:
+        for child in childJsons[10:20]:
             if 'point' in child:
                 xm0, ym0, zm0 = child['point'] # data is in meters
-                xm0 *= M_UM_SCALE  / self.xy_um
-                ym0 *= M_UM_SCALE / self.xy_um
-                zm0 *= M_UM_SCALE / self.z_um 
-                print(f"{xm0}, {ym0}, {zm0}")
+                xm0 *= M_UM_SCALE  / xy_resolution / 32
+                ym0 *= M_UM_SCALE / xy_resolution / 22
+                zm0 *= M_UM_SCALE / z_resolution
+                if self.debug:
+                    print(f"[{xm0}, {ym0}, {zm0}],")
                 xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to 10um
                 xm = xt / M_UM_SCALE * self.xy_um # back to meters
                 ym = yt / M_UM_SCALE * self.xy_um
                 zm = zt / M_UM_SCALE * self.z_um
                 rows.append({'point': [xm, ym, zm], 'type': 'point', 'parentAnnotationId': parentAnnotationId, 'props': props})
-        
+        if self.debug:
+            return        
         json_entry["source"] = np.min([row["point"] for row in rows], axis=0).tolist()
         json_entry["centroid"] = np.mean([row["point"] for row in rows], axis=0).tolist()
         json_entry["childrenVisible"] = True
