@@ -1,145 +1,118 @@
-#!/usr/bin/env python3
-import sys
-from math import pi, sin, cos
+import SimpleITK as sitk
+import numpy as np
 
-import itk
+def resample_image_to_spacing(image, out_spacing=(10.0,10.0,10.0), interpolator=sitk.sitkLinear):
+    """Resample image preserving origin and direction, but changing spacing to out_spacing.
+       Returns the resampled image (use same origin/direction as original)."""
+    orig_spacing = image.GetSpacing()
+    orig_size = image.GetSize()
+    orig_origin = image.GetOrigin()
+    orig_direction = image.GetDirection()
 
-
-# Generate two circles with a small offset
-def make_circles(l_dimension: int = 2):
-    PointSetType = itk.PointSet[itk.F, l_dimension]
-
-    RADIUS = 100
-    offset = [2.0] * l_dimension
-
-    fixed_points = PointSetType.New()
-    moving_points = PointSetType.New()
-    fixed_points.Initialize()
-    moving_points.Initialize()
-
-    step = 0.1
-    for count in range(0, int(2 * pi / step) + 1):
-
-        theta = count * step
-
-        fixed_point = list()
-        fixed_point.append(RADIUS * cos(theta))
-        for dim in range(1, l_dimension):
-            fixed_point.append(RADIUS * sin(theta))
-        fixed_points.SetPoint(count, fixed_point)
-
-        moving_point = [fixed_point[dim] + offset[dim] for dim in range(0, l_dimension)]
-        moving_points.SetPoint(count, moving_point)
-
-    return fixed_points, moving_points
-
-
-def test_registration(l_dimension: int = 2):
-    # Define test parameters
-
-    num_iterations = 10
-
-    passed = True
-    tolerance = 0.05
-
-    # Define types
-    PointSetType = itk.PointSet[itk.F, l_dimension]
-    AffineTransformType = itk.AffineTransform[itk.D, l_dimension]
-    PointSetMetricType = itk.JensenHavrdaCharvatTsallisPointSetToPointSetMetricv4[
-        PointSetType
+    out_spacing = tuple(float(s) for s in out_spacing)
+    out_size = [
+        int(round(orig_size[i] * (orig_spacing[i] / out_spacing[i]))) for i in range(3)
     ]
-    ShiftScalesType = itk.RegistrationParameterScalesFromPhysicalShift[
-        PointSetMetricType
-    ]
-    OptimizerType = itk.RegularStepGradientDescentOptimizerv4[itk.D]
+    out_size = tuple(max(1, s) for s in out_size)
 
-    # Make point sets
-    fixed_set, moving_set = make_circles(l_dimension)
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetOutputSpacing(out_spacing)
+    resampler.SetSize(out_size)
+    resampler.SetOutputOrigin(orig_origin)
+    resampler.SetOutputDirection(orig_direction)
+    resampler.SetInterpolator(interpolator)
+    return resampler.Execute(image)
 
-    transform = AffineTransformType.New()
-    transform.SetIdentity()
-
-    metric = PointSetMetricType.New(
-        FixedPointSet=fixed_set,
-        MovingPointSet=moving_set,
-        PointSetSigma=1.0,
-        KernelSigma=10.0,
-        UseAnisotropicCovariances=False,
-        CovarianceKNeighborhood=5,
-        EvaluationKNeighborhood=10,
-        MovingTransform=transform,
-        Alpha=1.1,
-    )
-    metric.Initialize()
-
-    shift_scale_estimator = ShiftScalesType.New(
-        Metric=metric, VirtualDomainPointSet=metric.GetVirtualTransformedPointSet()
-    )
-
-    optimizer = OptimizerType.New(
-        Metric=metric,
-        NumberOfIterations=num_iterations,
-        ScalesEstimator=shift_scale_estimator,
-        MaximumStepSizeInPhysicalUnits=3.0,
-        MinimumConvergenceValue=0.0,
-        ConvergenceWindowSize=10,
-    )
-
-    def print_iteration():
-        print(
-            f"It: {optimizer.GetCurrentIteration()}"
-            f" metric value: {optimizer.GetCurrentMetricValue():.6f} "
-        )
-
-    optimizer.AddObserver(itk.IterationEvent(), print_iteration)
-
-    # Run optimization to align the point sets
-    optimizer.StartOptimization()
-
-    print(f"Number of iterations: {num_iterations}")
-    print(f"Moving-source final value: {optimizer.GetCurrentMetricValue()}")
-    print(f"Moving-source final position: {list(optimizer.GetCurrentPosition())}")
-    print(f"Optimizer scales: {list(optimizer.GetScales())}")
-    print(f"Optimizer learning rate: {optimizer.GetLearningRate()}")
-
-    # applying the resultant transform to moving points and verify result
-    print("Fixed\tMoving\tMovingTransformed\tFixedTransformed\tDiff")
-
-    moving_inverse = metric.GetMovingTransform().GetInverseTransform()
-    fixed_inverse = metric.GetFixedTransform().GetInverseTransform()
-
-    def print_point(vals: list) -> str:
-        return f'[{",".join(f"{x:.4f}" for x in vals)}]'
-
-    for n in range(0, metric.GetNumberOfComponents()):
-        transformed_moving_point = moving_inverse.TransformPoint(moving_set.GetPoint(n))
-        transformed_fixed_point = fixed_inverse.TransformPoint(fixed_set.GetPoint(n))
-
-        difference = [
-            transformed_moving_point[dim] - transformed_fixed_point[dim]
-            for dim in range(0, l_dimension)
-        ]
-
-        print(
-            f"{print_point(fixed_set.GetPoint(n))}"
-            f"\t{print_point(moving_set.GetPoint(n))}"
-            f"\t{print_point(transformed_moving_point)}"
-            f"\t{print_point(transformed_fixed_point)}"
-            f"\t{print_point(difference)}"
-        )
-
-        if any(abs(difference[dim]) > tolerance for dim in range(0, l_dimension)):
-            passed = False
-
-    if not passed:
-        raise Exception("Transform outside of allowable tolerance")
+def points_to_physical(points, image, points_in='index'):
+    """
+    Convert list/array of points into physical coordinates (same units as image spacing).
+    points: (N,3) array-like
+    image: SimpleITK.Image
+    points_in: 'index' if points are voxel indices (i,j,k),
+               'physical' if points already are physical coordinates (x,y,z in same units as spacing)
+    returns: Nx3 numpy array of physical points
+    """
+    pts = np.asarray(points, dtype=float)
+    phys = []
+    if points_in == 'index':
+        for p in pts:
+            # If integer index use TransformIndexToPhysicalPoint. If non-integer, use ContinuousIndex->PhysicalPoint
+            # here we use ContinuousIndexToPhysicalPoint to allow sub-voxel points as well
+            phys.append(image.TransformContinuousIndexToPhysicalPoint(tuple(float(x) for x in p)))
+    elif points_in == 'physical':
+        phys = pts.tolist()
     else:
-        print("Transform is within allowable tolerance.")
+        raise ValueError("points_in must be 'index' or 'physical'")
+    return np.asarray(phys, dtype=float)
 
+def physical_to_fixed_index(phys_points, fixed_image):
+    """Convert Nx3 physical points to (continuous) index coordinates in fixed_image"""
+    idxs = []
+    for p in phys_points:
+        # You can use TransformPhysicalPointToIndex (returns int index) or TransformPhysicalPointToContinuousIndex
+        idxs.append(fixed_image.TransformPhysicalPointToContinuousIndex(tuple(float(x) for x in p)))
+    return np.asarray(idxs, dtype=float)
 
-if __name__ == "__main__":
-    if len(sys.argv) == 2:
-        dimension = int(sys.argv[1])
-        test_registration(dimension)
-    else:
-        test_registration()
+def transform_points_with_sitk_transform(phys_points, sitk_transform):
+    """Apply a SimpleITK transform (sitk.Transform) to an array of physical points."""
+    out = []
+    for p in phys_points:
+        out.append(tuple(sitk_transform.TransformPoint(tuple(float(x) for x in p))))
+    return np.asarray(out, dtype=float)
+
+# ---------------------------
+# Example usage
+# ---------------------------
+# 1) load images and transform
+allen_size = (1820,1000,1140)
+fixed_img = sitk.Image(allen_size, sitk.sitkFloat32)
+fixed_img.SetOrigin((0,0,0))
+fixed_img.SetSpacing((10,10,10))
+fixed_img.SetDirection((1,0,0,0,1,0,0,0,1))
+
+moving_img = sitk.Image((2359,1546,486), sitk.sitkFloat32)
+moving_img.SetOrigin((0,0,0))
+moving_img.SetSpacing((0.325*32,0.325*32,20))
+moving_img.SetDirection((1,0,0,0,1,0,0,0,1))
+
+#moving_img = sitk.ReadImage("moving_original.nii.gz")   # original moving image (spacing 0.325,0.325,20)
+#fixed_img  = sitk.ReadImage("fixed_resampled_10um.nii.gz")  # the fixed image used in registration (10um spacing)
+# If you have the transform object (SimpleITK.Transform) saved as a file:
+transform_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/DK55_Allen_10.0x10.0x10.0um.tfm"
+sitk_transform = sitk.ReadTransform(transform_path)
+# OR if you have the transform object in memory, use it directly
+
+# 2) your fiducial points
+# Example: points provided as voxel indices in moving image native resolution
+moving_points_indices = [
+    (31818/32, 33238/32, 252)
+]
+
+# --- Convert moving fiducials to physical coordinates ---
+# Option A: If the affine was computed using images resampled to 10um spacing,
+#           resample the moving image to the same spacing/origin/direction used in the registration
+#           to guarantee the transform expects the same physical coordinate frame.
+# If you know the resampled image origin/direction were preserved (common), you can skip resampling.
+print("Resampling moving image to 10um spacing...")
+moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,10.0),
+                                            interpolator=sitk.sitkLinear)
+# Convert indices (which were drawn on the original moving image) to physical points **in the resampled image frame**.
+# To do that we must map the original indices to physical using original image, then optionally
+# if resampling preserved origin/direction, that same physical point is valid in resampled image.
+# So a safer approach: convert original indices -> physical via original image, then use that physical point.
+print("Converting moving points to physical coordinates...")
+moving_phys = points_to_physical(moving_points_indices, moving_img, points_in='index')
+
+# --- Apply transform (transform expects physical coordinates in the moving image frame used for registration) ---
+# If the registration used the resampled moving image where the origin/direction = moving_resampled.GetOrigin()/GetDirection(),
+# and resampling preserved origin/direction, then moving_phys is in the correct frame and can be transformed directly.
+print("Applying transform to moving physical points...")
+fixed_phys = transform_points_with_sitk_transform(moving_phys, sitk_transform)
+
+# --- Convert transformed physical points into fixed image indices (continuous index recommended) ---
+print("Converting transformed physical points to fixed image indices...")
+fixed_indices = physical_to_fixed_index(fixed_phys, fixed_img)
+
+# Print results
+for i, (m_idx, m_phys, f_phys, f_idx) in enumerate(zip(moving_points_indices, moving_phys, fixed_phys, fixed_indices)):
+    print(f"pt {i}: moving_index={m_idx}, \nmoving_phys={m_phys}, -> fixed_phys={f_phys}\n fixed_cont_index={f_idx}")

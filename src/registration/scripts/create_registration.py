@@ -28,6 +28,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument("--channel", help="Enter channel", required=False, default=1, type=int)
+    parser.add_argument("--annotation_id", help="Annotation ID", required=False, default=0, type=int)
     parser.add_argument('--xy_um', help="xy resolution in um", required=False, default=10.0, type=float)
     parser.add_argument('--z_um', help="z resolution in um", required=False, default=10.0, type=float)
     parser.add_argument('--scaling_factor', help="scaling factor to downsample", required=False, default=1, type=int)
@@ -40,6 +41,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     moving = args.moving
     channel = args.channel
+    annotation_id = args.annotation_id
     xy_um = args.xy_um
     z_um = args.z_um
     scaling_factor = args.scaling_factor
@@ -48,7 +50,7 @@ if __name__ == '__main__':
     bspline = bool({"true": True, "false": False}[str(args.bspline).lower()])
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    volumeRegistration = VolumeRegistration(moving, channel, xy_um, z_um, scaling_factor, fixed, orientation, bspline, debug)
+    volumeRegistration = VolumeRegistration(moving, channel, annotation_id, xy_um, z_um, scaling_factor, fixed, orientation, bspline, debug)
 
 
     function_mapping = {'create_volume': volumeRegistration.create_volume,
@@ -75,7 +77,7 @@ if __name__ == '__main__':
                         'volume2tif': volumeRegistration.volume2tif,
                         'volume2nifti': volumeRegistration.volume2nifti,
                         'downsample_stack': volumeRegistration.downsample_stack,
-                        'points_within_polygons': volumeRegistration.points_within_polygons,
+                        'register_points': volumeRegistration.points_within_polygons,
     }
 
     if task in function_mapping:

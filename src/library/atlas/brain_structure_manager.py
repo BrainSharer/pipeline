@@ -1307,6 +1307,7 @@ class BrainStructureManager:
         if isinstance(mask, np.ndarray):
             mask = sitk.GetImageFromArray(mask.astype(np.uint8))
         output_size, output_origin, orig_spacing = self.create_fixed_output(mask, transform)
+        
         resampled = sitk.Resample(
             mask,
             output_size,
@@ -1317,6 +1318,20 @@ class BrainStructureManager:
             mask.GetDirection(),
             0.0 # Default pixel value is 0
         )
+        """
+        notranslation_affine_transform = sitk.AffineTransform(3)
+        fourByfour = self.convert_transformation(transform)
+        notranslation_affine_transform.SetMatrix(fourByfour[:3, :3].reshape(3,3).flatten())
+        notranslation_affine_transform.SetTranslation((0.0, 0.0, 0.0))
+        resampled = sitk.Resample(
+            mask,
+            mask,
+            notranslation_affine_transform.GetInverse(),
+            sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
+            0.0, # Default pixel value is 0
+            sitk.sitkUInt8
+        )
+        """
 
         resampled_np = sitk.GetArrayFromImage(resampled).astype(np.uint16)
         resampled_np = binary_fill_holes(resampled_np).astype(np.uint32)

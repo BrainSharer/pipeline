@@ -13,6 +13,7 @@ from skimage.transform import resize
 from scipy.ndimage import zoom
 from skimage.filters import gaussian        
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
+import sqlalchemy
 from tqdm import tqdm
 import SimpleITK as sitk
 import itk
@@ -24,13 +25,14 @@ import json
 import zarr
 from shapely.geometry import Point, Polygon
 
-from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
+from library.database_model.annotation_points import AnnotationSession
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import FileLocationManager
-from library.utilities.utilities_mask import normalize16, rescaler
-from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, read_image, write_image
+from library.utilities.utilities_mask import rescaler
+from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir, random_string, read_image, write_image
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
@@ -43,7 +45,7 @@ M_UM_SCALE = 1000000
 
 class VolumeRegistration:
 
-    def __init__(self, moving, channel=1, xy_um=16, z_um=16,  scaling_factor=SCALING_FACTOR, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
+    def __init__(self, moving, channel=1, annotation_id=0, xy_um=16, z_um=16,  scaling_factor=SCALING_FACTOR, fixed='Allen', orientation='sagittal', bspline=False, debug=False):
         self.registration_path = '/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration'
         self.moving_path = os.path.join(self.registration_path, moving)
         os.makedirs(self.moving_path, exist_ok=True)
@@ -58,6 +60,7 @@ class VolumeRegistration:
         self.z_um = z_um
         self.mask_color = 254
         self.channel = f'C{channel}'
+        self.annotation_id = annotation_id
         self.orientation = orientation
         self.bspline = bspline
         self.output_dir = f'{moving}_{fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}'
@@ -1396,44 +1399,81 @@ class VolumeRegistration:
 
     def points_within_polygons(self):
         
-        sqlController = SqlController(self.moving) 
-        scale_xy = sqlController.scan_run.resolution
-        z_scale = sqlController.scan_run.zresolution
-        id = 8357 # Get the annotation session ID from the database
-        annotation_session = sqlController.get_annotation_by_id(id)
-        childJsons = annotation_session.annotation['childJsons']
+
+        transform = load_transformation(self.moving, self.z_um, self.xy_um)
+        if transform is None:
+            print('No transformation found, exiting')
+            return
+        sqlController = SqlController(self.moving)
+        xy_resolution = sqlController.scan_run.resolution
+        z_resolution = sqlController.scan_run.zresolution
+        id = self.annotation_id
+        annotator_id = 1 # Hard coded to edward
+        existing_annotation_session = sqlController.get_annotation_by_id(id)
+        label_objects = existing_annotation_session.labels
+        labels = [label_object.label for label_object in label_objects]
+        childJsons = existing_annotation_session.annotation['childJsons']
+        json_entry = {}
         rows = []
-        polygons = defaultdict(list)
+        props = ["#00FF00", 1, 1, 5, 3, 1]
+        parentAnnotationId = random_string()
         for child in childJsons:
-            for i, row in enumerate(child['childJsons']):
-                x,y,z = row['pointA']
-                rows.append((x,y,z))
-
-        # Create a dataframe of the points. Note all data in the DB is in meters
-        df = pd.DataFrame(rows, columns=['xm','ym','zm'])
+            if 'point' in child:
+                xm0, ym0, zm0 = child['point'] # data is in meters
+                xm0 *= M_UM_SCALE  / self.xy_um
+                ym0 *= M_UM_SCALE / self.xy_um
+                zm0 *= M_UM_SCALE / self.z_um 
+                print(f"{xm0}, {ym0}, {zm0}")
+                xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to 10um
+                xm = xt / M_UM_SCALE * self.xy_um # back to meters
+                ym = yt / M_UM_SCALE * self.xy_um
+                zm = zt / M_UM_SCALE * self.z_um
+                rows.append({'point': [xm, ym, zm], 'type': 'point', 'parentAnnotationId': parentAnnotationId, 'props': props})
         
+        json_entry["source"] = np.min([row["point"] for row in rows], axis=0).tolist()
+        json_entry["centroid"] = np.mean([row["point"] for row in rows], axis=0).tolist()
+        json_entry["childrenVisible"] = True
+        json_entry["type"] = "cloud"
+        description = existing_annotation_session.annotation.get("description", f"{self.moving}-Allen data")
+        description = description + " Registered to Allen @ 10um"
+        json_entry["description"] = description
+        json_entry["props"] = props
+        json_entry["childJsons"] = rows
+        
+        try:
+            annotation_session = (
+                self.sqlController.session.query(AnnotationSession)
+                .filter(AnnotationSession.active == True)
+                .filter(AnnotationSession.FK_user_id == annotator_id)
+                .filter(AnnotationSession.FK_prep_id == self.moving)
+                .filter(AnnotationSession.annotation["description"] == description)
+                .one_or_none()
+            )
+        except Exception as e:
+            print(f"Found more than one structure for {self.moving} {description}. Exiting program, please fix")
+            print(e)
+            exit(1)
 
-        # create colums that are in neuroglancer coordinates
-        # scaling_factor is just 1 for most cases, unless you downsampled the data
-        df['xng'] = df['xm'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        df['yng'] = df['ym'] * M_UM_SCALE / (scale_xy * self.scaling_factor)
-        df['zng'] = df['zm'] * M_UM_SCALE / z_scale * self.scaling_factor
+        
+        if annotation_session is None:
+            print(f'Inserting {self.moving} with {description}')
+            
+            try:
+                self.sqlController.insert_annotation_with_labels(
+                    FK_user_id=annotator_id,
+                    FK_prep_id=self.moving,
+                    annotation=json_entry,
+                    labels=labels)
+            except sqlalchemy.exc.OperationalError as e:
+                print(f"Operational error inserting annotation: {e}")
+                self.sqlController.session.rollback()
+            
+        else:                
+            update_dict = {'annotation': json_entry}
+            print(f'Updating {self.moving} session {annotation_session.id} with {description}')
+            self.sqlController.update_session(annotation_session.id, update_dict=update_dict)
 
-        print(df.head())
-
-
-        for (_, row) in df.iterrows():
-            x = row['xng']
-            y = row['yng']
-            z = int(round(row['zng']))
-            polygons[z].append((x, y))
-
-        # this is where you can test for points within the polygons
-        test_x = 6809
-        test_y = 1054
-        for section, points in tqdm(polygons.items()):
-            is_in_polygon = point_in_polygon(test_x, test_y, points)
-            print(f'section {section} has {len(points)} points,  and test_point is in polygon: {is_in_polygon}')
+        print('\nfinished processing points')
 
 
     def check_status(self):
