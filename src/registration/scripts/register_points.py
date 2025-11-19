@@ -98,6 +98,7 @@ moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,
                                             interpolator=sitk.sitkLinear)
 resampled_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/moving_resampled_10um.nii"
 sitk.WriteImage(moving_resampled, resampled_path)
+print(f"Resampled moving image saved to: {resampled_path}")
 exit(1)
 # Convert indices (which were drawn on the original moving image) to physical points **in the resampled image frame**.
 # To do that we must map the original indices to physical using original image, then optionally
