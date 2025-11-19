@@ -96,13 +96,16 @@ moving_points_indices = [
 print("Resampling moving image to 10um spacing...")
 moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,10.0),
                                             interpolator=sitk.sitkLinear)
+resampled_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/moving_resampled_10um.nii"
+sitk.WriteImage(moving_resampled, resampled_path)
+exit(1)
 # Convert indices (which were drawn on the original moving image) to physical points **in the resampled image frame**.
 # To do that we must map the original indices to physical using original image, then optionally
 # if resampling preserved origin/direction, that same physical point is valid in resampled image.
 # So a safer approach: convert original indices -> physical via original image, then use that physical point.
 print("Converting moving points to physical coordinates...")
 moving_phys = points_to_physical(moving_points_indices, moving_img, points_in='index')
-
+del moving_img
 # --- Apply transform (transform expects physical coordinates in the moving image frame used for registration) ---
 # If the registration used the resampled moving image where the origin/direction = moving_resampled.GetOrigin()/GetDirection(),
 # and resampling preserved origin/direction, then moving_phys is in the correct frame and can be transformed directly.
