@@ -1,3 +1,4 @@
+import os
 import SimpleITK as sitk
 import numpy as np
 
@@ -64,16 +65,12 @@ def transform_points_with_sitk_transform(phys_points, sitk_transform):
 # Example usage
 # ---------------------------
 # 1) load images and transform
-allen_size = (1820,1000,1140)
-fixed_img = sitk.Image(allen_size, sitk.sitkFloat32)
-fixed_img.SetOrigin((0,0,0))
-fixed_img.SetSpacing((10,10,10))
-fixed_img.SetDirection((1,0,0,0,1,0,0,0,1))
+regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
+fixed_path = os.path.join(regpath, "Allen", "Allen_10.0x10.0x10.0um_sagittal.nii")
+fixed_img = sitk.ReadImage(fixed_path)
 
-moving_img = sitk.Image((2359,1546,486), sitk.sitkFloat32)
-moving_img.SetOrigin((0,0,0))
-moving_img.SetSpacing((0.325*32,0.325*32,20))
-moving_img.SetDirection((1,0,0,0,1,0,0,0,1))
+moving_path = os.path.join(regpath, "DK55", "DK55_10.0x10.0x10.0um_sagittal.nii")
+moving_img = sitk.ReadImage(moving_path)
 
 #moving_img = sitk.ReadImage("moving_original.nii.gz")   # original moving image (spacing 0.325,0.325,20)
 #fixed_img  = sitk.ReadImage("fixed_resampled_10um.nii.gz")  # the fixed image used in registration (10um spacing)
@@ -93,13 +90,11 @@ moving_points_indices = [
 #           resample the moving image to the same spacing/origin/direction used in the registration
 #           to guarantee the transform expects the same physical coordinate frame.
 # If you know the resampled image origin/direction were preserved (common), you can skip resampling.
-print("Resampling moving image to 10um spacing...")
-moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,10.0),
-                                            interpolator=sitk.sitkLinear)
-resampled_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/moving_resampled_10um.nii"
-sitk.WriteImage(moving_resampled, resampled_path)
-print(f"Resampled moving image saved to: {resampled_path}")
-exit(1)
+#print("Resampling moving image to 10um spacing...")
+#moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,10.0),
+#                                            interpolator=sitk.sitkLinear)
+#resampled_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/moving_resampled_10um.nii"
+
 # Convert indices (which were drawn on the original moving image) to physical points **in the resampled image frame**.
 # To do that we must map the original indices to physical using original image, then optionally
 # if resampling preserved origin/direction, that same physical point is valid in resampled image.
@@ -111,7 +106,7 @@ del moving_img
 # If the registration used the resampled moving image where the origin/direction = moving_resampled.GetOrigin()/GetDirection(),
 # and resampling preserved origin/direction, then moving_phys is in the correct frame and can be transformed directly.
 print("Applying transform to moving physical points...")
-fixed_phys = transform_points_with_sitk_transform(moving_phys, sitk_transform)
+fixed_phys = transform_points_with_sitk_transform(moving_phys, sitk_transform.GetInverse())
 
 # --- Convert transformed physical points into fixed image indices (continuous index recommended) ---
 print("Converting transformed physical points to fixed image indices...")

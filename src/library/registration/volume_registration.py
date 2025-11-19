@@ -716,13 +716,13 @@ class VolumeRegistration:
         R.SetInterpolator(sitk.sitkLinear)
         R.SetOptimizerAsGradientDescent(
             learningRate=1.0, 
-            numberOfIterations=100, 
+            numberOfIterations=300, 
             convergenceMinimumValue=1e-6, 
             convergenceWindowSize=10)
 
         R.SetOptimizerScalesFromPhysicalShift()
-        R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+        R.SetShrinkFactorsPerLevel([16, 8, 4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([8, 4, 2, 1, 0])
         R.SetInitialTransform(initial_transform, inPlace=False)
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
