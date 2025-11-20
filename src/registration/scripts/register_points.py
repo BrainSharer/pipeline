@@ -2,126 +2,90 @@ import os
 import SimpleITK as sitk
 import numpy as np
 
-def resample_image_to_spacing(image, out_spacing=(10.0,10.0,10.0), interpolator=sitk.sitkLinear):
-    """Resample image preserving origin and direction, but changing spacing to out_spacing.
-       Returns the resampled image (use same origin/direction as original)."""
-    orig_spacing = image.GetSpacing()
-    orig_size = image.GetSize()
-    orig_origin = image.GetOrigin()
-    orig_direction = image.GetDirection()
-
-    out_spacing = tuple(float(s) for s in out_spacing)
-    out_size = [
-        int(round(orig_size[i] * (orig_spacing[i] / out_spacing[i]))) for i in range(3)
-    ]
-    out_size = tuple(max(1, s) for s in out_size)
-
-    resampler = sitk.ResampleImageFilter()
-    resampler.SetOutputSpacing(out_spacing)
-    resampler.SetSize(out_size)
-    resampler.SetOutputOrigin(orig_origin)
-    resampler.SetOutputDirection(orig_direction)
-    resampler.SetInterpolator(interpolator)
-    return resampler.Execute(image)
-
-def points_to_physical(points, image, points_in='index'):
-    """
-    Convert list/array of points into physical coordinates (same units as image spacing).
-    points: (N,3) array-like
-    image: SimpleITK.Image
-    points_in: 'index' if points are voxel indices (i,j,k),
-               'physical' if points already are physical coordinates (x,y,z in same units as spacing)
-    returns: Nx3 numpy array of physical points
-    """
-    pts = np.asarray(points, dtype=float)
-    phys = []
-    if points_in == 'index':
-        for p in pts:
-            # If integer index use TransformIndexToPhysicalPoint. If non-integer, use ContinuousIndex->PhysicalPoint
-            # here we use ContinuousIndexToPhysicalPoint to allow sub-voxel points as well
-            phys.append(image.TransformContinuousIndexToPhysicalPoint(tuple(float(x) for x in p)))
-    elif points_in == 'physical':
-        phys = pts.tolist()
-    else:
-        raise ValueError("points_in must be 'index' or 'physical'")
-    return np.asarray(phys, dtype=float)
-
-def physical_to_fixed_index(phys_points, fixed_image):
-    """Convert Nx3 physical points to (continuous) index coordinates in fixed_image"""
-    idxs = []
-    for p in phys_points:
-        # You can use TransformPhysicalPointToIndex (returns int index) or TransformPhysicalPointToContinuousIndex
-        idxs.append(fixed_image.TransformPhysicalPointToContinuousIndex(tuple(float(x) for x in p)))
-    return np.asarray(idxs, dtype=float)
-
-def transform_points_with_sitk_transform(phys_points, sitk_transform):
-    """Apply a SimpleITK transform (sitk.Transform) to an array of physical points."""
-    out = []
-    for p in phys_points:
-        out.append(tuple(sitk_transform.TransformPoint(tuple(float(x) for x in p))))
-    return np.asarray(out, dtype=float)
-
 # ---------------------------
 # Example usage
 # ---------------------------
 # 1) load images and transform
 regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
 fixed_path = os.path.join(regpath, "Allen", "Allen_10.0x10.0x10.0um_sagittal.nii")
-fixed_img = sitk.ReadImage(fixed_path)
+if os.path.exists(fixed_path):
+    fixed = sitk.ReadImage(fixed_path)
+    print(f'Loading {fixed_path}')
+    print(f'Fixed image size: {fixed.GetSize()}, spacing: {fixed.GetSpacing()}')
+else:
+    print(f'Could not load fixed image at {fixed_path}. Please check the path.  ')
+    exit(1)
 
-moving_path = os.path.join(regpath, "DK55", "DK55_10.0x10.0x10.0um_sagittal.nii")
-moving_img = sitk.ReadImage(moving_path)
+moving_path = os.path.join(regpath, "DK55", "DK55_10.4x10.4x20um_sagittal.nii")
+if os.path.exists(moving_path):
+    print(f'Loading {moving_path}')
+    moving = sitk.ReadImage(moving_path)
+    print(f'Moving image size: {moving.GetSize()}, spacing: {moving.GetSpacing()}')
+else:
+    print(f'Could not load moving image at {moving_path}. Please check the path.  ')
+    exit(1)
 
 #moving_img = sitk.ReadImage("moving_original.nii.gz")   # original moving image (spacing 0.325,0.325,20)
 #fixed_img  = sitk.ReadImage("fixed_resampled_10um.nii.gz")  # the fixed image used in registration (10um spacing)
 # If you have the transform object (SimpleITK.Transform) saved as a file:
 transform_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/DK55_Allen_10.0x10.0x10.0um.tfm"
-sitk_transform = sitk.ReadTransform(transform_path)
+if os.path.exists(transform_path):
+    print(f'Loading transform from {transform_path}')
+    transform = sitk.ReadTransform(transform_path)
+else:
+    print(f'Could not load transform at {transform_path}. Please check the path.  ')
+    exit(1)
 # OR if you have the transform object in memory, use it directly
 
 # 2) your fiducial points
 # Example: points provided as voxel indices in moving image native resolution
-moving_points_indices = [
-    [1009.7375175414178, 1486.8176744117604, 276.50000993162394],
-[1004.7713294625282, 1494.4760115830215, 276.50000993162394],
-[1006.0488532942076, 1492.9955343266467, 276.50000993162394],
-[1008.0206601952132, 1493.5456007927448, 276.50000993162394],
-[1013.3485417239941, 1491.9751173966415, 276.50000993162394],
-[1171.9864470740924, 1384.2815337898014, 276.50000993162394],
-[1013.809098647191, 1510.352130744841, 278.5000018775463],
-[1162.5058519152494, 1393.2321298789311, 278.5000018775463],
-[1182.9426512122154, 1366.585102323052, 280.4999938234687],
-[1153.5573643274033, 1403.601592654115, 280.4999938234687],
+# points
+locations = [" 1. mid front tip"," 2. mid top"," 3. mid back bottom cerebellum",
+             " 4. mid bottom in crux"," 5. left top"," 6. right bottom"]
 
+moving_index = [
+    [410, 738, 242],
+    [1190, 416, 242],
+    [1751, 766, 242],
+    [1265, 939, 242],
+    [1163, 616, 10],
+    [1152, 820, 478]
 ]
 
-# --- Convert moving fiducials to physical coordinates ---
-# Option A: If the affine was computed using images resampled to 10um spacing,
-#           resample the moving image to the same spacing/origin/direction used in the registration
-#           to guarantee the transform expects the same physical coordinate frame.
-# If you know the resampled image origin/direction were preserved (common), you can skip resampling.
-#print("Resampling moving image to 10um spacing...")
-#moving_resampled = resample_image_to_spacing(moving_img, out_spacing=(10.0,10.0,10.0),
-#                                            interpolator=sitk.sitkLinear)
-#resampled_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK55/moving_resampled_10um.nii"
+# Moving image spacing (µm)
+moving_spacing = (10.4, 10.4, 20.0)
+# If you know moving image origin/direction, set them here:
+moving_origin = (0.0, 0.0, 0.0)         # <-- change if different
+moving_direction = (1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0)  # row-major 3x3
 
-# Convert indices (which were drawn on the original moving image) to physical points **in the resampled image frame**.
-# To do that we must map the original indices to physical using original image, then optionally
-# if resampling preserved origin/direction, that same physical point is valid in resampled image.
-# So a safer approach: convert original indices -> physical via original image, then use that physical point.
-print("Converting moving points to physical coordinates...")
-moving_phys = points_to_physical(moving_points_indices, moving_img, points_in='index')
-del moving_img
-# --- Apply transform (transform expects physical coordinates in the moving image frame used for registration) ---
-# If the registration used the resampled moving image where the origin/direction = moving_resampled.GetOrigin()/GetDirection(),
-# and resampling preserved origin/direction, then moving_phys is in the correct frame and can be transformed directly.
-print("Applying transform to moving physical points...")
-fixed_phys = transform_points_with_sitk_transform(moving_phys, sitk_transform.GetInverse())
 
-# --- Convert transformed physical points into fixed image indices (continuous index recommended) ---
-print("Converting transformed physical points to fixed image indices...")
-fixed_indices = physical_to_fixed_index(fixed_phys, fixed_img)
+# --- Convert index -> physical (respecting origin/direction) ---
+# If you have the actual moving SimpleITK image used in registration, prefer:
+# moving_img = sitk.ReadImage("moving_used_in_registration.nii")
+# phys_moving = moving_img.TransformContinuousIndexToPhysicalPoint(moving_index)
 
-# Print results
-for (m_idx, m_phys, f_phys, f_idx) in zip(moving_points_indices, moving_phys, fixed_phys, fixed_indices):
-    print(f"moving um={np.round(m_phys, 2)} -> moving transformed 10um={np.round(f_idx,2)}")
+# Otherwise construct by hand (assumes direction is identity if you keep default)
+ix, iy, iz = moving_index[0]
+sx, sy, sz = moving_spacing
+ox, oy, oz = moving_origin
+
+# For general direction you should apply direction matrix; if identity:
+phys_moving = (ix * sx, iy * sy, iz * sz)
+
+print("Moving physical (µm):", phys_moving)
+
+
+# Apply transform: physical (moving) -> physical (fixed)
+phys_fixed = transform.TransformPoint(phys_moving)
+print("Mapped moving (µm):", phys_fixed)
+
+
+# Convert fixed physical -> fixed image index (continuous index -> round/clamp as you want)
+try:
+    fixed_index = fixed.TransformPhysicalPointToIndex(phys_fixed)   # integer index (raises if outside)
+    print("Fixed index (integer):", fixed_index)
+except RuntimeError:
+    fixed_index_cont = fixed.TransformPhysicalPointToContinuousIndex(phys_fixed)
+    fixed_index_rounded = tuple(int(round(v)) for v in fixed_index_cont)
+    print("Fixed continuous index (outside bounds):", fixed_index_cont)
+    print("Fixed index (rounded):", fixed_index_rounded)

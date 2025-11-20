@@ -104,7 +104,7 @@ class VolumeRegistration:
             self.fixed = fixed
             self.fixed_path = os.path.join(self.registration_path, fixed)
             self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-            self.fixed_nii_path = os.path.join(self.fixed_path, 'Allen_10.0x10.0x10.0um_sagittal.nii' )
+            self.fixed_nii_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
             self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um')
             os.makedirs(self.fixed_path, exist_ok=True)
         else:
@@ -699,9 +699,8 @@ class VolumeRegistration:
         """
         # Define callback functions
         def command_iteration(method):
-            print(f"Iteration: {method.GetOptimizerIteration()}")
+            print(f"Iteration: {method.GetOptimizerIteration()} ")
             print(f"Metric Value: {method.GetMetricValue()}")
-            print(f"Parameters: {method.GetOptimizerPosition()}")
             print("-" * 20)
 
         
@@ -733,10 +732,10 @@ class VolumeRegistration:
 
         # Load fixed and moving images
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
-        print(f"Read fixed image: {self.fixed_nii_path}")
+        print(f"Loaded fixed image: {self.fixed_nii_path}")
         if os.path.exists(self.moving_nii_path):
             moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
-            print(f"Read moving image: {self.moving_nii_path}")
+            print(f"Loaded moving image: {self.moving_nii_path}")
         else:
             moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20um_sagittal.nii')
             if not os.path.exists(moving_path):
@@ -759,8 +758,8 @@ class VolumeRegistration:
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------
-        #fixed_iso  = sitk.Normalize(fixed_iso)
-        #moving_iso = sitk.Normalize(moving_iso)
+        fixed  = sitk.Normalize(fixed)
+        moving = sitk.Normalize(moving)
         # ------------------------------------------------------------
         # 3. Initial alignment using center of mass
         # ------------------------------------------------------------
@@ -777,7 +776,7 @@ class VolumeRegistration:
 
         registration.SetMetricAsMattesMutualInformation(100)
         registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.2)
+        registration.SetMetricSamplingPercentage(0.2, seed=42)
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
@@ -788,16 +787,17 @@ class VolumeRegistration:
         )
         registration.SetOptimizerScalesFromPhysicalShift()
 
-        registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-        registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
+        registration.SetShrinkFactorsPerLevel([4, 2, 1])
+        registration.SetSmoothingSigmasPerLevel([2, 1, 0])
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
         registration.SetInitialTransform(initial_transform, inPlace=False)
 
-        registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         affine_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
+        print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
         resampled = sitk.Resample(
             moving,
             fixed,
