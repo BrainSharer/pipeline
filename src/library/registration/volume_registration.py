@@ -37,6 +37,7 @@ from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_registration import create_affine_parameters
+import registration
 
 # constants
 MOVING_CROP = 50
@@ -696,6 +697,13 @@ class VolumeRegistration:
     def register_volume(self):
         """Register volumes to Allen 10um
         """
+        # Define callback functions
+        def command_iteration(method):
+            print(f"Iteration: {method.GetOptimizerIteration()}")
+            print(f"Metric Value: {method.GetMetricValue()}")
+            print(f"Parameters: {method.GetOptimizerPosition()}")
+            print("-" * 20)
+
         
         def resample_to_isotropic(img, iso=0.1):
             """Resample image to isotropic spacing."""
@@ -770,7 +778,6 @@ class VolumeRegistration:
         registration.SetMetricAsMattesMutualInformation(100)
         registration.SetMetricSamplingStrategy(registration.RANDOM)
         registration.SetMetricSamplingPercentage(0.2)
-
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
@@ -787,6 +794,7 @@ class VolumeRegistration:
 
         registration.SetInitialTransform(initial_transform, inPlace=False)
 
+        registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         affine_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
