@@ -766,7 +766,7 @@ class VolumeRegistration:
         initial_transform = sitk.CenteredTransformInitializer(
             fixed,
             moving,
-            sitk.Euler3DTransform(),
+            sitk.AffineTransform(3), 
             sitk.CenteredTransformInitializerFilter.GEOMETRY,
         )
         # ------------------------------------------------------------
@@ -774,9 +774,9 @@ class VolumeRegistration:
         # ------------------------------------------------------------
         registration = sitk.ImageRegistrationMethod()
 
-        registration.SetMetricAsMattesMutualInformation(100)
+        registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
         registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.2, seed=42)
+        registration.SetMetricSamplingPercentage(0.1, seed=1)
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
@@ -786,14 +786,14 @@ class VolumeRegistration:
             convergenceWindowSize=10,
         )
         registration.SetOptimizerScalesFromPhysicalShift()
-
-        registration.SetShrinkFactorsPerLevel([4, 2, 1])
-        registration.SetSmoothingSigmasPerLevel([2, 1, 0])
+        registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+        registration.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+        registration.SetInitialTransform(initial_transform, inPlace=False)
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
         registration.SetInitialTransform(initial_transform, inPlace=False)
 
-        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+        registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         affine_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
@@ -1536,7 +1536,7 @@ class VolumeRegistration:
         rows = []
         props = ["#00FF00", 1, 1, 5, 3, 1]
         parentAnnotationId = random_string()
-        for child in childJsons[10:20]:
+        for child in childJsons[10:12]:
             if 'point' in child:
                 xm0, ym0, zm0 = child['point'] # data is in meters
                 xm0 *= M_UM_SCALE  / xy_resolution / 32
