@@ -744,7 +744,10 @@ class VolumeRegistration:
                 print(f'Wrote resampled image to {self.moving_nii_path}')
 
 
-
+        fixed_size = fixed.GetSize()
+        moving_size = moving.GetSize()
+        print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
+        print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------
