@@ -99,10 +99,11 @@ class VolumeRegistration:
 
 
         if fixed is not None:
+            # Fixed is Allen @10um
             self.fixed = fixed
             self.fixed_path = os.path.join(self.registration_path, fixed)
             self.fixed_volume_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-            self.fixed_nii_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
+            self.fixed_nii_path = os.path.join(self.fixed_path, 'Allen_10.0x10.0x10.0um_sagittal.nii' )
             self.neuroglancer_data_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'{self.channel}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um')
             os.makedirs(self.fixed_path, exist_ok=True)
         else:
@@ -693,6 +694,9 @@ class VolumeRegistration:
         tq.execute()
 
     def register_volume(self):
+        """Register volumes to Allen 10um
+        """
+        
         def resample_to_isotropic(img, iso=0.1):
             """Resample image to isotropic spacing."""
             spacing = [iso, iso, iso]
@@ -720,16 +724,27 @@ class VolumeRegistration:
             )
 
         # Load fixed and moving images
-        pixel_type = sitk.sitkUInt8
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Read fixed image: {self.fixed_nii_path}")
-        moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
-        print(f"Read moving image: {self.moving_nii_path}")
+        if os.path.exists(self.moving_nii_path):
+            moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
+            print(f"Read moving image: {self.moving_nii_path}")
+        else:
+            moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20um_sagittal.nii')
+            if not os.path.exists(moving_path):
+                print(f'Input for moving does not exist {moving_path}')
+                print('You need to create a standard volume from the thumbnail_aligned dir. Exiting.')
+                sys.exit()
+            else:
+                moving = sitk.ReadImage(moving_path)
+                print(f"Read moving image: {moving_path}")
+                moving = resample_to_isotropic(moving, iso=10.0)
+                print("Resampled images to isotropic spacing of 10.0 um")
+                sitk.WriteImage(moving, self.moving_nii_path)
+                print(f'Wrote resampled image to {self.moving_nii_path}')
 
-        # Optional: resample both to 0.1mm (or your target resolution)
-        #fixed_iso  = resample_to_isotropic(fixed, iso=10.0)
-        moving = resample_to_isotropic(moving, iso=10.0)
-        print("Resampled images to isotropic spacing of 10.0 um")
+
+
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------
@@ -749,15 +764,15 @@ class VolumeRegistration:
         # ------------------------------------------------------------
         registration = sitk.ImageRegistrationMethod()
 
-        registration.SetMetricAsMattesMutualInformation(50)
+        registration.SetMetricAsMattesMutualInformation(100)
         registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.05)
+        registration.SetMetricSamplingPercentage(0.2)
 
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
             learningRate=1.0,
-            numberOfIterations=200,
+            numberOfIterations=500,
             convergenceMinimumValue=1e-6,
             convergenceWindowSize=10,
         )
