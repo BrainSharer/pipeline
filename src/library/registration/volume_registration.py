@@ -739,6 +739,7 @@ class VolumeRegistration:
         moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20um_sagittal.nii')
         if os.path.exists(moving_path):
             moving = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+            print(f"Loaded moving image: {moving_path}")
         else:
             print(f'Input for moving does not exist {moving_path}')
             print('You need to create a standard volume from the thumbnail_aligned dir. Exiting.')
