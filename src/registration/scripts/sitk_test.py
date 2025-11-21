@@ -109,6 +109,7 @@ if __name__ == "__main__":
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
     moving_tif_folder = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{moving_brain}/preps/C1/thumbnail_aligned"          # folder with tifs (z order)
     fixed_image_path = f"{regpath}/Allen/Allen_{um}x{um}x{um}um_sagittal.nii"      # path to Allen reference (10 um isotropic)
+    moving_image_path = os.path.join(regpath, moving_brain, f"{moving_brain}_moving_image.nii")
     # Voxel spacings for moving image (microns)
     if not os.path.exists(moving_tif_folder):
         raise RuntimeError("Moving TIFF folder not found: " + moving_tif_folder)
@@ -123,14 +124,21 @@ if __name__ == "__main__":
     out_transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.tfm")
 
     # --------------------------------------------
-    print("Loading moving TIFF stack...")
-    vol = load_tif_stack(moving_tif_folder)  # shape (Z, Y, X)
-    # SimpleITK expects array shape (z,y,x) -> GetImageFromArray will make sitk image with size (x,y,z)
-    moving = numpy_to_sitk(vol, spacing=moving_spacing)
+    if os.path.exists(moving_image_path):
+        print("Moving image already exists at:", moving_image_path)
+        moving = sitk.ReadImage(moving_image_path, sitk.sitkFloat32)
+    else:
+        print("Loading moving TIFF stack...")
+        vol = load_tif_stack(moving_tif_folder)  # shape (Z, Y, X)
+        # SimpleITK expects array shape (z,y,x) -> GetImageFromArray will make sitk image with size (x,y,z)
+        moving = numpy_to_sitk(vol, spacing=moving_spacing)
+        sitk.WriteImage(moving, moving_image_path)
+        print("Wrote moving image to:", moving_image_path)
+
     print("Moving image size (x,y,z):", moving.GetSize(), "spacing:", moving.GetSpacing())
 
     print("Loading fixed (Allen) image...")
-    fixed = sitk.ReadImage(fixed_image_path)
+    fixed = sitk.ReadImage(fixed_image_path, sitk.sitkFloat32)
     print("Fixed image size (x,y,z):", fixed.GetSize(), "spacing:", fixed.GetSpacing())
 
     print("Running registration (rigid -> affine)...")
