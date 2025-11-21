@@ -32,53 +32,47 @@ def numpy_to_sitk(vol, spacing, origin=(0.0,0.0,0.0), direction=None):
         sitk_img.SetDirection(direction)
     return sitk_img
 
-def register_affine_rigid(fixed_img, moving_img, verbose=True):
+def register_affine_rigid(fixed, moving, verbose=True):
     # Two-stage: first rigid, then affine, returning final transform (sitk.Transform)
     # Use mutual information for multi-modal intensity differences. If same modality, you might use correlation.
     # INITIALIZATION: center transform initializer
-    initial_transform = sitk.CenteredTransformInitializer(fixed_img,
-                                                          moving_img,
-                                                          sitk.Euler3DTransform(),
-                                                          sitk.CenteredTransformInitializerFilter.GEOMETRY)
+    # 3. Initial alignment using center of mass
+    # ------------------------------------------------------------
+    initial_transform = sitk.CenteredTransformInitializer(
+        fixed,
+        moving,
+        sitk.AffineTransform(3), 
+        sitk.CenteredTransformInitializerFilter.GEOMETRY,
+    )
+    # ------------------------------------------------------------
+    # 4. Rigid+Affine registration (MI metric)
+    # ------------------------------------------------------------
+    registration = sitk.ImageRegistrationMethod()
 
-    # Stage 1: Rigid (Euler3D)
-    if verbose: print("-> Running rigid (Euler3D) registration...")
-    reg = sitk.ImageRegistrationMethod()
-    reg.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
-    reg.SetMetricSamplingStrategy(reg.RANDOM)
-    reg.SetMetricSamplingPercentage(0.01)
-    reg.SetInterpolator(sitk.sitkLinear)
-    reg.SetOptimizerAsRegularStepGradientDescent(learningRate=2.0,
-                                                 minStep=1e-4,
-                                                 numberOfIterations=200,
-                                                 relaxationFactor=0.5)
-    reg.SetInitialTransform(initial_transform, inPlace=False)
-    reg.SetShrinkFactorsPerLevel(shrinkFactors = [4,2,1])
-    reg.SetSmoothingSigmasPerLevel(smoothingSigmas=[2,1,0])
-    rigid_transform = reg.Execute(fixed_img, moving_img)
-    if verbose:
-        print("Rigid optimizer stop condition:", reg.GetOptimizerStopConditionDescription())
-        print("Rigid final metric value:", reg.GetMetricValue())
+    registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
+    registration.SetMetricSamplingStrategy(registration.RANDOM)
+    registration.SetMetricSamplingPercentage(0.1)
+    registration.SetInterpolator(sitk.sitkLinear)
 
-    # Stage 2: Affine (to allow shears/scales if needed)
-    if verbose: print("-> Running affine registration...")
-    reg2 = sitk.ImageRegistrationMethod()
-    reg2.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
-    reg2.SetMetricSamplingStrategy(reg2.RANDOM)
-    reg2.SetMetricSamplingPercentage(0.01)
-    reg2.SetInterpolator(sitk.sitkLinear)
-    reg2.SetOptimizerAsRegularStepGradientDescent(learningRate=1.0,
-                                                  minStep=1e-5,
-                                                  numberOfIterations=300,
-                                                  relaxationFactor=0.5)
-    reg2.SetInitialTransform(sitk.AffineTransform(rigid_transform), inPlace=False)
-    reg2.SetShrinkFactorsPerLevel(shrinkFactors = [4,2,1])
-    reg2.SetSmoothingSigmasPerLevel(smoothingSigmas=[2,1,0])
-    affine_transform = reg2.Execute(fixed_img, moving_img)
-    if verbose:
-        print("Affine optimizer stop condition:", reg2.GetOptimizerStopConditionDescription())
-        print("Affine final metric value:", reg2.GetMetricValue())
+    registration.SetOptimizerAsGradientDescent(
+        learningRate=1.0,
+        numberOfIterations=500,
+        convergenceMinimumValue=1e-6,
+        convergenceWindowSize=10,
+        relaxationFactor=0.5
+    )
+    #registration.SetOptimizerScalesFromPhysicalShift()
+    registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
+    registration.SetInitialTransform(initial_transform, inPlace=False)
+    registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
+    registration.SetInitialTransform(initial_transform, inPlace=False)
+
+    #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+    affine_transform = registration.Execute(fixed, moving)
+    print("Affine optimizer stop condition:", registration.GetOptimizerStopConditionDescription())
+    print("Affine final metric value:", registration.GetMetricValue())
     # Return the composite transform as an AffineTransform
     return affine_transform
 
@@ -104,7 +98,7 @@ def transform_points_sitk(transform, moving_img, fixed_img, points_index_list):
 
 if __name__ == "__main__":
     # ---------------- USER INPUT ----------------
-    um = 25.0
+    um = 10.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
     moving_tif_folder = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{moving_brain}/preps/C1/thumbnail_aligned"          # folder with tifs (z order)
