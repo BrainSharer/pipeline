@@ -736,22 +736,13 @@ class VolumeRegistration:
             sys.exit()
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Loaded fixed image: {self.fixed_nii_path}")
-        if os.path.exists(self.moving_nii_path):
-            moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
-            print(f"Loaded moving image: {self.moving_nii_path}")
+        moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20um_sagittal.nii')
+        if os.path.exists(moving_path):
+            moving = sitk.ReadImage(moving_path, sitk.sitkFloat32)
         else:
-            moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20um_sagittal.nii')
-            if not os.path.exists(moving_path):
-                print(f'Input for moving does not exist {moving_path}')
-                print('You need to create a standard volume from the thumbnail_aligned dir. Exiting.')
-                sys.exit()
-            else:
-                moving = sitk.ReadImage(moving_path)
-                print(f"Read moving image: {moving_path}")
-                moving = resample_to_isotropic(moving, iso=self.xy_um)
-                print(f"Resampled images to isotropic spacing of {self.xy_um} um")
-                sitk.WriteImage(moving, self.moving_nii_path)
-                print(f'Wrote resampled image to {self.moving_nii_path}')
+            print(f'Input for moving does not exist {moving_path}')
+            print('You need to create a standard volume from the thumbnail_aligned dir. Exiting.')
+            sys.exit()
 
 
         fixed_size = fixed.GetSize()
