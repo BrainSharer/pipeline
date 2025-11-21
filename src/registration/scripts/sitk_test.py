@@ -59,7 +59,6 @@ def register_affine_rigid(fixed, moving, verbose=True):
         numberOfIterations=500,
         convergenceMinimumValue=1e-6,
         convergenceWindowSize=10,
-        relaxationFactor=0.5
     )
     #registration.SetOptimizerScalesFromPhysicalShift()
     registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
