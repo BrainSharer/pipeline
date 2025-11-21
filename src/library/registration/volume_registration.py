@@ -790,7 +790,7 @@ class VolumeRegistration:
         )
         registration.SetOptimizerScalesFromPhysicalShift()
         registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-        registration.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+        registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
         registration.SetInitialTransform(initial_transform, inPlace=False)
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
@@ -809,41 +809,6 @@ class VolumeRegistration:
             0.0,
             moving.GetPixelID(),
         )
-        """
-        # Initial alignment of the centers of the two volumes
-        initial_transform = sitk.CenteredTransformInitializer(
-            fixed_image, 
-            moving_image, 
-            sitk.AffineTransform(3), 
-            sitk.CenteredTransformInitializerFilter.GEOMETRY
-        )
-
-        # Set up the registration method
-        R = sitk.ImageRegistrationMethod()
-        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
-        R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.2)
-        R.SetInterpolator(sitk.sitkLinear)
-        R.SetOptimizerAsGradientDescent(
-            learningRate=1.0, 
-            numberOfIterations=3000, 
-            convergenceMinimumValue=1e-6, 
-            convergenceWindowSize=10)
-
-        R.SetOptimizerScalesFromPhysicalShift()
-        R.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
-        R.SetInitialTransform(initial_transform, inPlace=False)
-        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-
-        # Perform registration
-        affine_transform = R.Execute(fixed_image, moving_image)
-        print("Final metric value: ", R.GetMetricValue())
-        print("Optimizer's stopping condition: ", R.GetOptimizerStopConditionDescription())
-        # Resample moving image onto fixed image grid
-        resampled = sitk.Resample(moving_image, fixed_image, affine_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), pixel_type)
-        """
 
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
