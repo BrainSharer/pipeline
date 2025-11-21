@@ -756,13 +756,15 @@ class VolumeRegistration:
 
         fixed_size = fixed.GetSize()
         moving_size = moving.GetSize()
+        fixed.SetSpacing((1,1,1))
+        moving.SetSpacing((1,1,1))
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------
-        fixed  = sitk.Normalize(fixed)
-        moving = sitk.Normalize(moving)
+        #fixed  = sitk.Normalize(fixed)
+        #moving = sitk.Normalize(moving)
         # ------------------------------------------------------------
         # 3. Initial alignment using center of mass
         # ------------------------------------------------------------

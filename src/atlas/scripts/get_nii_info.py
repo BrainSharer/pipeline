@@ -23,6 +23,7 @@ def get_nii_info(nii_path: str) -> None:
     print(f"Spacing: {img.GetSpacing()}")
     print(f"Origin: {img.GetOrigin()}")
     print(f"Direction: {img.GetDirection()}")
+    print(f"Size (x,y,z): {img.GetSize()}")
 
 
 if __name__ == '__main__':

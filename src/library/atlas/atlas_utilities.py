@@ -1461,3 +1461,19 @@ def average_volumes_with_fiducials(volumes, fiducials_list, transform_type="rigi
     avg_img.CopyInformation(reference_image)
 
     return avg_img
+
+def sitk_affine_to_matrix4x4(tx: sitk.Transform):
+    params = list(tx.GetParameters())
+    
+    # First 9 values → affine matrix
+    A = np.array(params[:9]).reshape(3,3)
+
+    # Last 3 values → translation
+    t = np.array(params[9:12]).reshape(3)
+
+    # Build homogeneous 4×4
+    M = np.eye(4)
+    M[:3,:3] = A
+    M[:3, 3] = t
+
+    return M
