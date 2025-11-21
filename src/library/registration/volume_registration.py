@@ -731,6 +731,9 @@ class VolumeRegistration:
             )
 
         # Load fixed and moving images
+        if not os.path.exists(self.fixed_nii_path):
+            print(f'Fixed image does not exist: {self.fixed_nii_path}, exiting.')
+            sys.exit()
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Loaded fixed image: {self.fixed_nii_path}")
         if os.path.exists(self.moving_nii_path):
@@ -745,8 +748,8 @@ class VolumeRegistration:
             else:
                 moving = sitk.ReadImage(moving_path)
                 print(f"Read moving image: {moving_path}")
-                moving = resample_to_isotropic(moving, iso=10.0)
-                print("Resampled images to isotropic spacing of 10.0 um")
+                moving = resample_to_isotropic(moving, iso=self.xy_um)
+                print(f"Resampled images to isotropic spacing of {self.xy_um} um")
                 sitk.WriteImage(moving, self.moving_nii_path)
                 print(f'Wrote resampled image to {self.moving_nii_path}')
 
@@ -1517,18 +1520,26 @@ class VolumeRegistration:
 
 
     def points_within_polygons(self):
+        """Get data from DB which is in meters
+        convert to micros
+        """
         
+        if not os.path.exists(self.fixed_nii_path):
+            print(f'Fixed nii path {self.fixed_nii_path} does not exist, exiting')
+            return
+        fixed = sitk.ReadImage(self.fixed_nii_path)
 
         transform = load_transformation(self.moving, self.z_um, self.xy_um)
         if transform is None:
             print('No transformation found, exiting')
             return
         sqlController = SqlController(self.moving)
-        xy_resolution = sqlController.scan_run.resolution
-        z_resolution = sqlController.scan_run.zresolution
         id = self.annotation_id
         annotator_id = 1 # Hard coded to edward
         existing_annotation_session = sqlController.get_annotation_by_id(id)
+        if existing_annotation_session is None:
+            print(f'No annotation session found for id {id}, exiting')
+            return
         label_objects = existing_annotation_session.labels
         labels = [label_object.label for label_object in label_objects]
         childJsons = existing_annotation_session.annotation['childJsons']
@@ -1536,18 +1547,23 @@ class VolumeRegistration:
         rows = []
         props = ["#00FF00", 1, 1, 5, 3, 1]
         parentAnnotationId = random_string()
-        for child in childJsons[10:12]:
+        for child in childJsons[0:2]:
             if 'point' in child:
                 xm0, ym0, zm0 = child['point'] # data is in meters
-                xm0 *= M_UM_SCALE  / xy_resolution / 32
-                ym0 *= M_UM_SCALE / xy_resolution / 22
-                zm0 *= M_UM_SCALE / z_resolution
+
+                xm0 *= M_UM_SCALE # in µm
+                ym0 *= M_UM_SCALE # in µm
+                zm0 *= M_UM_SCALE # in µm
+                
+                xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
+                xf, yf, zf = fixed.TransformPhysicalPointToIndex((xt, yt, zt)) # put in 10um fixed space
                 if self.debug:
-                    print(f"[{xm0}, {ym0}, {zm0}],")
-                xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to 10um
-                xm = xt / M_UM_SCALE * self.xy_um # back to meters
-                ym = yt / M_UM_SCALE * self.xy_um
-                zm = zt / M_UM_SCALE * self.z_um
+                    print(f"(µm) [{xm0/10}, {ym0/10}, {zm0/10}],")
+                
+                xm = xf / M_UM_SCALE * self.xy_um # back to meters
+                ym = yf / M_UM_SCALE * self.xy_um
+                zm = zf / M_UM_SCALE * self.z_um
+                
                 rows.append({'point': [xm, ym, zm], 'type': 'point', 'parentAnnotationId': parentAnnotationId, 'props': props})
         if self.debug:
             return        
