@@ -779,7 +779,7 @@ class VolumeRegistration:
 
         registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
         registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.1, seed=1)
+        registration.SetMetricSamplingPercentage(0.1)
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
@@ -796,7 +796,7 @@ class VolumeRegistration:
 
         registration.SetInitialTransform(initial_transform, inPlace=False)
 
-        registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         affine_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())

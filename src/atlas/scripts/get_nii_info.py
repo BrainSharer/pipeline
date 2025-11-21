@@ -15,11 +15,11 @@ def get_nii_info(nii_path: str) -> None:
         return
 
     img = sitk.ReadImage(nii_path)
-    arr = sitk.GetArrayFromImage(img)
+    #arr = sitk.GetArrayFromImage(img)
 
     print(f"NIfTI file: {nii_path}")
-    print(f"Shape (z,y,x): {arr.shape}")
-    print(f"Data type: {arr.dtype}")
+    #print(f"Shape (z,y,x): {arr.shape}")
+    #print(f"Data type: {arr.dtype}")
     print(f"Spacing: {img.GetSpacing()}")
     print(f"Origin: {img.GetOrigin()}")
     print(f"Direction: {img.GetDirection()}")
