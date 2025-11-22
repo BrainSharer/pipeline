@@ -32,6 +32,7 @@ if __name__ == "__main__":
     if not os.path.exists(fixed_image_path):
         print("Fixed image NIfTI not found: " + fixed_image_path)
         exit(1)
+    transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.mat")
     moving_spacing = (10.4, 10.4, 20.0)  # (x,y,z) microns
     moving_points = np.array([
         (1062, 1062, 130),
@@ -40,31 +41,37 @@ if __name__ == "__main__":
 
     out_prefix = "ants_moving_to_allen"
 
-    print("Loading...")
-    #stack = load_tif_stack_numpy(moving_tif_folder)
-    #moving = ants_image_from_numpy(stack, spacing=moving_spacing)
-    moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
+    if os.path.exists(transform_path):
+        reg_affine = ants.read_transform(transform_path)
+        print("Loaded existing transform from:", transform_path)
+    else:
 
-    #ants.image_write(moving, outpath)
-    print(f"Loading moving image from NIfTI at: {moving_image_path}")
-    moving = ants.image_read(moving_image_path)
-    print(f"Loading fixed (Allen) image from {fixed_image_path}")
-    fixed = ants.image_read(fixed_image_path)
+        print("Loading...")
+        #stack = load_tif_stack_numpy(moving_tif_folder)
+        #moving = ants_image_from_numpy(stack, spacing=moving_spacing)
+        moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
 
-    print("Running ANTs registration (rigid -> affine)...")
-    # ants.registration can do multistage in one call with composite transforms, but we request affine specifically
-    reg_rigid = ants.registration(fixed=fixed, moving=moving, type_of_transform='Rigid', 
-                                  reg_iterations=(100,50,20))
-    # initialize moving with rigid warp
-    warped_rigid = reg_rigid['warpedmovout']
-    # Now affine, using rigid as initial
-    reg_affine = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine',
-                                   initial_transform=reg_rigid['fwdtransforms'])  # pass fixed->moving transforms
-    # reg_affine['fwdtransforms'] is the list of transform filenames (ants format)
-    print("Affine registration complete.")
+        print(f"Loading moving image from NIfTI at: {moving_image_path}")
+        moving = ants.image_read(moving_image_path)
+        print(f"Loading fixed (Allen) image from {fixed_image_path}")
+        fixed = ants.image_read(fixed_image_path)
 
-    # Save transforms (forward transforms are filepaths)
-    print("Transforms saved by ANTs:", reg_affine['fwdtransforms'])
+        print("Running ANTs registration (rigid -> affine)...")
+        # ants.registration can do multistage in one call with composite transforms, but we request affine specifically
+        reg_rigid = ants.registration(fixed=fixed, moving=moving, type_of_transform='Rigid', 
+                                    reg_iterations=(100,50,20))
+        # initialize moving with rigid warp
+        warped_rigid = reg_rigid['warpedmovout']
+        # Now affine, using rigid as initial
+        reg_affine = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine',
+                                    initial_transform=reg_rigid['fwdtransforms'])  # pass fixed->moving transforms
+        # reg_affine['fwdtransforms'] is the list of transform filenames (ants format)
+        print("Affine registration complete.")
+
+        # Save transforms (forward transforms are filepaths)
+        print("Transforms saved by ANTs:", reg_affine['fwdtransforms'])
+        ants.write_transform(reg_affine['fwdtransforms'][0], transform_path)
+        print("Wrote transform to:", transform_path)
 
     # Transform fiducial points:
     # ants.apply_transforms_to_points expects points as Nx3 numpy (with columns x,y,z)
