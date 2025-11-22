@@ -56,6 +56,11 @@ if __name__ == "__main__":
     print("Reading images...")
     fixed = ants.image_read(fixed_image_path)
     moving = ants.image_read(moving_image_path)
+
+    new_spacing = (1,1,1)
+    moving.set_spacing(new_spacing)
+    fixed.set_spacing(new_spacing)
+
     print("Fixed image spacing:", fixed.spacing)
     print("Moving image spacing:", moving.spacing)
     print("Fixed image shape:", fixed.shape)
