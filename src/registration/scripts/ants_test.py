@@ -27,7 +27,7 @@ if __name__ == "__main__":
     um = 25.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    moving_tif_folder = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK55/preps/C1/thumbnail_aligned"
+    #moving_tif_folder = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK55/preps/C1/thumbnail_aligned"
     fixed_image_path = os.path.join(regpath, "Allen", f"Allen_{um}x{um}x{um}um_sagittal.nii")
     if not os.path.exists(fixed_image_path):
         print("Fixed image NIfTI not found: " + fixed_image_path)
@@ -41,8 +41,14 @@ if __name__ == "__main__":
     out_prefix = "ants_moving_to_allen"
 
     print("Loading...")
-    stack = load_tif_stack_numpy(moving_tif_folder)
-    moving = ants_image_from_numpy(stack, spacing=moving_spacing)
+    #stack = load_tif_stack_numpy(moving_tif_folder)
+    #moving = ants_image_from_numpy(stack, spacing=moving_spacing)
+    moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
+
+    #ants.image_write(moving, outpath)
+    print(f"Loading moving image from NIfTI at: {moving_image_path}")
+    moving = ants.image_read(moving_image_path)
+    print(f"Loading fixed (Allen) image from {fixed_image_path}")
     fixed = ants.image_read(fixed_image_path)
 
     print("Running ANTs registration (rigid -> affine)...")
@@ -63,7 +69,7 @@ if __name__ == "__main__":
     # Transform fiducial points:
     # ants.apply_transforms_to_points expects points as Nx3 numpy (with columns x,y,z)
     # Convert to DataFrame as required by ANTs
-    pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z', 't'])
+    pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z'])
     print("Moving points DataFrame:\n", pts.head())
 
     # Apply transforms to points. The transform maps moving->fixed. Use same transforms used to warp moving.
