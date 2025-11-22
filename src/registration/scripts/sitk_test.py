@@ -32,47 +32,35 @@ def numpy_to_sitk(vol, spacing, origin=(0.0,0.0,0.0), direction=None):
         sitk_img.SetDirection(direction)
     return sitk_img
 
-def register_affine_rigid(fixed, moving, verbose=True):
+def register_affine_rigid(fixed_img, moving_img, verbose=True):
     # Two-stage: first rigid, then affine, returning final transform (sitk.Transform)
     # Use mutual information for multi-modal intensity differences. If same modality, you might use correlation.
     # INITIALIZATION: center transform initializer
     # 3. Initial alignment using center of mass
     # ------------------------------------------------------------
-    initial_transform = sitk.CenteredTransformInitializer(
-        fixed,
-        moving,
-        sitk.AffineTransform(3), 
-        sitk.CenteredTransformInitializerFilter.GEOMETRY,
-    )
-    # ------------------------------------------------------------
-    # 4. Rigid+Affine registration (MI metric)
-    # ------------------------------------------------------------
+    initial_transform = sitk.CenteredTransformInitializer(fixed_img,
+                                                          moving_img,
+                                                          sitk.AffineTransform(3),
+                                                          sitk.CenteredTransformInitializerFilter.GEOMETRY)
+
+    print("-> Running affine registration...")
     registration = sitk.ImageRegistrationMethod()
-
-    registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
+    registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
     registration.SetMetricSamplingStrategy(registration.RANDOM)
-    registration.SetMetricSamplingPercentage(0.1)
+    registration.SetMetricSamplingPercentage(0.01)
     registration.SetInterpolator(sitk.sitkLinear)
-
-    registration.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=500,
-        convergenceMinimumValue=1e-6,
-        convergenceWindowSize=10,
-    )
-    #registration.SetOptimizerScalesFromPhysicalShift()
-    registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-    registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
+    registration.SetOptimizerAsRegularStepGradientDescent(learningRate=1.0,
+                                                  minStep=1e-5,
+                                                  numberOfIterations=300,
+                                                  relaxationFactor=0.5)
     registration.SetInitialTransform(initial_transform, inPlace=False)
-    registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-
-    registration.SetInitialTransform(initial_transform, inPlace=False)
-
-    #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
-    affine_transform = registration.Execute(fixed, moving)
+    registration.SetShrinkFactorsPerLevel(shrinkFactors = [4,2,1])
+    registration.SetSmoothingSigmasPerLevel(smoothingSigmas=[2,1,0])
+    affine_transform = registration.Execute(fixed_img, moving_img)
     print("Affine optimizer stop condition:", registration.GetOptimizerStopConditionDescription())
     print("Affine final metric value:", registration.GetMetricValue())
-    # Return the composite transform as an AffineTransform
+    print('type of transform', type(affine_transform))
+
     return affine_transform
 
 def save_sitk_transform(transform, filename):
@@ -97,40 +85,33 @@ def transform_points_sitk(transform, moving_img, fixed_img, points_index_list):
 
 if __name__ == "__main__":
     # ---------------- USER INPUT ----------------
-    um = 10.0
+    um = 25.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    moving_tif_folder = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{moving_brain}/preps/C1/thumbnail_aligned"          # folder with tifs (z order)
     fixed_image_path = f"{regpath}/Allen/Allen_{um}x{um}x{um}um_sagittal.nii"      # path to Allen reference (10 um isotropic)
-    moving_image_path = os.path.join(regpath, moving_brain, f"{moving_brain}_moving_image.nii")
+    moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
     # Voxel spacings for moving image (microns)
-    if not os.path.exists(moving_tif_folder):
-        raise RuntimeError("Moving TIFF folder not found: " + moving_tif_folder)
     if not os.path.exists(fixed_image_path):
         raise RuntimeError("Fixed image NIfTI not found: " + fixed_image_path)
-    moving_spacing = (10.4, 10.4, 20.0)         # (x, y, z)
     # Example fiducials in moving image voxel coordinates (x,y,z) - replace with your list
     moving_fiducials = [
-        (1094, 1066, 130),
-        (1047, 662, 238)
+        (1062, 1062, 130),
+        (1311, 644, 240)
     ]
     out_transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.tfm")
 
     # --------------------------------------------
     if os.path.exists(moving_image_path):
-        print("Moving image already exists at:", moving_image_path)
+        print("Loading moving image at:", moving_image_path)
         moving = sitk.ReadImage(moving_image_path, sitk.sitkFloat32)
     else:
-        print("Loading moving TIFF stack...")
-        vol = load_tif_stack(moving_tif_folder)  # shape (Z, Y, X)
-        # SimpleITK expects array shape (z,y,x) -> GetImageFromArray will make sitk image with size (x,y,z)
-        moving = numpy_to_sitk(vol, spacing=moving_spacing)
-        sitk.WriteImage(moving, moving_image_path)
-        print("Wrote moving image to:", moving_image_path)
+        print(f"No moving image NIfTI found. Loading TIFF stack from folder and creating NIfTI at: {moving_image_path}")
+        exit(1)
 
-    print("Moving image size (x,y,z):", moving.GetSize(), "spacing:", moving.GetSpacing())
+    moving_spacing = moving.GetSpacing()  # (x,y,z) spacing in microns
+    print("Moving image size (x,y,z):", moving.GetSize(), "spacing:", moving_spacing)
 
-    print("Loading fixed (Allen) image...")
+    print(f"Loading fixed (Allen) image from {fixed_image_path}")
     fixed = sitk.ReadImage(fixed_image_path, sitk.sitkFloat32)
     print("Fixed image size (x,y,z):", fixed.GetSize(), "spacing:", fixed.GetSpacing())
 
