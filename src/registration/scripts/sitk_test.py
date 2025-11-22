@@ -88,38 +88,40 @@ if __name__ == "__main__":
     um = 25.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    fixed_image_path = f"{regpath}/Allen/Allen_{um}x{um}x{um}um_sagittal.nii"      # path to Allen reference (10 um isotropic)
-    moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
-    # Voxel spacings for moving image (microns)
-    if not os.path.exists(fixed_image_path):
-        raise RuntimeError("Fixed image NIfTI not found: " + fixed_image_path)
-    # Example fiducials in moving image voxel coordinates (x,y,z) - replace with your list
-    moving_fiducials = [
-        (1062, 1062, 130),
-        (1311, 644, 240)
-    ]
     out_transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.tfm")
+    if not os.path.exists(out_transform_path):
+        fixed_image_path = f"{regpath}/Allen/Allen_{um}x{um}x{um}um_sagittal.nii"      # path to Allen reference (10 um isotropic)
+        moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
+        # Voxel spacings for moving image (microns)
+        if not os.path.exists(fixed_image_path):
+            raise RuntimeError("Fixed image NIfTI not found: " + fixed_image_path)
+        # Example fiducials in moving image voxel coordinates (x,y,z) - replace with your list
+        moving_fiducials = [
+            (1062, 1062, 130),
+            (1311, 644, 240)
+        ]
 
-    # --------------------------------------------
-    if os.path.exists(moving_image_path):
-        print("Loading moving image at:", moving_image_path)
-        moving = sitk.ReadImage(moving_image_path, sitk.sitkFloat32)
-    else:
-        print(f"No moving image NIfTI found. Loading TIFF stack from folder and creating NIfTI at: {moving_image_path}")
-        exit(1)
+        # --------------------------------------------
+        if os.path.exists(moving_image_path):
+            print("Loading moving image at:", moving_image_path)
+            moving = sitk.ReadImage(moving_image_path, sitk.sitkFloat32)
+        else:
+            print(f"No moving image NIfTI found. Loading TIFF stack from folder and creating NIfTI at: {moving_image_path}")
+            exit(1)
 
-    moving_spacing = moving.GetSpacing()  # (x,y,z) spacing in microns
-    print("Moving image size (x,y,z):", moving.GetSize(), "spacing:", moving_spacing)
+        moving_spacing = moving.GetSpacing()  # (x,y,z) spacing in microns
+        print("Moving image size (x,y,z):", moving.GetSize(), "spacing:", moving_spacing)
 
-    print(f"Loading fixed (Allen) image from {fixed_image_path}")
-    fixed = sitk.ReadImage(fixed_image_path, sitk.sitkFloat32)
-    print("Fixed image size (x,y,z):", fixed.GetSize(), "spacing:", fixed.GetSpacing())
+        print(f"Loading fixed (Allen) image from {fixed_image_path}")
+        fixed = sitk.ReadImage(fixed_image_path, sitk.sitkFloat32)
+        print("Fixed image size (x,y,z):", fixed.GetSize(), "spacing:", fixed.GetSpacing())
 
-    print("Running registration (rigid -> affine)...")
-    affine_tform = register_affine_rigid(fixed, moving, verbose=True)
+        print("Running registration (rigid -> affine)...")
+        affine_tform = register_affine_rigid(fixed, moving, verbose=True)
 
-    print("Saving transform...")
-    save_sitk_transform(affine_tform, out_transform_path)
+        print("Saving transform...")
+        save_sitk_transform(affine_tform, out_transform_path)
+    
 
     print("Transforming fiducial points from moving -> fixed (Allen) ...")
     phys_points, fixed_indices = transform_points_sitk(affine_tform, moving, fixed, moving_fiducials)
