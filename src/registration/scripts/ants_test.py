@@ -28,7 +28,7 @@ if __name__ == "__main__":
     um = 25.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    #moving_tif_folder = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK55/preps/C1/thumbnail_aligned"
+    moving_tif_folder = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK55/preps/C1/thumbnail_aligned"
     fixed_image_path = os.path.join(regpath, "Allen", f"Allen_{um}x{um}x{um}um_sagittal.nii")
     if not os.path.exists(fixed_image_path):
         print("Fixed image NIfTI not found: " + fixed_image_path)
@@ -43,18 +43,18 @@ if __name__ == "__main__":
 
     out_prefix = "ants_moving_to_allen"
 
-    if os.path.exists(transform_path):
+    if os.path.exists(transform_path) and False:
         reg_affine = ants.read_transform(transform_path)
         print("Loaded existing transform from:", transform_path)
     else:
 
         print("Loading...")
-        #stack = load_tif_stack_numpy(moving_tif_folder)
-        #moving = ants_image_from_numpy(stack, spacing=moving_spacing)
-        moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
+        stack = load_tif_stack_numpy(moving_tif_folder)
+        moving = ants_image_from_numpy(stack, spacing=moving_spacing)
+        #moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
 
-        print(f"Loading moving image from NIfTI at: {moving_image_path}")
-        moving = ants.image_read(moving_image_path)
+        #print(f"Loading moving image from NIfTI at: {moving_image_path}")
+        #moving = ants.image_read(moving_image_path)
         print(f"Loading fixed (Allen) image from {fixed_image_path}")
         fixed = ants.image_read(fixed_image_path)
 
