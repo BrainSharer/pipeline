@@ -33,7 +33,7 @@ def run_affine_registration(fixed, moving, initial_transform):
     # Optimizer
     registration.SetOptimizerAsRegularStepGradientDescent(learningRate=1.0,
                                                  minStep=1e-6,
-                                                 numberOfIterations=1000,
+                                                 numberOfIterations=2000,
                                                  gradientMagnitudeTolerance=1e-8)
     registration.SetOptimizerScalesFromPhysicalShift()
 
@@ -110,10 +110,10 @@ def save_transform(transform, path):
 
 if __name__ == "__main__":
     # ---------------- USER INPUT ----------------
-    um = 25.0
+    um = 10.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    output_transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.tfm")
+    output_transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_{um}.tfm")
     fixed_image_path = f"{regpath}/Allen/Allen_{um}x{um}x{um}um_sagittal.nii"      # path to Allen reference (10 um isotropic)
     moving_image_path = os.path.join(regpath, moving_brain, "DK55_10.4x10.4x20um_sagittal.nii")
     assert os.path.exists(fixed_image_path), f"Fixed image not found: {fixed_image_path}"
