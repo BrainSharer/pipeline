@@ -80,7 +80,8 @@ if __name__ == "__main__":
     print("Moving points DataFrame:\n", pts.head())
 
     # Apply transforms to points. The transform maps moving->fixed. Use same transforms used to warp moving.
-    transformed_pts = ants.apply_transforms_to_points(3, pts, transformlist=reg_affine['fwdtransforms'], whichtoinvert=None)
+    #transformed_pts = ants.apply_transforms_to_points(3, pts, transformlist=reg_affine['fwdtransforms'], whichtoinvert=None)
+    transformed_pts = ants.apply_transforms_to_points(3, pts, transformlist=reg_affine, whichtoinvert=None)
     print("Points mapped to fixed (physical coordinates):")
     print(transformed_pts)
 
