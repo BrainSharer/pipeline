@@ -71,6 +71,10 @@ if __name__ == "__main__":
                         moving=moving_rs,
                         type_of_transform=registration_type)  # will produce a dict of outputs
 
+    fwd_transforms = reg_affine.get('fwdtransforms', None)
+    if fwd_transforms is None:
+        raise RuntimeError("Registration did not return 'fwdtransforms' — check ANTs registration output.")
+
 
     print(f"{registration_type} registration complete.")
 
@@ -82,9 +86,6 @@ if __name__ == "__main__":
 
     # Transform fiducial points:
     # ants.apply_transforms_to_points expects points as Nx3 numpy (with columns x,y,z)
-    # Convert to DataFrame as required by ANTs
-    pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z'])
-    print("Moving points DataFrame:\n", pts.head())
     if coords_are_voxel_indices:
         print("Converting fiducial voxel indices -> physical coordinates (moving image)...")
         physical_points = []
@@ -101,3 +102,44 @@ if __name__ == "__main__":
     print("Physical coordinates of fiducials (moving space):")
     for p in physical_points:
         print(p)
+
+    # The transforms returned by registration map the moving image into fixed space.
+    # We'll use ants.apply_transforms_to_points to map the moving-space physical points into
+    # fixed-space physical coordinates.
+    # ants.apply_transforms_to_points signature: ants.apply_transforms_to_points(dim, points, transformlist, whichtoinvert=None)
+    # points: an Nx3 array-like with columns (x,y,z) in physical space.
+    print("Applying transforms to points (moving -> fixed)...")
+    # Prepare points as list-of-dicts or Nx3. The ANTsPy helper accepts Nx3 numpy array.
+    # The transform list should be given in the same order returned by registration (fwd_transforms).
+    # whichtoinvert: None means apply forward transforms as returned (do not invert).
+    transformed = ants.apply_transforms_to_points(3, physical_points, fwd_transforms, whichtoinvert=None)
+    # The return is an object we convert to numpy array. Depending on ANTsPy version the return may be a list/array.
+    transformed = np.asarray(transformed)
+
+    print("Transformed fiducials (physical coords in fixed / Allen space):")
+    for p in transformed:
+        print(p)
+
+    # 6) Optionally convert transformed physical coordinates into voxel indices in the fixed image
+    # This is useful if you want to overlay points on the fixed image (in voxel coordinates).
+    fixed_voxel_indices = []
+    for pt in transformed:
+        idx = ants.transform_physical_point_to_index(fixed, tuple(pt))
+        fixed_voxel_indices.append(idx)
+    fixed_voxel_indices = np.asarray(fixed_voxel_indices)
+
+    print("Transformed fiducials (voxel indices in fixed image):")
+    for v in fixed_voxel_indices:
+        print(v)
+
+    # 7) Save transformed points to CSV
+    df = pd.DataFrame({
+        'x_phys_fixed': transformed[:, 0],
+        'y_phys_fixed': transformed[:, 1],
+        'z_phys_fixed': transformed[:, 2],
+        'x_vox_fixed': fixed_voxel_indices[:, 0],
+        'y_vox_fixed': fixed_voxel_indices[:, 1],
+        'z_vox_fixed': fixed_voxel_indices[:, 2],
+    })
+    print(df.head())
+    print('finished')
