@@ -112,7 +112,9 @@ if __name__ == "__main__":
     # Prepare points as list-of-dicts or Nx3. The ANTsPy helper accepts Nx3 numpy array.
     # The transform list should be given in the same order returned by registration (fwd_transforms).
     # whichtoinvert: None means apply forward transforms as returned (do not invert).
-    transformed = ants.apply_transforms_to_points(3, physical_points, fwd_transforms, whichtoinvert=None)
+    pts = pd.DataFrame(physical_points, columns=['x', 'y', 'z'])
+
+    transformed = ants.apply_transforms_to_points(3, pts, fwd_transforms, whichtoinvert=None)
     # The return is an object we convert to numpy array. Depending on ANTsPy version the return may be a list/array.
     transformed = np.asarray(transformed)
 
