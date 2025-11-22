@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import ants
 import tifffile
+import shutil
 
 def load_tif_stack_numpy(folder):
     files = sorted([os.path.join(folder, f) for f in os.listdir(folder)
@@ -32,7 +33,8 @@ if __name__ == "__main__":
     if not os.path.exists(fixed_image_path):
         print("Fixed image NIfTI not found: " + fixed_image_path)
         exit(1)
-    transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}_to_Allen_affine.mat")
+    transform_path = os.path.join(regpath, moving_brain, f"{moving_brain}ToAllen_affine.mat")
+    inv_transform_path = os.path.join(regpath, moving_brain, f"AllenTo{moving_brain}_affine.mat")
     moving_spacing = (10.4, 10.4, 20.0)  # (x,y,z) microns
     moving_points = np.array([
         (1062, 1062, 130),
@@ -70,7 +72,8 @@ if __name__ == "__main__":
 
         # Save transforms (forward transforms are filepaths)
         print("Transforms saved by ANTs:", reg_affine['fwdtransforms'])
-        ants.write_transform(reg_affine['fwdtransforms'][0], transform_path)
+        shutil.copyfile(reg_affine['fwdtransforms'][0], transform_path)
+        shutil.copyfile(reg_affine['invtransforms'][0], inv_transform_path)
         print("Wrote transform to:", transform_path)
 
     # Transform fiducial points:
