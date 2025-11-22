@@ -1,5 +1,6 @@
 # antspy_affine_registration.py
 import os
+import pandas as pd
 import numpy as np
 import ants
 import tifffile
@@ -9,7 +10,7 @@ def load_tif_stack_numpy(folder):
                     if f.lower().endswith(('.tif', '.tiff'))])
     if not files:
         raise RuntimeError("No TIFFs found in folder: " + folder)
-    imgs = [tifffile.imread(f).astype(np.uint16) for f in files]
+    imgs = [tifffile.imread(f).astype(np.float32) for f in files]
     stack = np.stack(imgs, axis=0)  # (Z,Y,X)
     # ANTs expects array as (X,Y,Z) or works with ants.from_numpy which expects arr with shape (z,y,x) and spacing param
     return stack
@@ -26,19 +27,16 @@ if __name__ == "__main__":
     um = 25.0
     moving_brain = "DK55"
     regpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-
-
-
     moving_tif_folder = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK55/preps/C1/thumbnail_aligned"
     fixed_image_path = os.path.join(regpath, "Allen", f"Allen_{um}x{um}x{um}um_sagittal.nii")
     if not os.path.exists(fixed_image_path):
         print("Fixed image NIfTI not found: " + fixed_image_path)
         exit(1)
     moving_spacing = (10.4, 10.4, 20.0)  # (x,y,z) microns
-    moving_fiducials = [
+    moving_points = np.array([
         (1062, 1062, 130),
         (1311, 644, 240)
-    ]
+    ])
 
     out_prefix = "ants_moving_to_allen"
 
@@ -64,7 +62,10 @@ if __name__ == "__main__":
 
     # Transform fiducial points:
     # ants.apply_transforms_to_points expects points as Nx3 numpy (with columns x,y,z)
-    pts = np.array(moving_fiducials)
+    # Convert to DataFrame as required by ANTs
+    pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z', 't'])
+    print("Moving points DataFrame:\n", pts.head())
+
     # Apply transforms to points. The transform maps moving->fixed. Use same transforms used to warp moving.
     transformed_pts = ants.apply_transforms_to_points(3, pts, transformlist=reg_affine['fwdtransforms'], whichtoinvert=None)
     print("Points mapped to fixed (physical coordinates):")

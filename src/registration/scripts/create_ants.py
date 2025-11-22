@@ -1037,7 +1037,6 @@ class AntsRegistration:
 
         # Convert to DataFrame as required by ANTs
         pts = pd.DataFrame(moving_points, columns=['x', 'y', 'z', 't'])
-        #pts = pd.DataFrame({'x': [10], 'y': [15], 'z': [12], 't': [0]})
         print("Moving points DataFrame:\n", pts.head())
 
         # Apply the  inverse transform (fixed -> moving space)
