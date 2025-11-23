@@ -1407,28 +1407,42 @@ class BrainStructureManager:
         affine_transform = self.convert_transformation(threeD_transform)
         fixed_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/Allen_10.0x10.0x10.0um_sagittal.nii"
         fixed = sitk.ReadImage(fixed_path)
-        nii_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/AtlasV8/nii/SC.nii"
-        mask = sitk.ReadImage(nii_path)
-        mask = sitk.Cast(mask, sitk.sitkUInt8)
-        #mask.SetSpacing((14.464, 14.464, 20)) # spacing should be in microns at the downsampled resolution
-        #mask.SetOrigin((8380, 1060, 3730)) # origin should be in microns
-        print(f'mask size {mask.GetSize()}')
-        print(f'mask origin {mask.GetOrigin()}')
-        print(f'mask spacing {mask.GetSpacing()}')
-        resampled = sitk.Resample(
-            mask,
-            fixed,
-            affine_transform.GetInverse(),
-            sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
-            0.0, # Default pixel value is 0
-            sitk.sitkUInt8
-        )
-        
-        print(f'resampled size {resampled.GetSize()}')
-        print(f'resampled origin {resampled.GetOrigin()}')
-        print(f'resampled spacing {resampled.GetSpacing()}')
-        outpath = "/home/eddyod/programming/pipeline/fixed_sc.nii"
-        sitk.WriteImage(resampled, outpath)
+        fx, fy, fz = fixed.GetSize()
+        output_shape = (fz, fy, fx)
+
+        # Create an empty registered volume in fixed space
+        registered_volume = np.zeros(output_shape, dtype=np.uint8)
+
+        niis = sorted([f for f in os.listdir(self.nii_path)])
+        for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
+            structure = Path(nii_file).stem
+
+            mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
+            mask = sitk.Cast(mask, sitk.sitkUInt8)
+            if self.debug:
+                print(f'Structure: {structure}')
+                print(f'\tmask size {mask.GetSize()}')
+                print(f'\tmask origin {mask.GetOrigin()}')
+                print(f'\tmask spacing {mask.GetSpacing()}')
+            resampled = sitk.Resample(
+                mask,
+                fixed,
+                affine_transform.GetInverse(),
+                sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
+                0.0, # Default pixel value is 0
+                sitk.sitkUInt8
+            )
+
+            # Combine registered subvolume into the global volume
+            resampled_np = sitk.GetArrayFromImage(resampled)
+            # Simple logical combination (e.g. union)
+            registered_volume = np.maximum(registered_volume, resampled_np)
+
+        if not self.debug:            
+            outpath = "/home/eddyod/programming/pipeline/reg.nii"
+            resampled = sitk.GetImageFromArray(registered_volume.astype(np.uint8))
+            sitk.WriteImage(resampled, outpath)
+            print(f'Saved registered volume to {outpath}')
 
 
     
