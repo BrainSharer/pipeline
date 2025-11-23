@@ -393,7 +393,7 @@ def list_raw_coms(animal, scaling_factor=1):
 
     return coms
 
-def get_origins(animal):
+def get_origins(animal, scale=1):
     """
     Fetches the origins from disk. The data is already scaled to 10um.
     """
@@ -407,7 +407,7 @@ def get_origins(animal):
         structure = Path(file).stem
         filepath = os.path.join(dirpath, file)
         origin = np.loadtxt(filepath)
-        origins[structure] = origin
+        origins[structure] = origin / scale
     return origins
 
 

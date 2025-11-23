@@ -633,6 +633,12 @@ class BrainStructureManager:
             scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
             com_um = com0 * scale0 # COM in um
             origin_um = origin0 * scale0 # origin in um
+            # nii
+            volume_nii = sitk.GetImageFromArray(volume0) # note: GetImageFromArray assumes arr is z,y,x
+            volume_nii.SetSpacing(scale0)
+            volume_nii.SetOrigin(origin_um)
+            volume_nii.SetDirection(np.eye(3).flatten().tolist())
+
 
             # we want the volume and origin scaled to 10um, so adjust the above scale
             scale_allen = scale0 / self.um
@@ -641,12 +647,6 @@ class BrainStructureManager:
             volume_allen = zoom(volume, scale_allen)
 
             # create an sitk volume
-            scale_nii = (zresolution/self.um, xy_resolution*SCALING_FACTOR/self.um, xy_resolution*SCALING_FACTOR/self.um)
-            volume_nii = zoom(volume0, scale_nii)            
-            volume_nii = sitk.GetImageFromArray(volume_nii) # note: GetImageFromArray assumes arr is z,y,x
-            volume_nii.SetSpacing((1.0, 1.0, 1.0))
-            volume_nii.SetOrigin(origin_allen)
-            volume_nii.SetDirection(np.eye(3).flatten().tolist())
 
 
 
@@ -1341,8 +1341,7 @@ class BrainStructureManager:
 
         return resampled, resampled_np, allen_id
        
- 
-    def atlas2allen(self):
+    def atlas2allenXXXX(self):
 
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.nii_path)
@@ -1397,43 +1396,39 @@ class BrainStructureManager:
                 color = number_to_rgb(allen_id)
                 mask_to_mesh(resampled_np, relative_origin, mesh_filepath, color=color)
 
-
-    def atlas2allenSCIPY(self):
+ 
+    def atlas2allen(self):
 
         self.check_for_existing_dir(self.origin_path)
-        self.check_for_existing_dir(self.volume_path)
-        if not self.debug:
-            self.rm_existing_dir(self.registered_volume_path)
+        self.check_for_existing_dir(self.nii_path)
         print('Creating affine transform from coms in the database/disk')
         threeD_transform = self.create_affine_transformation()
-        #threeD_transform = np.linalg.inv(threeD_transform)
-        print('Affine transformation matrix:')
         print(threeD_transform)
-
-        volumes = sorted([f for f in os.listdir(self.volume_path)])
-        for volume_file in tqdm(volumes, desc='Registering structures', disable=self.debug):
-            structure = Path(volume_file).stem
-            if structure not in ['SC']:
-                continue
-
-            volume = np.load(os.path.join(self.volume_path, volume_file))
-            resampled = affine_transform_volume(volume, threeD_transform)
-            #resampled_np = np.swapaxes(resampled_np, 0, 2)  # z,y,x to x,y,z
-            allen_id = self.get_allen_id(structure)
-            resampled[resampled > 0] = allen_id
-            if self.debug:
-                print(f'Structure: {structure}')
-                print(f'\tOriginal shape: {volume.shape}, dtype: {volume.dtype}')
-                ids, counts = np.unique(volume, return_counts=True)
-                print(f'\tUnique ids {ids} counts {counts}')
-
-                print(f'\tResampled numpy shape: {resampled.shape}, dtype: {resampled.dtype}')
-                ids, counts = np.unique(resampled, return_counts=True)
-                print(f'\tUnique ids {ids} counts {counts}')
-                print(f'\tAllen ID: {allen_id}')
-            else:
-                structure_registered_path = os.path.join(self.registered_volume_path, f'{structure}')
-                np.save(structure_registered_path, resampled)
+        affine_transform = self.convert_transformation(threeD_transform)
+        fixed_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/Allen_10.0x10.0x10.0um_sagittal.nii"
+        fixed = sitk.ReadImage(fixed_path)
+        nii_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/AtlasV8/nii/SC.nii"
+        mask = sitk.ReadImage(nii_path)
+        mask = sitk.Cast(mask, sitk.sitkUInt8)
+        #mask.SetSpacing((14.464, 14.464, 20)) # spacing should be in microns at the downsampled resolution
+        #mask.SetOrigin((8380, 1060, 3730)) # origin should be in microns
+        print(f'mask size {mask.GetSize()}')
+        print(f'mask origin {mask.GetOrigin()}')
+        print(f'mask spacing {mask.GetSpacing()}')
+        resampled = sitk.Resample(
+            mask,
+            fixed,
+            affine_transform.GetInverse(),
+            sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
+            0.0, # Default pixel value is 0
+            sitk.sitkUInt8
+        )
+        
+        print(f'resampled size {resampled.GetSize()}')
+        print(f'resampled origin {resampled.GetOrigin()}')
+        print(f'resampled spacing {resampled.GetSpacing()}')
+        outpath = "/home/eddyod/programming/pipeline/fixed_sc.nii"
+        sitk.WriteImage(resampled, outpath)
 
 
     
@@ -1477,8 +1472,8 @@ class BrainStructureManager:
         moving = source 
         """
 
-        moving_all = get_origins(self.animal)
-        fixed_all = get_origins('Allen')
+        moving_all = get_origins(self.animal, scale=1/10)
+        fixed_all = get_origins('Allen', scale=1/10)
 
         bad_keys = ('10N_L','10N_R')
 
