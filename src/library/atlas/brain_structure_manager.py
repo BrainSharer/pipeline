@@ -432,9 +432,10 @@ class BrainStructureManager:
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             volume = np.load(os.path.join(volume_path, volume_file))
             #volume = sitk.ReadImage(os.path.join(volume_path, volume_file))
-            volume = volume.astype(np.uint32)
+            #volume = volume.astype(np.uint32)
             #volume = adjust_volume(volume, allen_id)
-            #volume[(volume == 255)] = allen_id
+            volume[(volume > 0)] = allen_id
+            volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
 
             x_start = int(round(origin[0]))
             y_start = int(round(origin[1]))
@@ -447,7 +448,7 @@ class BrainStructureManager:
             if self.debug:
                 print(f"{structure} origin={np.round(origin)}", end = " ")
                 nids, ncounts = np.unique(volume, return_counts=True)
-                print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end} ids={nids}, counts={ncounts} allen IDs={allen_id} dtype={volume.dtype}")
+                print(f"x={x_start}:{x_end} y={y_start}:{y_end} z={z_start}:{z_end} ids={nids}, counts={ncounts} allen ID={allen_id} dtype={volume.dtype}")
                 if x_end > atlas_volume.shape[0]:
                     print(f"\tWarning: End x {x_end} is larger than atlas volume shape {atlas_volume.shape[0]}")
                 if y_end > atlas_volume.shape[1]:
@@ -1424,7 +1425,7 @@ class BrainStructureManager:
         for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
             structure = Path(nii_file).stem
 
-            if structure not in ['SC', 'IC', '7n_R', '7n_L'] and self.debug:
+            if structure not in ['SC', 'IC', '7n_R', '7n_L']:
                 continue
 
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
@@ -1444,6 +1445,7 @@ class BrainStructureManager:
             )
 
             # Combine registered subvolume into the global volume
+            resampled = sitk.DiscreteGaussian(resampled, [1.0, 1.0, 1.0])
             resampled_np = sitk.GetArrayFromImage(resampled)
             resampled_np = binary_fill_holes(resampled_np).astype(np.uint8)
             z_min, z_max, y_min, y_max, x_min, x_max = get_3d_bounding_box(resampled_np)

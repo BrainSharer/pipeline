@@ -829,12 +829,12 @@ def adjust_volume(volume, allen_id):
     """
     The commands below produce really nice STLs
     """
-    upper = np.quantile(volume, 0.85)
     try:
         volume = gaussian(volume, 2.0)
     except Exception as e:
         print(f"Gaussian smoothing failed: {e}")
         pass
+    upper = np.quantile(volume, 0.85)
     volume[(volume > upper) ] = allen_id
     volume[(volume != allen_id)] = 0
     if allen_id == 255:
