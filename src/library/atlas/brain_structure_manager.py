@@ -33,6 +33,7 @@ from library.atlas.atlas_utilities import (
     average_volumes_with_fiducials,
     compute_affine_transformation,
     fetch_coms,
+    get_3d_bounding_box,
     get_evenly_spaced_vertices,
     get_min_max_mean,
     get_origins,
@@ -435,7 +436,6 @@ class BrainStructureManager:
             #volume = adjust_volume(volume, allen_id)
             #volume[(volume == 255)] = allen_id
 
-            # Using the origin makes the structures appear a bit too far up
             x_start = int(round(origin[0]))
             y_start = int(round(origin[1]))
             z_start = int(round(origin[2]))
@@ -1401,28 +1401,38 @@ class BrainStructureManager:
 
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.nii_path)
+        self.rm_existing_dir(self.registered_volume_path)
+        self.rm_existing_dir(self.registered_origin_path)
         print('Creating affine transform from coms in the database/disk')
         threeD_transform = self.create_affine_transformation()
-        print(threeD_transform)
+        if self.debug:
+            print(threeD_transform)
         affine_transform = self.convert_transformation(threeD_transform)
-        fixed_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/Allen_10.0x10.0x10.0um_sagittal.nii"
-        fixed = sitk.ReadImage(fixed_path)
-        fx, fy, fz = fixed.GetSize()
-        output_shape = (fz, fy, fx)
+        #fixed_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/Allen/Allen_10.0x10.0x10.0um_sagittal.nii"
+        #fixed = sitk.ReadImage(fixed_path)
+        fx = 1820
+        fy = 1000
+        fz = 1140
+        fixed = sitk.Image(fx, fy, fz, sitk.sitkUInt8)
+        fixed.SetSpacing((10.0, 10.0, 10.0))
+        fixed.SetOrigin((0.0, 0.0, 0.0))
 
         # Create an empty registered volume in fixed space
-        registered_volume = np.zeros(output_shape, dtype=np.uint8)
+        #registered_volume = np.zeros(output_shape, dtype=dtype)
 
         niis = sorted([f for f in os.listdir(self.nii_path)])
         for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
             structure = Path(nii_file).stem
+
+            if structure not in ['SC', 'IC', '7n_R', '7n_L'] and self.debug:
+                continue
 
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
             mask = sitk.Cast(mask, sitk.sitkUInt8)
             if self.debug:
                 print(f'Structure: {structure}')
                 print(f'\tmask size {mask.GetSize()}')
-                print(f'\tmask origin {mask.GetOrigin()}')
+                print(f'\tmask origin in microns {mask.GetOrigin()}')
                 print(f'\tmask spacing {mask.GetSpacing()}')
             resampled = sitk.Resample(
                 mask,
@@ -1435,17 +1445,24 @@ class BrainStructureManager:
 
             # Combine registered subvolume into the global volume
             resampled_np = sitk.GetArrayFromImage(resampled)
-            # Simple logical combination (e.g. union)
-            registered_volume = np.maximum(registered_volume, resampled_np)
+            resampled_np = binary_fill_holes(resampled_np).astype(np.uint8)
+            z_min, z_max, y_min, y_max, x_min, x_max = get_3d_bounding_box(resampled_np)
+            resampled_np = resampled_np[z_min:z_max, y_min:y_max, x_min:x_max]
+            if self.debug:
+                print(f'\tResampled numpy shape: {resampled_np.shape}, dtype: {resampled_np.dtype}')
+                ids, counts = np.unique(resampled_np, return_counts=True)
+                print(f'\tUnique ids {ids} counts {counts}')
+                print(f'new origin: {x_min=}, {y_min=}, {z_min=}')
+                print(f'new max: {x_max=}, {y_max=}, {z_max=}')
+            else:
+                registered_origin_path = os.path.join(self.registered_origin_path, f'{structure}.txt')
+                new_origin = np.array([x_min, y_min, z_min]).astype(np.float32)
+                np.savetxt(registered_origin_path, new_origin)
 
-        if not self.debug:            
-            outpath = "/home/eddyod/programming/pipeline/reg.nii"
-            resampled = sitk.GetImageFromArray(registered_volume.astype(np.uint8))
-            sitk.WriteImage(resampled, outpath)
-            print(f'Saved registered volume to {outpath}')
+                registered_volume_path = os.path.join(self.registered_volume_path, f'{structure}.npy')
+                np.save(registered_volume_path, resampled_np)
 
-
-    
+            del resampled, resampled_np
 
     @staticmethod
     def create_fixed_output(mask_image, transform):

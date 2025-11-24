@@ -1477,3 +1477,30 @@ def sitk_affine_to_matrix4x4(tx: sitk.Transform):
     M[:3, 3] = t
 
     return M
+
+def get_3d_bounding_box(mask_3d):
+  """
+  Calculates the bounding box of a 3D binary mask.
+
+  Args:
+    mask_3d: A 3D numpy array representing the binary mask (True/False or 1/0).
+
+  Returns:
+    A tuple of (z_min, z_max, y_min, y_max, x_min, x_max) coordinates.
+    Returns None if the mask is empty (all background).
+  """
+  # Get the coordinates of all foreground pixels
+  # The order of coordinates from np.where is (z_coords, y_coords, x_coords)
+  coords = np.argwhere(mask_3d)
+
+  # Check if the mask is empty
+  if coords.size == 0:
+    return None
+
+  # Find the minimum and maximum coordinates along each axis
+  z_min, y_min, x_min = coords.min(axis=0)
+  z_max, y_max, x_max = coords.max(axis=0)
+
+  # The bounding box is usually represented by the min/max coordinates
+  # or as min corner and dimensions. This returns the min/max coordinates.
+  return (z_min, z_max, y_min, y_max, x_min, x_max)
