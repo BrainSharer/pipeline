@@ -1425,7 +1425,7 @@ class BrainStructureManager:
         for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
             structure = Path(nii_file).stem
 
-            if structure not in ['SC', 'IC', '7n_R', '7n_L']:
+            if structure not in ['SC', 'IC', '7n_R', '7n_L'] and self.debug:
                 continue
 
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
