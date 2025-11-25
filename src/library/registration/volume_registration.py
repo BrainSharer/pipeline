@@ -1574,22 +1574,40 @@ class VolumeRegistration:
         """Starter method to check for existing directories and files
         """
         status = []
-        
+        """Fixed"""
         if self.fixed is not None:
             if os.path.exists(self.fixed_volume_path):
                 status.append(f'\tFixed volume at {self.fixed_volume_path}')
                 arr = read_image(self.fixed_volume_path)
                 status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
             else:
-                status.append(f'\tFixed volume at {self.fixed_volume_path} does not exist')
+                status.append(f'\tNo fixed volume at {self.fixed_volume_path}')
 
+            if os.path.exists(self.fixed_nii_path):
+                status.append(f'\tFixed nii volume at {self.fixed_nii_path}')
+                arr = sitk.ReadImage(self.fixed_nii_path)
+                status.append(f'\t\tshape={arr.GetSize()} dtype={arr.GetPixelIDTypeAsString()}')
+                status.append(f'\t\tspacing={arr.GetSpacing()} origin={arr.GetOrigin()}')
+            else:
+                status.append(f'\tNo fixed nii volume at {self.fixed_nii_path}')
+
+        """Moving"""
         if os.path.exists(self.moving_volume_path):
             status.append(f'\tMoving volume at {self.moving_volume_path}')
             arr = read_image(self.moving_volume_path)
             status.append(f'\t\tshape={arr.shape} dtype={arr.dtype}')
         else:
-            status.append(f'\tMoving volume at {self.moving_volume_path} does not exist')
+            status.append(f'\tNo moving volume at {self.moving_volume_path}')
 
+        if os.path.exists(self.moving_nii_path):
+            status.append(f'\tMoving nii volume at {self.moving_nii_path}')
+            arr = sitk.ReadImage(self.moving_nii_path)
+            status.append(f'\t\tshape={arr.GetSize()} dtype={arr.GetPixelIDTypeAsString()}')
+            status.append(f'\t\tspacing={arr.GetSpacing()} origin={arr.GetOrigin()}')
+        else:
+            status.append(f'\tNo moving nii volume at {self.moving_nii_path}')
+
+        """Registration Results"""
         result_path = os.path.join(self.registration_output, self.registered_volume)
         if os.path.exists(result_path):
             status.append(f'\tRegistered volume at {result_path}')
