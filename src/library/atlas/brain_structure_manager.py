@@ -432,7 +432,7 @@ class BrainStructureManager:
             origin = np.loadtxt(os.path.join(origin_path, origin_file))
             volume = np.load(os.path.join(volume_path, volume_file))
             #volume = sitk.ReadImage(os.path.join(volume_path, volume_file))
-            #volume = volume.astype(np.uint32)
+            volume = volume.astype(np.uint32)
             #volume = adjust_volume(volume, allen_id)
             volume[(volume > 0)] = allen_id
             volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
@@ -1402,8 +1402,10 @@ class BrainStructureManager:
 
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.nii_path)
-        self.rm_existing_dir(self.registered_volume_path)
-        self.rm_existing_dir(self.registered_origin_path)
+        if not self.debug:
+            print('Removing existing registered directories')
+            self.rm_existing_dir(self.registered_volume_path)
+            self.rm_existing_dir(self.registered_origin_path)
         print('Creating affine transform from coms in the database/disk')
         threeD_transform = self.create_affine_transformation()
         if self.debug:
@@ -1425,8 +1427,8 @@ class BrainStructureManager:
         for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
             structure = Path(nii_file).stem
 
-            if structure not in ['SC', 'IC', '7n_R', '7n_L'] and self.debug:
-                continue
+            #if structure not in ['SC', 'IC', '7n_R', '7n_L']:
+            #    continue
 
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
             mask = sitk.Cast(mask, sitk.sitkUInt8)
@@ -1445,7 +1447,13 @@ class BrainStructureManager:
             )
 
             # Combine registered subvolume into the global volume
-            resampled = sitk.DiscreteGaussian(resampled, [1.0, 1.0, 1.0])
+            pixelID = resampled.GetPixelID()
+            gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
+            gaussian.SetSigma(1.0)
+            resampled = gaussian.Execute(resampled)
+            caster = sitk.CastImageFilter()
+            caster.SetOutputPixelType(pixelID)
+            resampled = caster.Execute(resampled)            
             resampled_np = sitk.GetArrayFromImage(resampled)
             resampled_np = binary_fill_holes(resampled_np).astype(np.uint8)
             z_min, z_max, y_min, y_max, x_min, x_max = get_3d_bounding_box(resampled_np)
@@ -1454,8 +1462,8 @@ class BrainStructureManager:
                 print(f'\tResampled numpy shape: {resampled_np.shape}, dtype: {resampled_np.dtype}')
                 ids, counts = np.unique(resampled_np, return_counts=True)
                 print(f'\tUnique ids {ids} counts {counts}')
-                print(f'new origin: {x_min=}, {y_min=}, {z_min=}')
-                print(f'new max: {x_max=}, {y_max=}, {z_max=}')
+                print(f'\tnew origin: {x_min=}, {y_min=}, {z_min=}')
+                print(f'\tnew max: {x_max=}, {y_max=}, {z_max=}')
             else:
                 registered_origin_path = os.path.join(self.registered_origin_path, f'{structure}.txt')
                 new_origin = np.array([x_min, y_min, z_min]).astype(np.float32)
