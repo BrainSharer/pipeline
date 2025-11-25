@@ -583,25 +583,12 @@ class VolumeRegistration:
         z_resolution = self.sqlController.scan_run.zresolution
         print(f'Using images from {self.thumbnail_aligned} to create volume')
         print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
-        """
-
-        change_z = z_resolution
-        change_y = xy_resolution
-        change_x = xy_resolution
-        change = (change_z, change_y, change_x) 
-        changes = {'change_z': change_z, 'change_y': change_y, 'change_x': change_x}
-        print(f'change_z={change_z} change_y={change_y} change_x={change_x}')
-        print(f'Using files from {self.thumbnail_aligned} to create volume at\n\t {self.moving_volume_path}')
+        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.z_um}um_{self.orientation}.nii' )
+        print(f'Creating volume at {moving_nii_path}')
 
         if self.debug:
             return
-        with open(self.changes_path, 'w') as f:
-            json.dump(changes, f)            
         
-        if os.path.exists(self.moving_volume_path):
-            print(f'{self.moving_volume_path} exists, exiting')
-            return
-        """
         image_stack = np.zeros(image_manager.volume_size)
         file_list = []
         for ffile in tqdm(image_manager.files, desc='Creating volume'):
@@ -620,7 +607,7 @@ class VolumeRegistration:
         sitk_image.SetOrigin((0,0,0))
         sitk_image.SetSpacing((xy_resolution, xy_resolution, z_resolution))
         sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
-        sitk.WriteImage(sitk_image, self.moving_nii_path)
+        sitk.WriteImage(sitk_image, moving_nii_path)
             
         #zoomed = zoom(image_stack, change)
         
