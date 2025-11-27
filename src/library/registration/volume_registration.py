@@ -723,7 +723,7 @@ class VolumeRegistration:
             sys.exit()
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Loaded fixed image: {self.fixed_nii_path}")
-        moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_10.4x10.4x20.0um_sagittal.nii')
+        moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_downsampled_sagittal.nii')
         if os.path.exists(moving_path):
             moving = sitk.ReadImage(moving_path, sitk.sitkFloat32)
             print(f"Loaded moving image: {moving_path}")

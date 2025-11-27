@@ -272,14 +272,15 @@ class AnnotationSessionController:
             change_xy = scaling_factor
             change_z = scaling_factor
 
+        print( f'Using scaling factors: {change_xy} for xy and {change_z} for z')
         for row in data:
             if 'childJsons' not in row:
                 return polygons
             for child in row['childJsons']:
                 x,y,z = child['pointA']
-                x = x * M_UM_SCALE / change_xy
-                y = y * M_UM_SCALE / change_xy
-                z = z * M_UM_SCALE / change_z
+                x = x * M_UM_SCALE / 0.325 / SCALING_FACTOR
+                y = y * M_UM_SCALE / 0.325 / SCALING_FACTOR
+                z = z * M_UM_SCALE / 20
                 if transform is not None:
                     x, y, z = transform.TransformPoint((x, y, z))
                 section = int(np.round(z))

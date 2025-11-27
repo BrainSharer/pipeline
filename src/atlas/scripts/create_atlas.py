@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from timeit import default_timer as timer
 from tqdm import tqdm
+import SimpleITK as sitk
+import numpy as np
 
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -94,8 +96,8 @@ class AtlasManager():
 
     def create_other_brain_volumes_and_origins(self):
 
-        if self.animal is None and self.brainManager.annotation_id is None:
-            print('You must provide either an animal or an annotation ID for this task')
+        if self.animal is None or self.brainManager.annotation_id == 0:
+            print('You must provide an animal and an annotation ID for this task')
             sys.exit()
 
         annotation_session = self.brainManager.sqlController.get_annotation_by_id(self.brainManager.annotation_id)
@@ -104,8 +106,55 @@ class AtlasManager():
         transform = load_transformation(self.animal, self.um, self.um)
         if transform is None:
             print('No transformation found, cannot proceed')
-            sys.exit(1)
-        self.brainManager.create_brains_origin_volume_from_polygons(self.atlasMerger, self.animal, structure, transform, self.debug)
+            return
+        polygons = self.brainManager.sqlController.get_annotation_volume(annotation_session.id, self.um)
+        if len(polygons) == 0:
+            print(f'Found data for {animal} {structure}, but the data is empty')
+            return
+        print(f'Processing annotation session ID={annotation_session.id} for {animal} {structure} with {len(polygons)} polygons')
+        params = transform.GetParameters()
+        print(params[0:3])
+        print(params[3:6])
+        print(params[6:9])
+        print(params[9:12])
+        origin, volume = self.brainManager.create_volume_for_one_structure_from_polygons(polygons)
+        x0 = float(origin[0])
+        y0 = float(origin[1])
+        z0 = float(origin[2])
+        mask = sitk.GetImageFromArray(volume.astype(np.uint8))
+        mask.SetDirection((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
+        xy_um = self.brainManager.sqlController.scan_run.resolution * SCALING_FACTOR
+        z_um = self.brainManager.sqlController.scan_run.zresolution
+        mask.SetSpacing((10.4, 10.4, z_um))
+        # downsampled
+        print(f'\tdownsampled 32 origin indices: {x0}, {y0}, {z0}')
+        xdum = x0 * 10.4
+        ydum = y0 * 10.4
+        zdum = z0 * 20
+        print(f'\tdownsample res origin in um: {xdum}, {ydum}, {zdum}')
+        xf = int(origin[0]*32)
+        yf = int(origin[1]*32)
+        zf = int(origin[2])
+        # full res
+        print(f'\tfull resolution origin in indices: {xf}, {yf}, {zf}') # This is the correct position for full res
+        xum = xf * 0.325
+        yum = yf * 0.325
+        zum = zf * z_um
+        print(f'\tfull resolution origin in um: {xum}, {yum}, {zum}') # This is the correct position for full res
+        mask.SetOrigin((xdum, ydum, zdum))
+        # goal of about 350, 450, 450
+        del volume
+
+        test_origin = transform.GetInverse().TransformPoint((xdum, ydum, zdum))
+        print(f'\ttransformed back origin in um: {[t/10 for t in test_origin]}')
+        
+        notranslation = sitk.AffineTransform(3)
+        notranslation.SetMatrix(transform.GetParameters()[0:9])
+        notranslation.SetTranslation((0.0, 0.0, 0.0))
+
+        self.brainManager.create_registered_structure(structure, mask, notranslation)
+        print(f'Created registered volume for {self.animal} {structure}')
+
 
 
     def merge_all(self):
