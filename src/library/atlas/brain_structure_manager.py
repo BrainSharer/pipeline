@@ -49,7 +49,7 @@ from library.image_manipulation.filelocation_manager import (
     data_path,
     FileLocationManager,
 )
-from library.utilities.atlas import mask_to_mesh, number_to_rgb, volume_to_polygon, save_mesh
+from library.utilities.atlas import volume_to_polygon, save_mesh
 from library.utilities.utilities_process import (
     M_UM_SCALE,
     SCALING_FACTOR,
@@ -1071,7 +1071,7 @@ class BrainStructureManager:
                     points = points_dict[i]
                 except KeyError:
                     pass
-        
+            cv2.polylines(volume_slice, pts=[points], isClosed=True, color=255, thickness=2)
             cv2.fillPoly(volume_slice, pts=[points], color=255)
             slices.append(volume_slice)
         if len(slices) == 0:
@@ -1211,8 +1211,15 @@ class BrainStructureManager:
         fy = 200
         fz = 228
         fixed = sitk.Image(fx, fy, fz, sitk.sitkUInt8)
-        fixed.SetSpacing((50.0, 50.0, 50.0))
+        fixed.SetSpacing((self.um, self.um, self.um))  # Set spacing to X um
         fixed.SetOrigin((0.0, 0.0, 0.0))
+        reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
+        fixed_path = os.path.join(reg_path, 'Allen', f'Allen_{self.um}x{self.um}x{self.um}um_sagittal.nii')
+        if not os.path.exists(fixed_path):
+            print(f'Fixed image {fixed_path} does not exist')
+            sys.exit()
+
+        fixed = sitk.ReadImage(fixed_path)
 
         if self.debug:
             print(f'Structure: {structure}')
