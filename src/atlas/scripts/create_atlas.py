@@ -104,55 +104,41 @@ class AtlasManager():
         structure = annotation_session.labels[0].label
         print(f'Creating volumes and origins for {self.animal} {structure=} annotation ID={self.brainManager.annotation_id}')
         transform = load_transformation(self.animal, self.um, self.um)
-        if transform is None:
-            print('No transformation found, cannot proceed')
-            return
+        #transform4x4 = self.brainManager.create_affine_transformation()
+        #transform = self.brainManager.convert_transformation(transform4x4)
         polygons = self.brainManager.sqlController.get_annotation_volume(annotation_session.id, self.um)
         if len(polygons) == 0:
             print(f'Found data for {animal} {structure}, but the data is empty')
             return
         print(f'Processing annotation session ID={annotation_session.id} for {animal} {structure} with {len(polygons)} polygons')
-        params = transform.GetParameters()
-        print(params[0:3])
-        print(params[3:6])
-        print(params[6:9])
-        print(params[9:12])
         origin, volume = self.brainManager.create_volume_for_one_structure_from_polygons(polygons)
         x0 = float(origin[0])
         y0 = float(origin[1])
         z0 = float(origin[2])
         mask = sitk.GetImageFromArray(volume.astype(np.uint8))
         mask.SetDirection((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
-        xy_um = self.brainManager.sqlController.scan_run.resolution * SCALING_FACTOR
-        z_um = self.brainManager.sqlController.scan_run.zresolution
-        mask.SetSpacing((10.4, 10.4, z_um))
+        #xy_um = self.brainManager.sqlController.scan_run.resolution * SCALING_FACTOR
+        #z_um = self.brainManager.sqlController.scan_run.zresolution
+        mask.SetSpacing((10.0, 10.0, 10.0))
         # downsampled
-        print(f'\tdownsampled 32 origin indices: {x0}, {y0}, {z0}')
-        xdum = x0 * 10.4
-        ydum = y0 * 10.4
-        zdum = z0 * 20
-        print(f'\tdownsample res origin in um: {xdum}, {ydum}, {zdum}')
-        xf = int(origin[0]*32)
-        yf = int(origin[1]*32)
-        zf = int(origin[2])
-        # full res
-        print(f'\tfull resolution origin in indices: {xf}, {yf}, {zf}') # This is the correct position for full res
-        xum = xf * 0.325
-        yum = yf * 0.325
-        zum = zf * z_um
-        print(f'\tfull resolution origin in um: {xum}, {yum}, {zum}') # This is the correct position for full res
-        mask.SetOrigin((xdum, ydum, zdum))
+        xd = x0 * 10
+        yd = y0 * 10
+        zd = z0 * 10
+        mask.SetOrigin((xd, yd, zd))
+        print(f'mask spacing: {mask.GetSpacing()}')
         # goal of about 350, 450, 450
         del volume
 
-        test_origin = transform.GetInverse().TransformPoint((xdum, ydum, zdum))
+        test_origin = transform.GetInverse().TransformPoint((xd, yd, zd))
         print(f'\ttransformed back origin in um: {[t/10 for t in test_origin]}')
+        print('Ground truth of Allen origin in 10un = 818,100,365')
+        
         
         notranslation = sitk.AffineTransform(3)
         notranslation.SetMatrix(transform.GetParameters()[0:9])
         notranslation.SetTranslation((0.0, 0.0, 0.0))
 
-        self.brainManager.create_registered_structure(structure, mask, notranslation)
+        self.brainManager.create_registered_structure(structure, mask, transform)
         print(f'Created registered volume for {self.animal} {structure}')
 
 

@@ -278,9 +278,9 @@ class AnnotationSessionController:
                 return polygons
             for child in row['childJsons']:
                 x,y,z = child['pointA']
-                x = x * M_UM_SCALE / 0.325 / SCALING_FACTOR
-                y = y * M_UM_SCALE / 0.325 / SCALING_FACTOR
-                z = z * M_UM_SCALE / 20
+                x = x * M_UM_SCALE / 10
+                y = y * M_UM_SCALE / 10
+                z = z * M_UM_SCALE / 10
                 if transform is not None:
                     x, y, z = transform.TransformPoint((x, y, z))
                 section = int(np.round(z))

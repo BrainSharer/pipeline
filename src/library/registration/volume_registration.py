@@ -2,15 +2,12 @@ from collections import defaultdict
 import os
 import shutil
 import sys
-import ants
-#from anyio import value
 import numpy as np
 from skimage import io
 import dask.array as da
 from dask import delayed
 from dask.diagnostics import ProgressBar
 from skimage.transform import resize
-from scipy.ndimage import zoom
 from skimage.filters import gaussian        
 #from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 import sqlalchemy
@@ -21,9 +18,9 @@ from taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
 import pandas as pd
 import cv2
-import json
 import zarr
 from shapely.geometry import Point, Polygon
+import math
 
 from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, register_volume, resample_image
 from library.controller.sql_controller import SqlController
@@ -691,7 +688,7 @@ class VolumeRegistration:
             print("-" * 20)
 
         
-        def resample_to_isotropic(img, iso=0.1):
+        def resample_to_isotropic(img, iso=10.0):
             """Resample image to isotropic spacing."""
             spacing = [iso, iso, iso]
             original_spacing = img.GetSpacing()
@@ -735,6 +732,17 @@ class VolumeRegistration:
 
         fixed_size = fixed.GetSize()
         moving_size = moving.GetSize()
+        fixed_spacing = fixed.GetSpacing()
+        moving_spacing = moving.GetSpacing()
+        print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
+        print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
+        if math.isclose(moving_spacing[0], fixed_spacing[0]) and math.isclose(moving_spacing[1], fixed_spacing[1]) \
+        and math.isclose(moving_spacing[2], fixed_spacing[2]):
+            print('spacings are already matched, no resampling needed.')
+        else:
+            print('Resampling moving image to match fixed image size and spacing.')
+            moving = resample_to_isotropic(moving, iso=fixed_spacing[0])
+
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
         # ------------------------------------------------------------

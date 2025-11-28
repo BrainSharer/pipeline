@@ -1210,6 +1210,7 @@ class BrainStructureManager:
         fz = 1140
         fixed = sitk.Image(fx, fy, fz, sitk.sitkUInt8)
         fixed.SetSpacing((10.0, 10.0, 10.0))
+
         fixed.SetOrigin((0.0, 0.0, 0.0))
         if self.debug:
             print(f'Structure: {structure}')
@@ -1224,9 +1225,9 @@ class BrainStructureManager:
             0.0, # Default pixel value is 0
             sitk.sitkUInt8
         )
-
-        # Combine registered subvolume into the global volume
         pixelID = resampled.GetPixelID()
+        """
+        # Combine registered subvolume into the global volume
         gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
         gaussian.SetSigma(1.0)
         resampled = gaussian.Execute(resampled)
@@ -1247,7 +1248,14 @@ class BrainStructureManager:
             new_origin = np.array([x_min, y_min, z_min]).astype(np.float32)
             np.savetxt(registered_origin_path, new_origin)
             np.save(registered_volume_path, resampled_np)
-
+        gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
+        gaussian.SetSigma(14.0)
+        resampled = gaussian.Execute(resampled)
+        caster = sitk.CastImageFilter()
+        caster.SetOutputPixelType(pixelID)
+        resampled = caster.Execute(resampled)            
+        """
+        sitk.WriteImage(resampled, os.path.join('/home/eddyod/programming/pipeline', f'{structure}.nii'))
         
     def atlas2allen(self):
 
