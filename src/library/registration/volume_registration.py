@@ -717,6 +717,17 @@ class VolumeRegistration:
         # Load fixed and moving images
         if not os.path.exists(self.fixed_nii_path):
             print(f'Fixed image does not exist: {self.fixed_nii_path}, exiting.')
+            if os.path.exists(self.fixed_volume_path):
+                print(f'Found {self.fixed_volume_path}')
+                img = sitk.ReadImage(self.fixed_volume_path, sitk.sitkUInt8)
+                img.SetSpacing((self.xy_um, self.xy_um, self.z_um))
+                print(f'img spacing: {img.GetSpacing()}')
+                print(f'img size: {img.GetSize()}')
+                print(f'img origin: {img.GetOrigin()}')
+                print(f'img direction: {img.GetDirection()}')
+                sitk.WriteImage(img, self.fixed_nii_path)
+                print(f'Created fixed image {self.fixed_nii_path}')
+
             sys.exit()
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Loaded fixed image: {self.fixed_nii_path}")
@@ -745,6 +756,9 @@ class VolumeRegistration:
 
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
+
+        if self.debug:
+            return
         # ------------------------------------------------------------
         # 2. Normalize intensities (helpful for microscopy)
         # ------------------------------------------------------------

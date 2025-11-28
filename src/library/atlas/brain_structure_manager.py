@@ -1205,13 +1205,15 @@ class BrainStructureManager:
         mask = sitk.Cast(mask, sitk.sitkUInt8)
         registered_origin_path = os.path.join(self.data_path, 'AtlasV8', 'registered_origin', f'{structure}.txt')
         registered_volume_path = os.path.join(self.data_path, 'AtlasV8', 'registered_structure', f'{structure}.npy')
-        fx = 1820
-        fy = 1000
-        fz = 1140
+        size = (364, 200, 228) 
+        spacing = (50.0, 50.0, 50.0)
+        fx = 364
+        fy = 200
+        fz = 228
         fixed = sitk.Image(fx, fy, fz, sitk.sitkUInt8)
-        fixed.SetSpacing((10.0, 10.0, 10.0))
-
+        fixed.SetSpacing((50.0, 50.0, 50.0))
         fixed.SetOrigin((0.0, 0.0, 0.0))
+
         if self.debug:
             print(f'Structure: {structure}')
             print(f'\tmask size {mask.GetSize()}')
@@ -1220,16 +1222,16 @@ class BrainStructureManager:
         resampled = sitk.Resample(
             mask,
             fixed,
-            transform.GetInverse(),
+            transform,
             sitk.sitkNearestNeighbor, # Use NearestNeighbor for binary masks
             0.0, # Default pixel value is 0
             sitk.sitkUInt8
         )
         pixelID = resampled.GetPixelID()
-        """
+        
         # Combine registered subvolume into the global volume
         gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
-        gaussian.SetSigma(1.0)
+        gaussian.SetSigma(2.0)
         resampled = gaussian.Execute(resampled)
         caster = sitk.CastImageFilter()
         caster.SetOutputPixelType(pixelID)
@@ -1248,13 +1250,7 @@ class BrainStructureManager:
             new_origin = np.array([x_min, y_min, z_min]).astype(np.float32)
             np.savetxt(registered_origin_path, new_origin)
             np.save(registered_volume_path, resampled_np)
-        gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
-        gaussian.SetSigma(14.0)
-        resampled = gaussian.Execute(resampled)
-        caster = sitk.CastImageFilter()
-        caster.SetOutputPixelType(pixelID)
-        resampled = caster.Execute(resampled)            
-        """
+        resampled = sitk.Cast(resampled, sitk.sitkUInt8)
         sitk.WriteImage(resampled, os.path.join('/home/eddyod/programming/pipeline', f'{structure}.nii'))
         
     def atlas2allen(self):

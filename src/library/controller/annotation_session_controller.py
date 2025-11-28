@@ -261,26 +261,22 @@ class AnnotationSessionController:
         animal = annotation_session.FK_prep_id
 
         if scaling_factor is None:
-            change_xy = 1
-            change_z = 1
+            um = 1
 
         if isinstance(scaling_factor, (list, np.ndarray)):
-            change_xy = scaling_factor[0]
-            change_z = scaling_factor[2]
+            um = scaling_factor[0]
 
         if scaling_factor is not None and isinstance(scaling_factor, (int, float)):
-            change_xy = scaling_factor
-            change_z = scaling_factor
+            um = scaling_factor
 
-        print( f'Using scaling factors: {change_xy} for xy and {change_z} for z')
         for row in data:
             if 'childJsons' not in row:
                 return polygons
             for child in row['childJsons']:
                 x,y,z = child['pointA']
-                x = x * M_UM_SCALE / 10
-                y = y * M_UM_SCALE / 10
-                z = z * M_UM_SCALE / 10
+                x = x * M_UM_SCALE / um
+                y = y * M_UM_SCALE / um
+                z = z * M_UM_SCALE / um
                 if transform is not None:
                     x, y, z = transform.TransformPoint((x, y, z))
                 section = int(np.round(z))

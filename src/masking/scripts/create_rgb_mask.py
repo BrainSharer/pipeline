@@ -68,7 +68,7 @@ def create_mask_from_largest_contour(tif_path, min_area_ratio=0.001):
 
 # Example usage:
 if __name__ == "__main__":
-    animal = "MD589"
+    animal = "MD585"
     input_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_aligned"
     output_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_masked"
     os.makedirs(output_dir, exist_ok=True)
