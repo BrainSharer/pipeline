@@ -421,7 +421,7 @@ class BrainStructureManager:
             volume = volume.astype(np.uint32)
             #volume = adjust_volume(volume, allen_id)
             volume[(volume > 0)] = allen_id
-            volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
+            #volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
 
             x_start = int(round(origin[0]))
             y_start = int(round(origin[1]))
@@ -1257,11 +1257,10 @@ class BrainStructureManager:
         self.check_for_existing_dir(self.nii_path)
 
         print('Creating affine transform from coms in the database/disk between AtlasV8 -> Allen')
-        
-        #threeD_transform = self.create_affine_transformation()
-        #affine_transform = self.convert_transformation(threeD_transform)
+        affine_transform = self.create_landmark_transform(show_rmse=self.debug)
 
-        affine_transform = self.create_landmark_transform()
+        if self.debug:
+            return
 
 
         niis = sorted([f for f in os.listdir(self.nii_path)])
@@ -1346,7 +1345,7 @@ class BrainStructureManager:
         return transformation_matrix
 
 
-    def create_landmark_transform(self):
+    def create_landmark_transform(self, show_rmse=False):
         # Landmarks are 3 corners of the squares.
         # 3 (X, Y) pairs are flattened into 1-d lists.
         fixed_all = get_origins('Allen', scale=1/10)
@@ -1355,6 +1354,8 @@ class BrainStructureManager:
         bad_keys = ('10N_L','10N_R')
         common_keys = list(moving_all.keys() & fixed_all.keys())
         good_keys = set(common_keys) - set(bad_keys)
+        #good_keys = ['3N_L','3N_R', '4N_L','4N_R', '5N_L', '5N_R', '6N_L', '6N_R']
+        #good_keys.extend(['7N_L','7N_R'])
         moving_tuples = [moving_all[s] for s in good_keys]
         fixed_tuples = [fixed_all[s] for s in good_keys]
 
@@ -1370,8 +1371,61 @@ class BrainStructureManager:
         transform = sitk.AffineTransform(3)
 
         # Compute the transform.
-        return landmark_initializer.Execute(transform)
+        affine_transform = landmark_initializer.Execute(transform)
+        if show_rmse:
+            rmse = self.calculate_rmse(fixed_landmarks, moving_landmarks, affine_transform)
+            print(f'Landmark-based affine transform RMSE: {rmse:.2f} um over {len(good_keys)} landmarks')
 
+        return affine_transform
+
+    @staticmethod
+    def calculate_rmse(fixed_landmarks, moving_landmarks, transform):
+        """
+        Calculates the Root Mean Square Error (RMSE) between fixed landmarks
+        and transformed moving landmarks.
+
+        Args:
+            fixed_landmarks (list/array): List of coordinates for fixed points.
+            moving_landmarks (list/array): List of coordinates for moving points.
+            transform (sitk.Transform): The resulting transform from registration.
+
+        Returns:
+            float: The RMSE value.
+        """
+        # Convert flattened landmark lists to N x Dim arrays for easier processing
+        dim = transform.GetDimension()
+        fixed_points = np.array(fixed_landmarks).reshape(-1, dim)
+        moving_points = np.array(moving_landmarks).reshape(-1, dim)
+        
+        # Apply the transform to the moving points
+        transformed_moving_points = []
+        for point in moving_points:
+            # Use the transform's TransformPoint method
+            transformed_point = transform.TransformPoint(point)
+            transformed_moving_points.append(transformed_point)
+        transformed_moving_points = np.array(transformed_moving_points)
+        
+        # Calculate the squared Euclidean distances for each point pair
+        # differences = transformed_moving_points - fixed_points
+        # differences_squared = differences ** 2
+        # mean_of_differences_squared = differences_squared.mean()
+        # rmse_val = np.sqrt(mean_of_differences_squared)
+        
+        # More efficient calculation using numpy:
+        # np.linalg.norm calculates the Euclidean distance (L2 norm) for each pair along the last axis (coordinates)
+        distances = np.linalg.norm(transformed_moving_points - fixed_points, axis=1)
+        
+        # Calculate RMSE: sqrt(mean(distances^2))
+        # It's actually sqrt(mean of sum of squares of differences)
+        # The snippet 1.4.3 is calculating mean of error instead of mean of error^2
+        # The correct formula is:
+        rmse_val = np.sqrt(np.mean(distances**2)) # Or just np.sqrt(np.mean((transformed_moving_points - fixed_points)**2))
+        
+        # A more common interpretation for landmark error is the Mean Euclidean Distance (MED)
+        # MED = np.mean(distances)
+        # The user asked for RMSE, which typically implies squaring the distances first before averaging.
+        
+        return rmse_val
 
 
     def convert_transformation(self, transformation):
