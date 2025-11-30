@@ -1205,14 +1205,6 @@ class BrainStructureManager:
         mask = sitk.Cast(mask, sitk.sitkUInt8)
         registered_origin_path = os.path.join(self.data_path, 'AtlasV8', 'registered_origin', f'{structure}.txt')
         registered_volume_path = os.path.join(self.data_path, 'AtlasV8', 'registered_structure', f'{structure}.npy')
-        size = (364, 200, 228) 
-        spacing = (50.0, 50.0, 50.0)
-        fx = 364
-        fy = 200
-        fz = 228
-        fixed = sitk.Image(fx, fy, fz, sitk.sitkUInt8)
-        fixed.SetSpacing((self.um, self.um, self.um))  # Set spacing to X um
-        fixed.SetOrigin((0.0, 0.0, 0.0))
         reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
         fixed_path = os.path.join(reg_path, 'Allen', f'Allen_{self.um}x{self.um}x{self.um}um_sagittal.nii')
         if not os.path.exists(fixed_path):
@@ -1237,12 +1229,13 @@ class BrainStructureManager:
         pixelID = resampled.GetPixelID()
         
         # Combine registered subvolume into the global volume
-        gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
-        gaussian.SetSigma(2.0)
-        resampled = gaussian.Execute(resampled)
-        caster = sitk.CastImageFilter()
-        caster.SetOutputPixelType(pixelID)
-        resampled = caster.Execute(resampled)            
+
+        #gaussian = sitk.SmoothingRecursiveGaussianImageFilter()
+        #gaussian.SetSigma(2.0)
+        #resampled = gaussian.Execute(resampled)
+        #caster = sitk.CastImageFilter()
+        #caster.SetOutputPixelType(pixelID)
+        #resampled = caster.Execute(resampled)            
         resampled_np = sitk.GetArrayFromImage(resampled)
         resampled_np = binary_fill_holes(resampled_np).astype(np.uint8)
         z_min, z_max, y_min, y_max, x_min, x_max = get_3d_bounding_box(resampled_np)
@@ -1257,27 +1250,26 @@ class BrainStructureManager:
             new_origin = np.array([x_min, y_min, z_min]).astype(np.float32)
             np.savetxt(registered_origin_path, new_origin)
             np.save(registered_volume_path, resampled_np)
-        resampled = sitk.Cast(resampled, sitk.sitkUInt8)
-        sitk.WriteImage(resampled, os.path.join('/home/eddyod/programming/pipeline', f'{structure}.nii'))
         
     def atlas2allen(self):
 
         self.check_for_existing_dir(self.origin_path)
         self.check_for_existing_dir(self.nii_path)
+
         print('Creating affine transform from coms in the database/disk between AtlasV8 -> Allen')
-        threeD_transform = self.create_affine_transformation()
-        if self.debug:
-            print(threeD_transform)
-        affine_transform = self.convert_transformation(threeD_transform)
+        
+        #threeD_transform = self.create_affine_transformation()
+        #affine_transform = self.convert_transformation(threeD_transform)
+
+        affine_transform = self.create_landmark_transform()
 
 
         niis = sorted([f for f in os.listdir(self.nii_path)])
         for nii_file in tqdm(niis, desc='Registering structures', disable=self.debug):
             structure = Path(nii_file).stem
 
-            if self.debug:
-                if structure not in ['SC']:
-                    continue
+            if structure not in ['IC', '7n_L', '7n_R']:
+                continue
 
             mask = sitk.ReadImage(os.path.join(self.nii_path, nii_file))
             self.create_registered_structure(structure, mask, affine_transform)
@@ -1321,8 +1313,8 @@ class BrainStructureManager:
         moving = source 
         """
 
-        moving_all = get_origins(self.animal, scale=1/10)
-        fixed_all = get_origins('Allen', scale=1/10)
+        moving_all = get_origins(self.animal, scale=1)
+        fixed_all = get_origins('Allen', scale=1)
 
         bad_keys = ('10N_L','10N_R')
 
@@ -1354,6 +1346,34 @@ class BrainStructureManager:
         return transformation_matrix
 
 
+    def create_landmark_transform(self):
+        # Landmarks are 3 corners of the squares.
+        # 3 (X, Y) pairs are flattened into 1-d lists.
+        fixed_all = get_origins('Allen', scale=1/10)
+        moving_all = get_origins('AtlasV8', scale=1/10)
+
+        bad_keys = ('10N_L','10N_R')
+        common_keys = list(moving_all.keys() & fixed_all.keys())
+        good_keys = set(common_keys) - set(bad_keys)
+        moving_tuples = [moving_all[s] for s in good_keys]
+        fixed_tuples = [fixed_all[s] for s in good_keys]
+
+        moving_landmarks = [item for sublist in moving_tuples for item in sublist]
+        fixed_landmarks = [item for sublist in fixed_tuples for item in sublist]
+
+        # Set up the LandmarkBasedTransformInitializerFilter.
+        landmark_initializer = sitk.LandmarkBasedTransformInitializerFilter()
+
+        landmark_initializer.SetFixedLandmarks(fixed_landmarks)
+        landmark_initializer.SetMovingLandmarks(moving_landmarks)
+
+        transform = sitk.AffineTransform(3)
+
+        # Compute the transform.
+        return landmark_initializer.Execute(transform)
+
+
+
     def convert_transformation(self, transformation):
 
         if isinstance(transformation, np.ndarray):
@@ -1368,9 +1388,8 @@ class BrainStructureManager:
             affine_transformation = np.eye(4)
             parameters = transformation.GetParameters()
             matrix = parameters[0:9]
-            translation = [0,0,0]
             affine_transformation[0:3, 0:3] = np.array(matrix).reshape(3,3)
-            affine_transformation[0:3, 3] = np.array(translation)
+            affine_transformation[0:3, 3] = np.array(parameters[9:12])
 
 
         return affine_transformation

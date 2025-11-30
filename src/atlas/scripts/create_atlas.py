@@ -126,12 +126,7 @@ class AtlasManager():
         yd = y0 * self.um
         zd = z0 * self.um
         mask.SetOrigin((xd, yd, zd))
-        print(f'mask spacing: {mask.GetSpacing()}')
-        # goal of about 350, 450, 450
         del volume
-
-        test_origin = transform.TransformPoint((xd, yd, zd))
-        print(f'\ttransformed back origin in um: {[t/self.um for t in test_origin]}')
 
         self.brainManager.create_registered_structure(structure, mask, transform)
         print(f'Created registered volume for {self.animal} {structure}')
