@@ -1504,3 +1504,27 @@ def get_3d_bounding_box(mask_3d):
   # The bounding box is usually represented by the min/max coordinates
   # or as min corner and dimensions. This returns the min/max coordinates.
   return (z_min, z_max, y_min, y_max, x_min, x_max)
+
+def numpy2sitk_dtype(np_dtype):
+    """Convert numpy dtype to SimpleITK pixel type."""
+    dtype_str = str(np_dtype)
+
+    str_2_sitk_pixel_type = {
+        "uint8": sitk.sitkUInt8, # the key is arbitrary so could have been "np_uint8"
+        "uint16": sitk.sitkUInt16,
+        "uint32": sitk.sitkUInt32,
+        "uint64": sitk.sitkUInt64,
+        "int8": sitk.sitkInt8,
+        "int16": sitk.sitkInt16,
+        "int32": sitk.sitkInt32,
+        "int64": sitk.sitkInt64,
+        "float32": sitk.sitkFloat32,
+        "float64": sitk.sitkFloat64,
+        "complex64": sitk.sitkComplexFloat32,
+        "complex128": sitk.sitkComplexFloat64,
+    }
+    
+    if dtype_str not in str_2_sitk_pixel_type:
+        raise ValueError(f"Unsupported numpy dtype: {np_dtype}")
+    return str_2_sitk_pixel_type[dtype_str]
+

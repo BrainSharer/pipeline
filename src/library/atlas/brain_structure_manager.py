@@ -421,7 +421,7 @@ class BrainStructureManager:
             volume = volume.astype(np.uint32)
             #volume = adjust_volume(volume, allen_id)
             volume[(volume > 0)] = allen_id
-            #volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
+            volume = np.swapaxes(volume, 0, 2)  # put into x,y,z order
 
             x_start = int(round(origin[0]))
             y_start = int(round(origin[1]))

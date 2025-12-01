@@ -22,7 +22,7 @@ import zarr
 from shapely.geometry import Point, Polygon
 import math
 
-from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, numpy2sitk_dtype, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.database_model.annotation_points import AnnotationSession
@@ -576,12 +576,15 @@ class VolumeRegistration:
         """
         image_manager = ImageManager(self.thumbnail_aligned)
 
+        pixel_type = numpy2sitk_dtype(image_manager.dtype)
+
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor
         z_resolution = self.sqlController.scan_run.zresolution
         print(f'Using images from {self.thumbnail_aligned} to create volume')
         print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
         moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.z_um}um_{self.orientation}.nii' )
         print(f'Creating volume at {moving_nii_path}')
+        print(f'Pixel type for images in sitk: {pixel_type}')
 
         if self.debug:
             return
@@ -604,6 +607,7 @@ class VolumeRegistration:
         sitk_image.SetOrigin((0,0,0))
         sitk_image.SetSpacing((xy_resolution, xy_resolution, z_resolution))
         sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
+        sitk_image = sitk.Cast(sitk_image, pixel_type)
         sitk.WriteImage(sitk_image, moving_nii_path)
             
         #zoomed = zoom(image_stack, change)
@@ -632,14 +636,17 @@ class VolumeRegistration:
         chunk = 64
         chunks = (chunk, chunk, chunk)
         if self.fixed is None:
-            volumepath = os.path.join(self.registration_output, self.moving_volume_path)
+            volumepath = os.path.join(self.registration_output, self.moving_nii_path)
         else:
-            volumepath = self.registration_output + '.tif'
+            volumepath = self.registration_output + '.nii'
         if not os.path.exists(volumepath):
             print(f'{volumepath} does not exist, exiting.')
             sys.exit()
         else:
             print(f'Creating precomputed from {volumepath}')
+
+        if self.debug:
+            return
 
         PRECOMPUTED = self.neuroglancer_data_path
         if os.path.exists(PRECOMPUTED):
@@ -1489,13 +1496,23 @@ class VolumeRegistration:
     def points_within_polygons(self):
         """Get data from DB which is in meters
         convert to micros
+        We know the fixed Allen space is at 10um
+        Apply the inverse transform to get points in fixed space
+        convert back to meters
+        Save back to DB
+        1. Load existing annotation session from DB
+        2. For each point in the annotation session, apply the inverse transform
+           to get the point in fixed space
+        3. Save the new points back to the DB as a new annotation session
+        4. If an annotation session with the same description exists, update it instead of creating a new one
+        5. Use hard coded annotator_id = 1 (Edward)
+        Annotation IDs
+            8379 works well
+            8389 appears a bit below the structure
+            8390 looks good
+            8382 is off a lot
         """
         
-        if not os.path.exists(self.fixed_nii_path):
-            print(f'Fixed nii path {self.fixed_nii_path} does not exist, exiting')
-            return
-        fixed = sitk.ReadImage(self.fixed_nii_path)
-
         transform = load_transformation(self.moving, self.z_um, self.xy_um)
         if transform is None:
             print('No transformation found, exiting')
@@ -1514,7 +1531,7 @@ class VolumeRegistration:
         rows = []
         props = ["#00FF00", 1, 1, 5, 3, 1]
         parentAnnotationId = random_string()
-        for child in childJsons[0:2]:
+        for child in childJsons:
             if 'point' in child:
                 xm0, ym0, zm0 = child['point'] # data is in meters
 
@@ -1523,13 +1540,13 @@ class VolumeRegistration:
                 zm0 *= M_UM_SCALE # in µm
                 
                 xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
-                xf, yf, zf = fixed.TransformPhysicalPointToIndex((xt, yt, zt)) # put in 10um fixed space
+                #xf, yf, zf = fixed.TransformPhysicalPointToIndex((xt, yt, zt)) # put in 10um fixed space
                 if self.debug:
-                    print(f"(µm) [{xm0/10}, {ym0/10}, {zm0/10}],")
+                    print(f"Transformed 10(µm) [{xt//10}, {yt//10}, {zt//10}],")
                 
-                xm = xf / M_UM_SCALE * self.xy_um # back to meters
-                ym = yf / M_UM_SCALE * self.xy_um
-                zm = zf / M_UM_SCALE * self.z_um
+                xm = xt / M_UM_SCALE # back to meters
+                ym = yt / M_UM_SCALE
+                zm = zt / M_UM_SCALE
                 
                 rows.append({'point': [xm, ym, zm], 'type': 'point', 'parentAnnotationId': parentAnnotationId, 'props': props})
         if self.debug:
