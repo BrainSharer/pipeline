@@ -27,6 +27,7 @@ ORIGINAL_ATLAS = 'AtlasV7'
 NEW_ATLAS = 'AtlasV8'
 RESOLUTION = 0.452
 ALLEN_UM = 10
+BAD_KEYS = ('10N_L')
 
 def order_points_concave_hull(points, alpha=1.0):
     """Return points ordered along a concave hull using alpha shape."""
@@ -407,7 +408,7 @@ def get_origins(animal, scale=1):
         structure = Path(file).stem
         filepath = os.path.join(dirpath, file)
         origin = np.loadtxt(filepath)
-        origins[structure] = origin / scale
+        origins[structure] = origin * scale
     return origins
 
 
@@ -512,10 +513,10 @@ def get_affine_transformation(moving_name, fixed_name='Allen', scaling_factor=1)
         moving_all = fetch_coms(moving_name, scaling_factor=scaling_factor)
         fixed_all = list_coms(fixed_name, scaling_factor=scaling_factor)
 
-        bad_keys = ('RtTg', 'AP')
+       
 
         common_keys = list(moving_all.keys() & fixed_all.keys())
-        good_keys = set(common_keys) - set(bad_keys)
+        good_keys = set(common_keys) - set(BAD_KEYS)
 
         moving_src = np.array([moving_all[s] for s in good_keys])
         fixed_src = np.array([fixed_all[s] for s in good_keys])

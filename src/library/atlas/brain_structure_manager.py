@@ -29,17 +29,14 @@ from library.atlas.atlas_manager import AtlasToNeuroglancer
 from library.atlas.atlas_utilities import (
     adjust_volume,
     affine_transform_point,
-    affine_transform_volume,
     average_volumes_with_fiducials,
+    BAD_KEYS,
     compute_affine_transformation,
-    fetch_coms,
     get_3d_bounding_box,
     get_evenly_spaced_vertices,
     get_min_max_mean,
     get_origins,
-    get_physical_center,
     list_coms,
-    ORIGINAL_ATLAS,
     order_points_concave_hull,
     interpolate_points
 )
@@ -60,6 +57,8 @@ from library.utilities.utilities_process import (
     write_image,
 )
 from library.utilities.utilities_contour import get_contours_from_annotations
+
+
 
 
 class BrainStructureManager:
@@ -373,9 +372,8 @@ class BrainStructureManager:
         fixed_name = 'Allen'
         moving_all = list_coms(moving_name, scaling_factor=self.um)
         fixed_all = list_coms(fixed_name, scaling_factor=self.um)
-        bad_keys = ('RtTg', 'AP')
         common_keys = list(moving_all.keys() & fixed_all.keys())
-        good_keys = set(common_keys) - set(bad_keys)
+        good_keys = set(common_keys) - set(BAD_KEYS)
         moving_src = np.array([moving_all[s] for s in good_keys])
         fixed_src = np.array([fixed_all[s] for s in good_keys])
         return compute_affine_transformation(moving_src, fixed_src)
@@ -942,10 +940,9 @@ class BrainStructureManager:
 
         atlas_all = list_coms(self.animal)
         allen_all = list_coms("Allen")
-        bad_keys = ("RtTg", "AP")
 
         common_keys = sorted(list(atlas_all.keys() & allen_all.keys()))
-        good_keys = set(common_keys) - set(bad_keys)
+        good_keys = set(common_keys) - set(BAD_KEYS)
 
         atlas_src = np.array([atlas_all[s] for s in good_keys])
         allen_src = np.array([allen_all[s] for s in good_keys])
@@ -1315,10 +1312,9 @@ class BrainStructureManager:
         moving_all = get_origins(self.animal, scale=1)
         fixed_all = get_origins('Allen', scale=1)
 
-        bad_keys = ('10N_L','10N_R')
 
         common_keys = list(moving_all.keys() & fixed_all.keys())
-        good_keys = set(common_keys) - set(bad_keys)
+        good_keys = set(common_keys) - set(BAD_KEYS)
         src_pts = np.array([moving_all[s] for s in good_keys])
         dst_pts = np.array([fixed_all[s] for s in good_keys])
 
@@ -1348,14 +1344,11 @@ class BrainStructureManager:
     def create_landmark_transform(self, show_rmse=False):
         # Landmarks are 3 corners of the squares.
         # 3 (X, Y) pairs are flattened into 1-d lists.
-        fixed_all = get_origins('Allen', scale=1/10)
-        moving_all = get_origins('AtlasV8', scale=1/10)
+        fixed_all = get_origins('Allen', scale=10)
+        moving_all = get_origins('AtlasV8', scale=10)
 
-        bad_keys = ('10N_L','10N_R')
         common_keys = list(moving_all.keys() & fixed_all.keys())
-        good_keys = set(common_keys) - set(bad_keys)
-        #good_keys = ['3N_L','3N_R', '4N_L','4N_R', '5N_L', '5N_R', '6N_L', '6N_R']
-        #good_keys.extend(['7N_L','7N_R'])
+        good_keys = set(common_keys) - set(BAD_KEYS)
         moving_tuples = [moving_all[s] for s in good_keys]
         fixed_tuples = [fixed_all[s] for s in good_keys]
 
@@ -1413,19 +1406,16 @@ class BrainStructureManager:
         
         # More efficient calculation using numpy:
         # np.linalg.norm calculates the Euclidean distance (L2 norm) for each pair along the last axis (coordinates)
-        distances = np.linalg.norm(transformed_moving_points - fixed_points, axis=1)
+        #distances = np.linalg.norm(transformed_moving_points - fixed_points, axis=1)
         
         # Calculate RMSE: sqrt(mean(distances^2))
         # It's actually sqrt(mean of sum of squares of differences)
         # The snippet 1.4.3 is calculating mean of error instead of mean of error^2
         # The correct formula is:
-        rmse_val = np.sqrt(np.mean(distances**2)) # Or just np.sqrt(np.mean((transformed_moving_points - fixed_points)**2))
+        #rmse_val = np.sqrt(np.mean(distances**2)) # Or just 
+        rmse = np.sqrt(np.mean((transformed_moving_points - fixed_points)**2))
         
-        # A more common interpretation for landmark error is the Mean Euclidean Distance (MED)
-        # MED = np.mean(distances)
-        # The user asked for RMSE, which typically implies squaring the distances first before averaging.
-        
-        return rmse_val
+        return rmse
 
 
     def convert_transformation(self, transformation):
