@@ -608,7 +608,7 @@ class VolumeRegistration:
         sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
         sitk_image = sitk.Cast(sitk_image, pixel_type)
         sitk.WriteImage(sitk_image, moving_nii_path)
-        print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
+        print(f'Saved a 3D volume {moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
 
     def downsample_stack(self):
         image_manager = ImageManager(self.full_aligned)
@@ -787,7 +787,7 @@ class VolumeRegistration:
 
         registration.SetOptimizerAsGradientDescent(
             learningRate=1.0,
-            numberOfIterations=self.iterations,
+            numberOfIterations=int(self.iterations),
             convergenceMinimumValue=1e-6,
             convergenceWindowSize=10,
         )
