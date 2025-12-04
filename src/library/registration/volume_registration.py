@@ -581,7 +581,7 @@ class VolumeRegistration:
         print(f'z resolution: {z_resolution} um/pixel')
         spacing = (xy_resolution * self.scaling_factor, xy_resolution * self.scaling_factor, z_resolution * self.scaling_factor)
         print(f'Setting spacing to: {spacing} um/pixel')
-        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.z_um}um_{self.orientation}.nii' )
+        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{spacing[0]}x{spacing[0]}x{self.z_um}um_{self.orientation}.nii' )
         print(f'Creating volume at {moving_nii_path}')
         print(f'Pixel type for images in sitk: {pixel_type}')
 
