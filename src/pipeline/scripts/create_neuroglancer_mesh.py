@@ -13,9 +13,6 @@ from cloudvolume import CloudVolume
 import numpy as np
 from pathlib import Path
 from timeit import default_timer as timer
-import faulthandler
-import signal
-faulthandler.register(signal.SIGUSR1.value)
 """
 use:
 kill -s SIGUSR1 <pid> 
@@ -49,7 +46,7 @@ class MeshPipeline():
         z *= self.scale
         self.scales = (int(xy), int(xy), int(z))
         # start with big size chunks to cut down on the number of files created
-        self.chunk = 512
+        self.chunk = 64
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
@@ -128,7 +125,7 @@ class MeshPipeline():
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         # reset chunks to much smaller size for better neuroglancer experience
-        chunks = [128, 128, 128]
+        chunks = [self.chunk, self.chunk, self.chunk]
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):

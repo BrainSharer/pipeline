@@ -92,7 +92,7 @@ class VolumeRegistration:
             self.iterations = "100"
             self.number_of_resolutions = "4"
         else:
-            self.iterations = "2500"
+            self.iterations = "500"
             self.number_of_resolutions = "8"
 
 
@@ -567,12 +567,7 @@ class VolumeRegistration:
 
     def create_volume(self):
         """
-        Create a 3D volume
-        e.g., to get to 10um isotropic with a 0.325x0.325x20 typical brain whose images (thumbnail_aligned)
-        are downsampled by 1/32 do:
-        xy change = 0.325 * 32 / 10um
-        z change = 20 * 32 / 10um
-
+        Using sitk so the SetSpacing is very important!
         """
         image_manager = ImageManager(self.thumbnail_aligned)
 
@@ -581,7 +576,11 @@ class VolumeRegistration:
         xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor
         z_resolution = self.sqlController.scan_run.zresolution
         print(f'Using images from {self.thumbnail_aligned} to create volume')
-        print(f'xy_resolution={xy_resolution} z_resolution={z_resolution} scaling_factor={self.scaling_factor} scan run resolution={self.sqlController.scan_run.resolution} um={self.xy_um}')
+        print(f'Image volume size: {image_manager.volume_size} dtype={image_manager.dtype}')
+        print(f'XY resolution: {xy_resolution} um/pixel')
+        print(f'z resolution: {z_resolution} um/pixel')
+        spacing = (xy_resolution * self.scaling_factor, xy_resolution * self.scaling_factor, z_resolution * self.scaling_factor)
+        print(f'Setting spacing to: {spacing} um/pixel')
         moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.z_um}um_{self.orientation}.nii' )
         print(f'Creating volume at {moving_nii_path}')
         print(f'Pixel type for images in sitk: {pixel_type}')
@@ -605,14 +604,10 @@ class VolumeRegistration:
         image_stack = np.stack(file_list, axis = 0)
         sitk_image = sitk.GetImageFromArray(image_stack.astype(image_manager.dtype))    
         sitk_image.SetOrigin((0,0,0))
-        sitk_image.SetSpacing((xy_resolution, xy_resolution, z_resolution))
+        sitk_image.SetSpacing(spacing)
         sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
         sitk_image = sitk.Cast(sitk_image, pixel_type)
         sitk.WriteImage(sitk_image, moving_nii_path)
-            
-        #zoomed = zoom(image_stack, change)
-        
-        #write_image(self.moving_volume_path, zoomed.astype(image_manager.dtype))
         print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
 
     def downsample_stack(self):
@@ -792,7 +787,7 @@ class VolumeRegistration:
 
         registration.SetOptimizerAsGradientDescent(
             learningRate=1.0,
-            numberOfIterations=500,
+            numberOfIterations=self.iterations,
             convergenceMinimumValue=1e-6,
             convergenceWindowSize=10,
         )
@@ -1556,7 +1551,6 @@ class VolumeRegistration:
         json_entry["childrenVisible"] = True
         json_entry["type"] = "cloud"
         description = existing_annotation_session.annotation.get("description", f"{self.moving}-Allen data")
-        description = description + " Registered to Allen @ 10um"
         json_entry["description"] = description
         json_entry["props"] = props
         json_entry["childJsons"] = rows
