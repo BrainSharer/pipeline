@@ -573,7 +573,7 @@ class VolumeRegistration:
 
         pixel_type = numpy2sitk_dtype(image_manager.dtype)
 
-        xy_resolution = self.sqlController.scan_run.resolution * self.scaling_factor
+        xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
         print(f'Using images from {self.thumbnail_aligned} to create volume')
         print(f'Image volume size: {image_manager.volume_size} dtype={image_manager.dtype}')
