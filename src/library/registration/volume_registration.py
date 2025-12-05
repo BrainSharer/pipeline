@@ -749,12 +749,15 @@ class VolumeRegistration:
         moving_spacing = moving.GetSpacing()
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
+
+        # check if existing moving image matches fixed image size and spacing
         if math.isclose(moving_spacing[0], fixed_spacing[0]) and math.isclose(moving_spacing[1], fixed_spacing[1]) \
         and math.isclose(moving_spacing[2], fixed_spacing[2]):
             print('spacings are already matched, no resampling needed.')
         else:
             print('Resampling moving image to match fixed image size and spacing.')
             moving = resample_to_isotropic(moving, iso=fixed_spacing[0])
+            sitk.WriteImage(moving, moving_path)
 
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
@@ -769,41 +772,48 @@ class VolumeRegistration:
         # ------------------------------------------------------------
         # 3. Initial alignment using center of mass
         # ------------------------------------------------------------
-        initial_transform = sitk.CenteredTransformInitializer(
-            fixed,
-            moving,
-            sitk.AffineTransform(3), 
-            sitk.CenteredTransformInitializerFilter.GEOMETRY,
-        )
-        # ------------------------------------------------------------
-        # 4. Rigid+Affine registration (MI metric)
-        # ------------------------------------------------------------
-        registration = sitk.ImageRegistrationMethod()
+        if os.path.exists(self.transform_filepath):
+            affine_transform = sitk.ReadTransform(self.transform_filepath)
+            print(f'Using existing transform from {self.transform_filepath}')        
+        else:
+            print('Creating initial transform using CenteredTransformInitializer')
+            initial_transform = sitk.CenteredTransformInitializer(
+                fixed,
+                moving,
+                sitk.AffineTransform(3), 
+                sitk.CenteredTransformInitializerFilter.GEOMETRY,
+            )
+            # ------------------------------------------------------------
+            # 4. Rigid+Affine registration (MI metric)
+            # ------------------------------------------------------------
+            registration = sitk.ImageRegistrationMethod()
 
-        registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
-        registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.1)
-        registration.SetInterpolator(sitk.sitkLinear)
+            registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
+            registration.SetMetricSamplingStrategy(registration.RANDOM)
+            registration.SetMetricSamplingPercentage(0.1)
+            registration.SetInterpolator(sitk.sitkLinear)
 
-        registration.SetOptimizerAsGradientDescent(
-            learningRate=1.0,
-            numberOfIterations=int(self.iterations),
-            convergenceMinimumValue=1e-6,
-            convergenceWindowSize=10,
-        )
-        registration.SetOptimizerScalesFromPhysicalShift()
-        registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-        registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
-        registration.SetInitialTransform(initial_transform, inPlace=False)
-        registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+            registration.SetOptimizerAsGradientDescent(
+                learningRate=1.0,
+                numberOfIterations=int(self.iterations),
+                convergenceMinimumValue=1e-6,
+                convergenceWindowSize=10,
+            )
+            registration.SetOptimizerScalesFromPhysicalShift()
+            registration.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+            registration.SetSmoothingSigmasPerLevel([3, 2, 1, 0])
+            registration.SetInitialTransform(initial_transform, inPlace=False)
+            registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
-        registration.SetInitialTransform(initial_transform, inPlace=False)
+            registration.SetInitialTransform(initial_transform, inPlace=False)
 
-        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
-        affine_transform = registration.Execute(fixed, moving)
+            #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+            affine_transform = registration.Execute(fixed, moving)
 
-        print("Affine done. Final metric:", registration.GetMetricValue())
-        print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
+            print("Affine done. Final metric:", registration.GetMetricValue())
+            print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
+
+        print('Resampling moving image.')
         resampled = sitk.Resample(
             moving,
             fixed,
@@ -813,14 +823,13 @@ class VolumeRegistration:
             moving.GetPixelID(),
         )
 
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
+        #resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
         # Save the transform
         sitk.WriteTransform(affine_transform, self.transform_filepath)
         print(f"Registration written to {self.transform_filepath}")
-        return
     
 
     def register_volume_elastix(self):
