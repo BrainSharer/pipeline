@@ -122,7 +122,6 @@ class VolumeRegistration:
             um (float): The unit of measurement used in the registration process.
             orientation (str): The orientation setting for the volume registration.
             debug (bool): Indicates whether debug mode is enabled.
-            number_of_resolutions (int): The number of resolutions used in the registration.
             affineIterations (int): The number of iterations for rigid affine transformations.
         """
         print("Running volume registration with the following settings:")
@@ -131,8 +130,7 @@ class VolumeRegistration:
         print("\tXY um:".ljust(20), f"{str(self.xy_um)}".ljust(20))
         print("\torientation:".ljust(20), f"{str(self.orientation)}".ljust(20))
         print("\tdebug:".ljust(20), f"{str(self.debug)}".ljust(20))
-        print("\tresolutions:".ljust(20), f"{str(self.number_of_resolutions)}".ljust(20))
-        print("\trigid iterations:".ljust(20), f"{str(self.iterations)}".ljust(20))
+        print("\titerations:".ljust(20), f"{str(self.iterations)}".ljust(20))
         print()
 
 
@@ -822,7 +820,7 @@ class VolumeRegistration:
             moving.GetPixelID(),
         )
 
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), moving.GetPixelID())
+        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
