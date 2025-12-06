@@ -757,8 +757,9 @@ class VolumeRegistration:
         else:
             print('Resampling moving image to match fixed image size and spacing.')
             moving = resample_to_isotropic(moving, iso=fixed_spacing[0])
-            sitk.WriteImage(moving, moving_path)
-
+            #sitk.WriteImage(moving, self.moving_nii_path)
+            print(f'Writing resampled to {self.moving_nii_path}')
+            exit(1)
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
 
