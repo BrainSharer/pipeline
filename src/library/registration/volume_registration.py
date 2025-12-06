@@ -822,7 +822,7 @@ class VolumeRegistration:
             moving.GetPixelID(),
         )
 
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt8)
+        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), moving.GetPixelID())
         sitk.WriteImage(resampled, self.registered_volume)
         print(f"Resampled moving image written to {self.registered_volume}")
 
