@@ -609,13 +609,16 @@ class BrainStructureManager:
         structures = list(aligned_dict.keys())
         desc = f"Create {animal} coms/meshes/origins/volumes"
         for structure in tqdm(structures, desc=desc, disable=debug):
-            polygons = aligned_dict[structure]
+            un_scaled_polygons = aligned_dict[structure]
+            polygons = self.convert_polygons_allen_space(un_scaled_polygons, xy_resolution, zresolution)
             # volume is in z,y,x order, origin is in x,y,z order
             origin0, volume0 = self.create_volume_for_one_structure(polygons)
             com0 = center_of_mass(np.swapaxes(volume0, 0, 2)) + origin0 # com is in 0452*scaling_factor for x and y and 20 for z
 
             # Now convert com and origin to micrometers in xyz
-            scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
+            #####TODO scale0 = np.array([xy_resolution*SCALING_FACTOR, xy_resolution*SCALING_FACTOR, zresolution])
+            ##### TODO
+            scale0 = np.array([10.0, 10.0, 10.0])
             com_um = com0 * scale0 # COM in um
             origin_um = origin0 * scale0 # origin in um
             # nii
@@ -637,9 +640,19 @@ class BrainStructureManager:
             else:
                 brainMerger.coms[structure] = com_um
                 brainMerger.niis[structure] = volume_nii
-                brainMerger.origins[structure] = origin_allen
+                brainMerger.origins[structure] = origin_um ##### TODO Check
                 brainMerger.volumes[structure] = volume_allen
 
+
+    
+    def convert_polygons_allen_space(self, un_scaled_polygons, xy_resolution, zresolution):
+        polygons = {}
+        for section, points in un_scaled_polygons.items():
+            section = int(section) * (zresolution) / self.um  # to allen space
+            points = np.array(points)
+            scaled_points = points * xy_resolution * SCALING_FACTOR / self.um  # to allen space
+            polygons[section] = scaled_points.tolist()
+        return polygons
 
     @staticmethod
     def save_volume_origin(animal, structure, volume, xyz_offsets):

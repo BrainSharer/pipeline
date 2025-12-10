@@ -136,7 +136,7 @@ class BrainMerger():
             moments.Compute()
             center_of_gravity = moments.GetCenterOfGravity()
             x,y,z = center_of_gravity
-            cog = np.array((x,y,z)) * um
+            cog = np.array((x,y,z)) * 1
             np.savetxt(com_filepath, cog)
             continue
             
