@@ -30,15 +30,15 @@ from library.utilities.utilities_process import get_cpus
 
 class MeshPipeline():
 
-    def __init__(self, animal, scale, debug):
+    def __init__(self, animal, scale, mip, debug):
 
         self.animal = animal
         self.scale = scale
+        self.mip = mip
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
         self.mips = [0, 1, 2]
-        self.mesh_mip = 0
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
@@ -56,6 +56,8 @@ class MeshPipeline():
         self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scale}')
         self.layer_path = f'file://{self.mesh_dir}'
         self.mesh_input_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_input_{self.scale}')
+        self.mesh_path = f'mesh_mip_{self.mip}_err_{self.max_simplification_error}'
+
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
         # make dirs
@@ -182,9 +184,10 @@ class MeshPipeline():
             sys.exit()
 
         ##### add segment properties
-        cloudpath = CloudVolume(self.layer_path, self.mesh_mip)
-        #downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
+        cloudpath = CloudVolume(self.layer_path, self.mip)
+        downsample_path = cloudpath.meta.info['scales'][self.mip]['key']
         print(f'Creating mesh from {cloudpath.layer_cloudpath}')
+        print(f'Using downsampled path: {downsample_path}')
         segment_properties = {str(id): str(id) for id in self.ids}
 
         print('and creating segment properties', end=" ")
@@ -223,16 +226,16 @@ class MeshPipeline():
         s = int(448)
         shape = [s, s, s]
         sharded = False
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip}')
+        print(f'and mesh with shape={shape} at mip={self.mip}')
         """
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
                                         shape=shape, 
                                         compress=True, 
                                         sharded=sharded,
                                         max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
         """
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
-                                        compress=True)
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
+                                        compress=True, mesh_dir=self.mesh_path)
         tq.insert(tasks)
         tq.execute()
 
@@ -240,14 +243,13 @@ class MeshPipeline():
         # must return HTTP/1.1 206 Partial Content
         # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
 
-        print(f'Creating meshing manifest tasks with {cpus} CPUs')
-        tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
+        print(f'Creating meshing manifest tasks with {cpus} CPUs at {self.mesh_path}')
+        tasks = tc.create_mesh_manifest_tasks(self.layer_path, mesh_dir=self.mesh_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
     def process_multires_mesh(self):
         """
-        Keep LOD = self.mesh_mip
         """
         _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
@@ -284,8 +286,8 @@ class MeshPipeline():
         processed_count = len(os.listdir(self.progress_dir))
         if section_count != processed_count and section_count > 0:
             dothis = f"File count={section_count} does not equal processed file count={processed_count}\n"
-        mesh_path = os.path.join(self.mesh_dir, f'mesh_mip_{self.mesh_mip}_err_{self.max_simplification_error}')
 
+        mesh_path = os.path.join(self.mesh_dir, self.mesh_path)
         directories = {
             self.progress_dir: "\nRun stack",
             self.transfered_path: "\nRun transfer",
@@ -307,8 +309,6 @@ class MeshPipeline():
 
         if (os.path.exists(result1) and os.path.exists(result2)) or os.path.exists(result3):
             print(f'Mesh creation is complete for animal={self.animal} at scale={scale}')
-        else:
-            print('Mesh is not complete.')
 
 
     def run_all(self):
@@ -323,8 +323,9 @@ if __name__ == '__main__':
     parser.add_argument('--animal', help='Enter the animal', required=True)
     parser.add_argument('--limit', help='Enter the # of files to test', required=False, default=0)
     parser.add_argument('--scale', help='Enter an integer that will be the denominator', required=False, default=1)
+    parser.add_argument('--mip', help='Enter the mesh mip level', required=False, default=0)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
-    parser.add_argument("--debug", help="debug", required=False, default=False)
+    parser.add_argument('--debug', help='debug', required=False, default=False)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: stack -> transfer -> mesh -> multi",
@@ -337,11 +338,12 @@ if __name__ == '__main__':
     animal = args.animal
     limit = int(args.limit)
     scale = int(args.scale)
+    mip = int(args.mip)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     
-    pipeline = MeshPipeline(animal, scale, debug=debug)
+    pipeline = MeshPipeline(animal, scale, mip, debug=debug)
 
     function_mapping = {
         "stack": pipeline.process_stack,
