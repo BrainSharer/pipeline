@@ -129,15 +129,32 @@ class MeshPipeline():
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):
-            tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, 
-                                                            self.layer_path, mip=0, 
-                                                            chunk_size=chunks)
+            #tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0, chunk_size=chunks)
+            #tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0)
+            tasks = tc.create_transfer_tasks(
+                self.ng.precomputed_vol.layer_cloudpath,
+                self.layer_path,
+                mip=0,
+                chunk_size=chunks
+            )
 
             print(f'Creating transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
             tq.insert(tasks)
             tq.execute()
         else:
             print(f'Already created transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
+
+
+        #tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=0)
+        tasks = tc.create_downsampling_tasks(
+            self.layer_path,
+            num_mips=len(self.mips))
+
+        tq.insert(tasks)
+        tq.execute()
+
+        return
+
 
         factors = [2,2,1]
         for mip in self.mips:
@@ -207,11 +224,15 @@ class MeshPipeline():
         shape = [s, s, s]
         sharded = False
         print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
+        """
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
                                         compress=True, 
                                         sharded=sharded,
                                         max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
+        """
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=0, 
+                                        compress=True)
         tq.insert(tasks)
         tq.execute()
 
@@ -242,7 +263,8 @@ class MeshPipeline():
         # LOD=10, resolution shows different detail
         LOD = 10
         print(f'Creating sharded multires task with LOD={LOD}')
-        tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
         tq.execute()
 
