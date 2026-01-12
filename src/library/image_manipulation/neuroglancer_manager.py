@@ -350,7 +350,7 @@ class NumpyToNeuroglancer():
         :param file_key: file_key: tuple
         """
 
-        debug = True
+        debug = False
 
         index, infile, orientation, progress_dir, scaling_factor = file_key
         basefile = os.path.basename(infile)

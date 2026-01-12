@@ -38,7 +38,7 @@ class MeshPipeline():
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
         self.mips = [0, 1, 2]
-        self.mesh_mip = 2
+        self.mesh_mip = 0
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
@@ -138,11 +138,11 @@ class MeshPipeline():
                 chunk_size=chunks
             )
 
-            print(f'Creating transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
+            print(f'Creating transfer tasks in {self.transfered_path} with out shards and chunks={chunks}')
             tq.insert(tasks)
             tq.execute()
         else:
-            print(f'Already created transfer tasks in {self.transfered_path} with shards and chunks={chunks}')
+            print(f'Already created transfer tasks in {self.transfered_path} with out shards and chunks={chunks}')
 
 
         #tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=0)
@@ -183,8 +183,8 @@ class MeshPipeline():
 
         ##### add segment properties
         cloudpath = CloudVolume(self.layer_path, self.mesh_mip)
-        downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
-        print(f'Creating mesh from {downsample_path}', end=" ")
+        #downsample_path = cloudpath.meta.info['scales'][self.mesh_mip]['key']
+        print(f'Creating mesh from {cloudpath.layer_cloudpath}')
         segment_properties = {str(id): str(id) for id in self.ids}
 
         print('and creating segment properties', end=" ")
@@ -223,7 +223,7 @@ class MeshPipeline():
         s = int(448)
         shape = [s, s, s]
         sharded = False
-        print(f'and mesh with shape={shape} at mip={self.mesh_mip} with shards={str(sharded)}')
+        print(f'and mesh with shape={shape} at mip={self.mesh_mip}')
         """
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         shape=shape, 
@@ -231,7 +231,7 @@ class MeshPipeline():
                                         sharded=sharded,
                                         max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
         """
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=0, 
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mesh_mip, 
                                         compress=True)
         tq.insert(tasks)
         tq.execute()
