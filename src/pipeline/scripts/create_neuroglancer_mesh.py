@@ -30,22 +30,25 @@ from library.utilities.utilities_process import get_cpus
 
 class MeshPipeline():
 
-    def __init__(self, animal, scale, mip, debug):
+    def __init__(self, animal, scale, mip, shard, debug):
 
         self.animal = animal
         self.scale = scale
         self.mip = mip
+        self.shard = shard
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        self.mips = [0, 1, 2, 3, 4, 5]
+        if self.scale > 0:
+            self.mips = [0, 1, 2, 3, 4, 5]
+        else:
+            self.mips = [0, 1, 2]
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
         xy *=  self.scale
         z *= self.scale
         self.scales = (int(xy), int(xy), int(z))
-        # start with big size chunks to cut down on the number of files created
         self.chunk = 64
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
@@ -130,47 +133,52 @@ class MeshPipeline():
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):
-            #tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0, chunk_size=chunks)
-            #tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0)
-            tasks = tc.create_transfer_tasks(
-                self.ng.precomputed_vol.layer_cloudpath,
-                self.layer_path,
-                mip=0,
-                chunk_size=chunks
-            )
 
-            print(f'Creating transfer tasks in {self.transfered_path} with out shards and chunks={chunks}')
+            if self.shard:
+                tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0, chunk_size=chunks)
+            else:
+                tasks = tc.create_transfer_tasks(
+                    self.ng.precomputed_vol.layer_cloudpath,
+                    self.layer_path,
+                    mip=0,
+                    chunk_size=chunks
+                )
+
+            print(f'Creating transfer tasks in {self.transfered_path} with sharding={self.shard} and chunks={chunks}')
             tq.insert(tasks)
             tq.execute()
         else:
             print(f'Already created transfer tasks in {self.transfered_path} with out shards and chunks={chunks}')
+        return
 
+    def downsample_transfer(self):
 
-        #tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=0)
-        tasks = tc.create_downsampling_tasks(
-            self.layer_path,
-            num_mips=len(self.mips))
+        _, cpus = get_cpus()
+        tq = LocalTaskQueue(parallel=cpus)
+        chunks = [self.chunk, self.chunk, self.chunk]
+        if self.shard:
+            factors = [2,2,2]
+            for mip in [0]:
+                xm,ym,zm = [ self.xs * (factors[0] ** (mip+1)), self.ys * (factors[1] ** (mip+1)), self.zs * (factors[2] ** (mip+1))]
+                downsampled_path = os.path.join(self.mesh_dir, "_".join([str(xm), str(ym), str(zm)]))
+                print(downsampled_path)
+                if not os.path.exists(downsampled_path):
+                    print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
+
+                    tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=mip)
+
+                    tq.insert(tasks)
+                    tq.execute()
+                else:
+                    print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
+        else:
+            tasks = tc.create_downsampling_tasks(
+                self.layer_path,
+                num_mips=len(self.mips))
 
         tq.insert(tasks)
         tq.execute()
 
-        return
-
-
-        factors = [2,2,1]
-        for mip in self.mips:
-            xm,ym,zm = [ self.xs * (factors[0] ** (mip+1)), self.ys * (factors[1] ** (mip+1)), self.zs * (factors[2] ** (mip+1))]
-            downsampled_path = os.path.join(self.mesh_dir, "_".join([str(xm), str(ym), str(zm)]))
-            print(downsampled_path)
-            if not os.path.exists(downsampled_path):
-                print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
-
-                tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=mip, factor=factors, chunk_size=chunks)
-
-                tq.insert(tasks)
-                tq.execute()
-            else:
-                print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
 
     def process_mesh(self):
         _, cpus = get_cpus()
@@ -311,6 +319,7 @@ class MeshPipeline():
     def run_all(self):
         self.process_stack()
         self.process_transfer()
+        self.downsample_transfer()
         self.process_mesh()
         self.process_multires_mesh()
         print('Finished running all')
@@ -323,6 +332,7 @@ if __name__ == '__main__':
     parser.add_argument('--mip', help='Enter the mesh mip level', required=False, default=0)
     parser.add_argument("--skeleton", help="Create skeletons", required=False, default=False)
     parser.add_argument('--debug', help='debug', required=False, default=False)
+    parser.add_argument('--shard', help='shard', required=False, default=False)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: stack -> transfer -> mesh -> multi",
@@ -338,13 +348,15 @@ if __name__ == '__main__':
     mip = int(args.mip)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    shard = bool({"true": True, "false": False}[str(args.shard).lower()])
     task = str(args.task).strip().lower()
     
-    pipeline = MeshPipeline(animal, scale, mip, debug=debug)
+    pipeline = MeshPipeline(animal, scale, mip, shard, debug=debug)
 
     function_mapping = {
         "stack": pipeline.process_stack,
         "transfer": pipeline.process_transfer,
+        "downsample": pipeline.downsample_transfer,
         "mesh": pipeline.process_mesh,
         "multi": pipeline.process_multires_mesh,
         "skeleton": pipeline.process_skeleton,
