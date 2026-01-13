@@ -38,7 +38,7 @@ class MeshPipeline():
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        self.mips = [0, 1, 2]
+        self.mips = [0, 1, 2, 3, 4, 5]
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
@@ -248,10 +248,16 @@ class MeshPipeline():
         tq.insert(tasks)
         tq.execute()
 
+        #update mesh info
+        cloud_volume = CloudVolume(self.layer_path, self.mip)
+        cloud_volume.info['mesh'] = self.mesh_path
+        cloud_volume.commit_info()
+
+
+
     def process_multires_mesh(self):
         """
         """
-        _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         tq = LocalTaskQueue(parallel=1)
 
@@ -264,7 +270,7 @@ class MeshPipeline():
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
         LOD = 10
-        print(f'Creating sharded multires task with LOD={LOD}')
+        print(f'Creating sharded multires task with LOD={LOD} from {self.mesh_path}')
         #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
         tq.insert(tasks)    
