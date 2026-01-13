@@ -84,7 +84,7 @@ class MeshPipeline():
         self.files = files
         self.midpoint = midpoint
         self.midfile = midfile
-        self.ids = [1]
+        self.ids = ids
         self.counts = counts
         self.xs = self.scales[0]
         self.ys = self.scales[1]
@@ -164,9 +164,7 @@ class MeshPipeline():
                 print(downsampled_path)
                 if not os.path.exists(downsampled_path):
                     print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
-
                     tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=mip)
-
                     tq.insert(tasks)
                     tq.execute()
                 else:
@@ -195,7 +193,9 @@ class MeshPipeline():
         downsample_path = cloudpath.meta.info['scales'][self.mip]['key']
         print(f'Creating mesh from {cloudpath.layer_cloudpath}')
         print(f'Using downsampled path: {downsample_path}')
-        segment_properties = {str(id): str(id) for id in self.ids}
+        ids = self.ids.tolist()
+        ids = [int(i) for i in ids if i > 0]
+        segment_properties = {str(id): str(id) for id in ids}
 
         print('and creating segment properties', end=" ")
         self.ng.add_segment_properties(cloudpath, segment_properties)
@@ -321,7 +321,6 @@ class MeshPipeline():
         self.process_transfer()
         self.downsample_transfer()
         self.process_mesh()
-        self.process_multires_mesh()
         print('Finished running all')
 
 if __name__ == '__main__':
