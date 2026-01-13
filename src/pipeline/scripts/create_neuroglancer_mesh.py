@@ -76,13 +76,12 @@ class MeshPipeline():
         del midim
         midfile = midfile.astype(MESHDTYPE)
         ids, counts = np.unique(midfile, return_counts=True)
-        self.ids = ids.tolist()
         height, width = midfile.shape
         self.volume_size = (width//self.scale, height//self.scale, len_files // self.scale) # neuroglancer is width, height
         self.files = files
         self.midpoint = midpoint
         self.midfile = midfile
-        self.ids = ids
+        self.ids = [1]
         self.counts = counts
         self.xs = self.scales[0]
         self.ys = self.scales[1]
@@ -225,15 +224,7 @@ class MeshPipeline():
 
         s = int(448)
         shape = [s, s, s]
-        sharded = False
         print(f'and mesh with shape={shape} at mip={self.mip}')
-        """
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
-                                        shape=shape, 
-                                        compress=True, 
-                                        sharded=sharded,
-                                        max_simplification_error=self.max_simplification_error) # The first phase of creating mesh
-        """
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
                                         compress=True, mesh_dir=self.mesh_path)
         tq.insert(tasks)
@@ -272,7 +263,7 @@ class MeshPipeline():
         LOD = 10
         print(f'Creating sharded multires task with LOD={LOD} from {self.mesh_path}')
         #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=3, mesh_dir=self.mesh_path, min_chunk_size=[self.chunk, self.chunk, self.chunk])
         tq.insert(tasks)    
         tq.execute()
 
