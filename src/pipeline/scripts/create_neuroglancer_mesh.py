@@ -3,7 +3,9 @@ Creates a 3D Mesh
 """
 import argparse
 from concurrent.futures import ProcessPoolExecutor
+import json
 import os
+import shutil
 import sys
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -13,6 +15,14 @@ from cloudvolume import CloudVolume
 import numpy as np
 from pathlib import Path
 from timeit import default_timer as timer
+
+import dask.array as da
+from dask import delayed
+import tifffile as tiff
+from scipy.ndimage import label
+from scipy.ndimage import distance_transform_edt
+from skimage.morphology import remove_small_objects
+
 """
 use:
 kill -s SIGUSR1 <pid> 
@@ -30,19 +40,18 @@ from library.utilities.utilities_process import get_cpus
 
 class MeshPipeline():
 
-    def __init__(self, animal, scale, mip, shard, debug):
+    def __init__(self, animal, scale, mip, debug):
 
         self.animal = animal
         self.scale = scale
         self.mip = mip
-        self.shard = shard
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
-        if self.scale > 0:
-            self.mips = [0, 1, 2, 3, 4, 5]
-        else:
+        if self.scale > 1:
             self.mips = [0, 1, 2]
+        else:
+            self.mips = [0, 1, 2, 3, 4, 5]
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
@@ -53,7 +62,7 @@ class MeshPipeline():
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
-            data_type=MESHDTYPE, chunk_size=self.chunks)
+            data_type=np.uint32, chunk_size=self.chunks)
 
         # dirs
         self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scale}')
@@ -63,6 +72,8 @@ class MeshPipeline():
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
+        self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'scaled_{self.scale}')
+        
         # make dirs
         os.makedirs(self.mesh_input_dir, exist_ok=True)
         os.makedirs(self.progress_dir, exist_ok=True)
@@ -92,6 +103,261 @@ class MeshPipeline():
         scale_dir = "_".join([str(self.xs), str(self.ys), str(self.zs)])
         self.transfered_path = os.path.join(self.mesh_dir, scale_dir)
 
+    def create_volume(self):
+        len_files = len(self.files)
+        if os.path.exists(self.output) and len(os.listdir(self.output)) > 0:
+            print(f'Directory {self.output} already exists and is not empty, skipping creation of downsampled volume')
+            return
+
+        os.makedirs(self.output, exist_ok=True)
+
+        index = 0
+        for i in range(0, len_files, self.scale):
+            if index == len_files // self.scale:
+                print(f'breaking at index={index}')
+                break
+            infile = os.path.join(self.input, self.files[i]) 
+            outfile = os.path.join(self.output, self.files[i])
+            im = Image.open(infile)           
+            width, height = im.size
+            im = im.resize((width//self.scale, height//self.scale))
+            farr = np.array(im).astype(bool)
+            tiff.imwrite(outfile, farr)
+        print(f'Created downsampled volume at {self.output}')
+
+    def process_distance(self):
+        def block_distance_transform(block):
+            return distance_transform_edt(block)
+             
+        def radius_to_labels(radius):
+            labels = np.zeros_like(radius, dtype=np.uint32)
+
+            labels[(radius >= 1) & (radius < 3)] = 1
+            labels[(radius >= 3) & (radius < 6)] = 2
+            labels[(radius >= 6) & (radius < 12)] = 3
+            labels[(radius >= 12) & (radius < 25)] = 4
+            labels[radius >= 25] = 5
+            return labels
+
+        def cleanup(block):
+            out = np.zeros_like(block)
+            for l in np.unique(block):
+                if l == 0:
+                    continue
+                mask = block == l
+                mask = remove_small_objects(mask)
+                out[mask] = l
+            return out
+
+        def load_tiff_stack_dask(tiff_dir, chunk_shape=(64,256,256)):
+            filenames = [os.path.join(tiff_dir, f) for f in os.listdir(tiff_dir) if f.endswith('.tif')]
+            filenames.sort() # sort to ensure the correct order in the stack         
+            if not filenames:
+                raise ValueError("No TIFF files found in the directory.")
+
+            # Read one file to get metadata (this runs immediately)
+            sample_image = tiff.imread(filenames[0])
+            image_shape = sample_image.shape
+            image_dtype = sample_image.dtype
+            del sample_image # Free memory from the sample 
+            # Wrap the imread function with dask.delayed
+            lazy_imread = delayed(tiff.imread)
+            # Create a list of delayed objects, one for each image file
+            lazy_arrays = [lazy_imread(image) for image in filenames]
+            # For each delayed object, create a Dask array with the known shape and dtype
+            dask_arrays = [da.from_delayed(delayed_reader, shape=image_shape, dtype=image_dtype) for delayed_reader in lazy_arrays]
+            # Stack along a new dimension (e.g., time or z-axis)
+            image_stack = da.stack(dask_arrays, axis=0)
+            image_stack = image_stack.rechunk(chunk_shape)
+            print(f"Dask array created with shape: {image_stack.shape}, dtype: {image_stack.dtype}")
+            return image_stack
+
+        def write_block(block, block_info=None):
+            """
+            block is in shape z,y,x
+            """
+            if block_info and 'array-location' in block_info[None]:
+                global_slices = block_info[None]['array-location']        
+                # Extract the start coordinates (z, y, x)
+                z0 = global_slices[0][0]
+                y0 = global_slices[1][0]
+                x0 = global_slices[2][0]
+                z1 = global_slices[0][1] 
+                y1 = global_slices[1][1]
+                x1 = global_slices[2][1]
+                z0, y0, x0 = [x[0] for x in global_slices]
+                z1, y1, x1 = [x[1] for x in global_slices]
+                
+                try:
+                    vol[z0:z1, y0:y1, x0:x1] = block
+                except Exception as e:
+                    print(f'Error writing block at z:{z0}-{z1}, y:{y0}-{y1}, x:{x0}-{x1}: {e}')
+                    exit(1)
+
+        self.create_volume()
+        TIFF_DIR = self.output
+        CHUNK_SHAPE = (64, 64, 64)
+        # Isotropic voxel size (µm)
+        VOXEL_SIZE_UM = self.scale  # change to 2.0, 4.0, etc. if needed
+        # Chunk size (optimize for memory)
+        # Minimum connected component size (voxels)
+        binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE)
+        binary = binary > 0
+        print(f'Binary volume shape={binary.shape}, dtype={binary.dtype} chunks={binary.chunksize}') 
+        distance = da.map_blocks(
+            block_distance_transform,
+            binary,
+            dtype=np.float32
+        )
+        print(f'Distance volume shape={distance.shape}, dtype={distance.dtype} chunks={distance.chunksize}')
+        radius_um = distance * VOXEL_SIZE_UM
+        print(f'Radius volume shape={radius_um.shape}, dtype={radius_um.dtype} chunks={radius_um.chunksize}')
+        labels = da.map_blocks(
+            radius_to_labels,
+            radius_um,
+            dtype=np.uint32
+        )
+        print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
+        labels = da.map_blocks(cleanup, labels, dtype=np.uint32)
+        ids = da.unique(labels, return_counts=False)
+        self.ids = ids.compute()
+        print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
+        # volume now is at z,y,x
+        print(f'Label IDs: {self.ids}')
+
+        info = CloudVolume.create_new_info(
+            num_channels=1,
+            layer_type='segmentation',  # 'image' or 'segmentation'
+            data_type="uint32",  #
+            encoding='compressed_segmentation',  # other options: 'jpeg', 'compressed_segmentation' (req. uint32 or uint64)
+            resolution=[VOXEL_SIZE_UM*1000]*3,  # Size of X,Y,Z pixels in nanometers,
+            voxel_offset=[0,0,0],  # values X,Y,Z values in voxels
+            chunk_size=CHUNK_SHAPE,  # rechunk of image X,Y,Z in voxels
+            #volume_size=[666,563,518],  # z,x,y
+            volume_size=[labels.shape[0], labels.shape[1], labels.shape[2]],  # z,x,y
+        )
+        vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
+        vol.commit_info()
+        labels.map_blocks(write_block, dtype=labels.dtype).compute()        
+        print(f'Wrote labels volume to {self.mesh_input_dir}')
+
+
+        """
+        vol = CloudVolume(
+            f'file://{self.mesh_input_dir}',
+            info={
+                "type": "segmentation",
+                "num_channels": 1,
+                "data_type": "uint32",
+                "encoding": "compressed_segmentation",
+                "resolution": [VOXEL_SIZE_UM*1000]*3,  # nm
+                "voxel_offset": [0,0,0],
+                "chunk_size": [256,256,64],
+                "volume_size": labels.shape[::-1],
+            },
+            mip=0,
+            compress=True,
+            progress=True
+        )
+        """
+        tasks = tc.create_downsampling_tasks(
+            self.layer_path,
+            num_mips=2,
+            compress=True
+        )
+        tq = LocalTaskQueue(parallel=4)
+        tq.insert(tasks)
+        tq.execute()
+
+        tasks = tc.create_meshing_tasks(
+            self.layer_path,
+            mip=0,
+            max_simplification_error=40,
+            compress=True
+        )        
+        tq = LocalTaskQueue(parallel=4)
+        tq.insert(tasks)
+        tq.execute()
+
+        print(f'Creating meshing manifest tasks')
+        tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
+        tq.insert(tasks)
+        tq.execute()
+
+
+        cloud_volume = CloudVolume(self.layer_path, 0)
+        cloud_volume.info['segment_properties'] = 'names'
+        cloud_volume.commit_info()
+
+        ids = self.ids.tolist()
+        ids = [int(i) for i in ids if i > 0]
+        segment_properties = {str(id): str(id) for id in ids}
+
+
+
+        segment_properties_path = os.path.join(cloud_volume.layerpath.replace('file://', ''), 'names')
+        os.makedirs(segment_properties_path, exist_ok=True)
+        info = {
+            "@type": "neuroglancer_segment_properties",
+            "inline": {
+                "ids": [str(number) for number, _ in segment_properties.items()],
+                "properties": [{
+                    "id": "label",
+                    "type": "label",
+                    "values": [str(label) for _, label in segment_properties.items()]
+                }]
+            }
+        }
+        with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
+            json.dump(info, file, indent=2)
+
+
+
+
+
+    def process_volume_distance(self):
+        len_files = len(self.files)
+
+        file_list = []
+        index = 0
+        for i in range(0, len_files, self.scale):
+            if index == len_files // self.scale:
+                print(f'breaking at index={index}')
+                break
+            infile = os.path.join(self.input, self.files[i]) 
+            im = Image.open(infile)           
+            width, height = im.size
+            im = im.resize((width//self.scale, height//self.scale))
+            farr = np.array(im).astype(bool)
+
+            file_list.append(farr)
+            
+        vol = np.stack(file_list, axis = 0)
+        vol = np.swapaxes(vol, 0, 2)
+        print(f'Volume shape={vol.shape}, dtype={vol.dtype}, min={vol.min()}, max={vol.max()}')
+        self.volume_size = vol.shape
+        cc, n = label(vol)
+
+        sizes = np.bincount(cc.ravel())
+        labels = np.zeros_like(cc, dtype=np.uint32)
+
+        for i in range(1, n + 1):
+            if sizes[i] < 1e4:
+                labels[cc == i] = 1
+            elif sizes[i] < 1e6:
+                labels[cc == i] = 2
+            else:
+                labels[cc == i] = 3        
+        
+        self.ids, counts = np.unique(labels, return_counts=True)
+        print(f'Labels volume shape={labels.shape}, dtype={labels.dtype}, min={labels.min()}, max={labels.max()}')
+        print(f'Label IDs: {self.ids}, counts: {counts}')
+        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        self.ng.precomputed_vol[:, :, :] = labels
+        self.process_transfer()
+        self.process_mesh()
+
+
     def process_stack(self):
         len_files = len(self.files)
         if limit > 0:
@@ -108,8 +374,8 @@ class MeshPipeline():
 
         file_keys = []
         index = 0
-        for i in range(0, len_files, scale):
-            if index == len_files // scale:
+        for i in range(0, len_files, self.scale):
+            if index == len_files // self.scale:
                 print(f'breaking at index={index}')
                 break
             infile = os.path.join(self.input, self.files[i])            
@@ -122,6 +388,8 @@ class MeshPipeline():
             executor.map(self.ng.process_image_mesh, sorted(file_keys), chunksize=1)
             executor.shutdown(wait=True)
 
+
+
     def process_transfer(self):
         ###### start cloudvolume tasks #####
         # This calls the igneous create_transfer_tasks
@@ -133,22 +401,17 @@ class MeshPipeline():
         tq = LocalTaskQueue(parallel=cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):
-
-            if self.shard:
-                tasks = tc.create_image_shard_transfer_tasks(self.ng.precomputed_vol.layer_cloudpath, self.layer_path, mip=0, chunk_size=chunks)
-            else:
-                tasks = tc.create_transfer_tasks(
-                    self.ng.precomputed_vol.layer_cloudpath,
-                    self.layer_path,
-                    mip=0,
-                    chunk_size=chunks
-                )
-
-            print(f'Creating transfer tasks in {self.transfered_path} with sharding={self.shard} and chunks={chunks}')
+            tasks = tc.create_transfer_tasks(
+                self.ng.precomputed_vol.layer_cloudpath,
+                self.layer_path,
+                mip=0,
+                max_mips=0
+            )
+            print(f'Creating transfer tasks in {self.transfered_path} with chunks={chunks}')
             tq.insert(tasks)
             tq.execute()
         else:
-            print(f'Already created transfer tasks in {self.transfered_path} with out shards and chunks={chunks}')
+            print(f'Already created transfer tasks in {self.transfered_path} with chunks={chunks}')
         return
 
     def downsample_transfer(self):
@@ -156,26 +419,13 @@ class MeshPipeline():
         _, cpus = get_cpus()
         tq = LocalTaskQueue(parallel=cpus)
         chunks = [self.chunk, self.chunk, self.chunk]
-        if self.shard:
-            factors = [2,2,2]
-            for mip in [0]:
-                xm,ym,zm = [ self.xs * (factors[0] ** (mip+1)), self.ys * (factors[1] ** (mip+1)), self.zs * (factors[2] ** (mip+1))]
-                downsampled_path = os.path.join(self.mesh_dir, "_".join([str(xm), str(ym), str(zm)]))
-                print(downsampled_path)
-                if not os.path.exists(downsampled_path):
-                    print(f'Creating (rechunking) at mip={mip} with shards, chunks={chunks}, and factors={factors} in {downsampled_path}')
-                    tasks = tc.create_image_shard_downsample_tasks(self.layer_path, mip=mip)
-                    tq.insert(tasks)
-                    tq.execute()
-                else:
-                    print(f'Already created (rechunking) at mip={mip} with shards, chunks={chunks} and factors={factors} in {downsampled_path}')
-        else:
+        factors = [2,2,2]
+        for mip in self.mips:
             tasks = tc.create_downsampling_tasks(
-                self.layer_path,
-                num_mips=len(self.mips))
-
-        tq.insert(tasks)
-        tq.execute()
+                self.layer_path, mip=mip,
+                num_mips=1, factor=factors, chunk_size=chunks)
+            tq.insert(tasks)
+            tq.execute()
 
 
     def process_mesh(self):
@@ -195,6 +445,7 @@ class MeshPipeline():
         print(f'Using downsampled path: {downsample_path}')
         ids = self.ids.tolist()
         ids = [int(i) for i in ids if i > 0]
+        #ids = [1,2,3]
         segment_properties = {str(id): str(id) for id in ids}
 
         print('and creating segment properties', end=" ")
@@ -234,7 +485,7 @@ class MeshPipeline():
         shape = [s, s, s]
         print(f'and mesh with shape={shape} at mip={self.mip}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
-                                        compress=True, mesh_dir=self.mesh_path)
+                                        compress=True, mesh_dir=self.mesh_path, progress=True, sharded=False)
         tq.insert(tasks)
         tq.execute()
 
@@ -347,12 +598,13 @@ if __name__ == '__main__':
     mip = int(args.mip)
     skeleton = bool({"true": True, "false": False}[str(args.skeleton).lower()])
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    shard = bool({"true": True, "false": False}[str(args.shard).lower()])
     task = str(args.task).strip().lower()
     
-    pipeline = MeshPipeline(animal, scale, mip, shard, debug=debug)
+    pipeline = MeshPipeline(animal, scale, mip, debug=debug)
 
     function_mapping = {
+        "create_volume": pipeline.create_volume,
+        "distance": pipeline.process_distance,
         "stack": pipeline.process_stack,
         "transfer": pipeline.process_transfer,
         "downsample": pipeline.downsample_transfer,
@@ -374,3 +626,5 @@ if __name__ == '__main__':
         print(f"{task} is not a correct task. Choose one of these:")
         for key in function_mapping.keys():
             print(f"\t{key}")
+
+
