@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 from PIL import Image
+from tqdm import tqdm
 Image.MAX_IMAGE_PIXELS = None
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
@@ -72,11 +73,8 @@ class MeshPipeline():
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
-        self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'scaled_{self.scale}')
+        self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
         
-        # make dirs
-        os.makedirs(self.mesh_input_dir, exist_ok=True)
-        os.makedirs(self.progress_dir, exist_ok=True)
         # setup
         self.get_stack_info()
 
@@ -131,12 +129,28 @@ class MeshPipeline():
              
         def radius_to_labels(radius):
             labels = np.zeros_like(radius, dtype=np.uint32)
-
-            labels[(radius >= 1) & (radius < 3)] = 1
-            labels[(radius >= 3) & (radius < 6)] = 2
-            labels[(radius >= 6) & (radius < 12)] = 3
-            labels[(radius >= 12) & (radius < 25)] = 4
-            labels[radius >= 25] = 5
+            lower = 0.1
+            upper = 25
+            labels[(radius >= lower) & (radius < 1)] = 1
+            labels[(radius >= 1) & (radius < 2)] = 2
+            labels[(radius >= 2) & (radius < 3)] = 3
+            labels[(radius >= 3) & (radius < 4)] = 4
+            labels[(radius >= 4) & (radius < 5)] = 5
+            labels[(radius >= 5) & (radius < 6)] = 6
+            labels[(radius >= 6) & (radius < 7)] = 7
+            labels[(radius >= 7) & (radius < 8)] = 8
+            labels[(radius >= 8) & (radius < 9)] = 9
+            labels[(radius >= 9) & (radius < 10)] = 10
+            labels[(radius >= 10) & (radius < 11)] = 11
+            labels[(radius >= 11) & (radius < 12)] = 12
+            labels[(radius >= 12) & (radius < 13)] = 13
+            labels[(radius >= 13) & (radius < 14)] = 14
+            labels[(radius >= 14) & (radius < 15)] = 15
+            labels[(radius >= 15) & (radius < 16)] = 16
+            labels[(radius >= 16) & (radius < 17)] = 17
+            labels[(radius >= 17) & (radius < 18)] = 18
+            labels[(radius >= 18) & (radius < upper)] = 19
+            labels[radius >= upper] = 20
             return labels
 
         def cleanup(block):
@@ -179,12 +193,6 @@ class MeshPipeline():
             if block_info and 'array-location' in block_info[None]:
                 global_slices = block_info[None]['array-location']        
                 # Extract the start coordinates (z, y, x)
-                z0 = global_slices[0][0]
-                y0 = global_slices[1][0]
-                x0 = global_slices[2][0]
-                z1 = global_slices[0][1] 
-                y1 = global_slices[1][1]
-                x1 = global_slices[2][1]
                 z0, y0, x0 = [x[0] for x in global_slices]
                 z1, y1, x1 = [x[1] for x in global_slices]
                 
@@ -241,25 +249,6 @@ class MeshPipeline():
         labels.map_blocks(write_block, dtype=labels.dtype).compute()        
         print(f'Wrote labels volume to {self.mesh_input_dir}')
 
-
-        """
-        vol = CloudVolume(
-            f'file://{self.mesh_input_dir}',
-            info={
-                "type": "segmentation",
-                "num_channels": 1,
-                "data_type": "uint32",
-                "encoding": "compressed_segmentation",
-                "resolution": [VOXEL_SIZE_UM*1000]*3,  # nm
-                "voxel_offset": [0,0,0],
-                "chunk_size": [256,256,64],
-                "volume_size": labels.shape[::-1],
-            },
-            mip=0,
-            compress=True,
-            progress=True
-        )
-        """
         tasks = tc.create_downsampling_tasks(
             self.layer_path,
             num_mips=2,
@@ -271,7 +260,7 @@ class MeshPipeline():
 
         tasks = tc.create_meshing_tasks(
             self.layer_path,
-            mip=0,
+            mip=self.mip,
             max_simplification_error=40,
             compress=True
         )        
@@ -311,25 +300,15 @@ class MeshPipeline():
         with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
             json.dump(info, file, indent=2)
 
-
-
-
-
     def process_volume_distance(self):
-        len_files = len(self.files)
-
+        #len_files = len(self.files)
+        self.create_volume()
+        files = sorted(os.listdir(self.output))
         file_list = []
-        index = 0
-        for i in range(0, len_files, self.scale):
-            if index == len_files // self.scale:
-                print(f'breaking at index={index}')
-                break
-            infile = os.path.join(self.input, self.files[i]) 
+        for file in tqdm(files):
+            infile = os.path.join(self.output, file) 
             im = Image.open(infile)           
-            width, height = im.size
-            im = im.resize((width//self.scale, height//self.scale))
             farr = np.array(im).astype(bool)
-
             file_list.append(farr)
             
         vol = np.stack(file_list, axis = 0)
@@ -338,7 +317,17 @@ class MeshPipeline():
         self.volume_size = vol.shape
         cc, n = label(vol)
 
+        cc = cc > 1
+
         sizes = np.bincount(cc.ravel())
+        print(f'sizes len={len(sizes)} min={sizes.min()} max={sizes.max()} mean={sizes.mean()}')
+        from histoprint import print_hist
+        counts, edges = np.histogram(sizes, bins=20)
+
+        # Print the histogram to the terminal
+        print_hist((counts, edges), title="Numpy Histogram with histoprint")        
+
+        return
         labels = np.zeros_like(cc, dtype=np.uint32)
 
         for i in range(1, n + 1):
@@ -359,6 +348,9 @@ class MeshPipeline():
 
 
     def process_stack(self):
+        # make dirs
+        os.makedirs(self.mesh_input_dir, exist_ok=True)
+        os.makedirs(self.progress_dir, exist_ok=True)
         len_files = len(self.files)
         if limit > 0:
             _start = self.midpoint - limit
@@ -605,6 +597,7 @@ if __name__ == '__main__':
     function_mapping = {
         "create_volume": pipeline.create_volume,
         "distance": pipeline.process_distance,
+        "distance2": pipeline.process_volume_distance,
         "stack": pipeline.process_stack,
         "transfer": pipeline.process_transfer,
         "downsample": pipeline.downsample_transfer,
