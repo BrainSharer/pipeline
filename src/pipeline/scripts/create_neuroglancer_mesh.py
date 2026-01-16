@@ -72,7 +72,7 @@ class MeshPipeline():
         self.mesh_path = f'mesh_mip_{self.mip}_err_{self.max_simplification_error}'
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
-        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'scale_1')
         self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
         _, self.cpus = get_cpus()
         
@@ -214,11 +214,11 @@ class MeshPipeline():
         )
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         labels = da.map_blocks(cleanup, labels, dtype=np.uint32)
-        ids, counts = da.unique(labels, return_counts=True)
+        ids =da.unique(labels, return_counts=False)
         self.ids = ids.compute()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
-        print(f'Label IDs: {self.ids} and counts: {counts.compute()}')
+        print(f'Label IDs: {self.ids}')
 
         info = CloudVolume.create_new_info(
             num_channels=1,
