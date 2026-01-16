@@ -72,7 +72,7 @@ class MeshPipeline():
         self.mesh_path = f'mesh_mip_{self.mip}_err_{self.max_simplification_error}'
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
-        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'scale_1')
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'downsampled_1')
         self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
         _, self.cpus = get_cpus()
         
