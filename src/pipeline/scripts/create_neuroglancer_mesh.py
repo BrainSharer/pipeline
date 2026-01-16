@@ -74,6 +74,7 @@ class MeshPipeline():
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
         self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
         self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
+        _, self.cpus = get_cpus()
         
         # setup
         self.get_stack_info()
@@ -227,7 +228,6 @@ class MeshPipeline():
             resolution=[VOXEL_SIZE_UM*1000]*3,  # Size of X,Y,Z pixels in nanometers,
             voxel_offset=[0,0,0],  # values X,Y,Z values in voxels
             chunk_size=CHUNK_SHAPE,  # rechunk of image X,Y,Z in voxels
-            #volume_size=[666,563,518],  # z,x,y
             volume_size=[labels.shape[0], labels.shape[1], labels.shape[2]],  # z,x,y
         )
         vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
@@ -240,7 +240,7 @@ class MeshPipeline():
             num_mips=2,
             compress=True
         )
-        tq = LocalTaskQueue(parallel=4)
+        tq = LocalTaskQueue(parallel=self.cpus)
         tq.insert(tasks)
         tq.execute()
 
@@ -250,7 +250,7 @@ class MeshPipeline():
             max_simplification_error=40,
             compress=True
         )        
-        tq = LocalTaskQueue(parallel=4)
+        tq = LocalTaskQueue(parallel=self.cpus)
         tq.insert(tasks)
         tq.execute()
 
@@ -355,9 +355,9 @@ class MeshPipeline():
             file_keys.append([index, infile, (self.volume_size[1], self.volume_size[0]), self.progress_dir, self.scale])
             index += 1
 
-        _, cpus = get_cpus()
-        print(f'Working on {len(file_keys)} files with {cpus} cpus')
-        with ProcessPoolExecutor(max_workers=cpus) as executor:
+        
+        print(f'Working on {len(file_keys)} files with {self.cpus} cpus')
+        with ProcessPoolExecutor(max_workers=self.cpus) as executor:
             executor.map(self.ng.process_image_mesh, sorted(file_keys), chunksize=1)
             executor.shutdown(wait=True)
 
@@ -367,11 +367,10 @@ class MeshPipeline():
         ###### start cloudvolume tasks #####
         # This calls the igneous create_transfer_tasks
         # the input dir is now read and the rechunks are created in the final dir
-        _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
         # reset chunks to much smaller size for better neuroglancer experience
         chunks = [self.chunk, self.chunk, self.chunk]
-        tq = LocalTaskQueue(parallel=cpus)
+        tq = LocalTaskQueue(parallel=self.cpus)
         os.makedirs(self.mesh_dir, exist_ok=True)
         if not os.path.exists(self.transfered_path):
             tasks = tc.create_transfer_tasks(
@@ -389,8 +388,7 @@ class MeshPipeline():
 
     def downsample_transfer(self):
 
-        _, cpus = get_cpus()
-        tq = LocalTaskQueue(parallel=cpus)
+        tq = LocalTaskQueue(parallel=self.cpus)
         chunks = [self.chunk, self.chunk, self.chunk]
         factors = [2,2,2]
         for mip in self.mips:
@@ -402,9 +400,8 @@ class MeshPipeline():
 
 
     def process_mesh(self):
-        _, cpus = get_cpus()
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
-        tq = LocalTaskQueue(parallel=cpus)
+        tq = LocalTaskQueue(parallel=self.cpus)
 
         if not os.path.exists(self.transfered_path):
             print('You need to run previous tasks first')
@@ -466,7 +463,7 @@ class MeshPipeline():
         # must return HTTP/1.1 206 Partial Content
         # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
 
-        print(f'Creating meshing manifest tasks with {cpus} CPUs at {self.mesh_path}')
+        print(f'Creating meshing manifest tasks with {self.cpus} CPUs at {self.mesh_path}')
         tasks = tc.create_mesh_manifest_tasks(self.layer_path, mesh_dir=self.mesh_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
