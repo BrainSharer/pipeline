@@ -110,7 +110,7 @@ class MeshPipeline():
         os.makedirs(self.output, exist_ok=True)
 
         index = 0
-        for i in range(0, len_files, self.scale):
+        for i in tqdm(range(0, len_files, self.scale), desc="Creating downsampled volume"):
             if index == len_files // self.scale:
                 print(f'breaking at index={index}')
                 break
@@ -129,28 +129,12 @@ class MeshPipeline():
              
         def radius_to_labels(radius):
             labels = np.zeros_like(radius, dtype=np.uint32)
-            lower = 0.1
-            upper = 25
-            labels[(radius >= lower) & (radius < 1)] = 1
-            labels[(radius >= 1) & (radius < 2)] = 2
-            labels[(radius >= 2) & (radius < 3)] = 3
-            labels[(radius >= 3) & (radius < 4)] = 4
-            labels[(radius >= 4) & (radius < 5)] = 5
-            labels[(radius >= 5) & (radius < 6)] = 6
-            labels[(radius >= 6) & (radius < 7)] = 7
-            labels[(radius >= 7) & (radius < 8)] = 8
-            labels[(radius >= 8) & (radius < 9)] = 9
-            labels[(radius >= 9) & (radius < 10)] = 10
-            labels[(radius >= 10) & (radius < 11)] = 11
-            labels[(radius >= 11) & (radius < 12)] = 12
-            labels[(radius >= 12) & (radius < 13)] = 13
-            labels[(radius >= 13) & (radius < 14)] = 14
-            labels[(radius >= 14) & (radius < 15)] = 15
-            labels[(radius >= 15) & (radius < 16)] = 16
-            labels[(radius >= 16) & (radius < 17)] = 17
-            labels[(radius >= 17) & (radius < 18)] = 18
-            labels[(radius >= 18) & (radius < upper)] = 19
-            labels[radius >= upper] = 20
+            labels[(radius >= 1) & (radius < 3)] = 1
+            labels[(radius >= 3) & (radius < 6)] = 2
+            labels[(radius >= 6) & (radius < 12)] = 3
+            labels[(radius >= 12) & (radius < 25)] = 4
+            labels[radius >= 25] = 5
+
             return labels
 
         def cleanup(block):
@@ -163,7 +147,7 @@ class MeshPipeline():
                 out[mask] = l
             return out
 
-        def load_tiff_stack_dask(tiff_dir, chunk_shape=(64,256,256)):
+        def load_tiff_stack_dask(tiff_dir, chunk_shape):
             filenames = [os.path.join(tiff_dir, f) for f in os.listdir(tiff_dir) if f.endswith('.tif')]
             filenames.sort() # sort to ensure the correct order in the stack         
             if not filenames:
@@ -183,6 +167,8 @@ class MeshPipeline():
             # Stack along a new dimension (e.g., time or z-axis)
             image_stack = da.stack(dask_arrays, axis=0)
             image_stack = image_stack.rechunk(chunk_shape)
+            # dask array is in z,y,x but neuroglancer wants x,y,z
+            image_stack = da.swapaxes(image_stack, 0, 2)
             print(f"Dask array created with shape: {image_stack.shape}, dtype: {image_stack.dtype}")
             return image_stack
 
@@ -204,7 +190,7 @@ class MeshPipeline():
 
         self.create_volume()
         TIFF_DIR = self.output
-        CHUNK_SHAPE = (64, 64, 64)
+        CHUNK_SHAPE = (self.chunk, self.chunk, self.chunk)
         # Isotropic voxel size (µm)
         VOXEL_SIZE_UM = self.scale  # change to 2.0, 4.0, etc. if needed
         # Chunk size (optimize for memory)
@@ -227,11 +213,11 @@ class MeshPipeline():
         )
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         labels = da.map_blocks(cleanup, labels, dtype=np.uint32)
-        ids = da.unique(labels, return_counts=False)
+        ids, counts = da.unique(labels, return_counts=True)
         self.ids = ids.compute()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
-        print(f'Label IDs: {self.ids}')
+        print(f'Label IDs: {self.ids} and counts: {counts.compute()}')
 
         info = CloudVolume.create_new_info(
             num_channels=1,
@@ -246,7 +232,7 @@ class MeshPipeline():
         )
         vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
         vol.commit_info()
-        labels.map_blocks(write_block, dtype=labels.dtype).compute()        
+        labels.map_blocks(write_block, dtype=labels.dtype).compute()
         print(f'Wrote labels volume to {self.mesh_input_dir}')
 
         tasks = tc.create_downsampling_tasks(
@@ -321,11 +307,6 @@ class MeshPipeline():
 
         sizes = np.bincount(cc.ravel())
         print(f'sizes len={len(sizes)} min={sizes.min()} max={sizes.max()} mean={sizes.mean()}')
-        from histoprint import print_hist
-        counts, edges = np.histogram(sizes, bins=20)
-
-        # Print the histogram to the terminal
-        print_hist((counts, edges), title="Numpy Histogram with histoprint")        
 
         return
         labels = np.zeros_like(cc, dtype=np.uint32)
