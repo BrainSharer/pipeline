@@ -214,7 +214,7 @@ class MeshPipeline():
         )
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         labels = da.map_blocks(cleanup, labels, dtype=np.uint32)
-        ids =da.unique(labels, return_counts=False)
+        ids = da.unique(labels, return_counts=False)
         self.ids = ids.compute()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
