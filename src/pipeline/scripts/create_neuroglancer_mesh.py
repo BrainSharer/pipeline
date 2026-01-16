@@ -109,6 +109,9 @@ class MeshPipeline():
             return
 
         os.makedirs(self.output, exist_ok=True)
+        print(f'Creating downsampled volume from {self.input}')
+        print(f'\tat {self.output}')
+        
 
         index = 0
         for i in tqdm(range(0, len_files, self.scale), desc="Creating downsampled volume"):
@@ -509,9 +512,10 @@ class MeshPipeline():
     def check_status(self):
         dothis = ""
         section_count = len(self.files) // self.scale
-        processed_count = len(os.listdir(self.progress_dir))
-        if section_count != processed_count and section_count > 0:
-            dothis = f"File count={section_count} does not equal processed file count={processed_count}\n"
+        if os.path.exists(self.progress_dir):
+            processed_count = len(os.listdir(self.progress_dir))
+            if section_count != processed_count and section_count > 0:
+                dothis = f"File count={section_count} does not equal processed file count={processed_count}\n"
 
         mesh_path = os.path.join(self.mesh_dir, self.mesh_path)
         directories = {
