@@ -62,8 +62,9 @@ class MeshPipeline():
         self.chunk = 64
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
+        self.dtype = MESHDTYPE
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
-            data_type=np.uint32, chunk_size=self.chunks)
+            data_type=self.dtype, chunk_size=self.chunks)
 
         # dirs
         self.mesh_dir = os.path.join(self.fileLocationManager.neuroglancer_data, f'mesh_{scale}')
@@ -103,6 +104,7 @@ class MeshPipeline():
         self.transfered_path = os.path.join(self.mesh_dir, scale_dir)
 
     def create_volume(self):
+        """creating with all x=518, y=394, z = 665"""
         len_files = len(self.files)
         if os.path.exists(self.output) and len(os.listdir(self.output)) > 0:
             print(f'Directory {self.output} already exists and is not empty, skipping creation of downsampled volume')
@@ -111,6 +113,7 @@ class MeshPipeline():
         os.makedirs(self.output, exist_ok=True)
         print(f'Creating downsampled volume from {self.input}')
         print(f'\tat {self.output}')
+        print(f'\twith scale={self.scale}')
         
 
         index = 0
@@ -123,7 +126,7 @@ class MeshPipeline():
             im = Image.open(infile)           
             width, height = im.size
             im = im.resize((width//self.scale, height//self.scale))
-            farr = np.array(im).astype(bool)
+            farr = np.array(im).astype(self.dtype)
             tiff.imwrite(outfile, farr)
         print(f'Created downsampled volume at {self.output}')
 
@@ -132,7 +135,7 @@ class MeshPipeline():
             return distance_transform_edt(block)
              
         def radius_to_labels(radius):
-            labels = np.zeros_like(radius, dtype=np.uint32)
+            labels = np.zeros_like(radius, dtype=self.dtype)
             labels[(radius >= 1) & (radius < 3)] = 1
             labels[(radius >= 3) & (radius < 6)] = 2
             labels[(radius >= 6) & (radius < 12)] = 3
@@ -213,10 +216,10 @@ class MeshPipeline():
         labels = da.map_blocks(
             radius_to_labels,
             radius_um,
-            dtype=np.uint32
+            dtype=self.dtype
         )
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
-        labels = da.map_blocks(cleanup, labels, dtype=np.uint32)
+        labels = da.map_blocks(cleanup, labels, dtype=self.dtype)
         ids = da.unique(labels, return_counts=False)
         self.ids = ids.compute()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
@@ -236,7 +239,7 @@ class MeshPipeline():
         vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
         vol.commit_info()
         labels.map_blocks(write_block, dtype=labels.dtype).compute()
-        print(f'Wrote labels volume to {self.mesh_input_dir}')
+        print(f'Wrote labels volume to {self.layer_path}')
 
         tasks = tc.create_downsampling_tasks(
             self.layer_path,
@@ -288,6 +291,14 @@ class MeshPipeline():
         }
         with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
             json.dump(info, file, indent=2)
+
+
+        LOD = 5
+        print(f'Creating sharded multires task with LOD={LOD} from {self.mesh_path}')
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=2, mesh_dir=self.mesh_path)
+        tq.insert(tasks)    
+        tq.execute()
+
 
     def process_volume_distance(self):
         #len_files = len(self.files)
@@ -425,34 +436,6 @@ class MeshPipeline():
         self.ng.add_segment_properties(cloudpath, segment_properties)
         ##### first mesh task, create meshing tasks
         #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
-        # shape is important! the default is 448 and for some reason that prevents the 0.shard from being created at certain scales.
-        # removing shape results in no 0.shard being created!!!
-        # at scale=5, shape=128 did not work but 128*2 did
-        # larger shape results in less files
-        ######################################
-        # scale=5 64 works
-        # scale=5 128 does not work
-        # scale=5 256 works
-        # scale=5 448 (default) did not work
-        # scale=5 512 works
-        ######################################
-        # scale=8 64 does not work 
-        # scale=8 128 does not work 
-        # scale=8 256 works 
-        # scale=8 448 does not work 
-        # scale=8 512 works 
-        ######################################
-        # scale=10 64 does not work
-        # scale=10 128 works
-        # scale=10 256 works
-        # scale=10 448 does not work
-        # scale=10 512 works
-        ######################################
-        # scale=15 64 does not work
-        # scale=15 128 does not work
-        # scale=15 256 works
-        # scale=15 448 does not work
-        # scale=15 512 works
 
         s = int(448)
         shape = [s, s, s]

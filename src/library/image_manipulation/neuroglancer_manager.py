@@ -16,7 +16,7 @@ from cloudvolume.lib import touch
 from collections import defaultdict
 
 from library.utilities.utilities_process import get_cpus, read_image
-MESHDTYPE = np.uint8
+MESHDTYPE = np.uint32
 
 
 
@@ -312,7 +312,7 @@ class NumpyToNeuroglancer():
             progress_file = os.path.join(progress_dir, os.path.basename(infile))
         
             if os.path.exists(progress_file):
-                print(f"Section {index} has already been processed, skipping.")
+                #print(f"Section {index} has already been processed, skipping.")
                 return
 
             img = read_image(infile)
