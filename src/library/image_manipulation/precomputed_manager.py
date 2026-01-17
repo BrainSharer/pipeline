@@ -71,7 +71,11 @@ class NgPrecomputedMaker:
         scales = self.get_scales()
         print(f'scales={scales} scaling_factor={self.scaling_factor} downsample={self.downsample}')
         num_channels = image_manager.num_channels
-        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={image_manager.dtype} num_channels={num_channels}')
+        # neuroglancer does not support boolean dtype
+        dtype = image_manager.dtype
+        if dtype == 'bool':
+            dtype = 'uint8'
+        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={dtype} num_channels={num_channels}')
         print(f'Creating initial pretransfer data with chunks={chunks}')
         
         ng = NumpyToNeuroglancer(
