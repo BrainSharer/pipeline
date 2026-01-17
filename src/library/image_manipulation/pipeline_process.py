@@ -148,7 +148,6 @@ class Pipeline(
         print("\tprep_id:".ljust(20), f"{self.animal}".ljust(20))
         print("\tchannel:".ljust(20), f"{str(self.channel)}".ljust(20))
         print("\tdownsample:".ljust(20), f"{str(self.downsample)} @ {1/self.scaling_factor}".ljust(20))
-        #print("\tscaling factor:".ljust(20), f"{str(self.scaling_factor)}".ljust(20))
         print("\tDB host:".ljust(20), f"{host}".ljust(20))
         print("\tprocess host:".ljust(20), f"{self.hostname}".ljust(20))
         print("\tschema:".ljust(20), f"{schema}".ljust(20))

@@ -312,7 +312,7 @@ class NumpyToNeuroglancer():
             progress_file = os.path.join(progress_dir, os.path.basename(infile))
         
             if os.path.exists(progress_file):
-                #print(f"Section {index} has already been processed, skipping.")
+                print(f"Section {index} has already been processed, skipping.")
                 return
 
             img = read_image(infile)
