@@ -130,6 +130,7 @@ class NgPrecomputedMaker:
         self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
         self.fileLogger.logevent(f"Output DIR: {self.output}")
         workers =self.get_nworkers()
+        print(f'Writing transfer task with {workers} workers')
 
         tq = LocalTaskQueue(parallel=workers)
 
