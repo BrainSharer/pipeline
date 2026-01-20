@@ -240,12 +240,10 @@ class MeshPipeline():
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         with ProgressBar():        
             labels = da.map_blocks(cleanup, labels, dtype=self.dtype)
-        ids = da.unique(labels, return_counts=False)
-        with ProgressBar():
-            self.ids = ids.compute()
+        ids = [1,2,3,4,5]
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
-        print(f'Label IDs: {self.ids}')
+        print(f'Label IDs: {ids}')
 
         info = CloudVolume.create_new_info(
             num_channels=1,
@@ -278,8 +276,6 @@ class MeshPipeline():
         cloud_volume.info['segment_properties'] = 'names'
         cloud_volume.commit_info()
 
-        ids = self.ids.tolist()
-        ids = [int(i) for i in ids if i > 0]
         segment_properties = {str(id): str(id) for id in ids}
 
         segment_properties_path = os.path.join(cloud_volume.layerpath.replace('file://', ''), 'names')
