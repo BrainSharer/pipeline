@@ -16,7 +16,7 @@ from cloudvolume.lib import touch
 from collections import defaultdict
 
 from library.utilities.utilities_process import get_cpus, read_image
-MESHDTYPE = np.uint32
+MESHDTYPE = np.uint8
 
 
 
@@ -126,7 +126,7 @@ class NumpyToNeuroglancer():
         self.num_channels = num_channels
 
 
-    def init_precomputed(self, path: str, volume_size, starting_points=None) -> None:
+    def init_precomputed(self, path: str, volume_size, encoding='raw', starting_points=None) -> None:
         """Initializes 'precomputed' cloud volume format (directory 
         holding multiple volumes)
 
@@ -140,7 +140,7 @@ class NumpyToNeuroglancer():
             num_channels=self.num_channels,
             layer_type=self.layer_type,  # 'image' or 'segmentation'
             data_type=self.data_type,  #
-            encoding='raw',  # other options: 'jpeg', 'compressed_segmentation' (req. uint32 or uint64)
+            encoding=encoding,  # other options: 'jpeg', 'compressed_segmentation' (req. uint32 or uint64)
             resolution=self.scales,  # Size of X,Y,Z pixels in nanometers,
             voxel_offset=self.offset,  # values X,Y,Z values in voxels
             chunk_size=self.chunk_size,  # rechunk of image X,Y,Z in voxels
@@ -372,8 +372,8 @@ class NumpyToNeuroglancer():
                 width, height = im.size
                 im = im.resize((width//scaling_factor, height//scaling_factor))
                 #img = resize(img, orientation, anti_aliasing=True)
-            img = np.array(im)
-            img = img.astype(MESHDTYPE)
+            img = np.array(im, dtype=MESHDTYPE)
+            img[img > 0] = 255
         except:
             print(f'could not resize {basefile} with shape={img.shape} to new shape={orientation}')
             return

@@ -62,7 +62,8 @@ class MeshPipeline():
         self.chunk = 64
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
-        self.dtype = MESHDTYPE
+        self.dtype = np.uint8
+        self.encoding = 'raw'
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
             data_type=self.dtype, chunk_size=self.chunks)
 
@@ -73,7 +74,7 @@ class MeshPipeline():
         self.mesh_path = f'mesh_mip_{self.mip}_err_{self.max_simplification_error}'
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
-        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'downsampled_1')
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
         self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
         _, self.cpus = get_cpus()
         
@@ -88,8 +89,9 @@ class MeshPipeline():
         midim = Image.open(infile)
         midfile = np.array(midim)
         del midim
-        midfile = midfile.astype(MESHDTYPE)
+        #midfile = midfile.astype(self.dtype)
         ids, counts = np.unique(midfile, return_counts=True)
+        print(f'Midfile: {infile}, dtype={midfile.dtype}, shape={midfile.shape}, ids={ids}, counts={counts}')
         height, width = midfile.shape
         self.volume_size = (width//self.scale, height//self.scale, len_files // self.scale) # neuroglancer is width, height
         self.files = files
@@ -238,7 +240,7 @@ class MeshPipeline():
             num_channels=1,
             layer_type='segmentation',  # 'image' or 'segmentation'
             data_type=self.dtype,  #
-            encoding='compressed_segmentation',  # other options: 'jpeg', 'compressed_segmentation', 'raw' (req. uint32 or uint64)
+            encoding=self.encoding,  # other options: 'jpeg', 'compressed_segmentation', 'raw' (req. uint32 or uint64)
             resolution=[VOXEL_SIZE_UM*1000]*3,  # Size of X,Y,Z pixels in nanometers,
             voxel_offset=[0,0,0],  # values X,Y,Z values in voxels
             chunk_size=CHUNK_SHAPE,  # rechunk of image X,Y,Z in voxels
@@ -352,10 +354,10 @@ class MeshPipeline():
             len_files = len(files)
 
         print(f'\nMidfile: dtype={self.midfile.dtype}, shape={self.midfile.shape}, ids={self.ids}, counts={self.counts}')
-        print(f'Scaling factor={scale}, volume size={self.volume_size} with dtype={MESHDTYPE}, scales={self.scales}')
+        print(f'Scaling factor={scale}, volume size={self.volume_size} with dtype={self.dtype}, scales={self.scales}')
         print(f'Initial chunks at {self.chunks} and chunks for downsampling=({self.chunk},{self.chunk},{self.chunk})\n')
 
-        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size, encoding=self.encoding)
 
         file_keys = []
         index = 0
@@ -379,7 +381,7 @@ class MeshPipeline():
         ###### start cloudvolume tasks #####
         # This calls the igneous create_transfer_tasks
         # the input dir is now read and the rechunks are created in the final dir
-        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size, encoding=self.encoding)
         # reset chunks to much smaller size for better neuroglancer experience
         chunks = [self.chunk, self.chunk, self.chunk]
         tq = LocalTaskQueue(parallel=self.cpus)
@@ -389,7 +391,8 @@ class MeshPipeline():
                 self.ng.precomputed_vol.layer_cloudpath,
                 self.layer_path,
                 mip=0,
-                max_mips=0
+                max_mips=0,
+                chunk_size=chunks
             )
             print(f'Creating transfer tasks in {self.transfered_path} with chunks={chunks}')
             tq.insert(tasks)
@@ -416,8 +419,7 @@ class MeshPipeline():
         print(f'Using mesh output dir: {self.mesh_dir}')
         print(f'Using layer path: {self.layer_path}')
         print(f'Using volume size: {self.volume_size}')
-        print(f' using {self.cpus} CPUs')
-
+        print(f' using {self.cpus} CPUs')        
 
         tq = LocalTaskQueue(parallel=self.cpus)
 
@@ -445,11 +447,40 @@ class MeshPipeline():
         cloud_volume.commit_info()
 
 
+        segment_properties_path = os.path.join(cloud_volume.layerpath.replace('file://', ''), 'names')
+        if os.path.exists(segment_properties_path):
+            print(f'Segment properties already exist at {segment_properties_path}, skipping creation')
+            return
+        
+        ids = [255]
+        ids = [int(i) for i in ids if i > 0]
+        segment_properties = {str(id): str(id) for id in ids}
+
+        os.makedirs(segment_properties_path, exist_ok=True)
+        info = {
+            "@type": "neuroglancer_segment_properties",
+            "inline": {
+                "ids": [str(number) for number, _ in segment_properties.items()],
+                "properties": [{
+                    "id": "label",
+                    "type": "label",
+                    "values": [str(label) for _, label in segment_properties.items()]
+                }]
+            }
+        }
+        with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
+            json.dump(info, file, indent=2)
+        print(f'Wrote segment properties to {segment_properties_path}')
+        return
+
+
+
+
 
     def process_multires_mesh(self):
         """
         """
-        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size, encoding=self.encoding)
         tq = LocalTaskQueue(parallel=1)
 
         # Now do the mesh creation
@@ -478,6 +509,9 @@ class MeshPipeline():
         tq.execute()
 
     def check_status(self):
+        print(f'Checking mesh creation status for animal={self.animal} at scale={scale}')
+        print(f'IDs in volume: {self.ids}')
+
         dothis = ""
         section_count = len(self.files) // self.scale
         if os.path.exists(self.progress_dir):
