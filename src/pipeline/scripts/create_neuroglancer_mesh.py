@@ -173,7 +173,7 @@ class MeshPipeline():
             # Create a list of delayed objects, one for each image file
             lazy_arrays = [lazy_imread(image) for image in filenames]
             # For each delayed object, create a Dask array with the known shape and dtype
-            dask_arrays = [da.from_delayed(delayed_reader, shape=image_shape, dtype=image_dtype) for delayed_reader in lazy_arrays]
+            dask_arrays = [da.from_delayed(delayed_reader, shape=image_shape, dtype=image_dtype) for delayed_reader in tqdm(lazy_arrays)]
             # Stack along a new dimension (e.g., time or z-axis)
             image_stack = da.stack(dask_arrays, axis=0)
             image_stack = image_stack.rechunk(chunk_shape)
