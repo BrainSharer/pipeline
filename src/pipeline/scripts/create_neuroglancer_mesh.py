@@ -203,6 +203,7 @@ class MeshPipeline():
         CHUNK_SHAPE = (self.chunk, self.chunk, self.chunk)
         # Isotropic voxel size (µm)
         VOXEL_SIZE_UM = self.scale  # change to 2.0, 4.0, etc. if needed
+        print(f'Processing distance transform on volume in {TIFF_DIR} with scale={self.scale} um')
         # Chunk size (optimize for memory)
         # Minimum connected component size (voxels)
         binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE)
