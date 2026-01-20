@@ -83,7 +83,7 @@ class NgPrecomputedMaker:
             None,
             scales,
             "image",
-            image_manager.dtype,
+            dtype,
             num_channels=num_channels,
             chunk_size=chunks,
         )

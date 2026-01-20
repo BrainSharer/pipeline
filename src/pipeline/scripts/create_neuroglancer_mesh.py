@@ -123,10 +123,13 @@ class MeshPipeline():
                 break
             infile = os.path.join(self.input, self.files[i]) 
             outfile = os.path.join(self.output, self.files[i])
+            if infile.endswith('.tif') is False:
+                print(f'Skipping non-tiff file: {infile}')
+                continue
             im = Image.open(infile)           
             width, height = im.size
             im = im.resize((width//self.scale, height//self.scale))
-            farr = np.array(im).astype(self.dtype)
+            farr = np.array(im).astype('bool')
             tiff.imwrite(outfile, farr)
         print(f'Created downsampled volume at {self.output}')
 
@@ -229,8 +232,8 @@ class MeshPipeline():
         info = CloudVolume.create_new_info(
             num_channels=1,
             layer_type='segmentation',  # 'image' or 'segmentation'
-            data_type="uint32",  #
-            encoding='compressed_segmentation',  # other options: 'jpeg', 'compressed_segmentation' (req. uint32 or uint64)
+            data_type=self.dtype,  #
+            encoding='compressed_segmentation',  # other options: 'jpeg', 'compressed_segmentation', 'raw' (req. uint32 or uint64)
             resolution=[VOXEL_SIZE_UM*1000]*3,  # Size of X,Y,Z pixels in nanometers,
             voxel_offset=[0,0,0],  # values X,Y,Z values in voxels
             chunk_size=CHUNK_SHAPE,  # rechunk of image X,Y,Z in voxels
@@ -238,34 +241,20 @@ class MeshPipeline():
         )
         vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
         vol.commit_info()
-        labels.map_blocks(write_block, dtype=labels.dtype).compute()
+        labels.map_blocks(write_block, dtype=self.dtype).compute()
         print(f'Wrote labels volume to {self.layer_path}')
 
         tasks = tc.create_downsampling_tasks(
             self.layer_path,
             num_mips=2,
-            compress=True
+            compress=True,
+            chunk_size=[self.chunk, self.chunk, self.chunk]
         )
         tq = LocalTaskQueue(parallel=self.cpus)
         tq.insert(tasks)
         tq.execute()
 
-        tasks = tc.create_meshing_tasks(
-            self.layer_path,
-            mip=self.mip,
-            max_simplification_error=40,
-            compress=True
-        )        
-        tq = LocalTaskQueue(parallel=self.cpus)
-        tq.insert(tasks)
-        tq.execute()
-
-        print(f'Creating meshing manifest tasks')
-        tasks = tc.create_mesh_manifest_tasks(self.layer_path) # The second phase of creating mesh
-        tq.insert(tasks)
-        tq.execute()
-
-
+        print('Finished downsampling tasks')
         cloud_volume = CloudVolume(self.layer_path, 0)
         cloud_volume.info['segment_properties'] = 'names'
         cloud_volume.commit_info()
@@ -291,6 +280,11 @@ class MeshPipeline():
         }
         with open(os.path.join(segment_properties_path, 'info'), 'w') as file:
             json.dump(info, file, indent=2)
+        print(f'Wrote segment properties to {segment_properties_path}')
+        return
+
+
+
 
 
         LOD = 5
@@ -323,7 +317,7 @@ class MeshPipeline():
         print(f'sizes len={len(sizes)} min={sizes.min()} max={sizes.max()} mean={sizes.mean()}')
 
         return
-        labels = np.zeros_like(cc, dtype=np.uint32)
+        labels = np.zeros_like(cc, dtype=np.self.dtype)
 
         for i in range(1, n + 1):
             if sizes[i] < 1e4:
@@ -414,42 +408,29 @@ class MeshPipeline():
 
 
     def process_mesh(self):
-        self.ng.init_precomputed(self.mesh_input_dir, self.volume_size)
+        print(f'Creating mesh at mip={self.mip} with max_simplification_error={self.max_simplification_error}')
+        print(f'Using mesh output dir: {self.mesh_dir}')
+        print(f'Using layer path: {self.layer_path}')
+        print(f'Using volume size: {self.volume_size}')
+        print(f' using {self.cpus} CPUs')
+
+
         tq = LocalTaskQueue(parallel=self.cpus)
 
-        if not os.path.exists(self.transfered_path):
+        if not os.path.exists(str(self.layer_path).replace('file://', '')):
             print('You need to run previous tasks first')
-            print(f'Missing {self.transfered_path}')
+            print(f'Missing {self.layer_path}')
             sys.exit()
 
-        ##### add segment properties
-        cloudpath = CloudVolume(self.layer_path, self.mip)
-        downsample_path = cloudpath.meta.info['scales'][self.mip]['key']
-        print(f'Creating mesh from {cloudpath.layer_cloudpath}')
-        print(f'Using downsampled path: {downsample_path}')
-        ids = self.ids.tolist()
-        ids = [int(i) for i in ids if i > 0]
-        #ids = [1,2,3]
-        segment_properties = {str(id): str(id) for id in ids}
 
-        print('and creating segment properties', end=" ")
-        self.ng.add_segment_properties(cloudpath, segment_properties)
-        ##### first mesh task, create meshing tasks
-        #####ng.add_segmentation_mesh(cloudpath.layer_cloudpath, mip=0)
-
-        s = int(448)
-        shape = [s, s, s]
-        print(f'and mesh with shape={shape} at mip={self.mip}')
         tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
+                                        max_simplification_error=self.max_simplification_error,
                                         compress=True, mesh_dir=self.mesh_path, progress=True, sharded=False)
         tq.insert(tasks)
         tq.execute()
 
-        # for apache to serve shards, this command: curl -I --head --header "Range: bytes=50-60" https://activebrainatlas.ucsd.edu/index.html
-        # must return HTTP/1.1 206 Partial Content
-        # a magnitude < 3 is more suitable for local mesh creation. Bigger values are for horizontal scaling in the cloud.
 
-        print(f'Creating meshing manifest tasks with {self.cpus} CPUs at {self.mesh_path}')
+        print('Creating meshing manifest tasks')
         tasks = tc.create_mesh_manifest_tasks(self.layer_path, mesh_dir=self.mesh_path) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
@@ -475,10 +456,10 @@ class MeshPipeline():
 
         # LOD=0, resolution stays the same
         # LOD=10, resolution shows different detail
-        LOD = 10
+        LOD = 5
         print(f'Creating sharded multires task with LOD={LOD} from {self.mesh_path}')
         #tasks = tc.create_sharded_multires_mesh_tasks(self.layer_path, num_lod=LOD)
-        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=3, mesh_dir=self.mesh_path, min_chunk_size=[self.chunk, self.chunk, self.chunk])
+        tasks = tc.create_unsharded_multires_mesh_tasks(self.layer_path, num_lod=LOD, magnitude=2, mesh_dir=self.mesh_path, min_chunk_size=[self.chunk, self.chunk, self.chunk])
         tq.insert(tasks)    
         tq.execute()
 
