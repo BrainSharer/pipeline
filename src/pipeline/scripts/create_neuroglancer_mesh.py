@@ -41,11 +41,12 @@ from library.utilities.utilities_process import get_cpus
 
 class MeshPipeline():
 
-    def __init__(self, animal, scale, mip, debug):
+    def __init__(self, animal, scale, mip, limit, debug):
 
         self.animal = animal
         self.scale = scale
         self.mip = mip
+        self.limit = limit
         self.debug = debug
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
@@ -62,8 +63,11 @@ class MeshPipeline():
         self.chunk = 64
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
-        self.dtype = np.uint8
-        self.encoding = 'raw'
+        self.encoding = 'compressed_segmentation' #'compressed_segmentation' or 'raw'
+        if self.encoding == 'compressed_segmentation':
+            self.dtype = np.uint32
+        else:
+            self.dtype = np.uint8
         self.ng = NumpyToNeuroglancer(self.animal, None, self.scales, layer_type='segmentation', 
             data_type=self.dtype, chunk_size=self.chunks)
 
@@ -74,7 +78,7 @@ class MeshPipeline():
         self.mesh_path = f'mesh_mip_{self.mip}_err_{self.max_simplification_error}'
 
         self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_data, 'progress', f'mesh_{self.scale}')
-        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
+        self.input = os.path.join(self.fileLocationManager.prep, 'C1', 'full')
         self.output = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}')
         _, self.cpus = get_cpus()
         
@@ -159,11 +163,18 @@ class MeshPipeline():
                 out[mask] = l
             return out
 
-        def load_tiff_stack_dask(tiff_dir, chunk_shape):
+        def load_tiff_stack_dask(tiff_dir, chunk_shape, limit=0):
             filenames = [os.path.join(tiff_dir, f) for f in os.listdir(tiff_dir) if f.endswith('.tif')]
             filenames.sort() # sort to ensure the correct order in the stack         
             if not filenames:
                 raise ValueError("No TIFF files found in the directory.")
+            
+            len_files = len(self.files)
+            if limit > 0:
+                _start = self.midpoint - limit
+                _end = self.midpoint + limit
+                filenames = filenames[_start:_end]
+            print(f'Loading {len(filenames)} TIFF files from {tiff_dir} as Dask array with chunk shape {chunk_shape}')
 
             # Read one file to get metadata (this runs immediately)
             sample_image = tiff.imread(filenames[0])
@@ -208,7 +219,7 @@ class MeshPipeline():
         print(f'Processing distance transform on volume in {TIFF_DIR} with scale={self.scale} um')
         # Chunk size (optimize for memory)
         # Minimum connected component size (voxels)
-        binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE)
+        binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE, self.limit)
         binary = binary > 0
         print(f'Binary volume shape={binary.shape}, dtype={binary.dtype} chunks={binary.chunksize}') 
         with ProgressBar():        
@@ -576,7 +587,7 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     task = str(args.task).strip().lower()
     
-    pipeline = MeshPipeline(animal, scale, mip, debug=debug)
+    pipeline = MeshPipeline(animal, scale, mip, limit, debug=debug)
 
     function_mapping = {
         "create_volume": pipeline.create_volume,
