@@ -60,7 +60,7 @@ class MeshPipeline():
         xy *=  self.scale
         z *= self.scale
         self.scales = (int(xy), int(xy), int(z))
-        self.chunk = 256
+        self.chunk = 128
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
         self.encoding = 'compressed_segmentation' #'compressed_segmentation' or 'raw'
@@ -169,7 +169,6 @@ class MeshPipeline():
             if not filenames:
                 raise ValueError("No TIFF files found in the directory.")
             
-            len_files = len(self.files)
             if limit > 0:
                 _start = self.midpoint - limit
                 _end = self.midpoint + limit
@@ -240,7 +239,8 @@ class MeshPipeline():
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         with ProgressBar():        
             labels = da.map_blocks(cleanup, labels, dtype=self.dtype)
-        ids = [1,2,3,4,5]
+        #ids = [1,2,3,4,5]
+        ids = da.unique(labels).compute().tolist()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
         print(f'Label IDs: {ids}')
