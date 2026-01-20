@@ -60,7 +60,7 @@ class MeshPipeline():
         xy *=  self.scale
         z *= self.scale
         self.scales = (int(xy), int(xy), int(z))
-        self.chunk = 64
+        self.chunk = 256
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
         self.encoding = 'compressed_segmentation' #'compressed_segmentation' or 'raw'
