@@ -5,7 +5,6 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 import json
 import os
-import shutil
 import sys
 from PIL import Image
 from tqdm import tqdm
@@ -19,6 +18,7 @@ from timeit import default_timer as timer
 
 import dask.array as da
 from dask import delayed
+from dask.diagnostics import ProgressBar
 import tifffile as tiff
 from scipy.ndimage import label
 from scipy.ndimage import distance_transform_edt
@@ -208,23 +208,27 @@ class MeshPipeline():
         binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE)
         binary = binary > 0
         print(f'Binary volume shape={binary.shape}, dtype={binary.dtype} chunks={binary.chunksize}') 
-        distance = da.map_blocks(
-            block_distance_transform,
-            binary,
-            dtype=np.float32
-        )
+        with ProgressBar():        
+            distance = da.map_blocks(
+                block_distance_transform,
+                binary,
+                dtype=np.float32
+            )
         print(f'Distance volume shape={distance.shape}, dtype={distance.dtype} chunks={distance.chunksize}')
         radius_um = distance * VOXEL_SIZE_UM
         print(f'Radius volume shape={radius_um.shape}, dtype={radius_um.dtype} chunks={radius_um.chunksize}')
-        labels = da.map_blocks(
-            radius_to_labels,
-            radius_um,
-            dtype=self.dtype
-        )
+        with ProgressBar():        
+            labels = da.map_blocks(
+                radius_to_labels,
+                radius_um,
+                dtype=self.dtype
+            )
         print(f'Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
-        labels = da.map_blocks(cleanup, labels, dtype=self.dtype)
+        with ProgressBar():        
+            labels = da.map_blocks(cleanup, labels, dtype=self.dtype)
         ids = da.unique(labels, return_counts=False)
-        self.ids = ids.compute()
+        with ProgressBar():
+            self.ids = ids.compute()
         print(f'Cleaned Labels volume shape={labels.shape}, dtype={labels.dtype} chunks={labels.chunksize}')
         # volume now is at z,y,x
         print(f'Label IDs: {self.ids}')
@@ -241,7 +245,8 @@ class MeshPipeline():
         )
         vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
         vol.commit_info()
-        labels.map_blocks(write_block, dtype=self.dtype).compute()
+        with ProgressBar():
+            labels.map_blocks(write_block, dtype=self.dtype).compute()
         print(f'Wrote labels volume to {self.layer_path}')
 
         tasks = tc.create_downsampling_tasks(
@@ -262,8 +267,6 @@ class MeshPipeline():
         ids = self.ids.tolist()
         ids = [int(i) for i in ids if i > 0]
         segment_properties = {str(id): str(id) for id in ids}
-
-
 
         segment_properties_path = os.path.join(cloud_volume.layerpath.replace('file://', ''), 'names')
         os.makedirs(segment_properties_path, exist_ok=True)
