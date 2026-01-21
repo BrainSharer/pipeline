@@ -51,9 +51,9 @@ class MeshPipeline():
         self.sqlController = SqlController(animal)
         self.fileLocationManager = FileLocationManager(animal)
         if self.scale > 1:
-            self.mips = [0, 1, 2]
+            self.mips = [0, 1, 2, 3]
         else:
-            self.mips = [0, 1, 2, 3, 4, 5]
+            self.mips = [0, 1, 2, 3, 4, 5, 6]
         self.max_simplification_error = 40
         xy = self.sqlController.scan_run.resolution * 1000
         z = self.sqlController.scan_run.zresolution * 1000
@@ -86,7 +86,7 @@ class MeshPipeline():
         self.get_stack_info()
 
     def get_stack_info(self):
-        files = sorted(os.listdir(self.input))
+        files = sorted(os.listdir(self.output))
         len_files = len(files)
         midpoint = len_files // 2
         infile = os.path.join(self.input, files[midpoint])
@@ -263,6 +263,7 @@ class MeshPipeline():
             compress=True,
             chunk_size=[self.chunk, self.chunk, self.chunk]
         )
+
         tq = LocalTaskQueue(parallel=self.cpus)
         tq.insert(tasks)
         tq.execute()
@@ -274,7 +275,8 @@ class MeshPipeline():
 
         #ids = [1,2,3,4,5]
         print('Reading volume to get unique label IDs')
-        ids = np.unique(vol[:, :, :].astype(np.uint32))
+        ids = np.unique(vol[:, :, self.midpoint].astype(np.uint8))
+        ids = [int(i) for i in ids if i > 0]
         # volume now is at z,y,x
         print(f'Label IDs: {ids}')
 
@@ -439,7 +441,7 @@ class MeshPipeline():
             sys.exit()
 
 
-        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip, 
+        tasks = tc.create_meshing_tasks(self.layer_path, mip=self.mip,
                                         max_simplification_error=self.max_simplification_error,
                                         compress=True, mesh_dir=self.mesh_path, progress=True, sharded=False)
         tq.insert(tasks)
@@ -520,7 +522,7 @@ class MeshPipeline():
 
     def check_status(self):
         print(f'Checking mesh creation status for animal={self.animal} at scale={scale}')
-        print(f'IDs in volume: {self.ids}')
+        print(f'IDs in volume: {self.ids} from midpoint file {self.files[self.midpoint]} at midpoint index {self.midpoint}')
 
         dothis = ""
         section_count = len(self.files) // self.scale
