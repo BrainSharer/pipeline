@@ -101,7 +101,7 @@ class BuilderOmeZarrUtils:
             new['inverted'] = False
             new['label'] = labels[chn] if labels is not None else f"Channel{chn}"
             
-            if self.dtype==np.dtype('uint8'):
+            if self.dtype==np.dtype('uint8') or self.dtype==np.dtype('bool'):
                 end = mx = 255
             elif self.dtype==np.dtype('uint16'):
                 end = mx = 65535

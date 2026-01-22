@@ -86,7 +86,7 @@ class MeshPipeline():
         self.get_stack_info()
 
     def get_stack_info(self):
-        files = sorted(os.listdir(self.output))
+        files = sorted(os.listdir(self.input))
         len_files = len(files)
         midpoint = len_files // 2
         infile = os.path.join(self.input, files[midpoint])
@@ -111,11 +111,12 @@ class MeshPipeline():
 
     def create_volume(self):
         """creating with all x=518, y=394, z = 665"""
-        len_files = len(self.files)
         if os.path.exists(self.output) and len(os.listdir(self.output)) > 0:
             print(f'Directory {self.output} already exists and is not empty, skipping creation of downsampled volume')
             return
 
+        len_files = len(os.listdir(self.input))
+        self.files = sorted(os.listdir(self.input))
         os.makedirs(self.output, exist_ok=True)
         print(f'Creating downsampled volume from {self.input}')
         print(f'\tat {self.output}')
@@ -163,7 +164,7 @@ class MeshPipeline():
                 out[mask] = l
             return out
 
-        def load_tiff_stack_dask(tiff_dir, chunk_shape, limit=0):
+        def load_tiff_stack_dask(tiff_dir, limit=0):
             filenames = [os.path.join(tiff_dir, f) for f in os.listdir(tiff_dir) if f.endswith('.tif')]
             filenames.sort() # sort to ensure the correct order in the stack         
             if not filenames:
@@ -173,7 +174,8 @@ class MeshPipeline():
                 _start = self.midpoint - limit
                 _end = self.midpoint + limit
                 filenames = filenames[_start:_end]
-            print(f'Loading {len(filenames)} TIFF files from {tiff_dir} as Dask array with chunk shape {chunk_shape}')
+                self.midpoint = _end - _start // 2
+            print(f'Loading {len(filenames)} TIFF files from {tiff_dir} as Dask array with midpoint at index {self.midpoint}')
 
             # Read one file to get metadata (this runs immediately)
             sample_image = tiff.imread(filenames[0])
@@ -188,7 +190,7 @@ class MeshPipeline():
             dask_arrays = [da.from_delayed(delayed_reader, shape=image_shape, dtype=image_dtype) for delayed_reader in tqdm(lazy_arrays)]
             # Stack along a new dimension (e.g., time or z-axis)
             image_stack = da.stack(dask_arrays, axis=0)
-            image_stack = image_stack.rechunk(chunk_shape)
+            image_stack = image_stack.rechunk((1, image_shape[0], image_shape[1]))  # initial chunking z,y,x
             # dask array is in z,y,x but neuroglancer wants x,y,z
             image_stack = da.swapaxes(image_stack, 0, 2)
             print(f"Dask array created with shape: {image_stack.shape}, dtype: {image_stack.dtype}")
@@ -212,15 +214,18 @@ class MeshPipeline():
 
         self.create_volume()
         TIFF_DIR = self.output
-        CHUNK_SHAPE = (self.chunk, self.chunk, self.chunk)
+        self.files = sorted(os.listdir(TIFF_DIR))
+        self.midpoint = len(self.files) // 2
+        print(f'Using midpoint file {self.files[self.midpoint]} at midpoint index {self.midpoint}')
+        FINAL_CHUNK_SHAPE = (self.chunk, self.chunk, self.chunk)
         # Isotropic voxel size (µm)
         VOXEL_SIZE_UM = self.scale  # change to 2.0, 4.0, etc. if needed
         print(f'Processing distance transform on volume in {TIFF_DIR} with scale={self.scale} um')
         # Chunk size (optimize for memory)
         # Minimum connected component size (voxels)
-        binary = load_tiff_stack_dask(TIFF_DIR, CHUNK_SHAPE, self.limit)
+        binary = load_tiff_stack_dask(TIFF_DIR, self.limit)
         binary = binary > 0
-        print(f'Binary volume shape={binary.shape}, dtype={binary.dtype} chunks={binary.chunksize}') 
+        print(f'Binary type = {type(binary)} volume shape={binary.shape}, dtype={binary.dtype} chunks={binary.chunksize}') 
         with ProgressBar():        
             distance = da.map_blocks(
                 block_distance_transform,
@@ -248,41 +253,48 @@ class MeshPipeline():
             encoding=self.encoding,  # other options: 'jpeg', 'compressed_segmentation', 'raw' (req. uint32 or uint64)
             resolution=[VOXEL_SIZE_UM*1000]*3,  # Size of X,Y,Z pixels in nanometers,
             voxel_offset=[0,0,0],  # values X,Y,Z values in voxels
-            chunk_size=CHUNK_SHAPE,  # rechunk of image X,Y,Z in voxels
+            chunk_size=labels.chunksize,  # rechunk of image X,Y,Z in voxels
             volume_size=[labels.shape[0], labels.shape[1], labels.shape[2]],  # z,x,y
         )
-        vol = CloudVolume(self.layer_path, info=info, compress=True, progress=False)
+        vol = CloudVolume(self.mesh_input_dir, info=info, compress=True, progress=False)
         vol.commit_info()
         with ProgressBar():
             labels.map_blocks(write_block, dtype=self.dtype).compute()
         print(f'Wrote labels volume to {self.layer_path}')
 
-        tasks = tc.create_downsampling_tasks(
+        tasks = tc.create_transfer_tasks(
+            self.mesh_input_dir,
             self.layer_path,
-            num_mips=2,
-            compress=True,
-            chunk_size=[self.chunk, self.chunk, self.chunk]
+            mip=0,
+            max_mips=0,
+            chunk_size=FINAL_CHUNK_SHAPE
         )
-
         tq = LocalTaskQueue(parallel=self.cpus)
         tq.insert(tasks)
         tq.execute()
+        print('Finished transfer tasks')
 
+        tasks = tc.create_downsampling_tasks(
+            self.layer_path,
+            num_mips=len(self.mips),
+            compress=True,
+            chunk_size=[self.chunk, self.chunk, self.chunk]
+        )
+        tq = LocalTaskQueue(parallel=self.cpus)
+        tq.insert(tasks)
+        tq.execute()
         print('Finished downsampling tasks')
+
         cloud_volume = CloudVolume(self.layer_path, 0)
         cloud_volume.info['segment_properties'] = 'names'
         cloud_volume.commit_info()
 
-        #ids = [1,2,3,4,5]
         print('Reading volume to get unique label IDs')
         ids = np.unique(vol[:, :, self.midpoint].astype(np.uint8))
         ids = [int(i) for i in ids if i > 0]
         # volume now is at z,y,x
         print(f'Label IDs: {ids}')
-
-
         segment_properties = {str(id): str(id) for id in ids}
-
         segment_properties_path = os.path.join(cloud_volume.layerpath.replace('file://', ''), 'names')
         os.makedirs(segment_properties_path, exist_ok=True)
         info = {
@@ -300,10 +312,6 @@ class MeshPipeline():
             json.dump(info, file, indent=2)
         print(f'Wrote segment properties to {segment_properties_path}')
         return
-
-
-
-
 
         LOD = 5
         print(f'Creating sharded multires task with LOD={LOD} from {self.mesh_path}')
@@ -493,7 +501,7 @@ class MeshPipeline():
         """
         """
         self.ng.init_precomputed(self.mesh_input_dir, self.volume_size, encoding=self.encoding)
-        tq = LocalTaskQueue(parallel=1)
+        tq = LocalTaskQueue(parallel=self.cpus)
 
         # Now do the mesh creation
         #if not os.path.exists(self.transfered_path):
