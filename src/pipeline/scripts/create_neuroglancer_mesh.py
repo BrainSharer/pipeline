@@ -63,7 +63,7 @@ class MeshPipeline():
         self.chunk = 128
         self.chunks = (self.chunk, self.chunk, 1)
         self.volume_size = 0
-        self.encoding = 'compressed_segmentation' #'compressed_segmentation' or 'raw'
+        self.encoding = 'raw' #'compressed_segmentation' or 'raw'
         if self.encoding == 'compressed_segmentation':
             self.dtype = np.uint32
         else:
@@ -373,7 +373,8 @@ class MeshPipeline():
             files = self.files[_start:_end]
             len_files = len(files)
 
-        print(f'\nMidfile: dtype={self.midfile.dtype}, shape={self.midfile.shape}, ids={self.ids}, counts={self.counts}')
+        print(f'Using files from {self.input}')
+        print(f'\nMidfile: dtype={self.midfile.dtype}, shape={self.midfile.shape}, ids={self.ids}, counts={len(self.counts)}')
         print(f'Scaling factor={scale}, volume size={self.volume_size} with dtype={self.dtype}, scales={self.scales}')
         print(f'Initial chunks at {self.chunks} and chunks for downsampling=({self.chunk},{self.chunk},{self.chunk})\n')
 

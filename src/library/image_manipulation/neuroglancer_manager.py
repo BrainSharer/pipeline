@@ -373,7 +373,6 @@ class NumpyToNeuroglancer():
                 im = im.resize((width//scaling_factor, height//scaling_factor))
                 #img = resize(img, orientation, anti_aliasing=True)
             img = np.array(im, dtype=MESHDTYPE)
-            img[img > 0] = 255
         except:
             print(f'could not resize {basefile} with shape={img.shape} to new shape={orientation}')
             return
