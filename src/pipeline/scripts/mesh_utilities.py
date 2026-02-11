@@ -4,7 +4,6 @@ import numpy as np
 import scipy.ndimage as ndi
 from scipy.ndimage import distance_transform_edt
 from dask.array import map_overlap
-from numba import njit
 
 
 # -----------------------------
@@ -100,8 +99,6 @@ def label_chunk(binary_chunk, radius_chunk):
 # -----------------------------
 # PIPELINE
 # -----------------------------
-def smootherXXX(block):
-    return ndi.gaussian_filter(block.astype(np.float32), sigma=2)
 def smoother(block):
     return ndi.binary_fill_holes(block)
 
@@ -153,119 +150,4 @@ def label_vessels_zarr(binary_zarr_path, resolution_um):
         dtype=np.uint32
     )
     return labeled
-
-""" 2nd example """
-
-
-
-# -----------------------------
-# Resolution-aware chunk sizing
-# -----------------------------
-
-def optimal_chunksize(res_um):
-    if res_um <= 2:
-        return (256,256,256)
-    elif res_um <= 8:
-        return (384,384,384)
-    else:
-        return (512,512,512)
-
-
-# -----------------------------
-# Multiscale Radius Estimation
-# -----------------------------
-
-def multiscale_radius_estimation(block, resolution_um):
-    """
-    Robust multiscale EDT estimation.
-    """
-    block = block.astype(bool)
-
-    scales = [1, 2, 4]  # voxel units
-    radii = []
-
-    for s in scales:
-        edt = distance_transform_edt(block) * resolution_um
-        radii.append(edt)
-
-    return np.maximum.reduce(radii)
-
-
-# -----------------------------
-# Depth Calculation
-# -----------------------------
-
-def depth_from_surface(block, resolution_um):
-    """
-    Distance from nearest background voxel = depth.
-    """
-    inv = ~block.astype(bool)
-    depth = distance_transform_edt(inv) * resolution_um
-    return depth
-
-
-# -----------------------------
-# Vessel Classification
-# -----------------------------
-
-@njit
-def classify_voxels(radius, depth):
-    labels = np.zeros(radius.shape, np.uint16)
-
-    for z in range(radius.shape[0]):
-        for y in range(radius.shape[1]):
-            for x in range(radius.shape[2]):
-                r = radius[z,y,x]
-                d = depth[z,y,x]
-
-                if r < 2:
-                    labels[z,y,x] = 1  # capillary
-                elif r < 6:
-                    labels[z,y,x] = 2  # arteriole
-                elif r < 15:
-                    labels[z,y,x] = 3  # artery
-                else:
-                    labels[z,y,x] = 4  # vein
-
-    return labels
-
-
-# -----------------------------
-# Chunk-wise Labeling Kernel
-# -----------------------------
-
-def label_block(block, resolution_um):
-    r = multiscale_radius_estimation(block, resolution_um)
-    d = depth_from_surface(block, resolution_um)
-    return classify_voxels(r, d)
-
-
-# -----------------------------
-# Streaming Zarr → Zarr Pipeline
-# -----------------------------
-
-def zarr_vessel_label_pipeline(input_zarr,resolution_um):
-
-    chunks = optimal_chunksize(resolution_um)
-
-
-
-    overlap = int(30 / resolution_um)  # 30µm overlap for safety
-
-    print(f"Chunks: {chunks}, Overlap: {overlap}")
-
-    z = da.from_zarr(input_zarr, chunks=chunks)
-
-    labeled = map_overlap(
-        label_block,
-        z,
-        depth=(overlap, overlap, overlap),
-        boundary='reflect',
-        trim=True,
-        dtype=np.uint32,
-        resolution_um=resolution_um
-    )
-
-    return labeled
-
 
