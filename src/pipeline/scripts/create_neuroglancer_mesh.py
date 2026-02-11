@@ -20,11 +20,9 @@ from timeit import default_timer as timer
 import dask.array as da
 from dask import delayed
 from dask.diagnostics import ProgressBar
-from dask.array import map_overlap
 import tifffile as tiff
 from skimage.morphology import remove_small_objects
 from scipy.ndimage import distance_transform_edt
-import scipy.ndimage as ndi
 import zarr
 
 
@@ -42,7 +40,7 @@ from library.controller.sql_controller import SqlController
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer, MESHDTYPE
 from library.utilities.utilities_process import get_cpus
-from pipeline.scripts.mesh_utilities import label_vessels_zarr, zarr_vessel_label_pipeline
+from pipeline.scripts.mesh_utilities import label_vessels_zarr
 
 
 def get_group_boundaries(n):
