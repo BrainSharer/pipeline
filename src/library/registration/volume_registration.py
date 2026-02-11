@@ -1418,7 +1418,7 @@ class VolumeRegistration:
         z_scale = sqlController.scan_run.zresolution
 
 
-        input_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'full_aligned')
+        input_dir = os.path.join(self.fileLocationManager.prep, self.channel, 'downsampled_32')
         output_zarr = os.path.join(self.fileLocationManager.prep, self.channel, f'{self.z_um}x{self.xy_um}x{self.xy_um}um_sagittal.zarr')
         if not os.path.isdir(input_dir):
             print(f"Input directory not found at {input_dir}")
@@ -1442,8 +1442,11 @@ class VolumeRegistration:
         sample_path = os.path.join(input_dir, files[0])
         sample = read_image(sample_path)
         is_rgb = sample.ndim == 3
-        original_shape = sample.shape
         chunk_size = (1, 256, 256)
+        if sample.dtype == 'bool':
+            anti_aliasing = False
+        else:
+            anti_aliasing = True
 
         def load_and_resize(path):
             filepath = os.path.join(input_dir, path)
@@ -1459,7 +1462,10 @@ class VolumeRegistration:
                     int(img.shape[0] * scale_y),
                     int(img.shape[1] * scale_x),
                 )
-            return resize(img, new_shape, anti_aliasing=True, preserve_range=True).astype(img.dtype)
+            if img.shape == new_shape:
+                return img
+            else:
+                return resize(img, new_shape, anti_aliasing=anti_aliasing, preserve_range=True).astype(img.dtype)
 
         # Create delayed images
         lazy_imgs = [delayed(load_and_resize)(f) for f in files]
@@ -1483,6 +1489,12 @@ class VolumeRegistration:
         if os.path.exists(output_zarr):
             print(f"Zarr directory {output_zarr} already exists. Removing.")
             shutil.rmtree(output_zarr)
+
+        if self.debug:
+            print(f"Debug mode: not actually saving to Zarr, just computing the downsampled array shape.")
+            print(f"Downsampled array shape would be: {dask_imgs.shape}")
+            print(f"Saving to output at {output_zarr} skipped in debug mode.")
+            return
 
         with ProgressBar():
             dask_imgs.to_zarr(output_zarr, overwrite=True)
