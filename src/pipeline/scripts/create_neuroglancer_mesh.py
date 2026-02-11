@@ -781,63 +781,6 @@ class MeshPipeline():
             return out
 
     def process_vessels(self):
-
-        def label_vesselsXXX(radius_map, depth_map, binary_dask):
-            """
-            Create combined vessel labels based on radius + depth.
-            at downsampled scale = 32
-            Radius min and max: 0.0, 5.744562646538029
-            Depth min and max: 0.0, 91.10982383914481
-            Output labels:
-            0 = background
-            1–4 = vessel radius classes
-            10–40 = radius+depth combined classes
-            """
-            #radius_map  # convert to µm
-            #depth_map    # convert to µm
-            radius_groups = get_group_boundaries(radius_map.max())
-            depth_groups = get_group_boundaries(depth_map.max())
-
-            labels = np.zeros_like(radius_map, dtype=self.dtype)
-
-            print(f'Radius min and max: {radius_map.min()}, {radius_map.max()}')
-            
-            print(f'Depth min and max: {depth_map.min()}, {depth_map.max()}')
-
-            # Radius classes
-            cap = (radius_map > 0) & (radius_map < radius_groups[1])
-            small = (radius_map >= radius_groups[1]) & (radius_map < radius_groups[2])
-            med = (radius_map >= radius_groups[2]) & (radius_map < radius_groups[3])
-            large = radius_map >= radius_groups[3]
-
-            labels[cap & binary_dask] = 1
-            labels[small & binary_dask] = 2
-            labels[med & binary_dask] = 3
-            labels[large & binary_dask] = 4
-
-            # Depth classes
-            surface = depth_map < depth_groups[1]
-            mid = (depth_map >= depth_groups[1]) & (depth_map < depth_groups[2])
-            deep = depth_map >= depth_groups[2]
-
-            # Combined classification (10s=surface, 20s=mid, 30s=deep)
-            labels[(cap & surface)] = 11
-            labels[(small & surface)] = 12
-            labels[(med & surface)] = 13
-            labels[(large & surface)] = 14
-
-            labels[(cap & mid)] = 21
-            labels[(small & mid)] = 22
-            labels[(med & mid)] = 23
-            labels[(large & mid)] = 24
-
-            labels[(cap & deep)] = 31
-            labels[(small & deep)] = 32
-            labels[(med & deep)] = 33
-            labels[(large & deep)] = 34
-
-            return labels
-
         def load_tiff_stack(path, chunk_shape=(64, 64, 64)):
             files = sorted([os.path.join(path, f) for f in os.listdir(path) if f.endswith('.tif')])
             sample = tiff.imread(files[0])
@@ -848,36 +791,8 @@ class MeshPipeline():
                 darr[i] = da.from_array(tiff.imread(f), chunks=chunk_shape[1:])
 
             return darr
-
-        def classify_vessels(radius, depth):
-            """
-            Returns:
-            0 = background
-            1 = capillary
-            2 = arteriole
-            3 = venule
-            4 = artery
-            5 = vein
-            """
-            out = np.zeros_like(radius, dtype=self.dtype)
-            print(f'Radius min and max: {radius.min()}, {radius.max()}')
-            print(f'Depth min and max: {depth.min()}, {depth.max()}')
-            capillary = (radius > 0) & (radius < 4)
-            #capillary = (radius < 4)
-            arteriole = (radius >= 4) & (radius < 10) & (depth < 300)
-            venule    = (radius >= 4) & (radius < 10) & (depth >= 300)
-            artery    = (radius >= 10) & (depth < 500)
-            vein      = (radius >= 10) & (depth >= 500)
-
-            out[capillary] = 1
-            out[arteriole] = 2
-            out[venule]    = 3
-            out[artery]    = 4
-            out[vein]      = 5
-
-            return out        
         
-        def process_large_volume(zarr_path, out_path, mask_path):
+        def process_large_volume(zarr_path, out_path):
             # Optimal chunking
 
 
@@ -900,86 +815,18 @@ class MeshPipeline():
 
             with ProgressBar():
                 labels.to_zarr(out_path, overwrite=True)
-
-
-
-            """
-            # Brain mask
-            with ProgressBar():
-                brain_mask = binary_dask.map_blocks(create_brain_mask, dtype=bool)
-            print(f"Loaded brain mask with type {type(brain_mask)} with shape {brain_mask.shape} dtype {brain_mask.dtype}")
-
-            assert brain_mask.shape == binary_dask.shape, "Brain mask and vessel volume must have the same shape"
-            assert brain_mask.dtype == bool, "Brain mask must be boolean"
-            assert binary_dask.chunksize == brain_mask.chunksize, "Brain mask and vessel volume must have the same chunk size"
-
-            radius = map_overlap(
-                edt_block,
-                binary_dask,
-                depth=overlap,
-                boundary='reflect',
-                dtype=np.float32,
-                trim=True
-            ) * 1
-
-            print(f"Computed radius map with type {type(radius)} with shape {radius.shape} and chunks {radius.chunksize} dtype {radius.dtype}")
-            # --------------------------
-            # Depth computation
-            # --------------------------
-
-            # Depth from brain surface
-            # (distance inside brain mask)
-            depth = map_overlap(
-                edt_block,
-                brain_mask,
-                depth=overlap,
-                boundary='reflect',
-                dtype=np.float32,
-                trim=True
-            ) * self.scale
-
-            # Rechunk depth to match radius grid
-            print(f"Computed depth map with type {type(depth)} with shape {depth.shape} and chunks {depth.chunksize} dtype {depth.dtype}")
-
-            labels = da.map_blocks(
-                classify_vessels,
-                radius,
-                depth,
-                dtype=self.dtype
-            )
-            print(f'Labels computed with shape {labels.shape} and chunks {labels.chunksize} dtype {labels.dtype} type {type(labels)}')
-            with ProgressBar():
-                labels.to_zarr(out_path, overwrite=True)
-            return
-
-
-            # Labeling
-            #with ProgressBar():
-            labels = da.map_blocks(label_vessels, radius, depth, binary_dask, dtype=self.dtype)
-            print(f'Labels computed with shape {labels.shape} and chunks {labels.chunksize} dtype {labels.dtype} type {type(labels)}')
-
-            
-
-            with ProgressBar():
-                mask = brain_mask.astype(self.dtype)
-                mask.to_zarr(mask_path, overwrite=True)
-                if not os.path.exists(self.image_dir):
-                    self.process_neuroglancer_image(mask_path)
-            
-            """
             test_zarr = zarr.open(out_path, mode='r')
             print(test_zarr.info)
 
         zarr_path = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}.zarr')
         out_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'vessel_labels_{self.scale}.zarr')
-        mask_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'brain_mask_{self.scale}.zarr')
         if os.path.exists(out_path):
             print(f"Output path {out_path} already exists")
             labels = zarr.open(out_path, mode='r')
             print(labels.info)
             self.process_neuroglancer(out_path)
         else:
-            process_large_volume(zarr_path, out_path, mask_path)
+            process_large_volume(zarr_path, out_path)
 
 
 
