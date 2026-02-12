@@ -781,11 +781,12 @@ class MeshPipeline():
             return out
 
     def process_vessels(self):
-        def load_tiff_stack(path, chunk_shape=(64, 64, 64)):
+        def load_tiff_stack(path):
             files = sorted([os.path.join(path, f) for f in os.listdir(path) if f.endswith('.tif')])
             sample = tiff.imread(files[0])
             z = len(files)
             y, x = sample.shape
+            chunk_shape = (1, sample.shape[0], sample.shape[1])
             darr = da.zeros((z, y, x), dtype=sample.dtype, chunks=chunk_shape)
             for i, f in enumerate(tqdm(files, desc="Loading TIFF stack into Dask array")):
                 darr[i] = da.from_array(tiff.imread(f), chunks=chunk_shape[1:])
@@ -806,7 +807,7 @@ class MeshPipeline():
                     self.create_volume()
                 sample = tiff.imread(os.path.join(input_dir, os.listdir(input_dir)[0]))
                 chunk_shape = (1, sample.shape[1], sample.shape[0])
-                binary_dask = load_tiff_stack(input_dir, chunk_shape=chunk_shape)
+                binary_dask = load_tiff_stack(input_dir)
                 binary_dask = binary_dask.rechunk('auto')
                 binary_dask.to_zarr(zarr_path, overwrite=True)
                 del binary_dask
