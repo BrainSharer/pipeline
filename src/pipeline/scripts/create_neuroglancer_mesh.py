@@ -818,7 +818,10 @@ class MeshPipeline():
             test_zarr = zarr.open(out_path, mode='r')
             print(test_zarr.info)
 
-        zarr_path = os.path.join(self.fileLocationManager.prep, 'C1', f'downsampled_{self.scale}.zarr')
+        zarr_path = os.path.join('/scratch/pipeline_tmp', f'downsampled_{self.scale}.zarr')
+        if not os.path.exists('/scratch/pipeline_tmp'):
+            print('/scratch/pipeline_tmp does not exist')
+            return
         out_path = os.path.join(self.fileLocationManager.neuroglancer_data, f'vessel_labels_{self.scale}.zarr')
         if os.path.exists(out_path):
             print(f"Output path {out_path} already exists")
