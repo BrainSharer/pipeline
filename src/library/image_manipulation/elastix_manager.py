@@ -62,8 +62,8 @@ class ElastixManager():
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
-                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
-                #rotation, xshift, yshift, metric = self.register_sections(fixed_index, moving_index)
+                #rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
+                rotation, xshift, yshift, metric = self.register_sections(fixed_index, moving_index)
                 
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
@@ -127,27 +127,36 @@ class ElastixManager():
                     f.write('\n')
 
 
+
     def register_sections(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         # Load fixed and moving images
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed_image = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving_image = sitk.ReadImage(moving_file, sitk.sitkFloat32)
-
         # Initial alignment of the centers of the two volumes
         initial_transform = sitk.CenteredTransformInitializer(
             fixed_image, 
             moving_image, 
             sitk.Euler2DTransform(),
-            sitk.CenteredTransformInitializerFilter.MOMENTS
+            sitk.CenteredTransformInitializerFilter.GEOMETRY
         )
-
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-
         R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.8)
+        """
+        Use all pixels for registration, this really helps with most images except those that are missing lots of tissue.
+        Using a low percentage also does not help.
+        between sections. 
+        """
+        R.SetMetricSamplingPercentage(0.2) 
+        fixed_mask = self.create_tissue_mask(fixed_image)
+        moving_mask = self.create_tissue_mask(moving_image)
+        R.SetMetricFixedMask(fixed_mask)
+        R.SetMetricMovingMask(moving_mask)
+        # Interpolator
+        R.SetInterpolator(sitk.sitkLinear)
         # Optimizer
         R.SetOptimizerAsRegularStepGradientDescent(
             learningRate=2,
@@ -157,8 +166,6 @@ class ElastixManager():
         )
         R.SetOptimizerScalesFromPhysicalShift()
 
-        # Interpolator
-        R.SetInterpolator(sitk.sitkLinear)
 
         # Initial transform
         R.SetInitialTransform(initial_transform, inPlace=False)
@@ -615,3 +622,18 @@ class ElastixManager():
                     d[key] = value
 
             return d
+
+    @staticmethod
+    def create_tissue_mask(image, threshold=0):
+        """
+        Create a mask to exclude empty regions.
+        Assumes background is near zero.
+        """
+        mask = sitk.BinaryThreshold(
+            image,
+            lowerThreshold=threshold,
+            upperThreshold=1e9,
+            insideValue=1,
+            outsideValue=0
+        )
+        return sitk.Cast(mask, sitk.sitkUInt8)
