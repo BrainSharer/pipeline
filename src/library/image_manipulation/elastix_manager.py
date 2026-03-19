@@ -143,18 +143,19 @@ class ElastixManager():
         )
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
-        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
         R.SetMetricSamplingStrategy(R.RANDOM)
         """
         Use all pixels for registration, this really helps with most images except those that are missing lots of tissue.
         Using a low percentage also does not help.
         between sections. 
         """
-        R.SetMetricSamplingPercentage(0.2) 
-        fixed_mask = self.create_tissue_mask(fixed_image)
-        moving_mask = self.create_tissue_mask(moving_image)
-        R.SetMetricFixedMask(fixed_mask)
-        R.SetMetricMovingMask(moving_mask)
+        R.SetMetricSamplingPercentage(0.5)
+        if self.use_mask: 
+            fixed_mask = self.create_tissue_mask(fixed_image)
+            moving_mask = self.create_tissue_mask(moving_image)
+            R.SetMetricFixedMask(fixed_mask)
+            R.SetMetricMovingMask(moving_mask)
         # Interpolator
         R.SetInterpolator(sitk.sitkLinear)
         # Optimizer

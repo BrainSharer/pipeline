@@ -76,7 +76,18 @@ class Pipeline(
     TASK_NG_PREVIEW = "Creating neuroglancer preview"
     TASK_SHELL = "Creating 3D shell outline"
 
-    def __init__(self, animal: str, channel: str ='C1', zarrlevel=0, downsample=False, scaling_factor=SCALING_FACTOR, task='status', arg_uuid: str = None, debug: bool = False):
+    def __init__(
+        self,
+        animal: str,
+        channel: str = "C1",
+        zarrlevel=0,
+        downsample=False,
+        scaling_factor=SCALING_FACTOR,
+        task="status",
+        arg_uuid: str = None,
+        debug: bool = False,
+        use_mask: bool = False,
+    ):
         """Setting up the pipeline and the processing configurations
 
            The pipeline performst the following steps:
@@ -101,6 +112,7 @@ class Pipeline(
         self.task = task
         self.downsample = downsample
         self.debug = debug
+        self.use_mask = use_mask
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
         self.sqlController = SqlController(animal)
         self.session = self.sqlController.session
@@ -118,17 +130,17 @@ class Pipeline(
         self.zarrlevel = zarrlevel
         self.scaling_factor = scaling_factor
         self.bgcolor = 0
-        self.checksum = os.path.join(self.fileLocationManager.www, 'checksums')
-        self.use_scratch = True # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
-        self.available_memory = self.get_available_ram_gb() 
+        self.checksum = os.path.join(self.fileLocationManager.www, "checksums")
+        self.use_scratch = True  # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
+        self.available_memory = self.get_available_ram_gb()
         self.section_count = self.get_section_count()
 
         self.fileLogger = FileLogger(self.fileLocationManager.get_logdir(), self.debug)
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        if not hasattr(self, 'SCRATCH'):
+        if not hasattr(self, "SCRATCH"):
             self.SCRATCH = get_scratch_dir()
         if arg_uuid:
-            self.set_id = arg_uuid #for debug of prev. uuid
+            self.set_id = arg_uuid  # for debug of prev. uuid
         else:
             self.set_id = uuid.uuid4().hex
 
@@ -157,7 +169,6 @@ class Pipeline(
         print("\tavailable RAM:".ljust(20), f"{str(self.available_memory)}GB".ljust(20))
         print()
 
-
     def get_section_count(self):
         """
         Retrieves the count of sections for the specified animal. If the section count
@@ -171,9 +182,8 @@ class Pipeline(
             section_count = len(os.listdir(self.fileLocationManager.get_thumbnail()))
         elif section_count == 0 and not os.path.exists(self.fileLocationManager.get_thumbnail()):
             section_count = self.sqlController.scan_run.number_of_slides
-                                           
-        return section_count
 
+        return section_count
 
     def extract(self):
         """
@@ -202,7 +212,7 @@ class Pipeline(
         self.extract_tiffs_from_czi()
 
         self.check_for_duplicates()
-        
+
         """scenes only need to be set once in the beginning, but only once.
         If the channel is 1 and downsample is True, reorder scenes. But if it is run
         again, it will overwrite the scene ordering, so we only do this once.
@@ -213,8 +223,8 @@ class Pipeline(
             self.create_web_friendly_image()
             self.create_previews()
             self.create_checksums()
-            
-            #ADD SYMLINKS TO EXTRACTED THUMBNAIL IMAGES if necessary
+
+            # ADD SYMLINKS TO EXTRACTED THUMBNAIL IMAGES if necessary
             if not self.url_exists(self.animal):
                 target_path = str(self.fileLocationManager.www)
                 link_path = str(Path('/', 'srv', self.animal))
@@ -222,32 +232,29 @@ class Pipeline(
 
         print(f'Finished {self.TASK_EXTRACT}.')
 
-
     def mask(self):
         print(self.TASK_MASK)
         self.apply_QC() # symlinks from tif/thumbnail_original to CX/thumbnail or CX/full are created
-            
+
         if self.channel == 1 and self.downsample:
             self.create_normalized_image()
-            
+
         if self.channel == 1:
             self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
-        
 
     def clean(self):
         """I am taking out the set width and height as we might need to manually adjust this
         """
         print(self.TASK_CLEAN)
-        
+
         self.check_ram()
         if self.channel == 1 and self.downsample:
             self.apply_user_mask_edits()
             self.set_max_width_and_height()
-        
+
         self.create_cleaned_images()
         print(f'Finished {self.TASK_CLEAN}.')
-
 
     def histogram(self):
         print(self.TASK_HISTOGRAM)
@@ -260,7 +267,6 @@ class Pipeline(
             print(f'No histogram for full resolution images')
         print(f'Finished {self.TASK_HISTOGRAM}.')
 
-
     def affine_align(self):
         """Perform the section to section alignment (registration)
         This method needs work. It is not currently used.
@@ -269,7 +275,6 @@ class Pipeline(
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
         os.makedirs(self.output, exist_ok=True)
         self.create_affine_transformations()
-
 
     def align(self):
         """Perform the section to section alignment (registration)
@@ -287,9 +292,8 @@ class Pipeline(
             self.create_within_stack_transformations()
 
         self.start_image_alignment()
-        
-        print(f'Finished {self.TASK_ALIGN}.')
 
+        print(f'Finished {self.TASK_ALIGN}.')
 
     def realign(self): 
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
@@ -317,7 +321,6 @@ class Pipeline(
         self.start_image_alignment()
         print(f'Finished {self.TASK_REALIGN}.')
 
-
     def neuroglancer(self):
         """This is the main method to run the entire neuroglancer process.
         We also define the input, output and progress directories.
@@ -332,15 +335,15 @@ class Pipeline(
         if self.iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
             return
-        
+
         print(self.TASK_NEUROGLANCER)
-        
+
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample, iteration=self.iteration)         
         self.output = self.fileLocationManager.get_neuroglancer(self.downsample, self.channel, iteration=self.iteration)
         self.use_scratch = use_scratch_dir(self.input)
         self.rechunkme_path = self.fileLocationManager.get_neuroglancer_rechunkme(
             self.downsample, self.channel, iteration=self.iteration, use_scratch_dir=self.use_scratch)
-        
+
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
 
@@ -348,12 +351,11 @@ class Pipeline(
         print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
         print(f'Rechunkme: {self.rechunkme_path}')
-        
+
         self.create_neuroglancer()
         self.create_downsamples()
         print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
-
 
     def omezarr(self):
         """Note for RGB ndim=3 images!!!!
@@ -370,7 +372,7 @@ class Pipeline(
         layer. However, this is currently only supported if that dimension is not chunked, i.e. the chunk size must be 3 in your case.
         """
         print(self.TASK_OMEZARR)
-        #self.check_ram()
+        # self.check_ram()
 
         self.input, _ = self.fileLocationManager.get_alignment_directories(channel=self.channel, downsample=self.downsample) 
         self.scratch_space = os.path.join('/data', 'pipeline_tmp', self.animal, 'dask-scratch-space')
@@ -385,26 +387,21 @@ class Pipeline(
 
         print(f'Finished {self.TASK_OMEZARR}.')
 
-
     def omezarr_info(self):
         self.get_omezarr_info()
 
-
     def omezarr2tif(self):
         self.write_sections_from_volume()
-
 
     def shell(self):
         print(self.TASK_SHELL, end=" ")
         self.create_shell()
         print(f'Finished {self.TASK_SHELL}.')
 
-
     def align_masks(self):
         print("Aligning masks")
         self.create_rotated_aligned_masks()
         print(f'Finished aligning masks.')
-
 
     def extra_channel(self):
         """This step is in case self.channel X differs from self.channel 1 and came from a different set of CZI files. 
@@ -424,7 +421,6 @@ class Pipeline(
             self.create_cleaned_images_full_resolution(channel=self.channel)
             self.apply_full_transformations(channel=self.channel)
         print(f'Finished {self.TASK_EXTRA_CHANNEL}.')
-
 
     def check_status(self):
         prep = self.fileLocationManager.prep
@@ -502,7 +498,6 @@ class Pipeline(
         url_status = self.check_url(self.animal)
         print(url_status)
 
-
     def ng_preview(self):
         '''
         USED TO GENERATE NG STATE WITH DEFAULT SETTINGS (AVAILABLE CHANNELS, ANNOTATIONS)
@@ -512,7 +507,6 @@ class Pipeline(
         self.ng_prep() #will create precomputed format if not exist
         self.gen_ng_preview() #just create ng state
         print(f'Finished {self.TASK_NG_PREVIEW}.')
-        
 
     def check_settings(self):
         """
@@ -528,7 +522,6 @@ class Pipeline(
             print(error)
             sys.exit()
 
-
     def check_ram(self):
         """
         I set an arbitrary limit of 50GB of RAM for the full resolution images
@@ -541,8 +534,7 @@ class Pipeline(
             error += '\n(Available RAM is calculated by running "free -h" on the command line.)'
             error += '\nYou need to free up some RAM. From the terminal run as root (login as root first: sudo su -l) then run:'
             error += '\n\tsync;echo 3 > /proc/sys/vm/drop_caches'
-            
-        
+
         if len(error) > 0:
             print(error)
 
@@ -563,7 +555,7 @@ class Pipeline(
             status = f"Imageserver link exists for {animal}"
 
         return status
-    
+
     @staticmethod
     def url_exists(animal):
         exists = True
