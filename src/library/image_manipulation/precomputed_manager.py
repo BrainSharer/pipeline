@@ -1,5 +1,7 @@
 import os
 import sys
+from packaging.version import Version
+import cloudvolume
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
@@ -138,7 +140,11 @@ class NgPrecomputedMaker:
 
         tq = LocalTaskQueue(parallel=workers)
 
-        if image_manager.num_channels > 2:
+        # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
+        # I think the sharded transfer tasks are not needed for newer versions of cloud volume and may be causing problems.  
+        cloud_volume_version = cloudvolume.__version__
+
+        if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
             print(f'Creating non-sharded transfer tasks with chunks={chunks}')
             task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
         else:
@@ -152,7 +158,7 @@ class NgPrecomputedMaker:
         for mip in range(0, mips):
             cv = CloudVolume(outpath, mip)
             
-            if image_manager.num_channels > 2:
+            if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
                 print(f'Creating downsample task at mip={mip}')
                 task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True)
             else:

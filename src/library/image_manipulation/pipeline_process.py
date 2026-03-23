@@ -7,6 +7,7 @@ the only required argument.
 All imports are listed by the order in which they are used in the 
 """
 
+from collections import OrderedDict
 import os, sys
 import shutil
 import SimpleITK as sitk
@@ -34,6 +35,7 @@ from library.utilities.utilities_mask import compare_directories
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
 from library.cell_labeling.cell_ui import Cell_UI
+from library.utilities.utilities_registration import align_image_to_affine
 
 
 try:
@@ -267,14 +269,31 @@ class Pipeline(
             print(f'No histogram for full resolution images')
         print(f'Finished {self.TASK_HISTOGRAM}.')
 
-    def affine_align(self):
-        """Perform the section to section alignment (registration)
-        This method needs work. It is not currently used.
+    def multiple_align(self):
+        """Perform the section to section alignment (registration) in multiple iterations.
         """
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='affine')
-        os.makedirs(self.output, exist_ok=True)
-        self.create_affine_transformations()
+        transform_parameters = {}
+        transform_parameters[0] = {"iteration":0, "sampling_percentage": 1.0, "use_mask": True, "input_dir": CLEANED_DIR, "output_dir": "iteration_0"}
+        transform_parameters[1] = {"iteration":1, "sampling_percentage": 0.1, "use_mask": False, "input_dir": "iteration_0", "output_dir": "iteration_1"}
+        transform_parameters[2] = {"iteration":2, "sampling_percentage": 0.1, "use_mask": False, "input_dir": "iteration_1", "output_dir": ALIGNED_DIR}
+        for i in range(len(transform_parameters)):
+            print(f'Alignment iteration: {i} with params: {transform_parameters[i]}')
+            input_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, transform_parameters[i]["input_dir"])
+            output_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, transform_parameters[i]["output_dir"])
+            # clean up any previous iterations in the database and files on dis
+            self.sqlController.delete_elastix_iteration(self.animal, iteration=transform_parameters[i]["iteration"])
+            if os.path.exists(output_dir):
+                shutil.rmtree(output_dir)
+                print(f"Deleted previous alignment iteration directory: {output_dir}")
+            os.makedirs(output_dir, exist_ok=True)
+            self.create_within_stack_transformations(transform_parameters=transform_parameters[i])
+            transformations = self.get_transformations(iteration=i)
+            for file, T in transformations.items():
+                infile = os.path.join(input_dir, file)
+                outfile = os.path.join(output_dir, file)
+                file_key = (infile, outfile, T, self.bgcolor)
+                align_image_to_affine(file_key)
 
     def align(self):
         """Perform the section to section alignment (registration)

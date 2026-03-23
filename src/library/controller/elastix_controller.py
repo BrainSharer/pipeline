@@ -35,7 +35,7 @@ class ElastixController():
         row = self.session.query(ElastixTransformation).filter(
             ElastixTransformation.FK_prep_id == animal,
             ElastixTransformation.iteration == iteration,
-            ElastixTransformation.section == section).first()
+            ElastixTransformation.section == section).one_or_none()
 
         if row is None:
             R = 0
