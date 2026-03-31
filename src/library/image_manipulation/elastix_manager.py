@@ -145,11 +145,6 @@ class ElastixManager():
         between sections. 
         """
         R.SetMetricSamplingPercentage(transform_parameters["sampling_percentage"])
-        if transform_parameters["use_mask"]: 
-            fixed_mask = self.create_tissue_mask(fixed_image)
-            moving_mask = self.create_tissue_mask(moving_image)
-            R.SetMetricFixedMask(fixed_mask)
-            R.SetMetricMovingMask(moving_mask)
         # Interpolator
         R.SetInterpolator(sitk.sitkLinear)
         # Optimizer
@@ -495,7 +490,7 @@ class ElastixManager():
             return d
 
     @staticmethod
-    def create_tissue_mask(image, threshold=0):
+    def create_tissue_mask(image, threshold=0, index=None):
         """
         Create a mask to exclude empty regions.
         Assumes background is near zero.
@@ -507,4 +502,19 @@ class ElastixManager():
             insideValue=1,
             outsideValue=0
         )
-        return sitk.Cast(mask, sitk.sitkUInt8)
+        eroder = sitk.GrayscaleErodeImageFilter()
+        eroder.SetKernelType(sitk.sitkBall)
+        eroder.SetKernelRadius(10)
+        #eroder.SetForegroundValue(255) # Value of object to shrink
+        #eroder.SetBackgroundValue(0) # Value to fill with
+        eroded_img = eroder.Execute(mask)
+
+        mask = sitk.Cast(eroded_img, sitk.sitkUInt8)
+        if index is not None:
+            mask_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK270/preps/C1/thumbnail_mask"
+            mask_arr = sitk.GetArrayFromImage(mask)
+            #ids, counts = np.unique(mask_arr, return_counts=True)
+            #print(f"ids={ids}, counts={counts} for mask {index}")
+            mask_path = os.path.join(mask_dir, str(index).zfill(3) + ".tif")
+            write_image(mask_path, mask_arr)
+        return mask
