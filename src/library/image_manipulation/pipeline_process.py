@@ -372,8 +372,9 @@ class Pipeline(
         print(f'Rechunkme: {self.rechunkme_path}')
 
         self.create_neuroglancer()
-        self.create_downsamples()
-        print(f'Make sure you delete {self.rechunkme_path}.')
+        #####self.create_downsamples()
+        print('Creating the 1st mip. YOu need to run the downsampling now')
+        #####print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
     def omezarr(self):
