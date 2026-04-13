@@ -10,7 +10,7 @@ import igneous.task_creation as tc
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import test_dir
 from library.image_manipulation.image_manager import ImageManager
-XY_CHUNK = 128
+XY_CHUNK = 64
 Z_CHUNK = 64
 
 
@@ -156,14 +156,18 @@ class NgPrecomputedMaker:
         print('Finished transfer task')
 
         for mip in range(0, mips):
+            if mip == 0:
+                factor = [2,2,1]
+            else:
+                factor = [2,2,2]
             cv = CloudVolume(outpath, mip)
             
             if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
                 print(f'Creating downsample task at mip={mip}')
-                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True)
+                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor)
             else:
-                print(f'Creating sharded downsample task at mip={mip} with chunks={chunks} ')
-                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
+                print(f'Creating sharded downsample task at mip={mip} with chunks={chunks} and factor={factor}')
+                #task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor, num_mips=1)
             
-            tq.insert(task)
-            tq.execute()
+            #tq.insert(task)
+            #tq.execute()

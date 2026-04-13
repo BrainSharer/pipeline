@@ -151,7 +151,7 @@ class ElastixManager():
         R.SetOptimizerAsRegularStepGradientDescent(
             learningRate=2,
             minStep=1e-4,
-            numberOfIterations=250,
+            numberOfIterations=1000,
             gradientMagnitudeTolerance=1e-8
         )
         R.SetOptimizerScalesFromPhysicalShift()
