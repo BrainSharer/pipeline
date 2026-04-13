@@ -5,7 +5,7 @@ import cloudvolume
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
-
+import numpy as np
 
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import test_dir
@@ -36,14 +36,13 @@ class NgPrecomputedMaker:
     def get_scales(self):
         """returns the scanning resolution for a given animal.  
         The scan resolution and sectioning thickness are retrived from the database.
-        The resolution in the database is stored as micrometers (microns -um). But
-        neuroglancer wants nanometers so we multipy by 1000
+        The resolution in the database is stored as micrometers (microns -um). 
 
         :returns: list of converstion factors from pixel to micron for x,y and z
         """
         db_resolution = self.sqlController.scan_run.resolution
         zresolution = self.sqlController.scan_run.zresolution
-        resolution = db_resolution * 1000
+        resolution = db_resolution
         if self.downsample:
           if zresolution < 20:
                 zresolution *=  self.scaling_factor
@@ -51,7 +50,7 @@ class NgPrecomputedMaker:
           resolution *=  self.scaling_factor         
 
         resolution = int(resolution)
-        zresolution = int(zresolution * 1000)
+        zresolution = int(zresolution)
         scales = (resolution, resolution, zresolution)
         return scales
 
@@ -71,6 +70,7 @@ class NgPrecomputedMaker:
 
         #test_dir(self.animal, self.input, self.section_count, self.downsample, same_size=True)
         scales = self.get_scales()
+        scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
         print(f'scales={scales} scaling_factor={self.scaling_factor} downsample={self.downsample}')
         num_channels = image_manager.num_channels
         # neuroglancer does not support boolean dtype
@@ -113,17 +113,23 @@ class NgPrecomputedMaker:
 
         if self.downsample:
             xy_chunk = XY_CHUNK//2
-            mips = 4
+            #mips = 4
         else:
             xy_chunk = XY_CHUNK
-            mips = 7
-
+            #mips = 7
         if image_manager.len_files < Z_CHUNK:
             z_chunk = image_manager.len_files
         else:
             z_chunk = Z_CHUNK
             
         chunks = [xy_chunk, xy_chunk, z_chunk]
+
+        resolutions, factors, chunk_sizes = self.compute_mipmaps(
+            self.get_scales(),
+            max_voxel_size=512.0,
+            base_chunk_size=(xy_chunk, xy_chunk, Z_CHUNK))
+        
+        mips = len(resolutions) - 1
 
         if os.path.exists(self.output):
             print(f"DIR {self.output} already exists. Downsampling has already been performed.")
@@ -156,18 +162,74 @@ class NgPrecomputedMaker:
         print('Finished transfer task')
 
         for mip in range(0, mips):
-            if mip == 0:
-                factor = [2,2,1]
-            else:
-                factor = [2,2,2]
+            factor = factors[mip]
             cv = CloudVolume(outpath, mip)
             
             if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
-                print(f'Creating downsample task at mip={mip}')
+                print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunks} resolution = {resolutions[mip]}')
                 task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor)
             else:
                 print(f'Creating sharded downsample task at mip={mip} with chunks={chunks} and factor={factor}')
-                #task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor, num_mips=1)
+                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor, num_mips=1)
             
-            #tq.insert(task)
-            #tq.execute()
+            tq.insert(task)
+            tq.execute()
+
+    @staticmethod
+    def compute_mipmaps(base_resolution, max_voxel_size=512.0, base_chunk_size=(64, 64, 64)):
+        num_mips=100
+        base_resolution = np.array(base_resolution, dtype=float)
+
+        resolutions = [base_resolution]
+        scales = [(2,2,1)]
+        chunk_sizes = [base_chunk_size]
+
+        current_res = base_resolution.copy()
+
+        for mip in range(1, num_mips):
+            # --- Continuous anisotropy correction ---
+            # Normalize by smallest voxel dimension
+            min_res = np.min(current_res)
+            ratios = current_res / min_res
+
+            # Smooth scaling: more aggressive for finer axes
+            # Use inverse ratio to bias scaling
+            inv_ratios = 1.0 / ratios
+
+            # Normalize to [1, 2] range
+            scale = 1.0 + inv_ratios
+            scale = np.clip(scale, 1.0, 2.0)
+
+            # Round to nearest integer (Neuroglancer prefers ints)
+            scale = np.round(scale).astype(int)
+
+            # Ensure at least 1x scaling
+            scale = np.maximum(scale, 1)
+
+            # --- Apply scaling ---
+            new_res = current_res * scale
+
+            # --- Stop if exceeding max voxel size ---
+            if np.any(new_res > max_voxel_size):
+                print(f"Stopping at mip {mip}: exceeded max voxel size")
+                break
+
+            # --- Compute chunk size (world-space balanced) ---
+            # Keep chunk size ~constant in microns
+            world_chunk = np.array(base_chunk_size) * base_resolution
+            chunk = np.round(world_chunk / new_res).astype(int)
+
+            # Clamp chunk sizes to reasonable bounds
+            chunk = np.clip(chunk, 16, 256)
+
+            # Store results
+            scales.append(scale)
+            resolutions.append(new_res.tolist())
+            chunk_sizes.append(tuple(chunk))
+
+            current_res = new_res
+
+        resolutions = [tuple(float(x) for x in res) for res in resolutions]
+        scales = [tuple(int(x) for x in s) for s in scales]
+        chunk_sizes = [tuple(int(x) for x in s) for s in chunk_sizes]
+        return resolutions, scales, chunk_sizes
