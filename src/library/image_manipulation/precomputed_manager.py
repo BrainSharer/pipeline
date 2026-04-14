@@ -129,7 +129,7 @@ class NgPrecomputedMaker:
         if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
             sharded = False
         else:
-            sharded = False
+            sharded = True
         
         cloudpath = f"file://{self.rechunkme_path}"
         self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
