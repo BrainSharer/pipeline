@@ -365,16 +365,24 @@ class Pipeline(
 
         self.progress_dir = self.fileLocationManager.get_neuroglancer_progress(self.downsample, self.channel, iteration=self.iteration)
         os.makedirs(self.progress_dir, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
+
 
         print(f'Input: {self.input}')
         print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
         print(f'Rechunkme: {self.rechunkme_path}')
+        progress_file_count = len(os.listdir(self.progress_dir))
+        full_file_count = len(os.listdir(self.input))
+        if os.path.exists(self.rechunkme_path) and progress_file_count == full_file_count:
+            print(f'Rechunkme path already exists: {self.rechunkme_path}')
+            print("The 1st neuroglancer process has already been completed. If you want to rerun, please delete:")
+            print("\t", self.output)
+            print("\t", self.progress_dir)
+            print("\t", self.rechunkme_path)
 
         self.create_neuroglancer()
         self.create_downsamples()
-        #print('Creating the 1st mip. YOu need to run the downsampling now')
-        #####print(f'Make sure you delete {self.rechunkme_path}.')
         print(f'Finished {self.TASK_NEUROGLANCER}.')
 
     def omezarr(self):

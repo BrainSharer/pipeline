@@ -111,78 +111,65 @@ class NgPrecomputedMaker:
 
         image_manager = ImageManager(self.input)
 
-        if self.downsample:
-            xy_chunk = XY_CHUNK//2
-            #mips = 4
-        else:
-            xy_chunk = XY_CHUNK
-            #mips = 7
         if image_manager.len_files < Z_CHUNK:
             z_chunk = image_manager.len_files
         else:
             z_chunk = Z_CHUNK
             
-        chunks = [xy_chunk, xy_chunk, z_chunk]
+        chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
-        resolutions, factors, chunk_sizes = self.compute_mipmaps(
-            self.get_scales(),
-            max_voxel_size=512.0,
-            base_chunk_size=(xy_chunk, xy_chunk, Z_CHUNK))
-        
-        mips = len(resolutions) - 1
-
-        if os.path.exists(self.output):
-            print(f"DIR {self.output} already exists. Downsampling has already been performed.")
-            return
+        scales, resolutions = self.compute_mipmaps(self.get_scales())
+        mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
         outpath = f"file://{self.output}"
         if not os.path.exists(self.rechunkme_path):
             print(f"DIR {self.rechunkme_path} does not exist, exiting.")
             sys.exit()
+        cloud_volume_version = cloudvolume.__version__
+        if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
+            sharded = False
+        else:
+            sharded = True
+        
         cloudpath = f"file://{self.rechunkme_path}"
         self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
         self.fileLogger.logevent(f"Output DIR: {self.output}")
         workers =self.get_nworkers()
-        print(f'Writing transfer task with {workers} workers')
-
         tq = LocalTaskQueue(parallel=workers)
 
+        print(f'Writing transfer task with {workers} workers')
         # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
-        # I think the sharded transfer tasks are not needed for newer versions of cloud volume and may be causing problems.  
-        cloud_volume_version = cloudvolume.__version__
 
-        if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
-            print(f'Creating non-sharded transfer tasks with chunks={chunks}')
-            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
-        else:
-            print(f'Creating sharded transfer task with chunks={chunks} to layer {outpath}')
+        if sharded:
             task = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks)
+        else:
+            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
+
+        print(f'Creating transfer task with chunks={chunks} to layer {outpath} sharded={sharded}')
 
         tq.insert(task)
         tq.execute()
         print('Finished transfer task')
 
         for mip in range(0, mips):
-            factor = factors[mip]
+            factor = scales[mip]
+            resolution = resolutions[mip]
             cv = CloudVolume(outpath, mip)
+            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunks} resolution = {resolution} sharded={sharded}')
             
-            if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
-                print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunks} resolution = {resolutions[mip]}')
-                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor)
+            if sharded:
+                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor)
             else:
-                print(f'Creating sharded downsample task at mip={mip} with chunks={chunks} and factor={factor}')
-                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor, num_mips=1)
+                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor)
             
-            tq.insert(task)
+            tq.insert(task)            
             tq.execute()
 
     @staticmethod
-    def compute_mipmaps(base_resolution, max_voxel_size=512.0, base_chunk_size=(64, 64, 64)):
+    def compute_mipmaps(base_resolution, max_voxel_size=512.0):
         num_mips=100
         base_resolution = np.array(base_resolution, dtype=float)
 
-        resolutions = [base_resolution]
         scales = [(2,2,1)]
-        chunk_sizes = [base_chunk_size]
 
         current_res = base_resolution.copy()
 
@@ -214,22 +201,25 @@ class NgPrecomputedMaker:
                 print(f"Stopping at mip {mip}: exceeded max voxel size")
                 break
 
-            # --- Compute chunk size (world-space balanced) ---
-            # Keep chunk size ~constant in microns
-            world_chunk = np.array(base_chunk_size) * base_resolution
-            chunk = np.round(world_chunk / new_res).astype(int)
-
-            # Clamp chunk sizes to reasonable bounds
-            chunk = np.clip(chunk, 16, 256)
-
             # Store results
             scales.append(scale)
-            resolutions.append(new_res.tolist())
-            chunk_sizes.append(tuple(chunk))
-
             current_res = new_res
 
-        resolutions = [tuple(float(x) for x in res) for res in resolutions]
         scales = [tuple(int(x) for x in s) for s in scales]
-        chunk_sizes = [tuple(int(x) for x in s) for s in chunk_sizes]
-        return resolutions, scales, chunk_sizes
+        resolutions = []
+        x,y,z = base_resolution
+        for mip, scale in enumerate(zip(scales)):
+            if mip == 0:
+                x = x * scales[mip][0]
+                y = y * scales[mip][1]
+                z = z * scales[mip][2]
+                resolution = [x, y, z]
+            else:
+                x = resolutions[mip-1][0] * scales[mip][0]
+                y = resolutions[mip-1][1] * scales[mip][1]
+                z = resolutions[mip-1][2] * scales[mip][2]
+
+            resolution = [float(x), float(y), float(z)]
+            resolutions.append(resolution)
+
+        return scales, resolutions
