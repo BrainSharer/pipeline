@@ -125,10 +125,11 @@ class NgPrecomputedMaker:
             print(f"DIR {self.rechunkme_path} does not exist, exiting.")
             sys.exit()
         cloud_volume_version = cloudvolume.__version__
+        # hard coding to sharded = false
         if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
             sharded = False
         else:
-            sharded = True
+            sharded = False
         
         cloudpath = f"file://{self.rechunkme_path}"
         self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
