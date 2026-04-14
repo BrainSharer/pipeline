@@ -374,12 +374,8 @@ class Pipeline(
         print(f'Rechunkme: {self.rechunkme_path}')
         progress_file_count = len(os.listdir(self.progress_dir))
         full_file_count = len(os.listdir(self.input))
-        if os.path.exists(self.rechunkme_path) and progress_file_count == full_file_count:
+        if os.path.exists(self.rechunkme_path):
             print(f'Rechunkme path already exists: {self.rechunkme_path}')
-            print("The 1st neuroglancer process has already been completed. If you want to rerun, please delete:")
-            print("\t", self.output)
-            print("\t", self.progress_dir)
-            print("\t", self.rechunkme_path)
 
         self.create_neuroglancer()
         self.create_downsamples()

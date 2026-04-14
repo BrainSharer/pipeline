@@ -49,8 +49,8 @@ class NgPrecomputedMaker:
 
           resolution *=  self.scaling_factor         
 
-        resolution = int(resolution)
-        zresolution = int(zresolution)
+        resolution = resolution
+        zresolution = zresolution
         scales = (resolution, resolution, zresolution)
         return scales
 
