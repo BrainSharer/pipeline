@@ -1,8 +1,8 @@
 import argparse
 import os
-import tifffile
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
+from tqdm import tqdm
 
 def get_tif_files(directory):
     return sorted([
@@ -19,6 +19,8 @@ def compare_directories(dir1, dir2):
     files1 = get_tif_files(dir1)
     files2 = get_tif_files(dir2)
     all_ok = True
+
+    errors = ""
 
     if len(files1) == 0 or len(files2) == 0:
         print(f"[ERROR] One of the directories is empty: {dir1} ({len(files1)} files), {dir2} ({len(files2)} files)")
@@ -44,23 +46,21 @@ def compare_directories(dir1, dir2):
     print(f"[INFO] {len(files1)} files matched by name.")
 
 
-    for fname in files1:
+    for fname in tqdm(files1, desc="Comparing files"):
         path1 = os.path.join(dir1, fname)
         path2 = os.path.join(dir2, fname)
 
         try:
-            #img1 = tifffile.imread(path1)
-            #img2 = tifffile.imread(path2)
             img1 = get_shape(path1)
             img2 = get_shape(path2)
         except Exception as e:
-            print(f"[ERROR] Failed to read {fname}: {e}")
             all_ok = False
+            errors += f"Failed to read {fname}: {e}\n"
             continue
 
         # Check shape
         if img1 != img2:
-            print(f"[ERROR] Shape mismatch in {fname}: {img1} vs {img2}")
+            errors += f"Shape mismatch in {fname}: {img1} vs {img2}\n"
             all_ok = False
             continue
 
@@ -70,6 +70,8 @@ def compare_directories(dir1, dir2):
         print("[SUCCESS] All files match.")
     else:
         print("[DONE] Differences found.")
+        print("Errors:")
+        print(errors)
 
     return all_ok
 
