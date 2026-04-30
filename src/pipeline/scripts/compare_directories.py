@@ -1,9 +1,8 @@
 import argparse
 import os
-import sys
-import numpy as np
 import tifffile
-
+from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
 
 def get_tif_files(directory):
     return sorted([
@@ -11,6 +10,10 @@ def get_tif_files(directory):
         if f.lower().endswith(('.tif', '.tiff'))
     ])
 
+
+def get_shape(path):
+    with Image.open(path) as img:
+        return img.size[::-1]  # (height, width)
 
 def compare_directories(dir1, dir2):
     files1 = get_tif_files(dir1)
@@ -46,16 +49,18 @@ def compare_directories(dir1, dir2):
         path2 = os.path.join(dir2, fname)
 
         try:
-            img1 = tifffile.imread(path1)
-            img2 = tifffile.imread(path2)
+            #img1 = tifffile.imread(path1)
+            #img2 = tifffile.imread(path2)
+            img1 = get_shape(path1)
+            img2 = get_shape(path2)
         except Exception as e:
             print(f"[ERROR] Failed to read {fname}: {e}")
             all_ok = False
             continue
 
         # Check shape
-        if img1.shape != img2.shape:
-            print(f"[ERROR] Shape mismatch in {fname}: {img1.shape} vs {img2.shape}")
+        if img1 != img2:
+            print(f"[ERROR] Shape mismatch in {fname}: {img1} vs {img2}")
             all_ok = False
             continue
 
