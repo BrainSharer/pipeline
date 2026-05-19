@@ -1,0 +1,30 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Brainsharer pipeline
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Edward
+    family-names: O'Donnell
+    email: eodonnell@ucsd.edu
+  - given-names: 'Duane '
+    family-names: Rinehart
+    email: dreconsulting11@gmail.com
+  - given-names: Kui
+    family-names: Qian
+    email: k1qian@ucsd.edu
+  - given-names: Litao
+    family-names: Qiao
+    email: l1qiao@ucsd.edu
+  - given-names: Zhongkai
+    family-names: Wu
+    email: zhw272@ucsd.edu
+abstract: >-
+  A python pipeline to product neuroglancer data from Zeiss
+  microscopy data.
+keywords:
+  - 'python, Zeiss, microscopy, zarr, precomputed'
