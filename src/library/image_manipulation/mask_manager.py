@@ -45,6 +45,7 @@ class MaskManager:
         self.input = self.fileLocationManager.get_thumbnail_colored(self.channel)
         self.output = self.fileLocationManager.get_thumbnail_masked(self.channel)
         if os.path.exists(self.output):
+            print(f"Cleaning:  {self.output}.")
             shutil.rmtree(self.output)
 
         os.makedirs(self.output, exist_ok=True)

@@ -52,11 +52,7 @@ class ElastixManager():
             moving_index = os.path.splitext(files[i])[0]
             t = self.iteration if transform_parameters is None else transform_parameters["iteration"]
             if not self.sqlController.check_elastix_row(self.animal, moving_index, t):
-                if transform_parameters is None:
-                    rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
-                else:
-                    rotation, xshift, yshift, metric = self.register_sections(fixed_index, moving_index, transform_parameters)
-
+                rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
                 self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, t)
 
     def cleanup_fiducials(self):
@@ -133,25 +129,30 @@ class ElastixManager():
             fixed_image, 
             moving_image, 
             sitk.Euler2DTransform(),
-            sitk.CenteredTransformInitializerFilter.GEOMETRY
+            sitk.CenteredTransformInitializerFilter.MOMENTS
         )
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         R.SetMetricSamplingStrategy(R.RANDOM)
+        ##### Masking doesn't seem to help
+        #fixed_mask = self.create_tissue_mask(fixed_image, index=fixed_index)
+        #moving_mask = self.create_tissue_mask(moving_image)
+        #R.SetMetricFixedMask(fixed_mask)
+        #R.SetMetricMovingMask(moving_mask)        
         """
         Use all pixels for registration, this really helps with most images except those that are missing lots of tissue.
         Using a low percentage also does not help.
         between sections. 
         """
-        R.SetMetricSamplingPercentage(transform_parameters["sampling_percentage"])
+        R.SetMetricSamplingPercentage(1.0)
         # Interpolator
         R.SetInterpolator(sitk.sitkLinear)
         # Optimizer
         R.SetOptimizerAsRegularStepGradientDescent(
             learningRate=2,
             minStep=1e-4,
-            numberOfIterations=1000,
+            numberOfIterations=500,
             gradientMagnitudeTolerance=1e-8
         )
         R.SetOptimizerScalesFromPhysicalShift()
@@ -170,16 +171,10 @@ class ElastixManager():
 
     def align_images_elastix(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         """
-        Aligns two images using the Elastix registration algorithm with GPU acceleration.
-        expected to replace 'align_elastix' (TESTING)
-        with gpu realign took 171.49 seconds.
-        without gpu realign took 1 hour(s) and 46 minute(s).
-        with gpu realign took 1 hour(s) and 46 minute(s).
 
         Args:
             fixed_index (str due to filename extraction): The index of the fixed image.
             moving_index (str due to filename extraction): The index of the moving image.
-            iteration (int): if > 0, we are re-aligning
 
         Returns:
             tuple: A tuple containing the rotation angle (R), translation in the x-axis (x), translation in the y-axis (y),
@@ -489,8 +484,8 @@ class ElastixManager():
 
             return d
 
-    @staticmethod
-    def create_tissue_mask(image, threshold=0, index=None):
+    
+    def create_tissue_mask(self, image, threshold=10, index=None):
         """
         Create a mask to exclude empty regions.
         Assumes background is near zero.
@@ -499,22 +494,21 @@ class ElastixManager():
             image,
             lowerThreshold=threshold,
             upperThreshold=1e9,
-            insideValue=1,
+            insideValue=255,
             outsideValue=0
         )
         eroder = sitk.GrayscaleErodeImageFilter()
         eroder.SetKernelType(sitk.sitkBall)
         eroder.SetKernelRadius(10)
-        #eroder.SetForegroundValue(255) # Value of object to shrink
-        #eroder.SetBackgroundValue(0) # Value to fill with
         eroded_img = eroder.Execute(mask)
 
         mask = sitk.Cast(eroded_img, sitk.sitkUInt8)
         if index is not None:
-            mask_dir = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK270/preps/C1/thumbnail_mask"
+            mask_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{self.animal}/preps/C1/thumbnail_mask"
+            os.makedirs(mask_dir, exist_ok=True)
             mask_arr = sitk.GetArrayFromImage(mask)
-            #ids, counts = np.unique(mask_arr, return_counts=True)
-            #print(f"ids={ids}, counts={counts} for mask {index}")
+            ids, counts = np.unique(mask_arr, return_counts=True)
+            print(f"ids={ids}, counts={counts} for mask {index}")
             mask_path = os.path.join(mask_dir, str(index).zfill(3) + ".tif")
             write_image(mask_path, mask_arr)
         return mask

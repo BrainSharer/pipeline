@@ -65,6 +65,9 @@ class ImageCleaner:
             MASKS = self.fileLocationManager.get_full_masked(channel=1)
 
         CLEANED = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath=CLEANED_DIR)
+        if self.downsample:
+            print(f'Cleaning: {CLEANED}')
+            shutil.rmtree(CLEANED, ignore_errors=True)
         os.makedirs(CLEANED, exist_ok=True)
 
         #15-SEP-2025 testing - Duane

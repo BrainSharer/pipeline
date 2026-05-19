@@ -306,10 +306,10 @@ class Pipeline(
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
-        transform_parameters = {"iteration":0, "sampling_percentage": 1.0, "input_dir": CLEANED_DIR, "output_dir": ALIGNED_DIR}
+        #transform_parameters = {"iteration":0, "sampling_percentage": 0.25, "input_dir": CLEANED_DIR, "output_dir": ALIGNED_DIR}
 
         if self.channel == 1 and self.downsample:
-            self.create_within_stack_transformations(transform_parameters=transform_parameters)
+            self.create_within_stack_transformations()
 
         self.start_image_alignment()
 

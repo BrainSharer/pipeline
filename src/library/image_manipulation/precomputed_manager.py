@@ -116,9 +116,9 @@ class NgPrecomputedMaker:
         else:
             z_chunk = Z_CHUNK
             
-        chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
+        base_chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
-        scales, resolutions = self.compute_mipmaps(self.get_scales())
+        scales, resolutions, chunks = self.compute_mipmaps(self.get_scales(), base_chunks)
         mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
         outpath = f"file://{self.output}"
         if not os.path.exists(self.rechunkme_path):
@@ -141,11 +141,11 @@ class NgPrecomputedMaker:
         # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
 
         if sharded:
-            task = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks)
+            task = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks[0])
         else:
-            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
+            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks[0], mip=0, skip_downsamples=True)
 
-        print(f'Creating transfer task with chunks={chunks} to layer {outpath} sharded={sharded}')
+        print(f'Creating transfer task with chunks={chunks[0]} to layer {outpath} sharded={sharded}')
 
         tq.insert(task)
         tq.execute()
@@ -154,23 +154,25 @@ class NgPrecomputedMaker:
         for mip in range(0, mips):
             factor = scales[mip]
             resolution = resolutions[mip]
+            chunk_mip = chunks[mip]
             cv = CloudVolume(outpath, mip)
-            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunks} resolution = {resolution} sharded={sharded}')
-            
+            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded={sharded}')
+
             if sharded:
-                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks, factor=factor)
+                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunk_mip, factor=factor)
             else:
-                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor)
+                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
             
             tq.insert(task)            
             tq.execute()
 
     @staticmethod
-    def compute_mipmaps(base_resolution, max_voxel_size=512.0):
+    def compute_mipmaps(base_resolution, base_chunk_size):        
         num_mips=100
         base_resolution = np.array(base_resolution, dtype=float)
-
+        max_voxel_size=512.0
         scales = [(2,2,1)]
+        chunks = []
 
         current_res = base_resolution.copy()
 
@@ -202,6 +204,14 @@ class NgPrecomputedMaker:
                 print(f"Stopping at mip {mip}: exceeded max voxel size")
                 break
 
+            # --- Compute chunk size (world-space balanced) ---
+            # Keep chunk size ~constant in microns        
+            world_chunk = np.array(base_chunk_size) * base_resolution
+            chunk = np.round(world_chunk / new_res).astype(int)
+            # Clamp chunk sizes to reasonable bounds
+            chunk = np.clip(chunk, 16, 256)
+            chunks.append(chunk.tolist())
+
             # Store results
             scales.append(scale)
             current_res = new_res
@@ -223,4 +233,4 @@ class NgPrecomputedMaker:
             resolution = [float(x), float(y), float(z)]
             resolutions.append(resolution)
 
-        return scales, resolutions
+        return scales, resolutions, chunks
