@@ -6,6 +6,8 @@ import argparse
 import os
 import sys
 from PIL import Image
+
+import SimpleITK as sitk
 Image.MAX_IMAGE_PIXELS = None
 import shutil
 from pathlib import Path
@@ -32,7 +34,8 @@ def create_precomputed(animal, volume_file, scale):
     fileLocationManager = FileLocationManager(animal)
     xy = sqlController.scan_run.resolution * 1000
     z = sqlController.scan_run.zresolution * 1000
-    scales = (int(xy*scale), int(xy*scale), int(z*scale))
+    #scales = (int(xy*scale), int(xy*scale), int(z*scale))
+    scales = (scale*1000, scale*1000, scale*1000)
     print(f'scales={scales}')
     INPUT = os.path.join(fileLocationManager.prep, 'C1', 'registration')
     volumepath = os.path.join(INPUT, volume_file)
@@ -45,16 +48,13 @@ def create_precomputed(animal, volume_file, scale):
     ext = outpath.split('.')[0]
     IMAGE_OUTPUT = os.path.join(fileLocationManager.neuroglancer_data, f'{outpath}')
 
-
-    if 'mothra' in get_hostname() and os.path.exists(IMAGE_OUTPUT):
-        print(f'Cleaning {IMAGE_OUTPUT}')
-        shutil.rmtree(IMAGE_OUTPUT)
-
-
     os.makedirs(IMAGE_OUTPUT, exist_ok=True)
 
     if ext == 'nrrd':
         volume, _ = nrrd.read(volume_file)
+    elif ext == 'nii':
+        image = sitk.ReadImage(volumepath)
+        volume = sitk.GetArrayFromImage(image)
     else:
         volume = read_image(volumepath)
     volume = np.swapaxes(volume, 0, 2)
