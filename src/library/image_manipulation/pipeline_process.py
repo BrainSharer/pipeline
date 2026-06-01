@@ -307,6 +307,7 @@ class Pipeline(
         self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
         #transform_parameters = {"iteration":0, "sampling_percentage": 0.25, "input_dir": CLEANED_DIR, "output_dir": ALIGNED_DIR}
+        transform_parameters = None
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()
