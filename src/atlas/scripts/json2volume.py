@@ -9,6 +9,7 @@ import numpy as np
 from scipy.ndimage import center_of_mass
 from skimage.draw import polygon
 from tqdm import tqdm
+import tifffile
 
 XY_RES = 0.325 * 32
 Z_RES = 20.0
@@ -18,6 +19,8 @@ ATLAS_SHAPE = (
     1140
 )
 ATLAS_RES = 10.0
+DATA_DIR = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
+
 
 def polygons_to_um(polygons):
 
@@ -112,34 +115,21 @@ def structure_center_of_mass(polygons_um):
 
 def estimate_affine(src, dst):
 
+    if src.shape != dst.shape:
+        print(f"Source and destination shapes do not match: {src.shape} vs {dst.shape}")
+        exit(0)
     n = src.shape[0]
-
-    X = np.hstack(
-        [src, np.ones((n,1))]
-    )
-
-    T, _, _, _ = np.linalg.lstsq(
-        X,
-        dst,
-        rcond=None
-    )
-
+    X = np.hstack([src, np.ones((n,1))])
+    T, _, _, _ = np.linalg.lstsq(X, dst, rcond=None)
     affine = np.eye(4)
-
     affine[:3,:4] = T.T
 
     return affine
 
 def transform_vertices(vertices, affine):
 
-    pts = np.hstack(
-        [vertices,
-         np.ones((len(vertices),1))]
-    )
-
-    transformed = (
-        affine @ pts.T
-    ).T
+    pts = np.hstack([vertices, np.ones((len(vertices),1))])
+    transformed = (affine @ pts.T).T
 
     return transformed[:, :3]
 
@@ -196,23 +186,6 @@ def rasterize_structure(polygons_um, affine):
 
     return mask
 
-def save_structure_metadata(
-        outfile,
-        com,
-        origin):
-
-    arr = np.vstack(
-        [origin,
-         com]
-    )
-
-    np.savetxt(
-        outfile,
-        arr,
-        header="origin_x origin_y origin_z\n"
-               "com_x com_y com_z"
-    )
-
 def load_structure_json(json_file):
 
     with open(json_file) as f:
@@ -229,111 +202,85 @@ def load_structure_json(json_file):
 
         for item in data:
             for z, verts in item.items():
-                slices[int(z)] = np.asarray(
-                    verts,
-                    dtype=np.float64
-                )
+                slices[int(z)] = np.asarray(verts, dtype=np.float64)
 
     return slices
 
 def process_brain(
-        brain_dir,
+        input_dir,
         output_dir,
         allen_coms):
 
     structure_coms = []
-
     structure_names = []
-
     polygons_all = []
 
-    files = sorted(
-        Path(brain_dir).glob("*.json")
-    )
+    files = sorted(Path(input_dir).glob("*.json"))
+    print(f"Found {len(files)} structure JSON files in {input_dir}")
 
     for f in tqdm(files):
 
         poly = load_structure_json(f)
-
         poly_um = polygons_to_um(poly)
-
         com = structure_center_of_mass(poly_um)
-
         structure_coms.append(com)
+        structure_names.append(f.stem)
 
-        structure_names.append(
-            f.stem
-        )
+        polygons_all.append(poly_um)
 
-        polygons_all.append(
-            poly_um
-        )
+    structure_coms = np.asarray(structure_coms)
 
-    structure_coms = np.asarray(
-        structure_coms
-    )
-
-    affine = estimate_affine(
-        structure_coms,
-        allen_coms
-    )
+    affine = estimate_affine(structure_coms, allen_coms)
     print(f'Estimated affine:\n{affine}')
 
-    os.makedirs(
-        output_dir,
-        exist_ok=True
-    )
+    os.makedirs(output_dir,exist_ok=True)
 
     for name, poly_um, com in zip(
             structure_names,
             polygons_all,
             structure_coms):
 
-        mask = rasterize_structure(
-            poly_um,
-            affine
-        )
+        #if name not in ["SC", "IC", '7n_L', '7n_R']:
+        #    continue
+        mask = rasterize_structure(poly_um,affine)
+        mask_path = os.path.join(output_dir, "mask")
+        origin_path = os.path.join(output_dir, "origin")
+        com_path = os.path.join(output_dir, "com")
+        os.makedirs(mask_path, exist_ok=True)
+        os.makedirs(origin_path, exist_ok=True)
+        os.makedirs(com_path, exist_ok=True)
 
-        np.save(
-            Path(output_dir)
-            / f"{name}.npy",
-            mask
-        )
+        mask_file_path = os.path.join(mask_path, f"{name}.npy")
+        origin_file_path = os.path.join(origin_path, f"{name}.txt")
+        com_file_path = os.path.join(com_path, f"{name}.txt")
+
 
         transformed_com = (
             affine
             @ np.append(com,1)
         )[:3]
 
-        #print(f"Structure {name} COM before transformation: {com}, after transformation: {transformed_com}")
-        #ids, counts = np.unique(mask, return_counts=True)
-        #print(f"{ids=} {counts=}shape: {mask.shape} dtype: {mask.dtype}")
-        #exit(0)
         origin = np.array(
             np.where(mask)
         ).min(axis=1)
 
-        save_structure_metadata(
-            Path(output_dir)
-            / f"{name}_meta.txt",
-            transformed_com,
-            origin
-        )
-        print(f"Saved structure atlas coordinates: {transformed_com} with origin: {origin} to {Path(output_dir) / f'{name}_meta.txt'}")
+        #np.save(mask_file_path, mask)
+        tifffile.imwrite(mask_file_path.replace(".npy", ".tif"), mask.astype(np.uint8), bigtiff=True, compression="LZW")
+        np.savetxt(origin_file_path, origin)
+        np.savetxt(com_file_path, transformed_com)
+        print(f"Saved structure data to {Path(output_dir)}")
 
     return affine
 
-def build_data():
-    input_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
-    output_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/testing"
-    allen_path = os.path.join(input_path, "Allen", "com")
+def build_data(output_path):
+    allen_path = os.path.join(DATA_DIR, "Allen", "com")
     os.makedirs(output_path, exist_ok=True)
     animals = ["MD585", "MD589", "MD594"]
 
     for animal in animals:
 
         jsonpath = os.path.join(
-            input_path, animal, "aligned_padded_structures.json"
+            DATA_DIR, animal, "aligned_padded_structures.json"
         )
         if not os.path.exists(jsonpath):
             print(f"{jsonpath} does not exist")
@@ -341,38 +288,33 @@ def build_data():
         with open(jsonpath) as f:
             aligned_dict = json.load(f)
 
-        brain_path = os.path.join(
-            output_path, animal
-        )
+        brain_path = os.path.join(output_path, animal)
         os.makedirs(brain_path, exist_ok=True)
 
         structures = sorted(aligned_dict.keys())
 
         for structure in structures:
             json_data_list = []
-            structure_path = os.path.join(
-                brain_path, f'{structure}.json'
-            )
-            allen_com_path = os.path.join(
-                allen_path, f"{structure}.txt"
-            )
+            structure_path = os.path.join(brain_path, 'data', f'{structure}.json')
+            if os.path.exists(structure_path):
+                continue
+            allen_com_path = os.path.join(allen_path, f"{structure}.txt")
             if not os.path.exists(allen_com_path):
-                print(f"{allen_com_path} does not exist")
                 continue
             polygons = aligned_dict[structure]
             for k, v in polygons.items():
-                print(f"{animal=} {structure=} Section {k} has {type(v)} with {len(v)} polygons")
-
                 json_data_list.append({k:v})
 
-            # 3. Open a file and dump the complete container ONCE
             with open(structure_path, "w", encoding="utf-8") as json_file:
                 json.dump(json_data_list, json_file, indent=4)
 
 
 def build_allen_coms():
-    input_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Allen"
-    com_path = os.path.join(input_path, 'com')
+    output_path = os.path.join(DATA_DIR, "Allen", "allen_structure_coms.npy")
+    if os.path.exists(output_path):
+        print(f"{output_path} already exists, skipping building Allen COMs")
+        return
+    com_path = os.path.join(DATA_DIR, "Allen", "com")
     coms = sorted(os.listdir(com_path))
     array_list = []
     for com in coms:
@@ -384,7 +326,7 @@ def build_allen_coms():
 
     allen_coms = np.array(array_list)
     print(f"Allen COMs shape: {allen_coms.shape} dtype: {allen_coms.dtype}")
-    np.save("/net/birdstore/Active_Atlas_Data/data_root/atlas_data/Allen/allen_structure_coms.npy", allen_coms)
+    np.save(output_path, allen_coms)
 
 def create_probability_atlas(
         registered_dirs,
@@ -408,18 +350,11 @@ def create_probability_atlas(
         masks = []
 
         for d in registered_dirs:
-
-            masks.append(
-                np.load(
-                    Path(d) / f.name
-                )
-            )
+            masks.append(np.load(Path(d) / f.name))
 
         masks = np.stack(masks)
 
-        probability = masks.mean(
-            axis=0
-        )
+        probability = masks.mean(axis=0)
 
         np.save(
             Path(output_dir)
@@ -430,58 +365,37 @@ def create_probability_atlas(
         )
 
 def main():
-    input_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data"
-    output_path = "/net/birdstore/Active_Atlas_Data/data_root/atlas_data/testing"
-    os.makedirs(output_path, exist_ok=True)
     animals = ["MD585", "MD589", "MD594"]
-    allen_coms_path = os.path.join(
-        input_path, "Allen", "allen_structure_coms.npy"
-    )
-
-    allen_coms = np.load(
-        allen_coms_path
-    )
+    allen_coms_path = os.path.join(DATA_DIR, "Allen", "allen_structure_coms.npy")
+    allen_coms = np.load(allen_coms_path)
     print(f"Loading Allen COMs from {allen_coms_path} with shape {allen_coms.shape} and dtype {allen_coms.dtype}")
-    MD585_path = os.path.join(output_path, "MD585")
-    MD589_path = os.path.join(output_path, "MD589")
-    MD594_path = os.path.join(output_path, "MD594")
-
-
-    brain_dirs = [
-        MD585_path,
-        MD589_path,
-        MD594_path
-    ]
 
     registered_dirs = []
 
-    for brain_dir in brain_dirs:
-
-        outdir = os.path.join(brain_dir, "registered")
-        os.makedirs(outdir, exist_ok=True)
+    for animal in animals:  # Process only the first animal
+        input_animal_dir = os.path.join(DATA_DIR, animal, 'data')
+        output_animal_dir = os.path.join(DATA_DIR, animal, 'registered')
+        if not os.path.exists(input_animal_dir):
+            print(f"{input_animal_dir} does not exist, skipping {animal}")
+            exit(0)
 
         process_brain(
-            brain_dir,
-            outdir,
+            input_animal_dir,
+            output_animal_dir,
             allen_coms
         )
-        print(f"Processed brain {brain_dir} and saved registered structures to {outdir}")
+        print(f"Processed brain {input_animal_dir} and saved registered structures to {output_animal_dir}")
 
-        registered_dirs.append(
-            outdir
-        )
+        registered_dirs.append(output_animal_dir)
         print(f"Registered directories so far: {registered_dirs}")
 
-    probability_path = os.path.join(brain_dir, "probability_atlas")
+    probability_path = os.path.join(DATA_DIR, "probability_atlas")
     os.makedirs(probability_path, exist_ok=True)
-    create_probability_atlas(
-        registered_dirs,
-        probability_path
-    )
+    #create_probability_atlas(registered_dirs,probability_path)
 
 
 
 if __name__ == "__main__":
-    build_data()
+    build_data(DATA_DIR)
     build_allen_coms()
     main()
