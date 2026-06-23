@@ -231,7 +231,6 @@ def process_brain(
     structure_coms = np.asarray(structure_coms)
 
     affine = estimate_affine(structure_coms, allen_coms)
-    print(f'Estimated affine:\n{affine}')
 
     os.makedirs(output_dir,exist_ok=True)
 
@@ -240,8 +239,8 @@ def process_brain(
             polygons_all,
             structure_coms):
 
-        #if name not in ["SC", "IC", '7n_L', '7n_R']:
-        #    continue
+        if name not in ["SC", "IC", '7n_L', '7n_R']:
+            continue
         mask = rasterize_structure(poly_um,affine)
         mask_path = os.path.join(output_dir, "mask")
         origin_path = os.path.join(output_dir, "origin")
@@ -250,9 +249,13 @@ def process_brain(
         os.makedirs(origin_path, exist_ok=True)
         os.makedirs(com_path, exist_ok=True)
 
-        mask_file_path = os.path.join(mask_path, f"{name}.npy")
+        mask_file_path = os.path.join(mask_path, f"{name}.tif")
         origin_file_path = os.path.join(origin_path, f"{name}.txt")
         com_file_path = os.path.join(com_path, f"{name}.txt")
+
+        if os.path.exists(mask_file_path) and os.path.exists(origin_file_path) and os.path.exists(com_file_path):
+            print(f"Files for {name} already exist, skipping")
+            continue
 
 
         transformed_com = (
@@ -260,12 +263,10 @@ def process_brain(
             @ np.append(com,1)
         )[:3]
 
-        origin = np.array(
-            np.where(mask)
-        ).min(axis=1)
+        origin = np.array(np.where(mask)).min(axis=1)
 
         #np.save(mask_file_path, mask)
-        tifffile.imwrite(mask_file_path.replace(".npy", ".tif"), mask.astype(np.uint8), bigtiff=True, compression="LZW")
+        tifffile.imwrite(mask_file_path, mask.astype(np.uint8), bigtiff=True, compression="LZW")
         np.savetxt(origin_file_path, origin)
         np.savetxt(com_file_path, transformed_com)
         print(f"Saved structure data to {Path(output_dir)}")
@@ -328,41 +329,85 @@ def build_allen_coms():
     print(f"Allen COMs shape: {allen_coms.shape} dtype: {allen_coms.dtype}")
     np.save(output_path, allen_coms)
 
-def create_probability_atlas(
-        registered_dirs,
-        output_dir):
+def create_probability_atlas(registered_dirs, output_dir):
 
-    os.makedirs(
-        output_dir,
-        exist_ok=True
-    )
+    files = sorted(Path(registered_dirs[0]).glob("*.tif"))
 
-    files = sorted(
-        Path(registered_dirs[0])
-        .glob("*.npy")
-    )
-
-    for f in tqdm(files, desc="Creating probability atlas"):
-
-        if "_meta" in f.name:
-            continue
+    for f in files:
 
         masks = []
 
         for d in registered_dirs:
-            masks.append(np.load(Path(d) / f.name))
+            mask_path = Path(d) / f.name
+            print(f"Loading mask from {mask_path}")
+            masks.append(tifffile.imread(mask_path))
 
         masks = np.stack(masks)
-
         probability = masks.mean(axis=0)
 
-        np.save(
-            Path(output_dir)
-            / f.name,
-            probability.astype(
-                np.float32
-            )
-        )
+        tifffile.imwrite(Path(output_dir) / f.name, probability.astype(np.float32))
+        print(f"Saved probability atlas for {f.stem} to {output_dir}")
+
+
+def rmse_3d(points1, points2):
+    """
+    Compute RMSE between two sets of corresponding 3D points.
+
+    Parameters
+    ----------
+    points1 : (N,3) ndarray
+    points2 : (N,3) ndarray
+
+    Returns
+    -------
+    float
+        RMSE
+    """
+    points1 = np.asarray(points1, dtype=np.float64)
+    points2 = np.asarray(points2, dtype=np.float64)
+
+    if points1.shape != points2.shape:
+        raise ValueError("Point arrays must have the same shape")
+
+    diff = points1 - points2
+    return np.sqrt(np.mean(np.sum(diff**2, axis=1)))
+
+def calculate_tre(fixed_points, moving_points):
+    """
+    Parameters
+    ----------
+    fixed_points : (N,3) ndarray
+    moving_points : (N,3) ndarray
+
+    Returns
+    -------
+    dict
+    """
+
+    fixed_points = np.asarray(fixed_points, dtype=np.float64)
+    moving_points = np.asarray(moving_points, dtype=np.float64)
+
+    if fixed_points.shape != moving_points.shape:
+        raise ValueError("Point arrays must have identical shape")
+
+    if fixed_points.shape[1] != 3:
+        raise ValueError("Points must be Nx3")
+
+    diffs = fixed_points - moving_points
+
+    distances = np.linalg.norm(diffs, axis=1)
+
+    rmse = np.sqrt(np.mean(distances**2))
+
+    return {
+        "TRE_RMSE": rmse,
+        "TRE_mean": np.mean(distances),
+        "TRE_std": np.std(distances, ddof=1),
+        "TRE_max": np.max(distances),
+        "TRE_min": np.min(distances),
+        "per_point_error": distances,
+    }
+
 
 def main():
     animals = ["MD585", "MD589", "MD594"]
@@ -379,20 +424,34 @@ def main():
             print(f"{input_animal_dir} does not exist, skipping {animal}")
             exit(0)
 
-        process_brain(
-            input_animal_dir,
-            output_animal_dir,
-            allen_coms
-        )
+        process_brain(input_animal_dir,output_animal_dir,allen_coms)
         print(f"Processed brain {input_animal_dir} and saved registered structures to {output_animal_dir}")
 
-        registered_dirs.append(output_animal_dir)
-        print(f"Registered directories so far: {registered_dirs}")
+        registration_mask_path = os.path.join(output_animal_dir, "mask")
+        registered_dirs.append(registration_mask_path)
 
     probability_path = os.path.join(DATA_DIR, "probability_atlas")
     os.makedirs(probability_path, exist_ok=True)
-    #create_probability_atlas(registered_dirs,probability_path)
+    #create_probability_atlas(registered_dirs, probability_path)
+    allen_coms = np.load(allen_coms_path)
+    for animal in animals:
+        animal_coms = []
+        registered_dir = os.path.join(DATA_DIR, animal, 'registered', 'com')
+        print(f"Registered COM directory for {animal}: {registered_dir}")
+        animal_coms_path = sorted(os.listdir(registered_dir))
+        for com_file in animal_coms_path:
+            com_path = os.path.join(registered_dir, com_file)
+            com_data = np.loadtxt(com_path)
+            animal_coms.append(com_data)
+        animal_coms = np.array(animal_coms)
+        print(f"Animal COMs shape for {animal}: {animal_coms.shape} dtype: {animal_coms.dtype}")
+        error = rmse_3d(animal_coms, allen_coms)
+        print(f"RMSE between {animal} COMs and Allen COMs: {error:.2f} microns")
+        results = calculate_tre(fixed_points=allen_coms, moving_points=animal_coms)
 
+        for k, v in results.items():
+            if k != "per_point_error":
+                print(f"{k}: {v:.3f}")
 
 
 if __name__ == "__main__":

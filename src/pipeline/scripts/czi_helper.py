@@ -64,7 +64,7 @@ def run_mosaic(animal, czi_file, scene=0):
     outfile = os.path.join(outpath, f'{czi_file}_{str(scene)}_{str(1)}.tif')
     write_image(outfile, data)
 
-def run_pyczi(animal, czi_file, scene=0):
+def run_pyczi(animal, czi_file, scene=0, channel=0):
     inpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/czi/{czi_file}'
     with pyczi.open_czi(inpath) as czidoc:
         # get the image dimensions as a dictionary, where the key identifies the dimension
@@ -79,11 +79,12 @@ def run_pyczi(animal, czi_file, scene=0):
         print(f'scenes_bounding_rectangle={scenes_bounding_rectangle}')
         bounding_box = scenes_bounding_rectangle[0]
         print(f'bounding_box={bounding_box}')
-        data = czidoc.read(plane={"T": 0, "Z": 0, "C": 0}, zoom=1.0, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
+        data = czidoc.read(plane={"T": 0, "Z": 0, "C": channel}, zoom=1.0, roi=(bounding_box.x, bounding_box.y, bounding_box.w, bounding_box.h))
         print(f'image2d shape={data.shape} data type={data.dtype} ndim={data.ndim}')
-        outpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/test'
+        channel = channel + 1
+        outpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C{channel}/test'
         os.makedirs(outpath, exist_ok=True)
-        outfile = os.path.join(outpath, f'{czi_file}_{str(scene)}_{str(1)}.tif')
+        outfile = os.path.join(outpath, f'{czi_file}_{str(scene)}_{channel}.tif')
         write_image(outfile, data)
 
 
