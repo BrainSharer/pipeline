@@ -186,10 +186,10 @@ class ElastixManager():
 
         elastixImageFilter = sitk.ElastixImageFilter()
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
-        fixed = sitk.ReadImage(fixed_file, self.pixelType)
+        fixed = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
 
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
-        moving = sitk.ReadImage(moving_file, self.pixelType)
+        moving = sitk.ReadImage(moving_file, sitk.sitkFloat32)
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
