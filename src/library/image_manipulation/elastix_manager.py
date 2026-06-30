@@ -39,7 +39,7 @@ class ElastixManager():
     All methods relate to aligning images in stack
     """
 
-    def create_within_stack_transformations(self, transform_parameters=None):
+    def create_within_stack_transformations(self):
         """Calculate and store the rigid transformation
         """
 
@@ -50,10 +50,9 @@ class ElastixManager():
         for i in tqdm(range(1, nfiles), desc="Creating within stack transformations"):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
-            t = self.iteration if transform_parameters is None else transform_parameters["iteration"]
-            if not self.sqlController.check_elastix_row(self.animal, moving_index, t):
+            if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
                 rotation, xshift, yshift, metric = self.align_images_elastix(fixed_index, moving_index)
-                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, t)
+                self.sqlController.add_elastix_row(self.animal, moving_index, rotation, xshift, yshift, metric, self.iteration)
 
     def cleanup_fiducials(self):
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
@@ -203,13 +202,14 @@ class ElastixManager():
             moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
             if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
                 print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
-                print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}')
+                print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}', end=" ")
                 with open(fixed_point_file, 'r') as fp:
                     fixed_count = len(fp.readlines())
                 with open(moving_point_file, 'r') as fp:
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, \
                         f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
+                print(f'with {fixed_count} points.')
 
                 elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
                 elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
@@ -234,6 +234,8 @@ class ElastixManager():
 
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+        os.makedirs(self.logpath, exist_ok=True)
 
         elastixImageFilter.SetOutputDirectory(self.logpath)        
 

@@ -120,6 +120,8 @@ class Pipeline(
         self.session = self.sqlController.session
         self.hostname = get_hostname()
         self.iteration = None
+        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
+
         try:
             self.mask_image = self.sqlController.scan_run.mask
         except Exception as e:
@@ -269,31 +271,6 @@ class Pipeline(
             print(f'No histogram for full resolution images')
         print(f'Finished {self.TASK_HISTOGRAM}.')
 
-    def multiple_align(self):
-        """Perform the section to section alignment (registration) in multiple iterations.
-        """
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
-        transform_parameters = {}
-        transform_parameters[0] = {"iteration":0, "sampling_percentage": 1.0, "input_dir": CLEANED_DIR, "output_dir": "iteration_0"}
-        transform_parameters[1] = {"iteration":1, "sampling_percentage": 0.1, "input_dir": "iteration_0", "output_dir": "iteration_1"}
-        transform_parameters[2] = {"iteration":2, "sampling_percentage": 0.1, "input_dir": "iteration_1", "output_dir": ALIGNED_DIR}
-        for i in range(len(transform_parameters)):
-            print(f'Alignment iteration: {i} with params: {transform_parameters[i]}')
-            input_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, transform_parameters[i]["input_dir"])
-            output_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, transform_parameters[i]["output_dir"])
-            # clean up any previous iterations in the database and files on dis
-            self.sqlController.delete_elastix_iteration(self.animal, iteration=transform_parameters[i]["iteration"])
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
-                print(f"Deleted previous alignment iteration directory: {output_dir}")
-            os.makedirs(output_dir, exist_ok=True)
-            self.create_within_stack_transformations(transform_parameters=transform_parameters[i])
-            transformations = self.get_transformations(iteration=i)
-            for file, T in transformations.items():
-                infile = os.path.join(input_dir, file)
-                outfile = os.path.join(output_dir, file)
-                file_key = (infile, outfile, T, self.bgcolor)
-                align_image_to_affine(file_key)
 
     def align(self):
         """Perform the section to section alignment (registration)
@@ -304,10 +281,7 @@ class Pipeline(
         self.iteration = ALIGNED
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
         self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
         os.makedirs(self.logpath, exist_ok=True)
-        #transform_parameters = {"iteration":0, "sampling_percentage": 0.25, "input_dir": CLEANED_DIR, "output_dir": ALIGNED_DIR}
-        transform_parameters = None
 
         if self.channel == 1 and self.downsample:
             self.create_within_stack_transformations()
@@ -330,8 +304,6 @@ class Pipeline(
             self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=REALIGNED_DIR)
         else:
             self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
-        self.logpath = os.path.join(self.fileLocationManager.prep, 'registration', 'iteration_logs')
-        os.makedirs(self.logpath, exist_ok=True)
 
         if self.channel == 1 and self.downsample:
             print('Cleaning up realignment and creating fiducial points and within stack transformations')

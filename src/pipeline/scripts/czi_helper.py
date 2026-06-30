@@ -1,12 +1,15 @@
+import cv2
 import numpy as np
 from aicsimageio import AICSImage
 from aicspylibczi import CziFile
 from pylibCZIrw import czi as pyczi
-
+import xml.etree.ElementTree as ET
 import os
 import sys
 import argparse
 from pathlib import Path
+
+from tifffile import tifffile
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
@@ -88,6 +91,23 @@ def run_pyczi(animal, czi_file, scene=0, channel=0):
         write_image(outfile, data)
 
 
+def find_points(animal, tif_file):
+    inpath = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps/C1/thumbnail_cleaned/{tif_file}'
+    img = cv2.imread(inpath, 0)
+    print(f'img shape={img.shape} img type={img.dtype}  ndim={img.ndim}')
+
+    sift = cv2.SIFT_create()
+
+    kp, desc = sift.detectAndCompute(img, None)
+    print(f'Found {len(kp)} keypoints in {tif_file}')
+    print(f'desc shape={desc.shape} desc type={desc.dtype}  ndim={desc.ndim}')
+
+    points = [
+        (p.pt[0], p.pt[1])
+        for p in kp
+    ]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Work on Animal")
     parser.add_argument("--animal", help="Enter the animal", required=True)
@@ -102,6 +122,7 @@ if __name__ == "__main__":
 
     #run_main(animal, czi, scene)
     #run_mosaic(animal, czi, scene)
-    run_pyczi(animal, czi, scene)
+    #run_pyczi(animal, czi, scene)
+    find_points(animal, czi)
 
 
