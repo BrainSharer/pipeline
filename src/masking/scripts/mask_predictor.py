@@ -186,7 +186,7 @@ def predict_save_annotations(animal, debug=False):
             mask = combine_dims(mask)        
         mask = mask.astype(np.uint8)
         mask[mask > 0] = 255
-        sampled_points = draw_perimeter_points(mask=mask)
+        sampled_points = draw_perimeter_points(mask=mask, spacing=10)
         polygons[section] = sampled_points
 
     annotation_helper = AnnotationHelper(animal, debug=debug)
