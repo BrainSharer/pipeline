@@ -164,7 +164,7 @@ def predict_save_annotations(animal, debug=False):
     transform = torchvision.transforms.ToTensor()
     threshold = 0.75
     polygons = defaultdict(list)
-    for file in tqdm(files, disable=debug, desc="Creating masks and points"):
+    for file in tqdm(files, desc="Creating masks and points"):
         section = int(file.replace(".tif", ""))
         filepath = os.path.join(input, file)
         img = Image.open(filepath)
