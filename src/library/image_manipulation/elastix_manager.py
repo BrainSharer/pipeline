@@ -25,7 +25,10 @@ from library.utilities.utilities_process import read_image, test_dir, use_scratc
 from library.utilities.utilities_registration import (
     align_image_to_affine,
     create_affine_parameters,
+    create_initial_translation,
     create_rigid_parameters,
+    estimate_translation,
+    get_elastix_translation_rigid,
     parameters_to_rigid_transform,
     rescale_transformations,
     tif_to_png,
@@ -111,59 +114,56 @@ class ElastixManager():
                     f.write(f'{x} {y}')
                     f.write('\n')
 
-    def register_sections(
-        self,
-        fixed_index: str,
-        moving_index: str,
-        transform_parameters: dict
-    ) -> tuple[float, float, float, float]:
+    def align_images_sitk(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         # Load fixed and moving images
-        input_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, transform_parameters["input_dir"])
-        fixed_file = os.path.join(input_dir, f"{fixed_index}.tif")
-        fixed_image = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
-        moving_file = os.path.join(input_dir, f"{moving_index}.tif")
-        moving_image = sitk.ReadImage(moving_file, sitk.sitkFloat32)
+
+        fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
+        fixed = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
+
+        moving_file = os.path.join(self.input, f"{moving_index}.tif")
+        moving = sitk.ReadImage(moving_file, sitk.sitkFloat32)
+
         # Initial alignment of the centers of the two volumes
         initial_transform = sitk.CenteredTransformInitializer(
-            fixed_image, 
-            moving_image, 
+            fixed, 
+            moving, 
             sitk.Euler2DTransform(),
-            sitk.CenteredTransformInitializerFilter.MOMENTS
+            sitk.CenteredTransformInitializerFilter.GEOMETRY
         )
         # Set up the registration method
         R = sitk.ImageRegistrationMethod()
         R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         R.SetMetricSamplingStrategy(R.RANDOM)
         ##### Masking doesn't seem to help
-        #fixed_mask = self.create_tissue_mask(fixed_image, index=fixed_index)
-        #moving_mask = self.create_tissue_mask(moving_image)
-        #R.SetMetricFixedMask(fixed_mask)
-        #R.SetMetricMovingMask(moving_mask)        
+        fixed_mask = self.create_tissue_mask(fixed, index=fixed_index)
+        moving_mask = self.create_tissue_mask(moving)
+        R.SetMetricFixedMask(fixed_mask)
+        R.SetMetricMovingMask(moving_mask)        
         """
         Use all pixels for registration, this really helps with most images except those that are missing lots of tissue.
         Using a low percentage also does not help.
         between sections. 
         """
-        R.SetMetricSamplingPercentage(1.0)
+        R.SetMetricSamplingPercentage(0.1)
         # Interpolator
         R.SetInterpolator(sitk.sitkLinear)
         # Optimizer
         R.SetOptimizerAsRegularStepGradientDescent(
             learningRate=2,
             minStep=1e-4,
-            numberOfIterations=500,
+            numberOfIterations=1500,
             gradientMagnitudeTolerance=1e-8
         )
         R.SetOptimizerScalesFromPhysicalShift()
 
         # Initial transform
         R.SetInitialTransform(initial_transform, inPlace=False)
-        R.SetShrinkFactorsPerLevel([4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([2, 1, 0])
+        R.SetShrinkFactorsPerLevel([10, 8, 6, 4, 2, 1])
+        R.SetSmoothingSigmasPerLevel([2, 2, 2, 2, 1, 0])
         R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
         # Execute registration
-        final_transform = R.Execute(fixed_image, moving_image)
+        final_transform = R.Execute(fixed, moving)
         metric_value = R.GetMetricValue()
         rotation, xshift, yshift = final_transform.GetParameters()
         return float(rotation), float(xshift), float(yshift), float(metric_value)
@@ -194,6 +194,7 @@ class ElastixManager():
         elastixImageFilter.SetFixedImage(fixed)
         elastixImageFilter.SetMovingImage(moving)
 
+
         rigid_params = create_rigid_parameters(elastixImageFilter)
         elastixImageFilter.SetParameterMap(rigid_params)
 
@@ -209,26 +210,27 @@ class ElastixManager():
                     moving_count = len(fp.readlines())
                 assert fixed_count == moving_count, \
                         f'Error, the number of fixed points in {fixed_point_file} do not match {moving_point_file}'
-                print(f'with {fixed_count} points.')
+                print(f'with {fixed_count - 1} points.')
 
                 elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
                 elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-                elastixImageFilter.SetParameter("Metric0Weight", ["0.25"]) # the weight of 1st metric for each resolution
-                elastixImageFilter.SetParameter("Metric1Weight",  ["0.75"]) # the weight of 2nd metric
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.95"]) # the weight of 1st metric for each resolution
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.05"]) # the weight of 2nd metric
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
             else:
                 return 0.0, 0.0, 0.0, 0.0
 
-        # total_voxels = np.prod(fixed.GetSize())
-        # n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
+        #total_voxels = np.prod(fixed.GetSize())
+        #n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
         # Set number of spatial samples and sampler type
         # param_map["NumberOfSpatialSamples"] = [str(n_samples)]
-        # elastixImageFilter.SetParameter("NumberOfSpatialSamples", [str(n_samples)])
+        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", ["50000"])
         # param_map["ImageSampler"] = ["RandomCoordinate"]  # random sampling is more robust when tissue missing
 
         if self.debug:
             elastixImageFilter.SetParameter("MaximumNumberOfIterations",  ["500"])
+            print(f"Aligning {moving_index} to {fixed_index} with 500 iterations")
         else:
             elastixImageFilter.SetParameter("MaximumNumberOfIterations",  ["1500"])
 
@@ -245,8 +247,8 @@ class ElastixManager():
         # Execute the registration on GPU
         elastixImageFilter.Execute()
 
-        R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"]
         metric = self.get_metric(self.logpath)
+        R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"][0:3]
 
         return float(R), float(x), float(y), float(metric)
 
@@ -509,8 +511,6 @@ class ElastixManager():
             mask_dir = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{self.animal}/preps/C1/thumbnail_mask"
             os.makedirs(mask_dir, exist_ok=True)
             mask_arr = sitk.GetArrayFromImage(mask)
-            ids, counts = np.unique(mask_arr, return_counts=True)
-            print(f"ids={ids}, counts={counts} for mask {index}")
             mask_path = os.path.join(mask_dir, str(index).zfill(3) + ".tif")
             write_image(mask_path, mask_arr)
         return mask

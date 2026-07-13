@@ -18,15 +18,16 @@ regarding one particular parameter.
 """
 import os
 import sys
+import math
 import numpy as np
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 import tifffile
-from tifffile import imwrite
 from skimage import io
 from skimage.transform import EuclideanTransform, warp
 import numpy as np
 import cv2
+import SimpleITK as sitk
 # from pystackreg import StackReg
 from tqdm import tqdm
 
@@ -83,6 +84,7 @@ def parameters_to_rigid_transform(rotation, xshift, yshift, center):
     return T
 
 
+
 def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     """
     Create and return a dictionary of rigid registration parameters for elastixImageFilter.
@@ -98,7 +100,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
 
     rigid_params = elastixImageFilter.GetDefaultParameterMap("rigid")
     rigid_params["AutomaticTransformInitialization"] = ["true"]
-    rigid_params["AutomaticTransformInitializationMethod"] = ["GeometricalCenter"]
+    rigid_params["AutomaticTransformInitializationMethod"] = ["MOMENTS"]
     rigid_params["FixedInternalImagePixelType"] = ["float"]
     rigid_params["MovingInternalImagePixelType"] = ["float"]
     rigid_params["FixedImageDimension"] = ["2"]
@@ -107,7 +109,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["HowToCombineTransforms"] = ["Compose"]
     rigid_params["DefaultPixelValue"] = [defaultPixelValue]
     rigid_params["WriteResultImage"] = ["false"]    
-    rigid_params["WriteIterationInfo"] = ["true"]
+    rigid_params["WriteIterationInfo"] = ["false"]
     rigid_params["Resampler"] = ["DefaultResampler"]
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
@@ -120,7 +122,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     
     rigid_params["UseRandomSampleRegion"] = ["true"]
-    rigid_params["SampleRegionSize"] = ["50"]
+    rigid_params["SampleRegionSize"] = ["500"]
     rigid_params["ResultImageFormat"] = ["tif"]
     rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
@@ -480,3 +482,95 @@ def find_matching_points(image1, image2):
     # Apply the transformation to the second image
     aligned_image2 = warp(image2, inverse_map=model.inverse, output_shape=image1.shape)
 
+def estimate_translation(fixed, moving):
+    """
+    Estimate x,y translation using phase correlation.
+    
+    fixed: numpy array
+    moving: numpy array
+    """
+
+    # Convert to float32
+    fixed = sitk.GetArrayFromImage(fixed).astype(np.float32)
+    moving = sitk.GetArrayFromImage(moving).astype(np.float32)
+
+    shift, response = cv2.phaseCorrelate(
+        fixed,
+        moving
+    )
+
+    # OpenCV returns shift needed to align moving to fixed
+    tx, ty = shift
+
+    return tx, ty, response
+
+
+def create_initial_translation(tx, ty):
+    transform = sitk.TranslationTransform(2)
+    transform.SetOffset((-tx, -ty))
+    return transform
+
+def get_elastix_translation_rigid(parameters):
+    """
+    Combine elastix TranslationTransform followed by EulerTransform.
+    
+    Returns:
+        angle_degrees
+        total_tx
+        total_ty
+    """
+
+    # First transform: translation
+    translation = parameters[0]["TransformParameters"]
+
+    t1 = np.array([
+        float(translation[0]),
+        float(translation[1])
+    ])
+
+
+    # Second transform: rigid Euler
+    rigid = parameters[1]["TransformParameters"]
+
+    angle = float(rigid[0])
+
+    t2 = np.array([
+        float(rigid[1]),
+        float(rigid[2])
+    ])
+
+
+    # Rotation matrix
+    c = math.cos(angle)
+    s = math.sin(angle)
+
+    R = np.array([
+        [c, -s],
+        [s,  c]
+    ])
+
+
+    # Elastix Euler transform rotates around center.
+    # Need center of rotation
+    center = np.array([
+        float(parameters[1]["CenterOfRotationPoint"][0]),
+        float(parameters[1]["CenterOfRotationPoint"][1])
+    ])
+
+
+    # Apply:
+    # T = R*x + (R*t1 - R*c + c + t2)
+
+    total_translation = (
+        R @ t1
+        - R @ center
+        + center
+        + t2
+    )
+
+
+    return (
+        angle,
+        total_translation[0],
+        total_translation[1]
+    )

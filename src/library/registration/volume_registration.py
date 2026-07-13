@@ -34,7 +34,6 @@ from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_registration import create_affine_parameters
-import registration
 
 # constants
 MOVING_CROP = 50

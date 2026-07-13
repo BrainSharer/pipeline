@@ -170,15 +170,6 @@ class BrainStructureManager:
             brainMerger.origins_to_merge[structure].append(origin)
             brainMerger.volumes_to_merge[structure].append(volume)
 
-    def get_label_ids(self, structure) -> list:
-        label = self.sqlController.get_annotation_label(structure)
-        if label is not None:
-            label_ids = [label.id]
-        else:
-            print(f"Could not find {structure} label in database")
-            label_ids = [0]
-
-        return label_ids
 
     def create_brains_origin_volume_from_polygons(self, brainMerger, animal, structure, transform=None, debug=False):
 

@@ -12,9 +12,8 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 from library.image_manipulation.filelocation_manager import FileLocationManager
 from library.controller.sql_controller import SqlController
-from library.controller.polygon_sequence_controller import PolygonSequenceController
-from library.utilities.utilities_registration import SCALING_FACTOR
-from library.utilities.utilities_mask import merge_mask
+from library.utilities.utilities_process import SCALING_FACTOR
+#from library.utilities.utilities_mask import merge_mask
 
 
 def create_masks(animal, annotator_id, debug=False):
@@ -37,11 +36,14 @@ def create_masks(animal, annotator_id, debug=False):
     os.makedirs(MASK_OUTPUT, exist_ok=True)
     os.makedirs(IMG_OUTPUT, exist_ok=True)
 
-    polygon = PolygonSequenceController(animal=animal)
+    
+    labels = sqlController.get_labels(['TG_L', 'TG_R'])
+    for label in labels:
+        print(label)
 
-    structure_ids = [21, 33]
-
-    for structure_id in structure_ids:
+    return
+    # this code no longer works
+    for label in labels:
     
         df = polygon.get_volume(animal, annotator_id, structure_id)
         scale_xy = sqlController.scan_run.resolution

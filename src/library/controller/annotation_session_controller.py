@@ -34,10 +34,12 @@ class AnnotationSessionController:
 
         except Exception as e:
             print(f"No merge for  {e}")
+            print(update_dict)
             self.session.rollback()
     
 
-    def get_labels(self, labels):
+    def get_labels(self, labels: list):
+        
         annotation_labels = (
             self.session.query(AnnotationLabel)
             .filter(AnnotationLabel.label.in_(labels))
@@ -101,7 +103,7 @@ class AnnotationSessionController:
             active=True,
         )
         
-        # Check if books exist, create them if they don't
+        # Check if annotation exists, create them if they don't
         for label in labels:
             annotation_label = self.session.query(AnnotationLabel).filter_by(label=label).first()
             if not annotation_label:
@@ -373,3 +375,37 @@ class AnnotationSessionController:
         else:
             print("No data for this animal was found.")
             return None
+
+    
+    def get_volume(self,prep_id, annotator_id, structure_id):
+        """Returns the points in a brain region volume
+
+        Args:
+            prep_id (str): Animal ID
+            annotator_id (int): Annotator ID
+            structure_id (int): Structure ID
+
+        Returns:
+            dictionary: points in a volume grouped by polygon.
+        """        
+        #Polygons must be ordered by section(z), then point ordering
+        annotation_session = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.FK_prep_id==prep_id)\
+            .filter(AnnotationSession.FK_user_id==annotator_id)\
+            .filter(AnnotationSession.FK_brain_region_id==structure_id)\
+            .filter(AnnotationSession.active==1).first()
+        if annotation_session is None:
+            df = pd.DataFrame()
+            return df
+        
+        volume_points = self.session.query(AnnotationSession)\
+            .filter(AnnotationSession.FK_session_id==annotation_session.id)\
+                .order_by(AnnotationSession.z)\
+                .order_by(AnnotationSession.point_order)\
+                    .all()
+        volume = {}
+        volume['coordinate']=[[i.x,i.y,i.z] for i in volume_points]
+        volume['point_ordering']=[i.point_order for i in volume_points]
+        volume['polygon_ordering']=[i.polygon_index for i in volume_points]
+        volume = pd.DataFrame(volume)
+        return volume
