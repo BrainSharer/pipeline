@@ -159,6 +159,8 @@ def predict_save_annotations(animal, debug=False):
     if len(files) == 0:
         print(f'No files found in {input}')
         return
+    if debug:
+        print(f'Using files from {input}')
     transform = torchvision.transforms.ToTensor()
     threshold = 0.75
     polygons = defaultdict(list)
