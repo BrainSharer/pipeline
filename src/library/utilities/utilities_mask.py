@@ -580,3 +580,18 @@ def compare_directories(dir1: str, dir2: str) -> None:
         print(f"Error {desc}")
         sys.exit()
 
+
+def merge_mask(image, mask):
+    """Merge image with mask [so user can edit]
+    stack 3 channels on single image (black background, image, then mask)
+
+    :param image: numpy array of the image
+    :param mask: numpy array of the mask
+    :return: merged numpy array
+    """
+
+    b = mask
+    g = image
+    r = np.zeros_like(image).astype(np.uint8)
+    merged = np.stack([r, g, b], axis=2)
+    return merged
