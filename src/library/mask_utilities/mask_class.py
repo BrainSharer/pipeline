@@ -18,13 +18,6 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from tqdm import tqdm
 import warnings
 
-try:
-    import albumentations as A
-except ImportError:
-    print("Albumentations not found, please install it with 'pip install albumentations'")
-    A = None
-
-
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
