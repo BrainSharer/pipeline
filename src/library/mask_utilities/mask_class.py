@@ -32,7 +32,7 @@ from library.image_manipulation.mask_manager import SMALL_CONTOUR_AREA
 import library.mask_utilities.transforms as T
 
 class MaskPrediction:
-    def __init__(self, animal, abbreviation, epochs, annotator_id=1, debug=False):
+    def __init__(self, animal, abbreviation=None, epochs=2, annotator_id=1, debug=False):
         self.mask_root = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
         self.pipeline_root = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/'
         self.animal = animal
@@ -44,8 +44,10 @@ class MaskPrediction:
         self.modelpath = os.path.join(self.mask_root, "brain", "models")
         self.annotator_id = annotator_id
 
-        if self.animal is not None:
-            self.fileLocationManager = FileLocationManager(animal)
+        if self.animal is None:
+            self.animal = 'MD585' # hard code, we are doing all the masks for all brains
+            self.mask_root = os.path.join(self.mask_root, 'brain')
+            self.fileLocationManager = FileLocationManager(self.animal)
             self.input = self.fileLocationManager.get_thumbnail_aligned()
             self.sqlController = SqlController(self.animal)
 
@@ -57,7 +59,6 @@ class MaskPrediction:
             self.mask_root = os.path.join(self.mask_root, 'structures', abbreviation)
             os.makedirs(self.mask_root, exist_ok=True)
             self.modelpath = os.path.join(self.mask_root, "models")
-            self.fileLocationManager = FileLocationManager('MD585') # hard code an animal
             self.output = os.path.join(self.fileLocationManager.masks, 'C1', abbreviation)
             os.makedirs(self.output, exist_ok=True)
 
@@ -103,9 +104,9 @@ class MaskPrediction:
     def mask_trainer(self):
 
         if self.abbreviation is None:
-            dataset = MaskDataset(self.mask_root, transforms=get_transform(), debug=self.debug)
+            dataset = MaskDataset(self.mask_root, debug=self.debug)
         else:
-            dataset = StructureDataset(self.mask_root, transforms=get_transform(), debug=self.debug)
+            dataset = StructureDataset(self.mask_root, debug=self.debug)
 
 
         indices = torch.randperm(len(dataset)).tolist()
@@ -131,10 +132,6 @@ class MaskPrediction:
             device = torch.device("cpu")
             print(f"Using CPU with {workers} workers at a batch size of {batch_size}")
 
-        if self.debug:
-            device = torch.device("cpu")
-            print('In DEBUG mode, using CPU')
-            
 
         # define training and validation data loaders
         data_loader = torch.utils.data.DataLoader(
@@ -489,7 +486,7 @@ class MaskPrediction:
 
 ##### Dataset classes
 class MaskDataset(torch.utils.data.Dataset):
-    def __init__(self, root: str, animal: str, augment = None, debug=False):
+    def __init__(self, root: str, animal=None, debug=False):
         self.root = root
         self.animal = animal
         self.img_root = os.path.join(self.root, 'images')
@@ -502,7 +499,6 @@ class MaskDataset(torch.utils.data.Dataset):
             sys.exit()
         self.imgs = sorted(os.listdir(self.img_root))
         self.masks = sorted(os.listdir(self.mask_root))
-        self.augment = augment
         self.debug = debug
                             
     def __getitem__(self, idx):
@@ -518,10 +514,6 @@ class MaskDataset(torch.utils.data.Dataset):
         #pimg8 = Image.fromarray(img)
         mask = Image.open(mask_path) # 
         mask = np.array(mask)
-        if self.augment is not None and A is not None:
-            augmented = self.augment(image=img, mask=mask)
-            img = augmented['image']
-            mask = augmented['mask']
 
         obj_ids = np.unique(mask)
         # first id is the background, so remove it
@@ -586,9 +578,8 @@ class MaskDataset(torch.utils.data.Dataset):
 class StructureDataset(torch.utils.data.Dataset):
     """TODO, this one needs lots of work"""
     
-    def __init__(self, root, animal=None, transforms=None, debug=False):
+    def __init__(self, root, animal=None, debug=False):
         self.root = root
-        self.transforms = transforms
         self.img_root = os.path.join(root, 'images')
         self.mask_root = os.path.join(root, 'masks')
         self.imgs = sorted(os.listdir(self.img_root))

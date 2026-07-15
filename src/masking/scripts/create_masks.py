@@ -32,7 +32,8 @@ if __name__ == "__main__":
     annotator_id = args.annotator_id
     task = str(args.task).strip().lower()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    mask_predictor = MaskPrediction(animal, abbreviation, epochs, annotator_id, debug)
+    mask_predictor = MaskPrediction(animal=animal, abbreviation=abbreviation, epochs=epochs, 
+                                    annotator_id=annotator_id, debug=debug)
 
     function_mapping = {
         "train": mask_predictor.mask_trainer,
