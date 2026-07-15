@@ -33,7 +33,7 @@ import library.mask_utilities.transforms as T
 
 class MaskPrediction:
     def __init__(self, animal, abbreviation=None, epochs=2, annotator_id=1, debug=False):
-        self.mask_root = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
+        root = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/"
         self.pipeline_root = '/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/'
         self.animal = animal
         self.abbreviation = abbreviation
@@ -41,12 +41,15 @@ class MaskPrediction:
         self.debug = debug
         self.num_classes = 2 # 1 class (person) + background. This is different then detectron2!
         self.modelname = "mask.model.pth"
-        self.modelpath = os.path.join(self.mask_root, "brain", "models")
+        self.modelpath = os.path.join(root, "brain", "models")
+        if not os.path.exists(self.modelpath):
+            print(f'{self.modelpath} does not exist!')
+            exit(0)
         self.annotator_id = annotator_id
 
         if self.animal is None:
             self.animal = 'MD585' # hard code, we are doing all the masks for all brains
-            self.mask_root = os.path.join(self.mask_root, 'brain')
+            self.mask_root = os.path.join(root, 'brain')
             self.fileLocationManager = FileLocationManager(self.animal)
             self.input = self.fileLocationManager.get_thumbnail_aligned()
             self.sqlController = SqlController(self.animal)
@@ -56,7 +59,7 @@ class MaskPrediction:
             abbreviation = str(self.abbreviation)
             if abbreviation.endswith('_L') or abbreviation.endswith('_R'):
                 abbreviation = abbreviation[:-2] 
-            self.mask_root = os.path.join(self.mask_root, 'structures', abbreviation)
+            self.mask_root = os.path.join(root, 'structures', abbreviation)
             os.makedirs(self.mask_root, exist_ok=True)
             self.modelpath = os.path.join(self.mask_root, "models")
             self.output = os.path.join(self.fileLocationManager.masks, 'C1', abbreviation)
