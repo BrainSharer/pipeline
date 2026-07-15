@@ -131,6 +131,11 @@ class MaskPrediction:
             device = torch.device("cpu")
             print(f"Using CPU with {workers} workers at a batch size of {batch_size}")
 
+        if self.debug:
+            device = torch.device("cpu")
+            print('In DEBUG mode, using CPU')
+            
+
         # define training and validation data loaders
         data_loader = torch.utils.data.DataLoader(
             dataset,
