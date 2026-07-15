@@ -505,10 +505,9 @@ class MaskDataset(torch.utils.data.Dataset):
             print('No images found')
             sys.exit()
 
-        if self.debug:
-            print(f'Root dir is {root}')
-            print(f'Image dir is {self.img_root}')
-            print(f'Mask dir is {self.mask_root}')
+        print(f'Root dir is {root}')
+        print(f'Image dir is {self.img_root}')
+        print(f'Mask dir is {self.mask_root}')
 
                             
     def __getitem__(self, idx):
