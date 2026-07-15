@@ -26,6 +26,7 @@ from library.controller.sql_controller import SqlController
 from library.mask_utilities.utils import collate_fn
 from library.mask_utilities.engine import train_one_epoch
 from library.image_manipulation.filelocation_manager import FileLocationManager
+from library.image_manipulation.mask_manager import SMALL_CONTOUR_AREA
 
 
 import library.mask_utilities.transforms as T
@@ -49,9 +50,10 @@ class MaskPrediction:
         if self.animal is None:
             self.animal = 'MD585' # hard code, we are doing all the masks for all brains
             self.mask_root = os.path.join(root, 'brain')
-            self.fileLocationManager = FileLocationManager(self.animal)
-            self.input = self.fileLocationManager.get_thumbnail_aligned()
-            self.sqlController = SqlController(self.animal)
+
+        self.fileLocationManager = FileLocationManager(self.animal)
+        self.input = self.fileLocationManager.get_thumbnail_aligned()
+        self.sqlController = SqlController(self.animal)
 
 
         if self.abbreviation is not None:
@@ -399,11 +401,9 @@ class MaskPrediction:
         labels = self.sqlController.get_labels(['TG_L', 'TG_R'])
         label_ids = [l.id for l in labels]
 
-        #get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int, debug: bool = False
         annotation_session = self.sqlController.get_annotation_session(self.animal, label_ids, self.annotator_id)
         if annotation_session is not None:
             print(f'Loaded session with ID={annotation_session.id}')
-            annotation = annotation_session.annotation
         else:
             print(f'Could not fine session with {self.animal=}, {self.abbreviation=}, and {self.annotator_id=}')
             exit(0)
@@ -419,9 +419,6 @@ class MaskPrediction:
         for row in data:
             if 'childJsons' in row:           
                 for child in row['childJsons']:
-                #points = row['childJsons']
-                #for i in range(len(points) - 1):    
-                    #x,y,z = points[i]['pointA']
                     if 'type' in child and child['type'] == 'line':
                         x,y,z = child['pointA']
                         x = x * M_UM_SCALE/xy_resolution/SCALING_FACTOR
@@ -458,7 +455,10 @@ class MaskPrediction:
             mask = np.zeros((img.shape), dtype=np.uint8)
             points = np.array(points).astype(np.int32)
             #cv2.polylines(mask, pts=[points], color=255, isClosed=True, thickness=2, lineType=cv2.LINE_8)
-            #contour = cv2.approxPolyDP(points, 0.5, True)
+            contour = cv2.approxPolyDP(points, 0.5, True)
+            area = cv2.contourArea(contour)
+            if area <= SMALL_CONTOUR_AREA:
+                continue            
             # Ensure integer coordinates
             #contour = np.round(contour).astype(np.int32) 
             cv2.fillPoly(mask, [points], 255)
