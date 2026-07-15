@@ -53,6 +53,11 @@ class MaskPrediction:
 
         self.fileLocationManager = FileLocationManager(self.animal)
         self.input = self.fileLocationManager.get_thumbnail_aligned()
+        realigned_path = os.path.join(self.fileLocationManager.prep,  'C1', 'thumbnail_realigned')
+        if os.path.exists(realigned_path) and len(os.listdir(realigned_path)) > 0:
+            print(f'Found realigned path: {realigned_path}')
+            self.input = realigned_path
+
         self.sqlController = SqlController(self.animal)
 
 
@@ -181,12 +186,12 @@ class MaskPrediction:
             loss_list.append([loss, loss_mask])
             # update the learning rate
             lr_scheduler.step()
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
         if self.debug:
             print('DEBUG mode, not saving model.')
             print(f'Wrote logs to {logpath}')
         else:
-            now = datetime.now()
-            timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
             modelname = f"mask.model_{timestamp}.pth"            
             modelpath = os.path.join(self.modelpath, modelname)
             print(f"Saving model to {modelpath}")
@@ -198,7 +203,7 @@ class MaskPrediction:
         print("Finished with masks")
         logfile.close()
         fig = plt.figure()
-        output_path = os.path.join(self.mask_root, "loss_plot.png")
+        output_path = os.path.join(self.mask_root, f"loss_plot_{timestamp}.png")
         x = [i for i in range(len(loss_list))]
         l1 = [i[0] for i in loss_list]
         l2 = [i[1] for i in loss_list]
@@ -237,7 +242,10 @@ class MaskPrediction:
         transform = torchvision.transforms.ToTensor()
 
         files = sorted(os.listdir(self.input))
-        for file in tqdm(files[80:133], disable=self.debug):
+        print(f'Loaded {len(self.input)} files from {self.input}')
+        print(f'Creating masks in {self.output}')
+    
+        for file in tqdm(files, disable=self.debug):
             filepath = os.path.join(self.input, file)
             mask_dest_file = (
                 os.path.splitext(file)[0] + ".tif"
@@ -425,16 +433,8 @@ class MaskPrediction:
                         y = y * M_UM_SCALE/xy_resolution/SCALING_FACTOR
                         section = int(np.round((z*M_UM_SCALE/z_resolution) - 0.5))
                         polygons[section].append((x,y))
-            
-        color = 200
-
-        base_path = f'/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{self.animal}/preps'
-        inputpath = os.path.join(base_path, 'C1', 'thumbnail_realigned')
-        if not os.path.exists(inputpath) or len(os.listdir(inputpath)) == 0:
-            print(f'No input directory found at {inputpath}')
-            inputpath = os.path.join(base_path, 'C1', 'thumbnail_aligned')
-        
-        print(f'Using {inputpath}')
+                    
+        print(f'Using {self.input}')
 
         image_outpath = os.path.join(self.mask_root, 'images')
         mask_outpath = os.path.join(self.mask_root, 'masks')
@@ -445,7 +445,7 @@ class MaskPrediction:
         
         for section, points in tqdm(polygons.items(), desc="Creating masks,merged and copying original"):
             file = str(section).zfill(3) + ".tif"
-            inpath = os.path.join(inputpath, file)
+            inpath = os.path.join(self.input, file)
             filename = f"{self.animal}.{file}"
             img_file_outpath = os.path.join(image_outpath, filename)
             mask_file_outpath = os.path.join(mask_outpath, filename)
@@ -474,9 +474,6 @@ class MaskPrediction:
             #3. merged file for sanity check
             merged_image = merge_mask(img, mask)
             cv2.imwrite(merged_file_outpath, merged_image)
-
-
-        
 
 
 
