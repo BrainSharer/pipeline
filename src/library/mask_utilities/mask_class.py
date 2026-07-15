@@ -426,17 +426,17 @@ class MaskPrediction:
         polygons = defaultdict(list)
 
         for row in data:
-            if 'childJsons' not in row:
-                continue
-            for child in row['childJsons']:
-                x,y,z = child['pointA']
-                x *= M_UM_SCALE
-                y *= M_UM_SCALE
-                z *= M_UM_SCALE
-                x = x/xy_resolution/SCALING_FACTOR
-                y = y/xy_resolution/SCALING_FACTOR
-                section = int(np.round(z/z_resolution))
-                polygons[section].append((x,y))
+            if 'childJsons' in row:           
+                for child in row['childJsons']:
+                #points = row['childJsons']
+                #for i in range(len(points) - 1):    
+                    #x,y,z = points[i]['pointA']
+                    if 'type' in child and child['type'] == 'line':
+                        x,y,z = child['pointA']
+                        x = x * M_UM_SCALE/xy_resolution/SCALING_FACTOR
+                        y = y * M_UM_SCALE/xy_resolution/SCALING_FACTOR
+                        section = int(np.round((z*M_UM_SCALE/z_resolution) - 0.5))
+                        polygons[section].append((x,y))
             
         color = 200
 
@@ -444,8 +444,9 @@ class MaskPrediction:
         inputpath = os.path.join(base_path, 'C1', 'thumbnail_realigned')
         if not os.path.exists(inputpath) or len(os.listdir(inputpath)) == 0:
             print(f'No input directory found at {inputpath}')
-            input = os.path.join(base_path, 'C1', 'thumbnail_aligned')
-            print(f'Using {input}')
+            inputpath = os.path.join(base_path, 'C1', 'thumbnail_aligned')
+        
+        print(f'Using {inputpath}')
 
         image_outpath = os.path.join(self.mask_root, 'images')
         mask_outpath = os.path.join(self.mask_root, 'masks')
@@ -453,7 +454,6 @@ class MaskPrediction:
         os.makedirs(image_outpath, exist_ok=True)
         os.makedirs(mask_outpath, exist_ok=True)
         os.makedirs(merged_outpath, exist_ok=True)
-        epsilon = 1.0
         
         for section, points in tqdm(polygons.items(), desc="Creating masks,merged and copying original"):
             file = str(section).zfill(3) + ".tif"
@@ -466,16 +466,15 @@ class MaskPrediction:
             #1. Mask file
             mask = np.zeros((img.shape), dtype=np.uint8)
             points = np.array(points).astype(np.int32)
-            contour = cv2.approxPolyDP(points, 0.5, True)
+            #cv2.polylines(mask, pts=[points], color=255, isClosed=True, thickness=2, lineType=cv2.LINE_8)
+            #contour = cv2.approxPolyDP(points, 0.5, True)
             # Ensure integer coordinates
-            contour = np.round(contour).astype(np.int32) 
-            cv2.fillPoly(mask, [contour], 255)
+            #contour = np.round(contour).astype(np.int32) 
+            cv2.fillPoly(mask, [points], 255)
 
             # Fill any remaining holes
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
-                                    np.ones((5,5), np.uint8))                       
-
-
+            #mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+            #                        np.ones((5,5), np.uint8))                       
 
             cv2.imwrite(mask_file_outpath, mask)
             #2. original image
