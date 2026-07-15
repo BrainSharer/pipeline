@@ -160,6 +160,16 @@ class MaskPrediction:
         logfile.write(logheader)
         # get the model using our helper function
         model = self.get_model_instance_segmentation()
+        # load model dictionary if it exists
+        model_train_path = os.path.join(self.mask_root, 'models', 'mask.model.train.pth')
+        if os.path.exists(model_train_path):
+            print(f"Loading model dictionary weights from {model_train_path}")
+            model.load_state_dict(torch.load(model_train_path, map_location = device, weights_only=True))
+        else:
+            print(f"Model training model not found at {model_train_path}")
+
+
+
         # move model to the right device
         model.to(device)
         # construct an optimizer
@@ -261,22 +271,17 @@ class MaskPrediction:
             loaded_model.eval()
             with torch.no_grad():
                 prediction = loaded_model(img_transformed)
-            threshold = 0.5
+            threshold = 0.75
             masks = [(prediction[0]["masks"] > threshold).squeeze().detach().cpu().numpy()]
             mask = masks[0]
-            del masks
             if mask.shape[0] == 0:
                 continue
             if mask.ndim == 3:
                 mask = mask[0, ...]
             mask = mask.astype(np.uint8)
             mask[mask > 0] = 255
-
-            contours, _ = cv2.findContours(mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-            if self.debug:
-                print(f'{file} threshold={threshold} #contours={len(contours)}')
-            cv2.drawContours(img, contours, -1, 255, 2, cv2.LINE_AA)
-            cv2.imwrite(maskpath, img)
+            merged_image = merge_mask(img, mask)
+            cv2.imwrite(maskpath, merged_image)
 
     def update_session(self):
         annotation_label = self.sqlController.get_annotation_label(self.abbreviation)
@@ -514,10 +519,6 @@ class MaskDataset(torch.utils.data.Dataset):
         img = Image.open(img_path) # L = grayscale, doesn't work with 16bit images grayscale_img = img.convert('L')
         if img.mode == 'I;16':
             img = img.convert('L')
-        img = np.array(img)
-        #if img.dtype == np.uint16:
-        #    img = (img/256).astype('uint8')
-        #pimg8 = Image.fromarray(img)
         mask = Image.open(mask_path) # 
         mask = np.array(mask)
 
@@ -540,18 +541,16 @@ class MaskDataset(torch.utils.data.Dataset):
             ymin = np.min(pos[0])
             ymax = np.max(pos[0])
             # Check if area is larger than a threshold
-            check_area = abs((xmax-xmin) * (ymax-ymin)) 
-            #print(f"Min area to look for {A}")
-            if check_area < 5:
+            check_area = abs((xmax-xmin) * (ymax-ymin))
+            if check_area < SMALL_CONTOUR_AREA:
                 print('Nr before deletion:', num_objs)
                 obj_ids=np.delete(obj_ids, [i])
-                # print('Area smaller than 5! Box coordinates:', [xmin, ymin, xmax, ymax])
                 print('Nr after deletion:', len(obj_ids))
                 continue
 
             boxes.append([xmin, ymin, xmax, ymax])
 
-        #print('nr boxes is equal to nr ids:', len(boxes)==len(obj_ids))
+        #print('nr boxes is equal to nr ids:',len(boxes), len(boxes)==len(obj_ids))
         num_objs = len(obj_ids)
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
@@ -569,9 +568,6 @@ class MaskDataset(torch.utils.data.Dataset):
         target["image_id"] = image_id
         target["area"] = area
         target["iscrowd"] = iscrowd
-
-        if type(img) != Image.Image:
-            img = Image.fromarray(img)
 
         transforms = get_transform()
         img, target = transforms(img, target)

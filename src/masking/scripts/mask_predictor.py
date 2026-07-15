@@ -17,7 +17,7 @@ from pathlib import Path
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from library.utilities.utilities_mask import combine_dims
+from library.utilities.utilities_mask import combine_dims, merge_mask
 from library.annotation_utilities.annotation_helper import AnnotationHelper
 from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
 
@@ -47,7 +47,7 @@ def get_model_instance_segmentation(num_classes):
 
 def predict(animal, debug=False):
     # Edit this path to the model
-    modelpath = os.path.join("/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/TG/models/mask.model.pth")
+    modelpath = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/masks/structures/TG/models/mask.model.pth"
     loaded_model = get_model_instance_segmentation(num_classes=2)
     workers = 2
     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -82,7 +82,6 @@ def predict(animal, debug=False):
     print(f'Writing output to {output}')
     transform = torchvision.transforms.ToTensor()
     threshold = 0.75
-    polygons = defaultdict(list)
     for file in tqdm(files, disable=debug, desc="Creating masks and points"):
         section = int(file.replace(".tif", ""))
         filepath = os.path.join(input, file)
@@ -284,4 +283,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     animal = args.animal
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    predict_save_annotations(animal, debug)
+    #predict_save_annotations(animal, debug)
+    predict(animal, debug)
