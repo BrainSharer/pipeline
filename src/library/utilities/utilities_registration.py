@@ -574,3 +574,103 @@ def get_elastix_translation_rigid(parameters):
         total_translation[0],
         total_translation[1]
     )
+
+
+#!/usr/bin/env python3
+
+"""
+Convert a directory of high-resolution histology TIFF sections
+(0.325 x 0.325 x 20 um)
+into a 10 x 10 x 10 um isotropic SimpleITK volume.
+
+The program never loads the original stack into RAM.
+Each image is downsampled individually before stacking.
+"""
+
+from pathlib import Path
+import numpy as np
+import tifffile
+import SimpleITK as sitk
+
+
+# ----------------------------------------------------------------------
+
+
+#PIXEL_SIZE_XY = 0.325      # microns
+#SECTION_THICKNESS = 20.0   # microns
+
+#TARGET_SPACING = 10.0      # isotropic
+
+
+# ----------------------------------------------------------------------
+
+def read_and_downsample(filename, PIXEL_SIZE_XY, TARGET_SPACING):
+    """
+    Read one TIFF and downsample to 10 um pixels.
+    """
+
+    img = tifffile.imread(filename)
+
+    itk = sitk.GetImageFromArray(img.astype(np.float32))
+    itk.SetSpacing((PIXEL_SIZE_XY, PIXEL_SIZE_XY))
+
+    old_size = np.array(itk.GetSize(), dtype=np.int64)
+    old_spacing = np.array(itk.GetSpacing())
+
+    new_spacing = np.array([TARGET_SPACING, TARGET_SPACING])
+
+    new_size = np.round(
+        old_size * old_spacing / new_spacing
+    ).astype(np.int64)
+
+    resampler = sitk.ResampleImageFilter()
+
+    resampler.SetInterpolator(sitk.sitkLinear)
+
+    resampler.SetOutputSpacing(tuple(new_spacing))
+
+    resampler.SetSize([int(new_size[0]), int(new_size[1])])
+
+    resampler.SetOutputOrigin(itk.GetOrigin())
+
+    resampler.SetOutputDirection(itk.GetDirection())
+
+    resampled = resampler.Execute(itk)
+
+    return sitk.GetArrayFromImage(resampled)
+
+
+
+# ----------------------------------------------------------------------
+
+def make_isotropic(img, TARGET_SPACING=10.0):
+
+    old_spacing = np.array(img.GetSpacing())
+
+    old_size = np.array(img.GetSize())
+
+    new_spacing = np.array(
+        [TARGET_SPACING, TARGET_SPACING, TARGET_SPACING]
+    )
+
+    new_size = np.round(
+        old_size * old_spacing / new_spacing
+    ).astype(np.int64)
+
+    print("Resampling volume...")
+
+    resampler = sitk.ResampleImageFilter()
+
+    resampler.SetInterpolator(sitk.sitkLinear)
+
+    resampler.SetOutputSpacing(tuple(new_spacing))
+
+    resampler.SetSize([int(v) for v in new_size])
+
+    resampler.SetOutputOrigin(img.GetOrigin())
+
+    resampler.SetOutputDirection(img.GetDirection())
+
+    return resampler.Execute(img)
+
+

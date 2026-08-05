@@ -33,7 +33,7 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir,
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_registration import create_affine_parameters
+from library.utilities.utilities_registration import create_affine_parameters, make_isotropic, read_and_downsample
 
 # constants
 MOVING_CROP = 50
@@ -563,6 +563,56 @@ class VolumeRegistration:
 
 
     def create_volume(self):
+        TARGET_SPACING = 10.0      # isotropic        
+        PIXEL_SIZE_XY = self.sqlController.scan_run.resolution
+        SECTION_THICKNESS = self.sqlController.scan_run.zresolution
+        INPUT_DIR = self.fileLocationManager.get_full_aligned()
+        image_manager = ImageManager(INPUT_DIR)
+        print(f'Using images from {INPUT_DIR} to create volume')
+        files = image_manager.files
+
+
+        if len(files) == 0:
+            print(f"No TIF files found in: {INPUT_DIR}")
+            exit(0)
+
+        print(f"Reading {len(files)} sections...")
+
+        slices = []
+
+
+        for ffile in tqdm(files, desc='Creating volume'):
+            fpath = os.path.join(INPUT_DIR, ffile)
+            ds = read_and_downsample(fpath, PIXEL_SIZE_XY, TARGET_SPACING)
+            slices.append(ds)
+
+
+
+        volume = np.stack(slices, axis=0)
+        img3d = sitk.GetImageFromArray(volume)
+        img3d.SetSpacing(
+            (
+                TARGET_SPACING,
+                TARGET_SPACING,
+                SECTION_THICKNESS,
+            )
+        )
+
+        sitk_image = make_isotropic(img3d, TARGET_SPACING=TARGET_SPACING)
+
+        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{TARGET_SPACING}x{TARGET_SPACING}x{TARGET_SPACING}um_{self.orientation}.nii' )
+        if os.path.exists(moving_nii_path):
+            print(f'{moving_nii_path} exists, removing')
+            os.remove(moving_nii_path)
+        print(f'Creating volume at {moving_nii_path}')
+        sitk.WriteImage(sitk_image, moving_nii_path)
+        print(f'Saved a 3D volume {moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
+
+        print("Finished.")
+
+
+
+    def create_volumeXXX(self):
         """
         Using sitk so the SetSpacing is very important!
         """

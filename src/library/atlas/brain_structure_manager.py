@@ -33,7 +33,7 @@ from library.atlas.atlas_utilities import (
     BAD_KEYS,
     compute_affine_transformation,
     get_3d_bounding_box,
-    get_evenly_spaced_vertices,
+    get_evenly_spaced_vertices_from_slice,
     get_min_max_mean,
     get_origins,
     list_coms,
@@ -1518,7 +1518,7 @@ class BrainStructureManager:
         for z_index, (section, points) in enumerate(sorted(polygons.items())):
             section = int(section)
             if get_even:
-                points = get_evenly_spaced_vertices(points)
+                points = get_evenly_spaced_vertices_from_slice(points)
             vertices = np.array(points)
 
             if len(vertices) == 0:
