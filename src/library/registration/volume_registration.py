@@ -66,7 +66,8 @@ class VolumeRegistration:
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
+        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}.nii' )
+
         self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
         self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
         
@@ -563,9 +564,8 @@ class VolumeRegistration:
 
 
     def create_volume(self):
-        TARGET_SPACING = 10.0      # isotropic        
-        PIXEL_SIZE_XY = self.sqlController.scan_run.resolution
-        SECTION_THICKNESS = self.sqlController.scan_run.zresolution
+        xy_resolution = self.sqlController.scan_run.resolution
+        z_resolution = self.sqlController.scan_run.zresolution
         INPUT_DIR = self.fileLocationManager.get_full_aligned()
         image_manager = ImageManager(INPUT_DIR)
         print(f'Using images from {INPUT_DIR} to create volume')
@@ -583,7 +583,7 @@ class VolumeRegistration:
 
         for ffile in tqdm(files, desc='Creating volume'):
             fpath = os.path.join(INPUT_DIR, ffile)
-            ds = read_and_downsample(fpath, PIXEL_SIZE_XY, TARGET_SPACING)
+            ds = read_and_downsample(fpath, xy_resolution, self.xy_um)
             slices.append(ds)
 
 
@@ -592,21 +592,20 @@ class VolumeRegistration:
         img3d = sitk.GetImageFromArray(volume)
         img3d.SetSpacing(
             (
-                TARGET_SPACING,
-                TARGET_SPACING,
-                SECTION_THICKNESS,
+                self.xy_um,
+                self.xy_um,
+                z_resolution,
             )
         )
 
-        sitk_image = make_isotropic(img3d, TARGET_SPACING=TARGET_SPACING)
+        sitk_image = make_isotropic(img3d, TARGET_SPACING=self.xy_um)
 
-        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{TARGET_SPACING}x{TARGET_SPACING}x{TARGET_SPACING}um_{self.orientation}.nii' )
-        if os.path.exists(moving_nii_path):
-            print(f'{moving_nii_path} exists, removing')
-            os.remove(moving_nii_path)
-        print(f'Creating volume at {moving_nii_path}')
-        sitk.WriteImage(sitk_image, moving_nii_path)
-        print(f'Saved a 3D volume {moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
+        if os.path.exists(self.moving_nii_path):
+            print(f'{self.moving_nii_path} exists, removing')
+            os.remove(self.moving_nii_path)
+        print(f'Creating volume at {self.moving_nii_path}')
+        sitk.WriteImage(sitk_image, self.moving_nii_path)
+        print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
 
         print("Finished.")
 
@@ -628,8 +627,8 @@ class VolumeRegistration:
         print(f'z resolution: {z_resolution} um/pixel')
         spacing = (xy_resolution * self.scaling_factor, xy_resolution * self.scaling_factor, z_resolution * self.scaling_factor)
         print(f'Setting spacing to: {spacing} um/pixel')
-        moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{spacing[0]}x{spacing[0]}x{self.z_um}um_{self.orientation}.nii' )
-        print(f'Creating volume at {moving_nii_path}')
+        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{spacing[0]}x{spacing[0]}x{self.z_um}um_{self.orientation}.nii' )
+        print(f'Creating volume at {self.moving_nii_path}')
         print(f'Pixel type for images in sitk: {pixel_type}')
 
         if self.debug:
@@ -654,8 +653,8 @@ class VolumeRegistration:
         sitk_image.SetSpacing(spacing)
         sitk_image.SetDirection((1,0,0,0,1,0,0,0,1))
         sitk_image = sitk.Cast(sitk_image, pixel_type)
-        sitk.WriteImage(sitk_image, moving_nii_path)
-        print(f'Saved a 3D volume {moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
+        sitk.WriteImage(sitk_image, self.moving_nii_path)
+        print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
 
     def downsample_stack(self):
         image_manager = ImageManager(self.full_aligned)
@@ -763,31 +762,20 @@ class VolumeRegistration:
                 img.GetPixelID(),
             )
 
-        # Load fixed and moving images
         if not os.path.exists(self.fixed_nii_path):
             print(f'Fixed image does not exist: {self.fixed_nii_path}, exiting.')
-            if os.path.exists(self.fixed_volume_path):
-                print(f'Found {self.fixed_volume_path}')
-                img = sitk.ReadImage(self.fixed_volume_path, sitk.sitkUInt8)
-                img.SetSpacing((self.xy_um, self.xy_um, self.z_um))
-                print(f'img spacing: {img.GetSpacing()}')
-                print(f'img size: {img.GetSize()}')
-                print(f'img origin: {img.GetOrigin()}')
-                print(f'img direction: {img.GetDirection()}')
-                sitk.WriteImage(img, self.fixed_nii_path)
-                print(f'Created fixed image {self.fixed_nii_path}')
-
             sys.exit()
+        if not os.path.exists(self.moving_nii_path):
+            print(f'Moving image does not exist: {self.moving_nii_path}, exiting.')
+            sys.exit()
+
+
+
         fixed = sitk.ReadImage(self.fixed_nii_path, sitk.sitkFloat32)
         print(f"Loaded fixed image: {self.fixed_nii_path}")
-        moving_path = os.path.join(self.registration_path, self.moving, f'{self.moving}_downsampled_sagittal.nii')
-        if os.path.exists(moving_path):
-            moving = sitk.ReadImage(moving_path, sitk.sitkFloat32)
-            print(f"Loaded moving image: {moving_path}")
-        else:
-            print(f'Input for moving does not exist {moving_path}')
-            print('You need to create a standard volume from the thumbnail_aligned dir. Exiting.')
-            sys.exit()
+    
+        moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
+        print(f"Loaded moving image: {self.moving_nii_path}")
 
 
         fixed_size = fixed.GetSize()
@@ -797,16 +785,6 @@ class VolumeRegistration:
         print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
         print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
 
-        # check if existing moving image matches fixed image size and spacing
-        if math.isclose(moving_spacing[0], fixed_spacing[0]) and math.isclose(moving_spacing[1], fixed_spacing[1]) \
-        and math.isclose(moving_spacing[2], fixed_spacing[2]):
-            print('spacings are already matched, no resampling needed.')
-        else:
-            print('Resampling moving image to match fixed image size and spacing.')
-            moving = resample_to_isotropic(moving, iso=fixed_spacing[0])
-            
-        print(f"Fixed image size: {fixed_size}, spacing: {fixed.GetSpacing()}")
-        print(f"Moving image size: {moving_size}, spacing: {moving.GetSpacing()}")
 
         if self.debug:
             return
