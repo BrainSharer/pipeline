@@ -705,7 +705,6 @@ class VolumeRegistration:
             sys.exit()
 
         xy_um = self.sqlController.scan_run.resolution
-        z_um = self.sqlController.scan_run.zresolution
 
 
         transform = sitk.ReadTransform(self.transform_filepath)
@@ -718,9 +717,8 @@ class VolumeRegistration:
                 print(f'Skipping non-TIF file: {fpath}')
                 continue
             img = sitk.ReadImage(fpath, sitk.sitkFloat32)
-            img.SetSpacing((xy_um, xy_um, z_um))
+            img.SetSpacing((xy_um, xy_um))
             print(f"Resampling {fpath} with spacing: {img.GetSpacing()} and size: {img.GetSize()}")
-            sys.exit()
 
             resampled = sitk.Resample(
                 img,
