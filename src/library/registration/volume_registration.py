@@ -719,6 +719,8 @@ class VolumeRegistration:
                 continue
             img = sitk.ReadImage(fpath, sitk.sitkFloat32)
             img.SetSpacing((xy_um, xy_um, z_um))
+            print(f"Resampling {fpath} with spacing: {img.GetSpacing()} and size: {img.GetSize()}")
+            sys.exit()
 
             resampled = sitk.Resample(
                 img,
