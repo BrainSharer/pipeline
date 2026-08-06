@@ -37,7 +37,7 @@ if __name__ == '__main__':
     parser.add_argument("--bspline", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
-    
+
     args = parser.parse_args()
     moving = args.moving
     channel = args.channel
@@ -52,32 +52,32 @@ if __name__ == '__main__':
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     volumeRegistration = VolumeRegistration(moving, channel, annotation_id, xy_um, z_um, scaling_factor, fixed, orientation, bspline, debug)
 
-
-    function_mapping = {'create_volume': volumeRegistration.create_volume,
-                        'register_volume': volumeRegistration.register_volume,
-                        'reverse_register_volume': volumeRegistration.reverse_register_volume,
-                        'transformix_volume': volumeRegistration.transformix_volume,
-                        'transformix_points': volumeRegistration.transformix_points,
-                        'transformix_coms': volumeRegistration.transformix_coms,
-                        'create_precomputed': volumeRegistration.create_precomputed,
-                        'status': volumeRegistration.check_status,
-                        'insert_points': volumeRegistration.insert_points,
-                        'fill_contours': volumeRegistration.fill_contours,
-                        'polygons': volumeRegistration.transformix_polygons,
-                        'create_average_volume': volumeRegistration.create_average_volume,
-                        'crop': volumeRegistration.crop_volume,
-                        'origins': volumeRegistration.volume_origin_creation,
-                        'pad_volume': volumeRegistration.pad_volume,
-                        'group_volume': volumeRegistration.group_volume,
-                        'create_brain_coms': volumeRegistration.create_brain_coms,
-                        'create_moving_fixed_points': volumeRegistration.create_moving_fixed_points,
-                        'register_volume_with_fiducials': volumeRegistration.register_volume_with_fiducials,
-                        'zarr2tif': volumeRegistration.zarr2tif,
-                        'tif2zarr': volumeRegistration.tif2zarr,
-                        'volume2tif': volumeRegistration.volume2tif,
-                        'volume2nifti': volumeRegistration.volume2nifti,
-                        'downsample_stack': volumeRegistration.downsample_stack,
-                        'register_points': volumeRegistration.points_within_polygons,
+    function_mapping = {
+        "build_volumes": volumeRegistration.build_moving_fixed_volumes,
+        "create_volume": volumeRegistration.create_volume,
+        "register_volume": volumeRegistration.register_volume,
+        "reverse_register_volume": volumeRegistration.reverse_register_volume,
+        "transformix_volume": volumeRegistration.transformix_volume,
+        "transformix_points": volumeRegistration.transformix_points,
+        "transformix_coms": volumeRegistration.transformix_coms,
+        "create_precomputed": volumeRegistration.create_precomputed,
+        "status": volumeRegistration.check_status,
+        "insert_points": volumeRegistration.insert_points,
+        "fill_contours": volumeRegistration.fill_contours,
+        "polygons": volumeRegistration.transformix_polygons,
+        "create_average_volume": volumeRegistration.create_average_volume,
+        "crop": volumeRegistration.crop_volume,
+        "origins": volumeRegistration.volume_origin_creation,
+        "pad_volume": volumeRegistration.pad_volume,
+        "group_volume": volumeRegistration.group_volume,
+        "create_brain_coms": volumeRegistration.create_brain_coms,
+        "create_moving_fixed_points": volumeRegistration.create_moving_fixed_points,
+        "register_volume_with_fiducials": volumeRegistration.register_volume_with_fiducials,
+        "zarr2tif": volumeRegistration.zarr2tif,
+        "tif2zarr": volumeRegistration.tif2zarr,
+        "volume2tif": volumeRegistration.volume2tif,
+        "volume2nifti": volumeRegistration.volume2nifti,
+        "register_points": volumeRegistration.points_within_polygons,
     }
 
     if task in function_mapping:
@@ -86,4 +86,3 @@ if __name__ == '__main__':
         print(f'{task} is not a correct task. Choose one of these:')
         for key in function_mapping.keys():
             print(f'\t{key}')
-
