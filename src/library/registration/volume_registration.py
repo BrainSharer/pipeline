@@ -704,6 +704,10 @@ class VolumeRegistration:
             print(f'Transform file {self.transform_filepath} does not exist, exiting.')
             sys.exit()
 
+        xy_um = self.sqlController.scan_run.resolution
+        z_um = self.sqlController.scan_run.zresolution
+
+
         transform = sitk.ReadTransform(self.transform_filepath)
         full_registered = os.path.join(self.fileLocationManager.prep, 'C1', 'full_registered')
         os.makedirs(full_registered, exist_ok=True)
@@ -714,7 +718,7 @@ class VolumeRegistration:
                 print(f'Skipping non-TIF file: {fpath}')
                 continue
             img = sitk.ReadImage(fpath, sitk.sitkFloat32)
-            img.SetSpacing((self.xy_um, self.xy_um, self.z_um))
+            img.SetSpacing((xy_um, xy_um, z_um))
 
             resampled = sitk.Resample(
                 img,
