@@ -567,7 +567,8 @@ class VolumeRegistration:
     def create_volume(self):
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-        INPUT_DIR = self.fileLocationManager.get_full_aligned()
+        #INPUT_DIR = self.fileLocationManager.get_full_aligned()
+        INPUT_DIR = self.fileLocationManager.get_thumbnail_aligned()
         image_manager = ImageManager(INPUT_DIR)
         print(f'Using images from {INPUT_DIR} to create volume')
         files = image_manager.files
@@ -584,8 +585,9 @@ class VolumeRegistration:
 
         for ffile in tqdm(files, desc='Creating volume'):
             fpath = os.path.join(INPUT_DIR, ffile)
-            ds = read_and_downsample(fpath, xy_resolution, self.xy_um)
-            slices.append(ds)
+            #ds = read_and_downsample(fpath, xy_resolution, self.xy_um)
+            ds = read_image(fpath)
+            slices.append(ds.astype(np.float32))
 
 
 
@@ -599,14 +601,14 @@ class VolumeRegistration:
             )
         )
 
-        sitk_image = make_isotropic(img3d, TARGET_SPACING=self.xy_um)
+        #sitk_image = make_isotropic(img3d, TARGET_SPACING=self.xy_um)
 
         if os.path.exists(self.moving_nii_path):
             print(f'{self.moving_nii_path} exists, removing')
             os.remove(self.moving_nii_path)
         print(f'Creating volume at {self.moving_nii_path}')
-        sitk.WriteImage(sitk_image, self.moving_nii_path)
-        print(f'Saved a 3D volume {self.moving_nii_path} with shape={sitk_image.GetSize()} and spacing={sitk_image.GetSpacing()}')
+        sitk.WriteImage(img3d, self.moving_nii_path)
+        print(f'Saved a 3D volume {self.moving_nii_path} with shape={img3d.GetSize()} and spacing={img3d.GetSpacing()}')
 
         print("Finished.")
 

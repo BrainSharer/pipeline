@@ -1,4 +1,5 @@
 import argparse
+from email.mime import image
 import os
 import glob
 
@@ -6,8 +7,12 @@ import dask.array as da
 from dask import delayed
 import numpy as np
 import tifffile
+from tqdm.asyncio import tqdm
 import zarr
 import SimpleITK as sitk
+
+CHUNK_SIZE = (16, 512, 512)
+
 
 
 def read_tiff_delayed(path: str):
@@ -53,7 +58,6 @@ def build_dask_array_from_folder(folder: str, pattern: str = "*.tif", sample_ind
         raise ValueError("Unexpected sample tiff dimensions: %s" % (sample.shape,))
 
     dtype = sample.dtype
-    z = len(files)
 
     # create delayed readers for each file
     delayed_reads = [read_tiff_delayed(p) for p in files]
@@ -75,26 +79,38 @@ def build_dask_array_from_folder(folder: str, pattern: str = "*.tif", sample_ind
         arr = da.from_delayed(d, shape=shp, dtype=dtype)
         da_slices.append(arr)
 
-    stacked = da.stack(da_slices, axis=0)  # shape (Z, Y, X) or (Z, Y, X, C)
-
-    metadata = dict(shape=stacked.shape, dtype=str(dtype), channels=channels)
-    return stacked, metadata
+    return da.stack(da_slices, axis=0)  # shape (Z, Y, X) or (Z, Y, X, C)
 
 
-def read_tiff_stack(directory):
-    files = sorted(glob.glob(os.path.join(directory, "*.tif")))
-    arrays = [
-        da.from_delayed(
-            da.delayed(tifffile.imread)(f),
-            shape=tifffile.imread(files[0]).shape,
-            dtype=np.uint16,
-        )
-        for f in files
+def downsample(volume, XY_DOWNSAMPLE):
+
+    return volume[
+        ::1,
+        ::XY_DOWNSAMPLE,
+        ::XY_DOWNSAMPLE
     ]
 
-    volume = da.stack(arrays, axis=0)
+def shrink_volume(image, XY_DOWNSAMPLE):
+    original_size = image.GetSize()
+    original_spacing = image.GetSpacing()
 
-    return volume
+    # Define a scale factor (e.g., shrink by 50%)
+    new_size = [original_size[0] // XY_DOWNSAMPLE, original_size[1] // XY_DOWNSAMPLE, original_size[2]]
+    new_spacing = [original_spacing[0] * XY_DOWNSAMPLE, original_spacing[1] * XY_DOWNSAMPLE, original_spacing[2]]
+
+    # Resample to new size and spacing
+    shrunk_image = sitk.Resample(
+        image,
+        new_size,
+        sitk.Transform(),
+        sitk.sitkLinear,
+        image.GetOrigin(),
+        new_spacing,
+        image.GetDirection(),
+        0.0,
+        image.GetPixelID()
+    )
+    return shrunk_image
 
 def write_zarr(volume, outfile):
     volume.to_zarr(
@@ -107,24 +123,43 @@ def write_zarr(volume, outfile):
         ),
     )
 
-def read_zarr(path):
+def open_zarr(path):
     return da.from_zarr(path)
 
-def dask_to_sitk(volume, xy_um, z_um):
+def dask_to_sitk(volume, xy_resolution, xy_downsample):
     arr = volume.compute()
     img = sitk.GetImageFromArray(arr)
-    img.SetSpacing((xy_um, xy_um, z_um))
+    spacing = (
+            xy_resolution * xy_downsample,
+            xy_resolution * xy_downsample,
+            20.0
+        )    
+    img.SetSpacing(spacing)
+    print(f"Converted dask array to SimpleITK image with shape {img.GetSize()} and spacing {img.GetSpacing()}")
 
     return img
 
 def affine_registration(fixed, moving):
     fixed = sitk.Cast(fixed, sitk.sitkFloat32)
     moving = sitk.Cast(moving, sitk.sitkFloat32)
+    print(f"Affine registration with fixed image size {fixed.GetSize()} and moving image size {moving.GetSize()}")
+    print(f"Fixed image spacing: {fixed.GetSpacing()}, Moving image spacing: {moving.GetSpacing()}")
 
+
+    initial_transform = sitk.CenteredTransformInitializer(
+        fixed,
+        moving,
+        sitk.AffineTransform(fixed.GetDimension()), 
+        sitk.CenteredTransformInitializerFilter.GEOMETRY,
+    )
+    # ------------------------------------------------------------
+    # 4. Rigid+Affine registration (MI metric)
+    # ------------------------------------------------------------
     registration = sitk.ImageRegistrationMethod()
 
-    registration.SetMetricAsMattesMutualInformation(50)
-
+    registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+    registration.SetMetricSamplingStrategy(registration.RANDOM)
+    registration.SetMetricSamplingPercentage(0.2)
     registration.SetInterpolator(sitk.sitkLinear)
 
     registration.SetOptimizerAsGradientDescent(
@@ -133,41 +168,52 @@ def affine_registration(fixed, moving):
         convergenceMinimumValue=1e-6,
         convergenceWindowSize=10,
     )
-
     registration.SetOptimizerScalesFromPhysicalShift()
-
-    registration.SetShrinkFactorsPerLevel([8,4,2,1])
-
-    registration.SetSmoothingSigmasPerLevel([4,2,1,0])
-
+    registration.SetShrinkFactorsPerLevel([4, 2, 1])
+    registration.SetSmoothingSigmasPerLevel([2, 1, 0])
+    registration.SetInitialTransform(initial_transform, inPlace=False)
     registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
-    transform = sitk.CenteredTransformInitializer(
-        fixed,
-        moving,
-        sitk.AffineTransform(3),
-        sitk.CenteredTransformInitializerFilter.GEOMETRY,
-    )
 
-    registration.SetInitialTransform(transform)
+    #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+    affine_transform = registration.Execute(fixed, moving)
 
-    final_transform = registration.Execute(
-        fixed,
-        moving,
-    )
+    print("Affine done. Final metric:", registration.GetMetricValue())
+    print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
 
-    return final_transform
+    return affine_transform
 
-def resample_volume(fixed, moving, transform):
 
-    return sitk.Resample(
+def resample_full_resolution(moving_zarr,
+                             fixed_zarr,
+                             transform, spacing):
+
+    moving = sitk.GetImageFromArray(moving_zarr.compute())
+    fixed = sitk.GetImageFromArray(fixed_zarr.compute())
+
+    moving.SetSpacing(spacing)
+    fixed.SetSpacing(spacing)
+
+    print(f"Resampling moving image with shape {moving.GetSize()} and spacing {moving.GetSpacing()}")
+    print(f"Resampling fixed image with shape {fixed.GetSize()} and spacing {fixed.GetSpacing()}")
+
+    result = sitk.Resample(
         moving,
         fixed,
         transform,
         sitk.sitkLinear,
         0,
-        moving.GetPixelID(),
+        moving.GetPixelID()
     )
+
+    #arr = sitk.GetArrayFromImage(result)
+    return result
+
+    return da.from_array(
+        arr,
+        chunks=CHUNK_SIZE
+    )
+
 
 
 def sitk_to_dask(image):
@@ -179,80 +225,124 @@ def sitk_to_dask(image):
         chunks=(32,512,512)
     )
 
-def write_tiffs(volume, outdir):
+def save_zarr(volume, outfile):
 
-    os.makedirs(outdir, exist_ok=True)
-
-    arr = volume.compute()
-
-    for z in range(arr.shape[0]):
-
-        tifffile.imwrite(
-            os.path.join(outdir, f"{z:03d}.tif"),
-            arr[z],
+    volume.to_zarr(
+        outfile,
+        overwrite=True,
+        compressor=zarr.Blosc(
+            cname='zstd',
+            clevel=5,
+            shuffle=2
         )
+    )
+
+def create_sitk_volume(input_path):
+    files = sorted(glob.glob(os.path.join(input_path, "*.tif")))
+    slices = []
+    for f in tqdm(files):
+        img = tifffile.imread(f)
+        slices.append(img.astype(np.float32))
+    arr = np.stack(slices, axis=0)
+    return sitk.GetImageFromArray(arr)
+
+def save_tiffs(volume, directory):
+    os.makedirs(directory, exist_ok=True)
+    nz = volume.shape[0]
+    slices = []
+
+    for z in tqdm(range(nz)):
+        img = volume[z].compute()
+        outpath = os.path.join(directory, f"{z:03d}.tif")
+        tifffile.imwrite(outpath, img)
+        slices.append(img)
+
+    arr = np.stack(slices, axis=0)
+    stack_path = os.path.join(directory, "stack.tif")
+    tifffile.imwrite(stack_path, arr)
+    print(f"Saved registered volume as individual tiffs in {directory} and as stack in {stack_path}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument('--fixed', help='Enter the animal (fixed)', required=True, type=str)
+    parser.add_argument('--xy_resolution', help='XY resolution in um', required=True, default=0.325, type=float)
+    parser.add_argument('--z_resolution', help='Z resolution in um', required=True, default=20.0, type=float)
+    parser.add_argument('--xy_downsample', help='XY downsample factor', required=True, default=1.0, type=float)
 
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
 
     args = parser.parse_args()
     moving_brain = args.moving
     fixed_brain = args.fixed
+    xy_resolution = args.xy_resolution
+    z_resolution = args.z_resolution
+    xy_downsample = args.xy_downsample
 
     base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
     moving_path = os.path.join(base_path, moving_brain, 'preps', 'C1', 'thumbnail_aligned')
     fixed_path = os.path.join(base_path, fixed_brain, 'preps', 'C1', 'thumbnail_aligned')
-    fixed, _ = build_dask_array_from_folder(fixed_path)
-    print(f"Loaded fixed volume with shape {fixed.shape} and dtype {fixed.dtype}")
+    fixed_sitk = create_sitk_volume(fixed_path)
+    moving_sitk = create_sitk_volume(moving_path)
+    moving_sitk.SetSpacing((xy_resolution, xy_resolution, z_resolution))
+    fixed_sitk.SetSpacing((xy_resolution, xy_resolution, z_resolution))
+    print(f'moving sitk shape: {moving_sitk.GetSize()}, fixed sitk shape: {fixed_sitk.GetSize()}')
+    print(f'moving sitk spacing: {moving_sitk.GetSpacing()}, fixed sitk spacing: {fixed_sitk.GetSpacing()}')
+    #fixed_dask = build_dask_array_from_folder(fixed_path)
+    #print(f"Loaded fixed volume with shape {fixed_dask.shape} and dtype {fixed_dask.dtype}")
 
 
     fixed_zarr_path = os.path.join(base_path, fixed_brain, 'preps', 'C1', 'thumbnail_aligned.zarr')
-    write_zarr(fixed, fixed_zarr_path)
+    #write_zarr(fixed_dask, fixed_zarr_path)
 
-    moving, _ = build_dask_array_from_folder(moving_path)
-    print(f"Loaded moving volume with shape {moving.shape} and dtype {moving.dtype}")
+    #moving_dask = build_dask_array_from_folder(moving_path)
+    #print(f"Loaded moving volume with shape {moving_dask.shape} and dtype {moving_dask.dtype}")
     moving_zarr_path = os.path.join(base_path, moving_brain, 'preps', 'C1', 'thumbnail_aligned.zarr')
-    write_zarr(moving, moving_zarr_path)
+    #write_zarr(moving_dask, moving_zarr_path)
 
-    fixed = read_zarr(fixed_zarr_path)
-    moving = read_zarr(moving_zarr_path)
+    fixed_zarr = open_zarr(fixed_zarr_path)
+    moving_zarr = open_zarr(moving_zarr_path)
+    print(f'fixed zarr shape: {fixed_zarr.shape}, moving zarr shape: {moving_zarr.shape}')
+    print(f'fixed zarr spacing: {fixed_sitk.GetSpacing()}, moving zarr spacing: {moving_sitk.GetSpacing()}')
+    #ds_fixed = downsample(fixed_zarr, xy_downsample)
+    #ds_moving = downsample(moving_zarr, xy_downsample)
+    ds_fixed = shrink_volume(fixed_sitk, int(xy_downsample))
+    ds_moving = shrink_volume(moving_sitk, int(xy_downsample))
+    print(f"Downsampled fixed volume to shape {ds_fixed.GetSize()} and moving volume to shape {ds_moving.GetSize()}")
+    print(f"Downsampled fixed volume spacing: {ds_fixed.GetSpacing()}, moving volume spacing: {ds_moving.GetSpacing()}")
 
-    fixed_img = dask_to_sitk(fixed, 10.4, 20.0)
+    #fixed_ds_sitk = dask_to_sitk(ds_fixed, xy_resolution, xy_downsample)
+    #moving_ds_sitk = dask_to_sitk(ds_moving, xy_resolution, xy_downsample)
+    #print(f"Converted downsampled volumes to SimpleITK images with spacing {fixed_ds_sitk.GetSpacing()} and {moving_ds_sitk.GetSpacing()}")
 
-    moving_img = dask_to_sitk(moving, 10.4, 20.0)
+    #transform = affine_registration(ds_fixed, ds_moving)
+    #transform_path = os.path.join(base_path, moving_brain, 'preps', 'affine.tfm')
+    transform_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration/DK52/DK52_DK55_20.0x10.4x10.4um.tfm"
+    transform = sitk.ReadTransform(transform_path)
+    #sitk.WriteTransform(transform, transform_path)
 
-    transform = affine_registration(
-        fixed_img,
-        moving_img,
-    )
-
-    transform_path = os.path.join(base_path, moving_brain, 'preps', 'affine.tfm')
-
-    sitk.WriteTransform(transform, transform_path)
-
-    registered = resample_volume(
-        fixed_img,
-        moving_img,
+    registered = resample_full_resolution(
+        fixed_zarr,
+        moving_zarr,
         transform,
+        (xy_resolution, xy_resolution, z_resolution)
     )
+    registered_tif_path = os.path.join(base_path, moving_brain, 'preps', 'C1', 'registered.tif')
+    registered = sitk.Cast(registered, sitk.sitkUInt16)
+    print(f'Registered moving volume to fixed volume to {registered_tif_path}')
+    sitk.WriteImage(registered, registered_tif_path)
+    exit(0)
 
-    registered_dask = sitk_to_dask(registered)
+    #registered_dask = sitk_to_dask(registered)
     registered_zarr_path = os.path.join(base_path, moving_brain, 'preps', 'C1', 'thumbnail_aligned_registered.zarr')
 
-    registered_dask.to_zarr(
-        registered_zarr_path,
-        overwrite=True,
-    )
+    save_zarr(registered, registered_zarr_path)
 
     registered_tif_path = os.path.join(base_path, moving_brain, 'preps', 'C1', 'thumbnail_aligned_registered_tiffs')
 
-    write_tiffs(
-        registered_dask,
-        registered_tif_path,
-    )
+    save_tiffs(registered, registered_tif_path)
+    fixed_tifs = os.path.join(base_path, fixed_brain, 'preps', 'C1', 'thumbnail_aligned.ds')
+    os.makedirs(fixed_tifs, exist_ok=True)
+    save_tiffs(fixed_zarr, fixed_tifs)
 
 
