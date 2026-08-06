@@ -793,6 +793,8 @@ class VolumeRegistration:
         print(f"Loaded fixed image: {self.fixed_nii_path}")
     
         moving = sitk.ReadImage(self.moving_nii_path, sitk.sitkFloat32)
+        print(f"Loaded moving image: {self.moving_nii_path}")
+
         fixed_size = fixed.GetSize()
         moving_size = moving.GetSize()
         fixed_spacing = fixed.GetSpacing()
