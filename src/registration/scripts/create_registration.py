@@ -56,6 +56,7 @@ if __name__ == '__main__':
         "build_volumes": volumeRegistration.build_moving_fixed_volumes,
         "create_volume": volumeRegistration.create_volume,
         "register_volume": volumeRegistration.register_volume,
+        "register_stack": volumeRegistration.register_stack,
         "reverse_register_volume": volumeRegistration.reverse_register_volume,
         "transformix_volume": volumeRegistration.transformix_volume,
         "transformix_points": volumeRegistration.transformix_points,

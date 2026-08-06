@@ -67,7 +67,7 @@ class VolumeRegistration:
         self.sqlController = SqlController(self.animal)
         self.thumbnail_aligned = os.path.join(self.fileLocationManager.prep, self.channel, 'thumbnail_aligned')
         self.moving_volume_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}.tif' )
-        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.xy_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}.nii' )
+        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{self.z_um}x{self.xy_um}x{self.xy_um}um_{self.orientation}.nii' )
 
         self.registered_volume = os.path.join(self.moving_path, f'{self.moving}_{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{orientation}.nii' )
         self.changes_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{orientation}_changes.json' )
@@ -660,6 +660,9 @@ class VolumeRegistration:
             print("Error: One of the volumes is None. Exiting.")
             sys.exit()
         print(f"Moving volume shape: {moving.GetSize()}, spacing: {moving.GetSpacing()}")
+        xy_um = round(moving.GetSpacing()[0], 1)
+        z_um = round(moving.GetSpacing()[2], 0)
+        self.moving_nii_path = os.path.join(self.moving_path, f'{self.moving}_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.nii' )
         if os.path.exists(self.moving_nii_path):
             print(f'{self.moving_nii_path} exists, removing')
             os.remove(self.moving_nii_path)
@@ -668,6 +671,8 @@ class VolumeRegistration:
         print(f'Saved a 3D volume {self.moving_nii_path} with shape={moving.GetSize()} and spacing={moving.GetSpacing()}')
 
         print(f"Fixed volume shape: {fixed.GetSize()}, spacing: {fixed.GetSpacing()}")
+        self.fixed_nii_path = os.path.join(self.fixed_path, f'{self.fixed}_{z_um}x{xy_um}x{xy_um}um_{self.orientation}.nii' )
+
         if os.path.exists(self.fixed_nii_path):
             print(f'{self.fixed_nii_path} exists, removing')
             os.remove(self.fixed_nii_path)
@@ -676,7 +681,54 @@ class VolumeRegistration:
         print(f'Saved a 3D volume {self.fixed_nii_path} with shape={fixed.GetSize()} and spacing={fixed.GetSpacing()}')
 
 
+    def register_stack(self):
+        if self.fixed is None:
+            print("Error: Fixed volume is None. Exiting.")
+            sys.exit()
+        if self.moving is None:
+            print("Error: Moving volume is None. Exiting.")
+            sys.exit()
 
+        input_path = os.path.join(self.fileLocationManager.prep, 'C1', 'full_aligned')
+        if not os.path.exists(input_path):
+            print(f'Input path {input_path} does not exist, exiting.')
+            sys.exit()
+        moving_files = sorted(os.listdir(input_path))
+        if len(moving_files) == 0:
+            print(f'No files found in {input_path}, exiting.')
+            sys.exit()
+
+        if os.path.exists(self.transform_filepath):
+            print(f'Using transform: {self.transform_filepath}')
+        else:
+            print(f'Transform file {self.transform_filepath} does not exist, exiting.')
+            sys.exit()
+
+        transform = sitk.ReadTransform(self.transform_filepath)
+        full_registered = os.path.join(self.fileLocationManager.prep, 'C1', 'full_registered')
+        os.makedirs(full_registered, exist_ok=True)
+
+        for infile in tqdm(moving_files, desc='Resampling moving images'):
+            fpath = os.path.join(input_path, infile)
+            if not fpath.endswith('.tif'):
+                print(f'Skipping non-TIF file: {fpath}')
+                continue
+            img = sitk.ReadImage(fpath, sitk.sitkFloat32)
+            img.SetSpacing((self.xy_um, self.xy_um, self.z_um))
+
+            resampled = sitk.Resample(
+                img,
+                img,
+                transform,
+                sitk.sitkLinear,
+                0.0,
+            )
+
+            output_path = os.path.join(full_registered, infile)
+            resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
+            sitk.WriteImage(resampled, output_path)
+            sitk.WriteImage(resampled, output_path)            
+            print(f"Resampled moving image written to {output_path}")
 
 
     def pad_volume(self):
