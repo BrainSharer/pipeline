@@ -36,10 +36,10 @@ class StackRegistration:
         self.registered_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_registered')
         xy_resolution = 0.325
         self.full_xy_resolution = xy_resolution * 64
-        self.ds_xy_resolution = xy_resolution * 128
+        self.ds_xy_resolution = xy_resolution * self.downsample
         self.z_resolution = 20.0
                 
-        self.transform_path = os.path.join(self.reg_path, self.moving, f"{self.moving}_{self.fixed}_20.0x{self.ds_xy_resolution}x{self.ds_xy_resolution}um.tfm")
+        self.transform_path = os.path.join(self.reg_path, self.moving, f"{self.moving}_{self.fixed}_{self.downsample}.tfm")
         self.full_xy_resolution /= 1000
         self.ds_xy_resolution /= 1000
         self.z_resolution /= 1000
@@ -119,6 +119,9 @@ class StackRegistration:
         if os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} already exists, skipping transform creation")            
             return
+        else:
+            print(f'Creating affine registration in {self.transform_path}')
+
         if not os.path.exists(self.ds_moving_path):
             print(f'Exiting, missing: {self.ds_moving_path}')
             return
