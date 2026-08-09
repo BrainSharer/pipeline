@@ -22,7 +22,7 @@ from typing import Sequence, Tuple, Optional
 
 class StackRegistration:
 
-    def __init__(self, moving, fixed, downsample, debug=False):
+    def __init__(self, moving, fixed, downsample=1, debug=False):
         self.moving = moving
         self.fixed = fixed
         self.downsample = downsample
@@ -49,7 +49,7 @@ class StackRegistration:
 
     def create_zarr(self):
         for brain in [self.moving, self.fixed]:
-            if self.downsample and self.downsample > 1:
+            if self.downsample > 1:
                 aligned = f"thumbnail_aligned.{self.downsample}"
                 aligned_zarr = f"thumbnail_aligned.{self.downsample}.zarr"
                 rechunker = 8
@@ -765,7 +765,7 @@ if __name__ == '__main__':
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
     parser.add_argument('--fixed', help='Enter the animal (fixed)', required=True, type=str)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
-    parser.add_argument("--downsample", help="Enter the downsample", required=False, type=int)
+    parser.add_argument("--downsample", help="Enter the downsample", required=False, default=1, type=int)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
 
     args = parser.parse_args()
