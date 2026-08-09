@@ -45,20 +45,6 @@ class ParallelManager:
         :param file_keys: tuple of file information
         :param workers: integer number of workers to use
         """
-        ################################
-        #ADDED FOR DEBUGGING MULTI-PROCESSOR SERIALIZATION
-        # I'm taking this out as it doesn't work and while
-        # in multi processing mode, you don't know it is failing
-        """"
-        try:
-            # Test if the function and arguments can be pickled
-            pickle.dumps(function)
-            pickle.dumps(file_keys[0])  # Test one sample argument
-            print("ProcessPoolExecutor argument pickling successful!")
-        except Exception as e:
-            print(f"CAN'T PICKLE: {e}\nObject type: {type(e).__name__}")
-        """ 
-        ################################
 
         if self.debug:
             for file_key in sorted(file_keys):

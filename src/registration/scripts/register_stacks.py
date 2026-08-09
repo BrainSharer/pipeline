@@ -19,12 +19,21 @@ import math
 from itertools import product
 from typing import Sequence, Tuple, Optional
 from pathlib import Path
+import cloudvolume
+from cloudvolume import CloudVolume
+from taskqueue.taskqueue import LocalTaskQueue
+import igneous.task_creation as tc
+
+
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 
+from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_process import write_image
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 
 
 class StackRegistration:
@@ -41,12 +50,12 @@ class StackRegistration:
         self.full_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', 'thumbnail_aligned.64')
         self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.zarr')
         self.registered_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_registered')
-        xy_resolution = 0.325
-        self.full_xy_resolution = xy_resolution * 64
-        self.ds_xy_resolution = xy_resolution * self.downsample
+        self.xy_resolution = 0.325
+        self.full_xy_resolution = self.xy_resolution * 64
+        self.ds_xy_resolution = self.xy_resolution * self.downsample
         self.z_resolution = 20.0
                 
-        self.transform_path = os.path.join(self.reg_path, self.moving, f"{self.moving}_{self.fixed}.tfm")
+        self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
         self.full_xy_resolution /= 1000
         self.ds_xy_resolution /= 1000
         self.z_resolution /= 1000
@@ -89,6 +98,48 @@ class StackRegistration:
             volume = zarr.open(output_path, mode='r')
             print(volume.info)
             del volume
+
+
+    def create_test_volumes(self):
+        # fixed
+        input_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f"thumbnail_aligned.{self.downsample}")
+        if not os.path.exists(input_path):
+            print(f"Input path {input_path} does not exist for brain {self.fixed}")
+            sys.exit(1)
+
+        slices = []
+        files = sorted(os.listdir(input_path))
+        for f in tqdm(files):
+            inpath = os.path.join(input_path, f)
+            img = tifffile.imread(inpath)
+            slices.append(img)
+
+        arr = np.stack(slices, axis=0)
+        outpath = os.path.join(self.base_path, self.fixed, 'preps', f'C1', f'volume.{self.downsample}.tif')
+        tifffile.imwrite(outpath, arr)
+        print(f'Wrote fixed tif to {outpath}')
+        # registered
+        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f"registered.{self.downsample}")
+        if not os.path.exists(input_path):
+            print(f"Input path {input_path} does not exist for brain {self.moving}")
+            sys.exit(1)
+
+        slices = []
+        files = sorted(os.listdir(input_path))
+        for f in tqdm(files):
+            inpath = os.path.join(input_path, f)
+            img = tifffile.imread(inpath)
+            slices.append(img)
+
+        arr = np.stack(slices, axis=0)
+        outpath = os.path.join(self.base_path, self.moving, 'preps', f'C1', f'registered.{self.downsample}.tif')
+        tifffile.imwrite(outpath, arr)
+        print(f'Wrote registered tif to {outpath}')
+
+
+
+
+
 
     def check_image(self, brain):
         # 1. Load your original medical image to grab original metadata
@@ -148,7 +199,6 @@ class StackRegistration:
 
 
     def create_registered_stack(self):
-
             
         if os.path.exists(self.transform_path):
             print(f'Using transform: {self.transform_path}')
@@ -207,6 +257,93 @@ class StackRegistration:
             sitk.WriteImage(slice_2d, filepath)
 
         print(f"Resampled moving images written to {moving_outpath}")
+
+
+    def create_neuroglancer(self):
+            
+        registered_inpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
+        neuroglancer_path = os.path.join(self.base_path, self.moving, 'www', 'neuroglancer_data') 
+        rechunkme_path = os.path.join(neuroglancer_path, 'registered_rechunkme')
+        progress_dir = os.path.join(neuroglancer_path, 'registered_progress')
+        image_manager = ImageManager(registered_inpath)
+        # chunk 
+        chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
+
+        x = self.xy_resolution * self.downsample
+        y = self.xy_resolution * self.downsample
+        z = 20
+        scales = (x,y,z)
+        scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
+        print(f'scales={scales} downsample={self.downsample}')
+        num_channels = image_manager.num_channels
+        # neuroglancer does not support boolean dtype
+        dtype = image_manager.dtype
+        print(f'volume_size={image_manager.volume_size} ndim={image_manager.ndim} dtype={dtype} num_channels={num_channels}')
+        print(f'Creating initial pretransfer data with chunks={chunks}')
+        ng = NumpyToNeuroglancer(
+            self.moving,
+            None,
+            scales,
+            "image",
+            dtype,
+            num_channels=num_channels,
+            chunk_size=chunks,
+        )
+        if os.path.exists(progress_dir) and len(os.listdir(progress_dir)) > 0 and os.path.exists(registered_inpath):
+            print("Transfer task has already been completed")
+        else:
+            ng.init_precomputed(rechunkme_path, image_manager.volume_size)
+            file_keys = []
+            for i, f in enumerate(image_manager.files):
+                filepath = os.path.join(registered_inpath, f)
+                file_keys.append([i, filepath, progress_dir, False, 0, 0]) #added is_blank, height, width
+
+            
+            for file_key in file_keys:
+                ng.process_image(file_key=file_key)
+
+            ng.precomputed_vol.cache.flush()
+
+        base_chunks = [64, 64, 64]
+
+        scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((x,y,z), base_chunks)
+        mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
+        registered_outpath = os.path.join(neuroglancer_path, f'registered.{self.downsample}')
+        outpath = f"file://{registered_outpath}"
+        if not os.path.exists(rechunkme_path):
+            print(f"DIR {rechunkme_path} does not exist, exiting.")
+            sys.exit()
+        
+        cloudpath = f"file://{rechunkme_path}"
+        workers = 4
+        tq = LocalTaskQueue(parallel=workers)
+
+        print(f'Writing transfer task with {workers} workers')
+        # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
+
+        task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks[0], mip=0, skip_downsamples=True)
+
+        print(f'Creating transfer task with chunks={chunks[0]} to layer {outpath}')
+
+        tq.insert(task)
+        tq.execute()
+        print('Finished transfer task')
+
+        for mip in range(0, mips):
+            factor = scales[mip]
+            resolution = resolutions[mip]
+            chunk_mip = chunks[mip]
+            cv = CloudVolume(outpath, mip)
+            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution}')
+
+            task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
+            
+            tq.insert(task)            
+            tq.execute()
+        print('Finished creating precomputed data')
+
+
+
 
     def volume2stack(self):
         moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}.tif')
@@ -832,7 +969,9 @@ if __name__ == '__main__':
         "create_registered_volume": pipeline.create_registered_volume_by_tiles,
         "create_tifs": pipeline.create_tifs,
         "create_registered_stack": pipeline.create_registered_stack,
-        "volume2stack": pipeline.volume2stack
+        "volume2stack": pipeline.volume2stack,
+        "create_neuroglancer": pipeline.create_neuroglancer,
+        "create_test_volumes": pipeline.create_test_volumes
     }
 
     if task in function_mapping:
