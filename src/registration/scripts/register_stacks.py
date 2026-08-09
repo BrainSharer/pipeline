@@ -25,16 +25,16 @@ class StackRegistration:
     def __init__(self, moving, fixed, downsample, debug=False):
         self.moving = moving
         self.fixed = fixed
+        self.downsample = downsample
         self.base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-        self.ds_moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_aligned.128')
-        self.ds_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', 'thumbnail_aligned.128')
+        self.ds_moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}')
+        self.ds_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}')
         self.full_moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_aligned.64')
         self.full_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', 'thumbnail_aligned.64')
         self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.zarr')
         self.registered_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_registered')
         xy_resolution = 0.325
-        self.downsample = downsample
         self.full_xy_resolution = xy_resolution * 64
         self.ds_xy_resolution = xy_resolution * 128
         self.z_resolution = 20.0
@@ -119,6 +119,12 @@ class StackRegistration:
         if os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} already exists, skipping transform creation")            
             return
+        if not os.path.exists(self.ds_moving_path):
+            print(f'Exiting, missing: {self.ds_moving_path}')
+            return
+        if not os.path.exists(self.ds_fixed_path):
+            print(f'Exiting, missing: {self.ds_fixed_path}')
+            return
         fixed_sitk = create_sitk_volume(self.ds_fixed_path)
         moving_sitk = create_sitk_volume(self.ds_moving_path)
         moving_spacing = self.check_image(self.moving)
@@ -127,6 +133,10 @@ class StackRegistration:
         fixed_sitk.SetSpacing(fixed_spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
+        if self.debug:
+            print(f'Using moving data from {self.ds_moving_path}')
+            print(f'Using fixed data from {self.ds_fixed_path}')
+            return
         affine_transform = affine_registration(fixed_sitk, moving_sitk)
         sitk.WriteTransform(affine_transform, self.transform_path)
 
