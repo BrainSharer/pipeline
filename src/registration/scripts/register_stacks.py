@@ -18,6 +18,13 @@ import SimpleITK as sitk
 import math
 from itertools import product
 from typing import Sequence, Tuple, Optional
+from pathlib import Path
+
+PIPELINE_ROOT = Path("./src").absolute()
+sys.path.append(PIPELINE_ROOT.as_posix())
+
+
+from library.utilities.utilities_process import write_image
 
 
 class StackRegistration:
@@ -67,10 +74,8 @@ class StackRegistration:
                 print(f"\tfor brain {brain}, skipping zarr creation")
                 continue
 
-            if self.debug:
-                print(f'{brain} input {input_path}')
-                print(f'{brain} output {output_path}')
-                break
+            print(f'{brain} input {input_path}')
+            print(f'{brain} output {output_path}')
 
 
             dask_imgs = build_dask_array_from_folder(input_path)
@@ -142,7 +147,7 @@ class StackRegistration:
         sitk.WriteTransform(affine_transform, self.transform_path)
 
 
-    def test_registration(self):
+    def create_registered_stack(self):
 
             
         if os.path.exists(self.transform_path):
@@ -182,21 +187,65 @@ class StackRegistration:
         resampler.SetReferenceImage(fixed_image)
         resampler.SetTransform(transform)
         resampled = resampler.Execute(moving_image)
-        resampled = sitk.Cast(sitk.RescaleIntensity(resampled), sitk.sitkUInt16)
-        moving_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}.tif')
-        sitk.WriteImage(resampled, moving_outpath)
-        print(f"Resampled moving image written to {moving_outpath}")
 
-        fixed_outpath = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'volume.{self.downsample}.tif')
-        if os.path.exists(fixed_outpath):
-            print(f'Fixed volume already exists: {fixed_outpath}')
+        match_filter = sitk.HistogramMatchingImageFilter()
+        resampled = match_filter.Execute(resampled, fixed_image)
+
+        moving_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
+        if os.path.exists(moving_outpath):
+            shutil.rmtree(moving_outpath)
+            print('Removed existing', moving_outpath)
+        os.makedirs(moving_outpath, exist_ok=True)
+        size_z = resampled.GetSize()[2]
+
+        for z in tqdm(range(size_z), desc="Writing registered TIFs", disable=self.debug):
+            # Extract the 2D slice at index z
+            slice_2d = resampled[:, :, z]
+            # Generate a unique file name for each plane
+            filepath = os.path.join(moving_outpath, f"{z:03d}.tif")
+            # Write the 2D slice to disk
+            sitk.WriteImage(slice_2d, filepath)
+
+        print(f"Resampled moving images written to {moving_outpath}")
+
+    def volume2stack(self):
+        moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}.tif')
+        if os.path.exists(moving_path):
+            print('Registered volume exists:', moving_path)
         else:
-            fixed_image = sitk.Cast(sitk.RescaleIntensity(fixed_image), sitk.sitkUInt16)
-            sitk.WriteImage(fixed_image, fixed_outpath)
-            print(f"Resampled fixed image written to {fixed_outpath}")
+            print(f'Registered volume missing: {moving_path}')
+            exit(0)
+        fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'volume.{self.downsample}.tif')
+        if os.path.exists(fixed_path):
+            print('Fixed volume exists:', fixed_path)
+        else:
+            print(f'Fixed volume missing: {fixed_path}')
+            exit(0)
+
+        fixed_image = sitk.ReadImage(fixed_path)
+        resampled = sitk.ReadImage(moving_path)
+        match_filter = sitk.HistogramMatchingImageFilter()
+        resampled = match_filter.Execute(resampled, fixed_image)
+
+        size_z = resampled.GetSize()[2]
+        moving_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
+        if os.path.exists(moving_outpath):
+            shutil.rmtree(moving_outpath)
+            print('Removed existing', moving_outpath)
+        os.makedirs(moving_outpath, exist_ok=True)
+        size_z = resampled.GetSize()[2]
+
+        for z in tqdm(range(size_z), desc="Writing registered TIFs", disable=self.debug):
+            slice_2d = resampled[:, :, z]
+            filepath = os.path.join(moving_outpath, f"{z:03d}.tif")
+            sitk.WriteImage(slice_2d, filepath)
+
+        print(f"Resampled moving images written to {moving_outpath}")
 
 
-    def create_registered_volume(self):
+
+
+    def create_registered_volume_by_tiles(self):
 
         if os.path.exists(self.output_zarr):
             shutil.rmtree(self.output_zarr)
@@ -780,10 +829,10 @@ if __name__ == '__main__':
     function_mapping = {
         "create_zarr": pipeline.create_zarr,
         "create_transform": pipeline.create_transform,
-        "create_registered_volume": pipeline.create_registered_volume,
+        "create_registered_volume": pipeline.create_registered_volume_by_tiles,
         "create_tifs": pipeline.create_tifs,
-        "check_image": pipeline.check_image,
-        "test_registration": pipeline.test_registration
+        "create_registered_stack": pipeline.create_registered_stack,
+        "volume2stack": pipeline.volume2stack
     }
 
     if task in function_mapping:
