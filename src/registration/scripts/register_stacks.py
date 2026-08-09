@@ -68,9 +68,9 @@ class StackRegistration:
                 continue
 
             if self.debug:
-                print('Input', aligned)
-                print('Output', aligned_zarr)
-                return
+                print(f'{brain} input {input_path}')
+                print(f'{brain} output {output_path}')
+                break
 
 
             dask_imgs = build_dask_array_from_folder(input_path)
