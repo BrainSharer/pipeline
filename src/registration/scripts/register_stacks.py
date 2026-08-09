@@ -128,6 +128,10 @@ class StackRegistration:
         if not os.path.exists(self.ds_fixed_path):
             print(f'Exiting, missing: {self.ds_fixed_path}')
             return
+        if self.debug:
+            print(f'Using moving data from {self.ds_moving_path}')
+            print(f'Using fixed data from {self.ds_fixed_path}')
+            return
         fixed_sitk = create_sitk_volume(self.ds_fixed_path)
         moving_sitk = create_sitk_volume(self.ds_moving_path)
         moving_spacing = self.check_image(self.moving)
@@ -136,10 +140,6 @@ class StackRegistration:
         fixed_sitk.SetSpacing(fixed_spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
-        if self.debug:
-            print(f'Using moving data from {self.ds_moving_path}')
-            print(f'Using fixed data from {self.ds_fixed_path}')
-            return
         affine_transform = affine_registration(fixed_sitk, moving_sitk)
         sitk.WriteTransform(affine_transform, self.transform_path)
 
