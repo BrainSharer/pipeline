@@ -275,10 +275,11 @@ class StackRegistration:
         source = zarr.open(moving_zarr_path, mode='r')
         print(source.info)
         #image = sitk.GetImageFromArray(source)
-        fixed_spacing = self.create_spacing(self.fixed)
+        #fixed_spacing = self.create_spacing(self.fixed)
         #moving_spacing = self.create_spacing(self.moving)
         #image.SetSpacing(moving_spacing)
         #print(f'Spacing of moving image {moving_spacing}')
+        fixed_spacing = (0.325, 0.325, 20)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
         paddings[32] = (128, 128, 128)
