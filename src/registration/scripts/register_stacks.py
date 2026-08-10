@@ -76,6 +76,7 @@ class StackRegistration:
             print(f"Input path {input_path} does not exist for brain {self.moving}")
             sys.exit(1)
         image_manager = ImageManager(input_path)
+        chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // 4)
         chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
         if os.path.exists(output_path):
             print(f"Output path {output_path} already exists")
@@ -84,11 +85,11 @@ class StackRegistration:
 
         print(f'{self.moving} input {input_path}')
         print(f'{self.moving} output {output_path}')
-        print(f'Chunks zyx: 1,{chunk_y, image_manager.width}')
+        print(f'Chunks zyx: 1,{chunk_y, chunk_x}')
 
 
         dask_imgs = build_dask_array_from_folder(input_path)
-        rechunks_zyx = (1, chunk_y, dask_imgs.shape[2])
+        rechunks_zyx = (1, chunk_y, chunk_x)
         print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
