@@ -269,10 +269,10 @@ class StackRegistration:
         print('path', self.transform_path)
         print(f'matrix {transform}')
         moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}.zarr')
-        source = zarr.open(moving_zarr_path, mode='r')
         if not os.path.exists(moving_zarr_path):
             print(f'Missing: {moving_zarr_path}')
             exit(0)
+        source = zarr.open(moving_zarr_path, mode='r')
         print(source.info)
         #image = sitk.GetImageFromArray(source)
         fixed_spacing = self.create_spacing(self.fixed)
