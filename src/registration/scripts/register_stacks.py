@@ -70,7 +70,6 @@ class StackRegistration:
             aligned = f"thumbnail_aligned.{self.downsample}"
         else:
             aligned = "full_aligned"
-            rechunker = 8
         input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', aligned)
         output_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', aligned_zarr)
         if not os.path.exists(input_path):
@@ -85,10 +84,11 @@ class StackRegistration:
 
         print(f'{self.moving} input {input_path}')
         print(f'{self.moving} output {output_path}')
+        print(f'Chunks zyx: 1,{chunk_y, image_manager.width}')
 
 
         dask_imgs = build_dask_array_from_folder(input_path)
-        rechunks_zyx = (1, dask_imgs.shape[1] // chunk_y, dask_imgs.shape[2])
+        rechunks_zyx = (1, chunk_y, dask_imgs.shape[2])
         print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
