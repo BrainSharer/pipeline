@@ -137,10 +137,6 @@ class StackRegistration:
         print(f'Wrote registered tif to {outpath}')
 
 
-
-
-
-
     def check_image(self, brain):
         # 1. Load your original medical image to grab original metadata
         size_info = {}
@@ -241,22 +237,25 @@ class StackRegistration:
         match_filter = sitk.HistogramMatchingImageFilter()
         resampled = match_filter.Execute(resampled, fixed_image)
 
-        moving_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
-        if os.path.exists(moving_outpath):
-            shutil.rmtree(moving_outpath)
-            print('Removed existing', moving_outpath)
-        os.makedirs(moving_outpath, exist_ok=True)
+        registered_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
+        if os.path.exists(registered_outpath):
+            shutil.rmtree(registered_outpath)
+            print('Removed existing', registered_outpath)
+        os.makedirs(registered_outpath, exist_ok=True)
         size_z = resampled.GetSize()[2]
 
         for z in tqdm(range(size_z), desc="Writing registered TIFs", disable=self.debug):
             # Extract the 2D slice at index z
             slice_2d = resampled[:, :, z]
             # Generate a unique file name for each plane
-            filepath = os.path.join(moving_outpath, f"{z:03d}.tif")
+            filepath = os.path.join(registered_outpath, f"{z:03d}.tif")
             # Write the 2D slice to disk
             sitk.WriteImage(slice_2d, filepath)
 
-        print(f"Resampled moving images written to {moving_outpath}")
+    
+        print(f"Resampled moving images written to {registered_outpath}")
+        sitk.WriteImage(slice_2d, filepath)
+
 
 
     def create_neuroglancer(self):
