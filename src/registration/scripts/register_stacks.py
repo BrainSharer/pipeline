@@ -23,7 +23,7 @@ import cloudvolume
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
-
+from rechunker import rechunk
 
 
 PIPELINE_ROOT = Path("./src").absolute()
@@ -64,40 +64,38 @@ class StackRegistration:
 
 
     def create_zarr(self):
-        for brain in [self.moving, self.fixed]:
-            if self.downsample > 1:
-                aligned = f"thumbnail_aligned.{self.downsample}"
-                aligned_zarr = f"thumbnail_aligned.{self.downsample}.zarr"
-                rechunker = 8
-            else:
-                aligned = "full_aligned"
-                aligned_zarr = "full_aligned.zarr"
-                rechunker = 8
-            input_path = os.path.join(self.base_path, brain, 'preps', 'C1', aligned)
-            output_path = os.path.join(self.base_path, brain, 'preps', 'C1', aligned_zarr)
-            if not os.path.exists(input_path):
-                print(f"Input path {input_path} does not exist for brain {brain}")
-                sys.exit(1)
-            if os.path.exists(output_path):
-                print(f"Output path {output_path} already exists")
-                print(f"\tfor brain {brain}, skipping zarr creation")
-                continue
+        aligned_zarr = f"thumbnail_aligned.{self.downsample}.zarr"
+        if self.downsample > 1:
+            aligned = f"thumbnail_aligned.{self.downsample}"
+            rechunker = 4
+        else:
+            aligned = "full_aligned"
+            rechunker = 8
+        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', aligned)
+        output_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', aligned_zarr)
+        if not os.path.exists(input_path):
+            print(f"Input path {input_path} does not exist for brain {self.moving}")
+            sys.exit(1)
+        if os.path.exists(output_path):
+            print(f"Output path {output_path} already exists")
+            print(f"\tfor brain {self.moving}, skipping zarr creation")
+            return
 
-            print(f'{brain} input {input_path}')
-            print(f'{brain} output {output_path}')
+        print(f'{self.moving} input {input_path}')
+        print(f'{self.moving} output {output_path}')
 
 
-            dask_imgs = build_dask_array_from_folder(input_path)
-            rechunks_zyx = (1, dask_imgs.shape[1], dask_imgs.shape[2] // rechunker)
-            dask_imgs = dask_imgs.rechunk(rechunks_zyx)
-            print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
-            with ProgressBar():
-                dask_imgs.to_zarr(output_path, overwrite=True)
-            del dask_imgs
-            print(f"✅ Downsampled stack saved to {output_path}")
-            volume = zarr.open(output_path, mode='r')
-            print(volume.info)
-            del volume
+        dask_imgs = build_dask_array_from_folder(input_path)
+        rechunks_zyx = (1, dask_imgs.shape[1] // rechunker, dask_imgs.shape[2] // rechunker)
+        dask_imgs = dask_imgs.rechunk(rechunks_zyx)
+        print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
+        with ProgressBar():
+            dask_imgs.to_zarr(output_path, overwrite=True)
+        del dask_imgs
+        print(f"✅ Downsampled stack saved to {output_path}")
+        volume = zarr.open(output_path, mode='r')
+        print(volume.info)
+        del volume
 
 
     def create_test_volumes(self):
@@ -273,7 +271,8 @@ class StackRegistration:
             print(f'Missing: {moving_zarr_path}')
             exit(0)
         source = zarr.open(moving_zarr_path, mode='r')
-        print(source.info)
+        print(source.shape)
+        exit(0)
         #image = sitk.GetImageFromArray(source)
         #fixed_spacing = self.create_spacing(self.fixed)
         #moving_spacing = self.create_spacing(self.moving)
