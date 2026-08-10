@@ -282,16 +282,16 @@ class StackRegistration:
             self.output_zarr,
             mode="w",
             shape=source.shape,
-            chunks=(32,32,32),
+            chunks=source.chunks,
             dtype=source.dtype)        
 
         process_volume(
             source,
             target,
             transform,
-            padding_zyx=(32, 32, 32),
+            padding_zyx=(128, 128, 128),
             spacing_zyx=fixed_spacing[::-1],
-            use_inverse_transform=True
+            use_inverse_transform=False
         )
         
         registered_volume = zarr.open(self.output_zarr, mode='r')
@@ -669,7 +669,7 @@ def process_volume(
     direction_xyz=None,
     fill_value=0,
     interpolator=None,
-    use_inverse_transform=True,
+    use_inverse_transform=False,
     progress=True,
 ):
     """
