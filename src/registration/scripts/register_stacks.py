@@ -137,7 +137,7 @@ class StackRegistration:
         print(f'Wrote registered tif to {outpath}')
 
 
-    def check_image(self, brain):
+    def create_spacing(self, brain):
         # 1. Load your original medical image to grab original metadata
         size_info = {}
         size_info['DK52'] = (65500,35500,486)
@@ -184,8 +184,8 @@ class StackRegistration:
             return
         fixed_sitk = create_sitk_volume(self.ds_fixed_path)
         moving_sitk = create_sitk_volume(self.ds_moving_path)
-        moving_spacing = self.check_image(self.moving)
-        fixed_spacing = self.check_image(self.fixed)
+        moving_spacing = self.create_spacing(self.moving)
+        fixed_spacing = self.create_spacing(self.fixed)
         moving_sitk.SetSpacing(moving_spacing)
         fixed_sitk.SetSpacing(fixed_spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
@@ -212,7 +212,7 @@ class StackRegistration:
             print(f'Cannot find moving zarr: {moving_zarr_path}')
             exit(0)
         moving_image = sitk.GetImageFromArray(moving_zarr)
-        moving_spacing = self.check_image(self.moving)
+        moving_spacing = self.create_spacing(self.moving)
         moving_image.SetSpacing(moving_spacing)
 
         fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}.zarr')
@@ -223,7 +223,7 @@ class StackRegistration:
             exit(0)
         fixed_zarr = zarr.open(fixed_zarr_path, mode='r')
         fixed_image = sitk.GetImageFromArray(fixed_zarr)
-        fixed_spacing = self.check_image(self.fixed)
+        fixed_spacing = self.create_spacing(self.fixed)
         fixed_image.SetSpacing(fixed_spacing)
 
         print(f'Size of moving image {moving_image.GetSize()} spacing: {moving_image.GetSpacing()}')
@@ -256,6 +256,65 @@ class StackRegistration:
         print(f"Resampled moving images written to {registered_outpath}")
         sitk.WriteImage(slice_2d, filepath)
 
+    def create_registered_tiles(self):
+
+        if os.path.exists(self.output_zarr):
+            print(f'zarr output exists, removing: {self.output_zarr}')
+            shutil.rmtree(self.output_zarr)
+            
+        if not os.path.exists(self.transform_path):
+            print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
+            return
+        transform = sitk.ReadTransform(self.transform_path)
+        print('path', self.transform_path)
+        print(f'matrix {transform}')
+        source = zarr.open(os.path.join(self.base_path, self.moving, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}.zarr'), mode='r')
+        print(source.info)
+        #image = sitk.GetImageFromArray(source)
+        fixed_spacing = self.create_spacing(self.fixed)
+        #moving_spacing = self.create_spacing(self.moving)
+        #image.SetSpacing(moving_spacing)
+        #print(f'Spacing of moving image {moving_spacing}')
+        print(f'Spacing fixed image {fixed_spacing}')
+
+
+        target = zarr.open(
+            self.output_zarr,
+            mode="w",
+            shape=source.shape,
+            chunks=(32,32,32),
+            dtype=source.dtype)        
+
+        process_volume(
+            source,
+            target,
+            transform,
+            padding_zyx=(32, 32, 32),
+            spacing_zyx=fixed_spacing[::-1],
+            use_inverse_transform=True
+        )
+        
+        registered_volume = zarr.open(self.output_zarr, mode='r')
+        print(registered_volume.info)
+
+    def create_tifs(self):
+        registered_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
+        if os.path.exists(registered_outpath):
+            shutil.rmtree(registered_outpath)
+        os.makedirs(registered_outpath, exist_ok=True)
+        if not os.path.exists(self.output_zarr):
+            print(f'No zarr at {self.output_zarr}')
+            return
+        volume = zarr.open(self.output_zarr, mode='r')
+        nz = volume.shape[0]
+        slices = []
+
+        for z in tqdm(range(nz)):
+            img = volume[z]
+            outpath = os.path.join(registered_outpath, f"{z:03d}.tif")
+            tifffile.imwrite(outpath, img)
+            slices.append(img)
+        print(f'Finished writing tifs to {registered_outpath}')
 
 
     def create_neuroglancer(self):
@@ -264,6 +323,10 @@ class StackRegistration:
         neuroglancer_path = os.path.join(self.base_path, self.moving, 'www', 'neuroglancer_data') 
         rechunkme_path = os.path.join(neuroglancer_path, 'registered_rechunkme')
         progress_dir = os.path.join(neuroglancer_path, 'registered_progress')
+        for dir in [neuroglancer_path, rechunkme_path, progress_dir]:
+            if os.path.exists(dir):
+                print(f'Removing {dir}')
+                shutil.rmtree(dir)
         image_manager = ImageManager(registered_inpath)
         # chunk 
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
@@ -341,7 +404,11 @@ class StackRegistration:
             tq.execute()
         print('Finished creating precomputed data')
 
-
+    def run_tiles(self):
+        self.create_registered_tiles()
+        self.create_tifs()
+        self.create_neuroglancer()
+        print("Finished running tiles, tifs and neuroglancer")
 
 
     def volume2stack(self):
@@ -377,89 +444,6 @@ class StackRegistration:
             sitk.WriteImage(slice_2d, filepath)
 
         print(f"Resampled moving images written to {moving_outpath}")
-
-
-
-
-    def create_registered_volume_by_tiles(self):
-
-        if os.path.exists(self.output_zarr):
-            shutil.rmtree(self.output_zarr)
-            
-        if not os.path.exists(self.transform_path):
-            print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
-            return
-        transform = sitk.ReadTransform(self.transform_path)
-        print('path', self.transform_path)
-        print(f'matrix {transform}')
-        source = zarr.open(os.path.join(self.base_path, self.moving, 'preps', 'C1', f'thumbnail_aligned.{self.downsample}.zarr'), mode='r')
-        print(source.info)
-        image = sitk.GetImageFromArray(source)
-        fixed_spacing = self.check_image(self.fixed)
-        moving_spacing = self.check_image(self.moving)
-        image.SetSpacing(moving_spacing)
-        print(f'Spacing of moving image {image.GetSpacing()}')
-
-
-        target = zarr.open(
-            self.output_zarr,
-            mode="w",
-            shape=source.shape,
-            chunks=source.chunks,
-            dtype=source.dtype)        
-
-        process_volume(
-            source,
-            target,
-            transform,
-            padding_zyx=(32, 32, 32),
-            spacing_zyx=moving_spacing[::-1],
-            use_inverse_transform=True
-        )
-        
-        registered_volume = zarr.open(self.output_zarr, mode='r')
-        print(registered_volume.info)
-
-    def create_tifs(self):
-        if os.path.exists(self.registered_tif_path):
-            shutil.rmtree(self.registered_tif_path)
-        os.makedirs(self.registered_tif_path, exist_ok=True)
-        if not os.path.exists(self.output_zarr):
-            print(f'No zarr at {self.output_zarr}')
-            return
-        volume = zarr.open(self.output_zarr, mode='r')
-        nz = volume.shape[0]
-        slices = []
-
-        for z in tqdm(range(nz)):
-            img = volume[z]
-            outpath = os.path.join(self.registered_tif_path, f"{z:03d}.tif")
-            tifffile.imwrite(outpath, img)
-            slices.append(img)
-
-        arr = np.stack(slices, axis=0)
-        outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'registered.tif')
-        tifffile.imwrite(outpath, arr)
-        print(f'Wrote registered tif to {outpath}')
-
-        return
-        fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', 'thumbnail_aligned.zarr')
-
-        volume = zarr.open(fixed_zarr_path, mode='r')
-        nz = volume.shape[0]
-        slices = []
-
-        for z in tqdm(range(nz)):
-            img = volume[z]
-            slices.append(img)
-
-        arr = np.stack(slices, axis=0)
-        outpath = os.path.join(self.reg_path, self.fixed, 'testing.tif')
-        tifffile.imwrite(outpath, arr)
-        print(f'Wrote registered tif to {outpath}')
-
-
-
 
 
 def read_tiff_delayed(path: str):
@@ -965,12 +949,13 @@ if __name__ == '__main__':
     function_mapping = {
         "create_zarr": pipeline.create_zarr,
         "create_transform": pipeline.create_transform,
-        "create_registered_volume": pipeline.create_registered_volume_by_tiles,
-        "create_tifs": pipeline.create_tifs,
+        "create_registered_tiles": pipeline.create_registered_tiles,
+        "zarr2tif": pipeline.create_tifs,
         "create_registered_stack": pipeline.create_registered_stack,
         "volume2stack": pipeline.volume2stack,
         "create_neuroglancer": pipeline.create_neuroglancer,
-        "create_test_volumes": pipeline.create_test_volumes
+        "create_test_volumes": pipeline.create_test_volumes,
+        "run_tiles": pipeline.run_tiles
     }
 
     if task in function_mapping:

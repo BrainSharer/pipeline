@@ -137,3 +137,4 @@ tests/
 **/nohup.out*
 # png files from allen atlas comparison
 docs/allen.atlas/*.png
+in_development
