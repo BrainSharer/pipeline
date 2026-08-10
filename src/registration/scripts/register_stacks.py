@@ -276,6 +276,12 @@ class StackRegistration:
         #image.SetSpacing(moving_spacing)
         #print(f'Spacing of moving image {moving_spacing}')
         print(f'Spacing fixed image {fixed_spacing}')
+        paddings = {}
+        paddings[32] = (128, 128, 128)
+        paddings[16] = (256, 256, 256)
+        paddings[1] = (1024, 1024, 1024)
+
+        print(f'Using padding of {paddings[self.downsample]}')
 
 
         target = zarr.open(
@@ -289,9 +295,8 @@ class StackRegistration:
             source,
             target,
             transform,
-            padding_zyx=(128, 128, 128),
+            padding_zyx=paddings[self.downsample],
             spacing_zyx=fixed_spacing[::-1],
-            use_inverse_transform=False
         )
         
         registered_volume = zarr.open(self.output_zarr, mode='r')
@@ -668,8 +673,6 @@ def process_volume(
     origin_zyx=(0.0, 0.0, 0.0),
     direction_xyz=None,
     fill_value=0,
-    interpolator=None,
-    use_inverse_transform=False,
     progress=True,
 ):
     """
@@ -689,9 +692,7 @@ def process_volume(
         Display a progress bar if tqdm is installed.
     """
 
-    if interpolator is None:
-        import SimpleITK as sitk
-        interpolator = sitk.sitkLinear
+    interpolator = sitk.sitkLinear
 
     shape = zarr_src.shape
     chunks = zarr_src.chunks
@@ -731,8 +732,6 @@ def process_volume(
             origin_zyx=origin_zyx,
             direction_xyz=direction_xyz,
             fill_value=fill_value,
-            interpolator=interpolator,
-            use_inverse_transform=use_inverse_transform,
         )
 
 def _zyx_to_xyz(values: Sequence[float]) -> Tuple[float, float, float]:
@@ -789,8 +788,6 @@ def process_block(
     origin_zyx: Sequence[float] = (0.0, 0.0, 0.0),
     direction_xyz: Optional[Sequence[float]] = None,
     fill_value: float = 0.0,
-    interpolator: int = sitk.sitkLinear,
-    use_inverse_transform: bool = False,
 ) -> tuple[slice, slice, slice]:
     """
     Read one padded block from `zarr_src`, resample it with SimpleITK, and write
@@ -818,10 +815,6 @@ def process_block(
         (x, y, z) coordinate convention. If None, identity is used.
     fill_value : float
         Background value used outside the transformed source.
-    interpolator : int
-        SimpleITK interpolator, e.g. sitk.sitkLinear or sitk.sitkNearestNeighbor.
-    use_inverse_transform : bool
-        If True, uses transform.GetInverse() before resampling.
 
     Returns
     -------
@@ -888,9 +881,6 @@ def process_block(
     moving.SetDirection(tuple(float(v) for v in direction_xyz))
     # Optionally invert the transform. This is useful when the provided transform
     # maps source->target but Resample needs output->input.
-    tx = transform
-    if use_inverse_transform:
-        tx = transform.GetInverse()
 
     # Build a reference image for the core block
     reference = sitk.Image(
@@ -912,8 +902,8 @@ def process_block(
     resampled = sitk.Resample(
         moving,
         reference,
-        tx,
-        interpolator,
+        transform,
+        sitk.sitkLinear,
         fill_value,
         sitk.sitkFloat32,
     )
