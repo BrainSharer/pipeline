@@ -23,7 +23,7 @@ import cloudvolume
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
-from rechunker import rechunk
+
 
 
 PIPELINE_ROOT = Path("./src").absolute()
@@ -34,6 +34,7 @@ from library.image_manipulation.image_manager import ImageManager
 from library.utilities.utilities_process import write_image
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
+from library.utilities.dask_utilities import closest_divisors_to_target
 
 
 class StackRegistration:
@@ -67,7 +68,6 @@ class StackRegistration:
         aligned_zarr = f"thumbnail_aligned.{self.downsample}.zarr"
         if self.downsample > 1:
             aligned = f"thumbnail_aligned.{self.downsample}"
-            rechunker = 4
         else:
             aligned = "full_aligned"
             rechunker = 8
@@ -76,6 +76,8 @@ class StackRegistration:
         if not os.path.exists(input_path):
             print(f"Input path {input_path} does not exist for brain {self.moving}")
             sys.exit(1)
+        image_manager = ImageManager(input_path)
+        chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // 4)
         if os.path.exists(output_path):
             print(f"Output path {output_path} already exists")
             print(f"\tfor brain {self.moving}, skipping zarr creation")
@@ -86,7 +88,8 @@ class StackRegistration:
 
 
         dask_imgs = build_dask_array_from_folder(input_path)
-        rechunks_zyx = (1, dask_imgs.shape[1] // rechunker, dask_imgs.shape[2] // rechunker)
+        rechunks_zyx = (1, dask_imgs.shape[1] // chunk_y, dask_imgs.shape[2])
+        print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
         with ProgressBar():
