@@ -266,7 +266,7 @@ class StackRegistration:
             
         if not os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
-            return
+            exit(0)
         transform = sitk.ReadTransform(self.transform_path)
         print('path', self.transform_path)
         print(f'matrix {transform}')
