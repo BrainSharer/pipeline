@@ -22,7 +22,7 @@ from pathlib import Path
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
-
+from timeit import default_timer as timer
 
 
 PIPELINE_ROOT = Path("./src").absolute()
@@ -130,7 +130,7 @@ class StackRegistration:
 
 
     def create_registered_tiles(self):
-
+        start_time = timer()
         if os.path.exists(self.output_zarr):
             print(f'Remove zarr output exists: {self.output_zarr}')
             shutil.rmtree(self.output_zarr)
@@ -154,16 +154,21 @@ class StackRegistration:
         #print(f'Spacing of moving image {moving_spacing}')
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
-        paddings = {}
-        paddings[32] = (128, 128, 128)
-        paddings[16] = (256, 256, 256)
-        paddings[4] = (512, 512, 512)
-        paddings[1] = (1024, 1024, 1024)
+        #paddings = {}
+        #paddings[32] = (24, 24, 0)
+        #paddings[16] = (24, 24, 0)
+        #paddings[4] = (128, 128, 128)
+        #paddings[1] = (256, 256, 256)
+        paddings = (32,32,0)
+        # 2 took 10 seconds, looks very chopped
+        # 8 took 53 seconds, looks chopped
+        # 16 took 93 seconds, just a little chopped
+        # 24 took 139 seconds, looks good
 
-        try:
-            padding = paddings[self.downsample]
-        except KeyError:
-            padding = (256,256,256)
+        #try:
+        #    padding = paddings[self.downsample]
+        #except KeyError:
+        #    padding = (64,64,64)
 
 
         print(f'Using padding of {paddings[self.downsample]}')
@@ -180,12 +185,15 @@ class StackRegistration:
             source,
             target,
             transform,
-            padding_zyx=padding,
+            padding_zyx=paddings,
             spacing_zyx=fixed_spacing[::-1],
         )
         
         registered_volume = zarr.open(self.output_zarr, mode='r')
         print(registered_volume.info)
+        end_time = timer()
+        total_elapsed_time = round((end_time - start_time), 2)
+        print(f"create registered tiles took {total_elapsed_time} seconds")
 
     def create_tifs(self):
         registered_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
