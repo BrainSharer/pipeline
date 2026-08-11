@@ -19,7 +19,6 @@ import math
 from itertools import product
 from typing import Sequence, Tuple, Optional
 from pathlib import Path
-import cloudvolume
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
@@ -31,7 +30,6 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_process import write_image
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 from library.utilities.dask_utilities import closest_divisors_to_target
@@ -49,7 +47,7 @@ class StackRegistration:
         self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
         self.fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.zarr')
+        self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
         self.xy_resolution = 0.325
         self.z_resolution = 20.0                
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
@@ -159,7 +157,14 @@ class StackRegistration:
         paddings = {}
         paddings[32] = (128, 128, 128)
         paddings[16] = (256, 256, 256)
+        paddings[4] = (512, 512, 512)
         paddings[1] = (1024, 1024, 1024)
+
+        try:
+            padding = paddings[self.downsample]
+        except KeyError:
+            padding = (256,256,256)
+
 
         print(f'Using padding of {paddings[self.downsample]}')
 
@@ -175,7 +180,7 @@ class StackRegistration:
             source,
             target,
             transform,
-            padding_zyx=paddings[self.downsample],
+            padding_zyx=padding,
             spacing_zyx=fixed_spacing[::-1],
         )
         
