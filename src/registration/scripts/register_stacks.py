@@ -132,7 +132,7 @@ class StackRegistration:
     def create_registered_tiles(self):
 
         if os.path.exists(self.output_zarr):
-            print(f'zarr output exists, removing: {self.output_zarr}')
+            print(f'Remove zarr output exists: {self.output_zarr}')
             shutil.rmtree(self.output_zarr)
             
         if not os.path.exists(self.transform_path):
@@ -213,10 +213,6 @@ class StackRegistration:
         neuroglancer_path = os.path.join(self.base_path, self.moving, 'www', 'neuroglancer_data') 
         rechunkme_path = os.path.join(neuroglancer_path, 'registered_rechunkme')
         progress_dir = os.path.join(neuroglancer_path, 'registered_progress')
-        for dir in [neuroglancer_path, rechunkme_path, progress_dir]:
-            if os.path.exists(dir):
-                print(f'Removing {dir}')
-                shutil.rmtree(dir)
         image_manager = ImageManager(registered_inpath)
         # chunk 
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
