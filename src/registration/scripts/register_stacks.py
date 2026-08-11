@@ -45,22 +45,14 @@ class StackRegistration:
         self.downsample = downsample
         self.base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-        self.ds_moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
-        self.ds_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
-        self.full_moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'source_aligned.64')
-        self.full_fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', 'source_aligned.64')
+        self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
+        self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
+        self.moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
+        self.fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
         self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.zarr')
-        self.registered_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'thumbnail_registered')
         self.xy_resolution = 0.325
-        self.full_xy_resolution = self.xy_resolution * 64
-        self.ds_xy_resolution = self.xy_resolution * self.downsample
-        self.z_resolution = 20.0
-                
+        self.z_resolution = 20.0                
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
-        self.full_xy_resolution /= 1000
-        self.ds_xy_resolution /= 1000
-        self.z_resolution /= 1000
-
         self.debug = debug
 
 
@@ -108,24 +100,27 @@ class StackRegistration:
 
 
     def create_transform(self):
+        if self.downsample > 32:
+            print(f'Downsample is too high: {self.downsample}')
+            return
         if os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} already exists, skipping transform creation")            
             return
         else:
             print(f'Creating affine registration in {self.transform_path}')
 
-        if not os.path.exists(self.ds_moving_path):
-            print(f'Exiting, missing: {self.ds_moving_path}')
+        if not os.path.exists(self.moving_tif_path):
+            print(f'Exiting, missing: {self.moving_tif_path}')
             return
-        if not os.path.exists(self.ds_fixed_path):
-            print(f'Exiting, missing: {self.ds_fixed_path}')
+        if not os.path.exists(self.fixed_tif_path):
+            print(f'Exiting, missing: {self.fixed_tif_path}')
             return
         if self.debug:
-            print(f'Using moving data from {self.ds_moving_path}')
-            print(f'Using fixed data from {self.ds_fixed_path}')
+            print(f'Using moving data from {self.moving_tif_path}')
+            print(f'Using fixed data from {self.fixed_tif_path}')
             return
-        fixed_sitk = StackRegistration.create_sitk_volume(self.ds_fixed_path)
-        moving_sitk = StackRegistration.create_sitk_volume(self.ds_moving_path)
+        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
+        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
         moving_spacing = self.create_spacing(self.moving)
         fixed_spacing = self.create_spacing(self.fixed)
         moving_sitk.SetSpacing(moving_spacing)
@@ -159,7 +154,7 @@ class StackRegistration:
         #moving_spacing = self.create_spacing(self.moving)
         #image.SetSpacing(moving_spacing)
         #print(f'Spacing of moving image {moving_spacing}')
-        fixed_spacing = (0.325*self.downsample, 0.325*self.downsample, 20)
+        fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
         paddings[32] = (128, 128, 128)
@@ -223,7 +218,7 @@ class StackRegistration:
 
         x = self.xy_resolution * self.downsample
         y = self.xy_resolution * self.downsample
-        z = 20
+        z = self.z_resolution
         scales = (x,y,z)
         scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
         print(f'scales={scales} downsample={self.downsample}')
@@ -300,40 +295,6 @@ class StackRegistration:
         self.create_neuroglancer()
         print("Finished running tiles, tifs and neuroglancer")
 
-
-    def volume2stack(self):
-        moving_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}.tif')
-        if os.path.exists(moving_path):
-            print('Registered volume exists:', moving_path)
-        else:
-            print(f'Registered volume missing: {moving_path}')
-            exit(0)
-        fixed_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'volume.{self.downsample}.tif')
-        if os.path.exists(fixed_path):
-            print('Fixed volume exists:', fixed_path)
-        else:
-            print(f'Fixed volume missing: {fixed_path}')
-            exit(0)
-
-        fixed_image = sitk.ReadImage(fixed_path)
-        resampled = sitk.ReadImage(moving_path)
-        match_filter = sitk.HistogramMatchingImageFilter()
-        resampled = match_filter.Execute(resampled, fixed_image)
-
-        size_z = resampled.GetSize()[2]
-        moving_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
-        if os.path.exists(moving_outpath):
-            shutil.rmtree(moving_outpath)
-            print('Removed existing', moving_outpath)
-        os.makedirs(moving_outpath, exist_ok=True)
-        size_z = resampled.GetSize()[2]
-
-        for z in tqdm(range(size_z), desc="Writing registered TIFs", disable=self.debug):
-            slice_2d = resampled[:, :, z]
-            filepath = os.path.join(moving_outpath, f"{z:03d}.tif")
-            sitk.WriteImage(slice_2d, filepath)
-
-        print(f"Resampled moving images written to {moving_outpath}")
 
     @staticmethod
     def read_tiff_delayed(path: str):
@@ -418,19 +379,6 @@ class StackRegistration:
     def open_zarr(path):
         return da.from_zarr(path)
 
-    @staticmethod
-    def dask_to_sitk(volume, xy_resolution, xy_downsample):
-        arr = volume.compute()
-        img = sitk.GetImageFromArray(arr)
-        spacing = (
-                xy_resolution * xy_downsample,
-                xy_resolution * xy_downsample,
-                20.0
-            )    
-        img.SetSpacing(spacing)
-        print(f"Converted dask array to SimpleITK image with shape {img.GetSize()} and spacing {img.GetSpacing()}")
-
-        return img
 
     @staticmethod
     def affine_registration(fixed, moving):
@@ -782,50 +730,13 @@ class StackRegistration:
         return z_slice, y_slice, x_slice
 
 
-    def create_test_volumes(self):
-        # fixed
-        input_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f"source_aligned.{self.downsample}")
-        if not os.path.exists(input_path):
-            print(f"Input path {input_path} does not exist for brain {self.fixed}")
-            sys.exit(1)
-
-        slices = []
-        files = sorted(os.listdir(input_path))
-        for f in tqdm(files):
-            inpath = os.path.join(input_path, f)
-            img = tifffile.imread(inpath)
-            slices.append(img)
-
-        arr = np.stack(slices, axis=0)
-        outpath = os.path.join(self.base_path, self.fixed, 'preps', f'C1', f'volume.{self.downsample}.tif')
-        tifffile.imwrite(outpath, arr)
-        print(f'Wrote fixed tif to {outpath}')
-        # registered
-        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f"registered.{self.downsample}")
-        if not os.path.exists(input_path):
-            print(f"Input path {input_path} does not exist for brain {self.moving}")
-            sys.exit(1)
-
-        slices = []
-        files = sorted(os.listdir(input_path))
-        for f in tqdm(files):
-            inpath = os.path.join(input_path, f)
-            img = tifffile.imread(inpath)
-            slices.append(img)
-
-        arr = np.stack(slices, axis=0)
-        outpath = os.path.join(self.base_path, self.moving, 'preps', f'C1', f'registered.{self.downsample}.tif')
-        tifffile.imwrite(outpath, arr)
-        print(f'Wrote registered tif to {outpath}')
-
-
     def create_spacing(self, brain):
         # 1. Load your original medical image to grab original metadata
         size_info = {}
         size_info['DK52'] = (65500,35500,486)
         size_info['DK55'] = (60000,34000,485)
 
-        moving_original_spacing_xyz = (0.325, 0.325, 20)
+        moving_original_spacing_xyz = (self.xy_resolution, self.xy_resolution, self.z_resolution)
 
         # 2. Load the resized image generated by ImageMagick
         source_path = os.path.join(self.base_path, brain, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
@@ -845,68 +756,17 @@ class StackRegistration:
 
         return new_spacing        
 
+    def get_zarr_info(self):
+        brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.output_zarr]
+        for brain_path in brain_paths:
+            if os.path.exists(brain_path):
+                zarr_data = zarr.open(brain_path, mode='r')
+                print(brain_path)
+                print(zarr_data.info)
+            else:
+                print(f'Missing: {brain_path}')
 
-    def create_registered_stack(self):
-            
-        if os.path.exists(self.transform_path):
-            print(f'Using transform: {self.transform_path}')
-        else:
-            print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
-            return
-        transform = sitk.ReadTransform(self.transform_path)
-        print('path', self.transform_path)
-        print(f'matrix {transform}')
-        moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        moving_zarr = zarr.open(moving_zarr_path, mode='r')
-        if os.path.exists(moving_zarr_path):
-            print(f'Using moving zarr from: {moving_zarr_path}')
-        else:
-            print(f'Cannot find moving zarr: {moving_zarr_path}')
-            exit(0)
-        moving_image = sitk.GetImageFromArray(moving_zarr)
-        moving_spacing = self.create_spacing(self.moving)
-        moving_image.SetSpacing(moving_spacing)
-
-        fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        if os.path.exists(fixed_zarr_path):
-            print(f'Using fixed zarr from: {fixed_zarr_path}')
-        else:
-            print(f'Cannot find fixed zarr: {fixed_zarr_path}')
-            exit(0)
-        fixed_zarr = zarr.open(fixed_zarr_path, mode='r')
-        fixed_image = sitk.GetImageFromArray(fixed_zarr)
-        fixed_spacing = self.create_spacing(self.fixed)
-        fixed_image.SetSpacing(fixed_spacing)
-
-        print(f'Size of moving image {moving_image.GetSize()} spacing: {moving_image.GetSpacing()}')
-        print(f'Size of fixed image {fixed_image.GetSize()} spacing: {fixed_image.GetSpacing()}')
-
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(fixed_image)
-        resampler.SetTransform(transform)
-        resampled = resampler.Execute(moving_image)
-
-        match_filter = sitk.HistogramMatchingImageFilter()
-        resampled = match_filter.Execute(resampled, fixed_image)
-
-        registered_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
-        if os.path.exists(registered_outpath):
-            shutil.rmtree(registered_outpath)
-            print('Removed existing', registered_outpath)
-        os.makedirs(registered_outpath, exist_ok=True)
-        size_z = resampled.GetSize()[2]
-
-        for z in tqdm(range(size_z), desc="Writing registered TIFs", disable=self.debug):
-            # Extract the 2D slice at index z
-            slice_2d = resampled[:, :, z]
-            # Generate a unique file name for each plane
-            filepath = os.path.join(registered_outpath, f"{z:03d}.tif")
-            # Write the 2D slice to disk
-            sitk.WriteImage(slice_2d, filepath)
-
-    
-        print(f"Resampled moving images written to {registered_outpath}")
-        sitk.WriteImage(slice_2d, filepath)
+        
 
 
 if __name__ == '__main__':
@@ -931,11 +791,9 @@ if __name__ == '__main__':
         "create_transform": pipeline.create_transform,
         "create_registered_tiles": pipeline.create_registered_tiles,
         "zarr2tif": pipeline.create_tifs,
-        "create_registered_stack": pipeline.create_registered_stack,
-        "volume2stack": pipeline.volume2stack,
         "create_neuroglancer": pipeline.create_neuroglancer,
-        "create_test_volumes": pipeline.create_test_volumes,
-        "run_tiles": pipeline.run_tiles
+        "run_tiles": pipeline.run_tiles,
+        "get_info": pipeline.get_zarr_info
     }
 
     if task in function_mapping:
