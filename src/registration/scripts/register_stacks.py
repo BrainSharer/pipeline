@@ -41,13 +41,15 @@ class StackRegistration:
         self.moving = moving
         self.fixed = fixed
         self.downsample = downsample
+        scratch_dir = "/data/pipeline_tmp"
         self.base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
         self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
         self.fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        self.output_zarr = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
+        self.output_zarr = os.path.join(scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
+        self.registered_tif_path = os.path.join(scratch_dir, self.moving, f'registered.{self.downsample}')
         self.xy_resolution = 0.325
         self.z_resolution = 20.0                
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
@@ -196,32 +198,36 @@ class StackRegistration:
         print(f"create registered tiles took {total_elapsed_time} seconds")
 
     def create_tifs(self):
-        registered_outpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
-        if os.path.exists(registered_outpath):
-            shutil.rmtree(registered_outpath)
-        os.makedirs(registered_outpath, exist_ok=True)
+        if os.path.exists(self.registered_tif_path):
+            shutil.rmtree(self.registered_tif_path)
+        os.makedirs(self.registered_tif_path, exist_ok=True)
         if not os.path.exists(self.output_zarr):
             print(f'No zarr at {self.output_zarr}')
             return
         volume = zarr.open(self.output_zarr, mode='r')
         nz = volume.shape[0]
-        slices = []
 
         for z in tqdm(range(nz)):
             img = volume[z]
-            outpath = os.path.join(registered_outpath, f"{z:03d}.tif")
+            outpath = os.path.join(self.registered_tif_path, f"{z:03d}.tif")
             tifffile.imwrite(outpath, img)
-            slices.append(img)
-        print(f'Finished writing tifs to {registered_outpath}')
+        print(f'Finished writing tifs to {self.registered_tif_path}')
 
 
     def create_neuroglancer(self):
             
-        registered_inpath = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'registered.{self.downsample}')
         neuroglancer_path = os.path.join(self.base_path, self.moving, 'www', 'neuroglancer_data') 
         rechunkme_path = os.path.join(neuroglancer_path, 'registered_rechunkme')
         progress_dir = os.path.join(neuroglancer_path, 'registered_progress')
-        image_manager = ImageManager(registered_inpath)
+        image_manager = ImageManager(self.registered_tif_path)
+        lfiles = image_manager.len_files
+        if not os.path.exists(self.registered_tif_path):
+            print(f'Missing: {self.registered_tif_path}')
+            exit(0)
+        if lfiles < 10:
+            print(f'No registered TIFs to work with: {lfiles}')
+            exit(0)
+
         # chunk 
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
 
@@ -245,18 +251,13 @@ class StackRegistration:
             num_channels=num_channels,
             chunk_size=chunks,
         )
-        if os.path.exists(progress_dir) and len(os.listdir(progress_dir)) > 0 and os.path.exists(registered_inpath):
+        if os.path.exists(progress_dir) and len(os.listdir(progress_dir)) > 0 and os.path.exists(self.registered_tif_path):
             print("Transfer task has already been completed")
         else:
             ng.init_precomputed(rechunkme_path, image_manager.volume_size)
-            file_keys = []
             for i, f in enumerate(image_manager.files):
-                filepath = os.path.join(registered_inpath, f)
-                file_keys.append([i, filepath, progress_dir, False, 0, 0]) #added is_blank, height, width
-
-            
-            for file_key in file_keys:
-                ng.process_image(file_key=file_key)
+                filepath = os.path.join(self.registered_tif_path, f)
+                ng.process_image(file_key=[i, filepath, progress_dir, False, 0, 0])
 
             ng.precomputed_vol.cache.flush()
 
