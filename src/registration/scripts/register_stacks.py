@@ -171,7 +171,7 @@ class StackRegistration:
         #    padding = (64,64,64)
 
 
-        print(f'Using padding of {paddings[self.downsample]}')
+        print(f'Using padding of {paddings}')
 
 
         target = zarr.open(
