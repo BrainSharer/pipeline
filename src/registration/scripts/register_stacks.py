@@ -46,9 +46,9 @@ class StackRegistration:
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
         self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
-        self.moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        self.fixed_zarr_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        self.output_zarr = os.path.join(scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
+        self.registered_zarr_path = os.path.join(scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
+        self.moving_zarr_path = os.path.join(scratch_dir, self.moving, f'source.{self.downsample}.zarr')
+        self.fixed_zarr_path = os.path.join(scratch_dir, self.fixed, f'source.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(scratch_dir, self.moving, f'registered.{self.downsample}')
         self.xy_resolution = 0.325
         self.z_resolution = 20.0                
@@ -57,10 +57,7 @@ class StackRegistration:
 
 
     def create_zarr(self):
-        source_aligned_zarr = f"source_aligned.{self.downsample}.zarr"
-        source_aligned = f"source_aligned.{self.downsample}"
-        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', source_aligned)
-        output_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', source_aligned_zarr)
+        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f"source_aligned.{self.downsample}")
         if not os.path.exists(input_path):
             print(f"Input path {input_path} does not exist for brain {self.moving}")
             sys.exit(1)
@@ -75,13 +72,13 @@ class StackRegistration:
         image_manager = ImageManager(input_path)
         #chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
         #chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
-        if os.path.exists(output_path):
-            print(f"Output path {output_path} already exists")
-            print(f"\tfor brain {self.moving}, skipping zarr creation")
+        if os.path.exists(self.moving_zarr_path):
+            print(f"Output path {self.moving_zarr_path} already exists")
+            print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
             return
 
         print(f'{self.moving} input {input_path}')
-        print(f'{self.moving} output {output_path}')
+        print(f'{self.moving} output {self.moving_zarr_path}')
 
 
         dask_imgs = StackRegistration.build_dask_array_from_folder(input_path)
@@ -90,10 +87,10 @@ class StackRegistration:
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
         with ProgressBar():
-            dask_imgs.to_zarr(output_path, overwrite=True)
+            dask_imgs.to_zarr(self.moving_zarr_path, overwrite=True)
         del dask_imgs
-        print(f"✅ Downsampled stack saved to {output_path}")
-        volume = zarr.open(output_path, mode='r')
+        print(f"✅ Source zarr saved to {self.moving_zarr_path}")
+        volume = zarr.open(self.moving_zarr_path, mode='r')
         print(volume.info)
         del volume
 
@@ -132,9 +129,9 @@ class StackRegistration:
 
     def create_registered_tiles(self):
         start_time = timer()
-        if os.path.exists(self.output_zarr):
-            print(f'Remove zarr output exists: {self.output_zarr}')
-            shutil.rmtree(self.output_zarr)
+        if os.path.exists(self.registered_zarr_path):
+            print(f'Remove zarr output exists: {self.registered_zarr_path}')
+            shutil.rmtree(self.registered_zarr_path)
             
         if not os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
@@ -142,37 +139,36 @@ class StackRegistration:
         transform = sitk.ReadTransform(self.transform_path)
         print('path', self.transform_path)
         print(f'matrix {transform}')
-        moving_zarr_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}.zarr')
-        if not os.path.exists(moving_zarr_path):
-            print(f'Missing: {moving_zarr_path}')
+        if not os.path.exists(self.moving_zarr_path):
+            print(f'Missing: {self.moving_zarr_path}')
             exit(0)
-        source = zarr.open(moving_zarr_path, mode='r')
+        source = zarr.open(self.moving_zarr_path, mode='r')
         print(source.info)
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
-        #paddings = {}
-        #paddings[32] = (24, 24, 0)
-        #paddings[16] = (24, 24, 0)
-        #paddings[4] = (128, 128, 128)
+        paddings = {}
+        paddings[32] = (24, 24, 24)
+        paddings[16] = (48, 48, 48)
+        paddings[4] = (256, 256, 256)
         #paddings[1] = (256, 256, 256)
-        paddings = (32,0,128)
+        #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped
         # 8 took 53 seconds, looks chopped
         # 16 took 93 seconds, just a little chopped
         # 24 took 139 seconds, looks good only when chunks = shape
         # 24,24,128 create registered tiles took 479.26 seconds
 
-        #try:
-        #    padding = paddings[self.downsample]
-        #except KeyError:
-        #    padding = (64,64,64)
+        try:
+            padding = paddings[self.downsample]
+        except KeyError:
+            padding = (64,64,64)
 
 
         print(f'Using padding of {paddings}')
 
 
         target = zarr.open(
-            self.output_zarr,
+            self.registered_zarr_path,
             mode="w",
             shape=source.shape,
             chunks=source.chunks,
@@ -182,11 +178,11 @@ class StackRegistration:
             source,
             target,
             transform,
-            padding_zyx=paddings,
+            padding_zyx=padding,
             spacing_zyx=fixed_spacing[::-1],
         )
         
-        registered_volume = zarr.open(self.output_zarr, mode='r')
+        registered_volume = zarr.open(self.registered_zarr_path, mode='r')
         print(registered_volume.info)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
@@ -196,10 +192,10 @@ class StackRegistration:
         if os.path.exists(self.registered_tif_path):
             shutil.rmtree(self.registered_tif_path)
         os.makedirs(self.registered_tif_path, exist_ok=True)
-        if not os.path.exists(self.output_zarr):
-            print(f'No zarr at {self.output_zarr}')
+        if not os.path.exists(self.registered_zarr_path):
+            print(f'No zarr at {self.registered_zarr_path}')
             return
-        volume = zarr.open(self.output_zarr, mode='r')
+        volume = zarr.open(self.registered_zarr_path, mode='r')
         nz = volume.shape[0]
 
         for z in tqdm(range(nz)):
@@ -256,7 +252,7 @@ class StackRegistration:
 
             ng.precomputed_vol.cache.flush()
 
-        base_chunks = [64, 64, 64]
+        base_chunks = [64, 64, 16]
 
         scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((x,y,z), base_chunks)
         mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
@@ -739,7 +735,7 @@ class StackRegistration:
         return new_spacing        
 
     def get_zarr_info(self):
-        brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.output_zarr]
+        brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.registered_zarr_path]
         for brain_path in brain_paths:
             if os.path.exists(brain_path):
                 zarr_data = zarr.open(brain_path, mode='r')

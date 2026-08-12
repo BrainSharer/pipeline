@@ -11,7 +11,7 @@ from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.utilities.utilities_process import test_dir
 from library.image_manipulation.image_manager import ImageManager
 XY_CHUNK = 64
-Z_CHUNK = 64
+Z_CHUNK = 16
 
 
 class NgPrecomputedMaker:
