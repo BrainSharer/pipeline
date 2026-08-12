@@ -66,7 +66,7 @@ class StackRegistration:
             sys.exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[16] = 2
+        divisors[16] = 4
         divisors[32] = 2
         try:
             divisor = divisors[self.downsample]
