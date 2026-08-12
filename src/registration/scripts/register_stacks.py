@@ -149,7 +149,7 @@ class StackRegistration:
         paddings = {}
         paddings[32] = (24, 24, 24)
         paddings[16] = (48, 48, 48)
-        paddings[4] = (256, 256, 256)
+        paddings[4] = (256, 0, 256)
         #paddings[1] = (256, 256, 256)
         #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped
@@ -164,7 +164,7 @@ class StackRegistration:
             padding = (64,64,64)
 
 
-        print(f'Using padding of {paddings}')
+        print(f'Using padding of {padding}')
 
 
         target = zarr.open(
