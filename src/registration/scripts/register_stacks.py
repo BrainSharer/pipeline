@@ -64,7 +64,7 @@ class StackRegistration:
         divisors = {}
         divisors[1] = 32
         divisors[16] = 4
-        divisors[32] = 2
+        divisors[32] = 4
         try:
             divisor = divisors[self.downsample]
         except KeyError:
@@ -147,9 +147,9 @@ class StackRegistration:
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
-        paddings[32] = (24, 24, 24)
-        paddings[16] = (48, 48, 48)
-        paddings[4] = (256, 0, 256)
+        paddings[32] = (32, 0, 128)
+        paddings[16] = (32, 0, 256)
+        paddings[4] = (32, 0, 1024)
         #paddings[1] = (256, 256, 256)
         #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped
