@@ -206,16 +206,15 @@ class NgPrecomputedMaker:
 
             # --- Compute chunk size (world-space balanced) ---
             # Keep chunk size ~constant in microns        
-            world_chunk = np.array(base_chunk_size) * base_resolution
-            chunk = np.round(world_chunk / new_res).astype(int)
+            #world_chunk = np.array(base_chunk_size) * base_resolution
+            #chunk = np.round(world_chunk / new_res).astype(int)
             # Clamp chunk sizes to reasonable bounds
-            chunk = np.clip(chunk, 16, 256)
-            chunks.append(chunk.tolist())
+            #chunk = np.clip(chunk, 16, 256)
+            chunks.append(base_chunk_size)
 
             # Store results
             scales.append(scale)
             current_res = new_res
-
         scales = [tuple(int(x) for x in s) for s in scales]
         resolutions = []
         x,y,z = base_resolution

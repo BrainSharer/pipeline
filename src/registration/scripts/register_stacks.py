@@ -65,16 +65,16 @@ class StackRegistration:
             print(f"Input path {input_path} does not exist for brain {self.moving}")
             sys.exit(1)
         divisors = {}
-        divisors[1] = 8
-        divisors[16] = 1
-        divisors[32] = 1
+        divisors[1] = 32
+        divisors[16] = 2
+        divisors[32] = 2
         try:
             divisor = divisors[self.downsample]
         except KeyError:
             divisor = 2
         image_manager = ImageManager(input_path)
-        chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
-        chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
+        #chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
+        #chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
         if os.path.exists(output_path):
             print(f"Output path {output_path} already exists")
             print(f"\tfor brain {self.moving}, skipping zarr creation")
@@ -82,11 +82,10 @@ class StackRegistration:
 
         print(f'{self.moving} input {input_path}')
         print(f'{self.moving} output {output_path}')
-        print(f'Chunks zyx: 1,{chunk_y, chunk_x}')
 
 
         dask_imgs = StackRegistration.build_dask_array_from_folder(input_path)
-        rechunks_zyx = (1, chunk_y, chunk_x)
+        rechunks_zyx = (1, image_manager.height, image_manager.width//divisor)
         print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
@@ -149,11 +148,6 @@ class StackRegistration:
             exit(0)
         source = zarr.open(moving_zarr_path, mode='r')
         print(source.info)
-        #image = sitk.GetImageFromArray(source)
-        #fixed_spacing = self.create_spacing(self.fixed)
-        #moving_spacing = self.create_spacing(self.moving)
-        #image.SetSpacing(moving_spacing)
-        #print(f'Spacing of moving image {moving_spacing}')
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         #paddings = {}
@@ -161,11 +155,12 @@ class StackRegistration:
         #paddings[16] = (24, 24, 0)
         #paddings[4] = (128, 128, 128)
         #paddings[1] = (256, 256, 256)
-        paddings = (32,32,0)
+        paddings = (32,0,128)
         # 2 took 10 seconds, looks very chopped
         # 8 took 53 seconds, looks chopped
         # 16 took 93 seconds, just a little chopped
-        # 24 took 139 seconds, looks good
+        # 24 took 139 seconds, looks good only when chunks = shape
+        # 24,24,128 create registered tiles took 479.26 seconds
 
         #try:
         #    padding = paddings[self.downsample]
@@ -304,6 +299,20 @@ class StackRegistration:
         self.create_tifs()
         self.create_neuroglancer()
         print("Finished running tiles, tifs and neuroglancer")
+
+    def test_mips(self):
+        x = self.xy_resolution * self.downsample
+        y = self.xy_resolution * self.downsample
+        z = self.z_resolution
+        scales = (x,y,z)
+        scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
+        print(f'Before computing scales={scales} downsample={self.downsample}')
+        base_chunks = [64,64,16]
+
+        scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((x,y,z), base_chunks)
+        for s,r,c in zip(scales, resolutions, chunks):
+            print(f'scale={s}, resolution={r}, chunk={c}')
+
 
 
     @staticmethod
@@ -481,18 +490,16 @@ class StackRegistration:
         tifffile.imwrite(stack_path, arr)
         print(f"Saved registered volume as individual tiffs in {directory} and as stack in {stack_path}")
 
+
+
+
     @staticmethod
     def process_volume(
         zarr_src,
         zarr_dst,
         transform,
-        *,
-        padding_zyx=(0, 32, 32),
-        spacing_zyx=(1.0, 1.0, 1.0),
-        origin_zyx=(0.0, 0.0, 0.0),
-        direction_xyz=None,
-        fill_value=0,
-        progress=True,
+        padding_zyx,
+        spacing_zyx
     ):
         """
         Process an entire Zarr volume one chunk at a time.
@@ -507,11 +514,7 @@ class StackRegistration:
             Global transform.
         padding_zyx : tuple
             Padding added around each chunk.
-        progress : bool
-            Display a progress bar if tqdm is installed.
         """
-
-        interpolator = sitk.sitkLinear
 
         shape = zarr_src.shape
         chunks = zarr_src.chunks
@@ -521,23 +524,13 @@ class StackRegistration:
             for i in range(3)
         )
 
-        iterator = product(
-            range(nblocks[0]),
-            range(nblocks[1]),
-            range(nblocks[2]),
-        )
+        iterator = product(range(nblocks[0]),range(nblocks[1]),range(nblocks[2]))
 
-        if progress:
-            try:
-                from tqdm import tqdm
 
-                iterator = tqdm(
-                    iterator,
-                    total=nblocks[0] * nblocks[1] * nblocks[2],
-                    desc="Warping chunks",
-                )
-            except ImportError:
-                pass
+        iterator = tqdm(
+            iterator,
+            total=nblocks[0] * nblocks[1] * nblocks[2],
+            desc="Warping chunks", disable=False)
 
         for block_index in iterator:
 
@@ -547,10 +540,7 @@ class StackRegistration:
                 block_index=block_index,
                 transform=transform,
                 padding_zyx=padding_zyx,
-                spacing_zyx=spacing_zyx,
-                origin_zyx=origin_zyx,
-                direction_xyz=direction_xyz,
-                fill_value=fill_value,
+                spacing_zyx=spacing_zyx
             )
 
     @staticmethod
@@ -602,12 +592,8 @@ class StackRegistration:
         zarr_dst,
         block_index: Sequence[int],
         transform: sitk.Transform,
-        *,
-        padding_zyx: Sequence[int] = (0, 16, 16),
-        spacing_zyx: Sequence[float] = (1.0, 1.0, 1.0),
-        origin_zyx: Sequence[float] = (0.0, 0.0, 0.0),
-        direction_xyz: Optional[Sequence[float]] = None,
-        fill_value: float = 0.0,
+        padding_zyx: Sequence[int],
+        spacing_zyx: Sequence[float]
     ) -> tuple[slice, slice, slice]:
         """
         Read one padded block from `zarr_src`, resample it with SimpleITK, and write
@@ -628,13 +614,6 @@ class StackRegistration:
             Extra padding around the block, in voxels, in (z, y, x) order.
         spacing_zyx : tuple[float, float, float]
             Voxel spacing in (z, y, x) order.
-        origin_zyx : tuple[float, float, float]
-            Physical origin of voxel (0,0,0) in (z, y, x) order.
-        direction_xyz : optional sequence[float]
-            3x3 direction cosine matrix flattened in row-major order, in SimpleITK's
-            (x, y, z) coordinate convention. If None, identity is used.
-        fill_value : float
-            Background value used outside the transformed source.
 
         Returns
         -------
@@ -672,13 +651,14 @@ class StackRegistration:
             core_stop[1] - core_start[1],
             core_stop[2] - core_start[2],
         )
+        #print(f'padding 0,1,2 {pad_start[0]}:{pad_stop[0]},{pad_start[1]}:{pad_stop[1]},{pad_start[2]}:{pad_stop[2]}')
 
         if any(s <= 0 for s in core_size_zyx):
             raise ValueError(f"Invalid core block size: {core_size_zyx}")
 
         # Convert spacing/origin from z,y,x to x,y,z for SimpleITK
         spacing_xyz = StackRegistration._zyx_to_xyz(spacing_zyx)
-        origin_xyz = StackRegistration._zyx_to_xyz(origin_zyx)
+        origin_xyz = (0,0,0)
 
         # Build the moving image from the padded source block
         moving = sitk.GetImageFromArray(src_pad)
@@ -692,15 +672,7 @@ class StackRegistration:
             )
         )
 
-        if direction_xyz is None:
-            direction_xyz = (
-                1.0, 0.0, 0.0,
-                0.0, 1.0, 0.0,
-                0.0, 0.0, 1.0,
-            )
-        moving.SetDirection(tuple(float(v) for v in direction_xyz))
-        # Optionally invert the transform. This is useful when the provided transform
-        # maps source->target but Resample needs output->input.
+        moving.SetDirection(np.eye(3).flatten())
 
         # Build a reference image for the core block
         reference = sitk.Image(
@@ -717,14 +689,14 @@ class StackRegistration:
                 origin_xyz[2] + core_start[0] * spacing_xyz[2],
             )
         )
-        reference.SetDirection(tuple(float(v) for v in direction_xyz))
+        reference.SetDirection(np.eye(3).flatten())
         # Resample padded moving image into the core reference geometry
         resampled = sitk.Resample(
             moving,
             reference,
             transform,
             sitk.sitkLinear,
-            fill_value,
+            0,
             sitk.sitkFloat32,
         )
 
@@ -803,7 +775,8 @@ if __name__ == '__main__':
         "zarr2tif": pipeline.create_tifs,
         "create_neuroglancer": pipeline.create_neuroglancer,
         "run_tiles": pipeline.run_tiles,
-        "get_info": pipeline.get_zarr_info
+        "get_info": pipeline.get_zarr_info,
+        "test_mips": pipeline.test_mips
     }
 
     if task in function_mapping:
