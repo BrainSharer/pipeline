@@ -63,6 +63,7 @@ class StackRegistration:
             sys.exit(1)
         divisors = {}
         divisors[1] = 32
+        divisors[8] = 8
         divisors[16] = 4
         divisors[32] = 4
         try:
@@ -149,6 +150,7 @@ class StackRegistration:
         paddings = {}
         paddings[32] = (32, 0, 128)
         paddings[16] = (32, 0, 256)
+        paddings[32] = (32, 0, 512)
         paddings[4] = (32, 0, 1024)
         #paddings[1] = (256, 256, 256)
         #paddings = (32,0,256)

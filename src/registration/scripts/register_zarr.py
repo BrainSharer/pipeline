@@ -737,12 +737,11 @@ if __name__ == '__main__':
 
 
     base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
+    scratch_path = "/data/pipeline_tmp"
     reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-    moving_zarr_path = os.path.join(base_path, moving, 'preps', 'C1', f'thumbnail_aligned.{downsample}.zarr')
-    output_zarr = os.path.join(base_path, moving, 'preps', 'C1', f'{moving}_{fixed}_registered.zarr')
-    xy_resolution = 0.325
-    full_xy_resolution = xy_resolution * 64
-    ds_xy_resolution = xy_resolution * downsample
+    moving_zarr_path = os.path.join(scratch_path, moving, f'source.{downsample}.zarr')
+    output_zarr = os.path.join(scratch_path, moving, f'{moving}_{fixed}_registered.{downsample}.zarr')
+    xy_resolution = 0.325*downsample
     z_resolution = 20.0
     transform_path = os.path.join(reg_path, f"{moving}_{fixed}.tfm")
 
@@ -760,6 +759,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------
 
     transform = sitk.ReadTransform(transform_path)
+    transform = transform.GetInverse()
 
 
     # ------------------------------------------------------------
