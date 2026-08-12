@@ -152,7 +152,7 @@ class StackRegistration:
         paddings[16] = (32, 0, 256)
         paddings[8] = (32, 0, 512)
         paddings[4] = (32, 0, 1024)
-        #paddings[1] = (256, 256, 256)
+        paddings[1] = (32, 0, 1024)
         #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped
         # 8 took 53 seconds, looks chopped
