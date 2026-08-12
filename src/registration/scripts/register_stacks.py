@@ -150,7 +150,7 @@ class StackRegistration:
         paddings = {}
         paddings[32] = (32, 0, 128)
         paddings[16] = (32, 0, 256)
-        paddings[32] = (32, 0, 512)
+        paddings[8] = (32, 0, 512)
         paddings[4] = (32, 0, 1024)
         #paddings[1] = (256, 256, 256)
         #paddings = (32,0,256)
