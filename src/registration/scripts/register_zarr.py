@@ -188,7 +188,8 @@ def source_roi_for_output_block(
     source_size_xyz
     """
 
-    inverse_transform = transform.GetInverse()
+    #inverse_transform = transform.GetInverse()
+    inverse_transform = transform
 
     # Output block corner voxel coordinates.
     x0, y0, z0 = output_start_xyz
@@ -759,7 +760,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------
 
     transform = sitk.ReadTransform(transform_path)
-    transform = transform.GetInverse()
+    transform = transform
 
 
     # ------------------------------------------------------------
@@ -775,17 +776,14 @@ if __name__ == '__main__':
     #   Y = 0.325 um
     #   Z = 20 um
     # ------------------------------------------------------------
-
+    output_size_xyz = (60000//downsample,34000//downsample,485)
     apply_sitk_transform_to_zarr(
         input_zarr=moving_zarr_path,
         output_zarr=output_zarr,
         transform=transform,
         input_spacing_xyz=(0.325*downsample,0.325*downsample,20.0),
         output_spacing_xyz=(0.325*downsample, 0.325*downsample, 20.0),
-        # 1024 x 1024 x 16 output blocks.
-        #
-        # The code only loads the source region required for
-        # each block.
+        output_size_xyz=output_size_xyz,
         output_chunk_xyz=(1024,1024,16),
         interpolator=sitk.sitkLinear,
         default_value=0,
@@ -793,3 +791,22 @@ if __name__ == '__main__':
         overwrite=True,
         debug=debug
     )
+
+"""
+    def apply_sitk_transform_to_zarr(
+    input_zarr: str,
+    output_zarr: str,
+    transform: sitk.Transform,
+    input_spacing_xyz: Tuple[float, float, float],
+    output_spacing_xyz: Tuple[float, float, float] | None = None,
+    input_origin_xyz: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    output_origin_xyz: Tuple[float, float, float] | None = None,
+    output_size_xyz: Tuple[int, int, int] | None = None,
+    output_chunk_xyz: Tuple[int, int, int] = (512, 512, 32),
+    interpolator=sitk.sitkLinear,
+    default_value=0,
+    padding_voxels: int = 0,
+    overwrite: bool = False,
+    debug: bool = False
+):
+"""
