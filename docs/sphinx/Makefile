@@ -20,5 +20,5 @@ help:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 publish:
-	rsync -auv --delete build/html/* brainsharer:/var/www/webdev/docs/brainsharer/pipeline/
+	rsync -auv --delete build/html/* brainsharer:/var/www/brainsharer/docs/pipeline
 
