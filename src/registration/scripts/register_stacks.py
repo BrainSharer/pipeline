@@ -718,11 +718,10 @@ class StackRegistration:
         size_info['DK55'] = (60000,34000,485)
         size_info['DK62'] = (74500,39500,460)
 
-        try:
-            size = size_info[self.downsample]
-        except KeyError:
+        if brain not in size_info:
             print(f'No size info for {brain}')
             exit(0)
+
 
         moving_original_spacing_xyz = (self.xy_resolution, self.xy_resolution, self.z_resolution)
 
