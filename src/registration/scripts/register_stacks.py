@@ -149,10 +149,10 @@ class StackRegistration:
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
-        paddings[32] = (32, 0, 128)
+        paddings[32] = (32, 32, 32)
         paddings[16] = (32, 0, 256)
         paddings[8] = (32, 0, 512)
-        paddings[4] = (32, 0, 32)
+        paddings[4] = (32, 32, 32)
         paddings[1] = (32, 0, 1024)
         #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped
