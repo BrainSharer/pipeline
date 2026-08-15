@@ -64,12 +64,13 @@ class StackRegistration:
         divisors = {}
         divisors[1] = 32
         divisors[8] = 8
-        divisors[16] = 4
-        divisors[32] = 4
+        divisors[4] = 1
+        divisors[16] = 1
+        divisors[32] = 1
         try:
             divisor = divisors[self.downsample]
         except KeyError:
-            divisor = 2
+            divisor = 1
         image_manager = ImageManager(input_path)
         #chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
         #chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
@@ -151,7 +152,7 @@ class StackRegistration:
         paddings[32] = (32, 0, 128)
         paddings[16] = (32, 0, 256)
         paddings[8] = (32, 0, 512)
-        paddings[4] = (32, 0, 1024)
+        paddings[4] = (32, 0, 32)
         paddings[1] = (32, 0, 1024)
         #paddings = (32,0,256)
         # 2 took 10 seconds, looks very chopped

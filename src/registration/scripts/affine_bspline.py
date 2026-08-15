@@ -253,8 +253,8 @@ if __name__ == '__main__':
         fixed_image=fixed_image,
         moving_image=moving_image,
         affine_transform=affine,
-        grid_physical_spacing=(200.0, 200.0, 400.0),
-        number_of_iterations=200,
+        grid_physical_spacing=(20.0, 20.0, 40.0),
+        number_of_iterations=20,
     )
 
     # Save the transforms
