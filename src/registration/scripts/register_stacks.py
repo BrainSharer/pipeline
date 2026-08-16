@@ -47,8 +47,8 @@ class StackRegistration:
         self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.registered_zarr_path = os.path.join(self.scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
-        self.moving_zarr_path = os.path.join(self.scratch_dir, self.moving, f'source.{self.downsample}.zarr')
-        self.fixed_zarr_path = os.path.join(self.scratch_dir, self.fixed, f'source.{self.downsample}.zarr')
+        self.moving_zarr_path = os.path.join(self.scratch_dir, self.moving, f'source_aligned.{self.downsample}.zarr')
+        self.fixed_zarr_path = os.path.join(self.scratch_dir, self.fixed, f'source_aligned.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(self.scratch_dir, self.moving, f'registered.{self.downsample}')
         self.xy_resolution = 0.325
         self.z_resolution = 20.0                
