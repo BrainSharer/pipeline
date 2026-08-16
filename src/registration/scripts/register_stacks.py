@@ -44,6 +44,7 @@ class StackRegistration:
         self.scratch_dir = "/data/pipeline_tmp"
         self.base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
+        self.preview_path = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.nii')
         self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
         self.registered_zarr_path = os.path.join(self.scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
@@ -62,9 +63,9 @@ class StackRegistration:
             exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[8] = 8
-        divisors[4] = 1
-        divisors[16] = 1
+        divisors[4] = 8
+        divisors[8] = 4
+        divisors[16] = 4
         divisors[32] = 1
         try:
             divisor = divisors[self.downsample]
@@ -97,7 +98,7 @@ class StackRegistration:
 
 
     def create_transform(self):
-        if self.downsample > 32:
+        if self.downsample < 32:
             print(f'Downsample is too high: {self.downsample}')
             return
         if os.path.exists(self.transform_path):
@@ -118,10 +119,9 @@ class StackRegistration:
             return
         fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
         moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
-        moving_spacing = self.create_spacing(self.moving)
-        fixed_spacing = self.create_spacing(self.fixed)
-        moving_sitk.SetSpacing(moving_spacing)
-        fixed_sitk.SetSpacing(fixed_spacing)
+        spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
+        moving_sitk.SetSpacing(spacing)
+        fixed_sitk.SetSpacing(spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
         affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
@@ -148,17 +148,14 @@ class StackRegistration:
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
-        paddings[32] = (32, 32, 32)
+        paddings[32] = (256, 0, 256)
         paddings[16] = (32, 0, 256)
         paddings[8] = (32, 0, 512)
-        paddings[4] = (32, 32, 32)
+        paddings[4] = (256, 0, 256)
         paddings[1] = (32, 0, 1024)
         #paddings = (32,0,256)
-        # 2 took 10 seconds, looks very chopped
-        # 8 took 53 seconds, looks chopped
-        # 16 took 93 seconds, just a little chopped
-        # 24 took 139 seconds, looks good only when chunks = shape
-        # 24,24,128 create registered tiles took 479.26 seconds
+        # DK62 256,256,256 works
+        # 256,0,256 works
 
         try:
             padding = paddings[self.downsample]
@@ -752,6 +749,43 @@ class StackRegistration:
             else:
                 print(f'Missing: {brain_path}')
 
+
+    def register_volume(self):
+        if not os.path.exists(self.moving_tif_path):
+            print(f"Missing: {self.moving_tif_path}")
+            exit(1)
+        if not os.path.exists(self.fixed_tif_path):
+            print(f"Missing: {self.fixed_tif_path}")
+            exit(1)
+        transform = sitk.ReadTransform(self.transform_path)
+        if not os.path.exists(self.transform_path):
+            print(f"Missing: {self.transform_path}")
+            exit(1)
+
+        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
+        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
+        spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
+        moving_sitk.SetSpacing(spacing)
+        fixed_sitk.SetSpacing(spacing)
+        print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
+        print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
+
+
+        resample = sitk.ResampleImageFilter()
+        resample.SetTransform(transform)
+        resample.SetInterpolator(sitk.sitkLinear)
+        resample.SetReferenceImage(moving_sitk)
+        resample.SetDefaultPixelValue(0)
+        output_image = resample.Execute(moving_sitk)
+        sitk.WriteImage(output_image, self.preview_path)
+        print(f'Wrote resampled image to: {self.preview_path}')
+        fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
+        if os.path.exists(fixed_path):
+            print()
+        else:
+            sitk.WriteImage(fixed_sitk, fixed_path)
+            print(f'Wrote fixed image to: {fixed_path}')
+
         
 
 
@@ -780,7 +814,8 @@ if __name__ == '__main__':
         "create_neuroglancer": pipeline.create_neuroglancer,
         "run_tiles": pipeline.run_tiles,
         "get_info": pipeline.get_zarr_info,
-        "test_mips": pipeline.test_mips
+        "test_mips": pipeline.test_mips,
+        "register_volume": pipeline.register_volume
     }
 
     if task in function_mapping:
