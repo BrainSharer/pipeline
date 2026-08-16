@@ -57,10 +57,9 @@ class StackRegistration:
 
 
     def create_zarr(self):
-        input_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f"source_aligned.{self.downsample}")
-        if not os.path.exists(input_path):
-            print(f"Input path {input_path} does not exist for brain {self.moving}")
-            sys.exit(1)
+        if not os.path.exists(self.moving_tif_path):
+            print(f"Input path {self.moving_tif_path} does not exist for brain {self.moving}")
+            exit(1)
         divisors = {}
         divisors[1] = 32
         divisors[8] = 8
@@ -71,7 +70,7 @@ class StackRegistration:
             divisor = divisors[self.downsample]
         except KeyError:
             divisor = 1
-        image_manager = ImageManager(input_path)
+        image_manager = ImageManager(self.moving_tif_path)
         #chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
         #chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
         if os.path.exists(self.moving_zarr_path):
@@ -79,11 +78,11 @@ class StackRegistration:
             print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
             return
 
-        print(f'{self.moving} input {input_path}')
+        print(f'{self.moving} input {self.moving_tif_path}')
         print(f'{self.moving} output {self.moving_zarr_path}')
 
 
-        dask_imgs = StackRegistration.build_dask_array_from_folder(input_path)
+        dask_imgs = StackRegistration.build_dask_array_from_folder(self.moving_tif_path)
         rechunks_zyx = (1, image_manager.height, image_manager.width//divisor)
         print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
