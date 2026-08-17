@@ -193,7 +193,7 @@ class StackRegistration:
         #padding = (64,64, chunk_x//2)
         #y size really affects the lopping
         #padding = source.chunks
-        padding = (57, int(154*2), 291)
+        padding = (57*2, int(154*2), 291)
         print(f'Using padding of {padding}')
 
 
