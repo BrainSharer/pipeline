@@ -68,7 +68,7 @@ class StackRegistration:
         divisors[1] = 32
         divisors[4] = 16
         divisors[8] = 8
-        divisors[16] = 8
+        divisors[16] = 16
         divisors[32] = 8
         try:
             divisor = divisors[self.downsample]
