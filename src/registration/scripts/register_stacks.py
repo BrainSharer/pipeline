@@ -71,7 +71,7 @@ class StackRegistration:
         divisors[4] = 16
         divisors[8] = 8
         divisors[16] = 16
-        divisors[32] = 8
+        divisors[32] = 2
         try:
             divisor = divisors[self.downsample]
         except KeyError:
@@ -80,8 +80,7 @@ class StackRegistration:
         chunk_x = image_manager.width//divisor
         chunk_y = image_manager.height//divisor
         chunk_z = image_manager.len_files // 8
-        rechunks_zyx = (57, 154, 291)
-        #rechunks_zyx = (chunk_z, chunk_y, chunk_x)
+        rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
             print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
@@ -126,9 +125,8 @@ class StackRegistration:
             return
         fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
         moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
-        spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
-        moving_sitk.SetSpacing(spacing)
-        fixed_sitk.SetSpacing(spacing)
+        moving_sitk.SetSpacing(self.spacing)
+        fixed_sitk.SetSpacing(self.spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
         affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
