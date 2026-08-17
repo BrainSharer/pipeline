@@ -78,7 +78,8 @@ class StackRegistration:
         chunk_x = image_manager.width//divisor
         chunk_y = image_manager.height//divisor
         chunk_z = image_manager.len_files // 8
-        rechunks_zyx = (chunk_z, chunk_y, chunk_x)
+        rechunks_zyx = (57, 154, 291)
+        #rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
             print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
@@ -191,7 +192,8 @@ class StackRegistration:
         chunk_z, chunk_y, chunk_x = source.chunks
         #padding = (64,64, chunk_x//2)
         #y size really affects the lopping
-        padding = source.chunks
+        #padding = source.chunks
+        padding = (57, 154, 291)
         print(f'Using padding of {padding}')
 
 
