@@ -55,6 +55,8 @@ class StackRegistration:
         self.registered_tif_path = os.path.join(self.scratch_dir, self.moving, f'registered.{self.downsample}')
         self.xy_resolution = 0.325
         self.z_resolution = 20.0
+        self.fixed_size = ( 60000//self.downsample, 34000//self.downsample, 485)
+
         self.spacing = ( round(self.xy_resolution*self.downsample,2), round(self.xy_resolution*self.downsample,2), self.z_resolution )                
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
         self.debug = debug
@@ -193,14 +195,14 @@ class StackRegistration:
         #padding = (64,64, chunk_x//2)
         #y size really affects the lopping
         #padding = source.chunks
-        padding = (57*2, int(154*2), 291)
+        padding = (chunk_z*2, int(chunk_y*2), chunk_x)
         print(f'Using padding of {padding}')
 
 
         target = zarr.open(
             self.registered_zarr_path,
             mode="w",
-            shape=source.shape,
+            shape=self.fixed_size,
             chunks=source.chunks,
             dtype=source.dtype)        
 
