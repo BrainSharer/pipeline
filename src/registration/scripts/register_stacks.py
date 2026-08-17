@@ -57,7 +57,7 @@ class StackRegistration:
         self.z_resolution = 20.0
         self.fixed_size = ( 60000//self.downsample, 34000//self.downsample, 485)
 
-        self.spacing = ( round(self.xy_resolution*self.downsample,2), round(self.xy_resolution*self.downsample,2), self.z_resolution )                
+        self.spacing = [ round(self.xy_resolution*self.downsample,2), round(self.xy_resolution*self.downsample,2), self.z_resolution ]               
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
         self.debug = debug
 
@@ -150,8 +150,6 @@ class StackRegistration:
             exit(0)
         source = zarr.open(self.moving_zarr_path, mode='r')
         print(source.info)
-        fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
-        print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
         paddings[32] = (32,32,32)
         paddings[16] = (32, 0, 256)
@@ -200,7 +198,7 @@ class StackRegistration:
         target = zarr.open(
             self.registered_zarr_path,
             mode="w",
-            shape=self.fixed_size,
+            shape=source.shape,
             chunks=source.chunks,
             dtype=source.dtype)        
 
@@ -209,7 +207,7 @@ class StackRegistration:
             target,
             transform,
             padding_zyx=padding,
-            spacing_zyx=fixed_spacing[::-1],
+            spacing_zyx=self.spacing[::-1],
         )
         
         registered_volume = zarr.open(self.registered_zarr_path, mode='r')
