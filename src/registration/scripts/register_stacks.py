@@ -25,6 +25,7 @@ import igneous.task_creation as tc
 from timeit import default_timer as timer
 
 
+
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -33,6 +34,7 @@ from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 from library.utilities.dask_utilities import closest_divisors_to_target
+from registration.scripts.sitk_helpers import compute_registration_metrics, create_tissue_mask
 
 
 class StackRegistration:
@@ -52,7 +54,8 @@ class StackRegistration:
         self.fixed_zarr_path = os.path.join(self.scratch_dir, self.fixed, f'source_aligned.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(self.scratch_dir, self.moving, f'registered.{self.downsample}')
         self.xy_resolution = 0.325
-        self.z_resolution = 20.0                
+        self.z_resolution = 20.0
+        self.spacing = ( round(self.xy_resolution*self.downsample,2), round(self.xy_resolution*self.downsample,2), self.z_resolution )                
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
         self.debug = debug
 
@@ -63,17 +66,19 @@ class StackRegistration:
             exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[4] = 8
-        divisors[8] = 4
-        divisors[16] = 4
-        divisors[32] = 1
+        divisors[4] = 16
+        divisors[8] = 8
+        divisors[16] = 8
+        divisors[32] = 8
         try:
             divisor = divisors[self.downsample]
         except KeyError:
-            divisor = 1
+            divisor = 4
         image_manager = ImageManager(self.moving_tif_path)
-        #chunk_x = closest_divisors_to_target(image_manager.width, image_manager.width // divisor)
-        #chunk_y = closest_divisors_to_target(image_manager.height, image_manager.height // divisor)
+        chunk_x = image_manager.width//divisor
+        chunk_y = image_manager.height//divisor
+        chunk_z = image_manager.len_files // 8
+        rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
             print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
@@ -84,7 +89,6 @@ class StackRegistration:
 
 
         dask_imgs = StackRegistration.build_dask_array_from_folder(self.moving_tif_path)
-        rechunks_zyx = (1, image_manager.height, image_manager.width//divisor)
         print(f'Using chunks={rechunks_zyx}')
         dask_imgs = dask_imgs.rechunk(rechunks_zyx)
         print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
@@ -148,21 +152,46 @@ class StackRegistration:
         fixed_spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
         print(f'Spacing fixed image {fixed_spacing}')
         paddings = {}
-        paddings[32] = (256, 0, 256)
+        paddings[32] = (32,32,32)
         paddings[16] = (32, 0, 256)
         paddings[8] = (32, 0, 512)
         paddings[4] = (256, 0, 256)
         paddings[1] = (32, 0, 1024)
-        #paddings = (32,0,256)
-        # DK62 256,256,256 works
-        # 256,0,256 works
-
+        #chunks = 1,height,width/4
+        #exp 1 divisor 4, 32,32,32 big gaps in the X
+        #exp 2 divisor 4, 32,32,64 still gaps create registered tiles took 274.49 seconds
+        #exp 3 divisor 4, 32,32,128 almost no gaps create registered tiles took 295.76 seconds
+        #exp 4,divisor 8, 32,32,128, no good, the spinal cord gets lopped off
+        #exp 5,divisor 4, 1,4 horrible
+        #exp 6,chunks 16,height/4,width/4 padding=32,32,32 gaps in x,y,z create registered tiles took 35.48 seconds
+        #exp 7,chunks 16,height/4,width/4 padding=(4, 38, 72) too many gaps everywhere, create registered tiles took 16.05 seconds
+        #exp 8, chunks 64,64,64 padding=32,16,16, horrible, took 1m37.794s
+        #exp 9, chunks 64,64,64 padding=16,32,32, horrible, took 1m44.388s
+        #exp 10, chunks (1, 1234, 1164), padding 4,32,32, horrible
+        #exp 11, chunks (1, 1234, 1164), padding 4,32,291
+        #exp 12, chunks (1, 1234, 1164), padding 32,32,291, end lopped off
+        #exp 13, chunks (1, 1234, 582), (32, 32, 145), end lopped off
+        #exp 13, chunks (1, 1234, 582), (32, 32, 291), end lopped off
+        #exp 14, chunks (1, 1234, 582), (64,64,291), end almost all there took 12m27.673s
+        #exp 15, chunks (1, 1234, 582), (64,64,64),gaps in X but on lopping, took 9m20.104s
+        #exp 16, chunks (1, 1234, 582), (64,4,291) no gaps very small part of spinal cord missing, took 12m53.123s
+        #exp 17, chunks (1, 1234, 582), (32,4,291) no gaps, lots of spinal cord missing, took 6m57.830
+        #exp 18, chunks (1, 1234, 582), (64,4,64) gaps no lopping 9m46.253s
+        #exp 19, chunks (1, 1234, 582), (64,32,64) gaps no lopping 9m31.962s
+        #exp 20, chunks (1, 1234, 582), (64,64,64) gaps small lopping
+        #exp 21, chunks (57, 154, 291), (64,64,64) gaps, no lopping
+        #exp 21, chunks (57, 154, 291), (57, 154, 291), works! 2m25.254s
+        
+        
         try:
             padding = paddings[self.downsample]
         except KeyError:
             padding = (64,64,64)
 
-
+        chunk_z, chunk_y, chunk_x = source.chunks
+        #padding = (64,64, chunk_x//2)
+        #y size really affects the lopping
+        padding = source.chunks
         print(f'Using padding of {padding}')
 
 
@@ -287,7 +316,7 @@ class StackRegistration:
             
             tq.insert(task)            
             tq.execute()
-        print('Finished creating precomputed data')
+        print('Finished creating precomputed data')        
 
     def run_tiles(self):
         self.create_registered_tiles()
@@ -739,7 +768,7 @@ class StackRegistration:
 
         return new_spacing        
 
-    def get_zarr_info(self):
+    def status(self):
         brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.registered_zarr_path]
         for brain_path in brain_paths:
             if os.path.exists(brain_path):
@@ -748,46 +777,104 @@ class StackRegistration:
                 print(zarr_data.info)
             else:
                 print(f'Missing: {brain_path}')
+        if os.path.exists(self.transform_path):
+            print(f'Found transform: {self.transform_path}')
+        else:
+            print(f'Missing transform: {self.transform_path}')
+
+    def get_volume(self, brain):
+        tif_path = os.path.join(self.base_path, brain, 'preps', 'C1', f'source_aligned.{self.downsample}')
+        if not os.path.exists(tif_path):
+            print(f"Missing: {tif_path}")
+            exit(1)
+
+        image = StackRegistration.create_sitk_volume(tif_path)
+        image.SetSpacing(self.spacing)
+        return image
 
 
     def register_volume(self):
-        if not os.path.exists(self.moving_tif_path):
-            print(f"Missing: {self.moving_tif_path}")
-            exit(1)
-        if not os.path.exists(self.fixed_tif_path):
-            print(f"Missing: {self.fixed_tif_path}")
-            exit(1)
-        transform = sitk.ReadTransform(self.transform_path)
-        if not os.path.exists(self.transform_path):
-            print(f"Missing: {self.transform_path}")
-            exit(1)
 
-        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
-        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
-        spacing = (self.xy_resolution*self.downsample, self.xy_resolution*self.downsample, self.z_resolution)
-        moving_sitk.SetSpacing(spacing)
-        fixed_sitk.SetSpacing(spacing)
-        print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
-        print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
-
-
-        resample = sitk.ResampleImageFilter()
-        resample.SetTransform(transform)
-        resample.SetInterpolator(sitk.sitkLinear)
-        resample.SetReferenceImage(moving_sitk)
-        resample.SetDefaultPixelValue(0)
-        output_image = resample.Execute(moving_sitk)
-        sitk.WriteImage(output_image, self.preview_path)
-        print(f'Wrote resampled image to: {self.preview_path}')
+        moving_sitk = self.get_volume(self.moving)
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
         if os.path.exists(fixed_path):
-            print()
+            fixed_sitk = sitk.ReadImage(fixed_path)
+            print(f'Loading existing fixed_sitk {fixed_path}')
         else:
+            fixed_sitk = self.get_volume(self.fixed)
             sitk.WriteImage(fixed_sitk, fixed_path)
             print(f'Wrote fixed image to: {fixed_path}')
+        registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
+        if os.path.exists(self.preview_path):
+            registered_image = sitk.ReadImage(self.preview_path)
+            registered_image.SetSpacing(self.spacing)
+            print(f'Loading existing registered image {self.preview_path}')
+        else:            
+            transform = sitk.ReadTransform(self.transform_path)
+            if not os.path.exists(self.transform_path):
+                print(f"Missing: {self.transform_path}")
+                exit(1)
 
-        
+            resample = sitk.ResampleImageFilter()
+            resample.SetTransform(transform)
+            resample.SetInterpolator(sitk.sitkLinear)
+            resample.SetReferenceImage(fixed_sitk)
+            resample.SetDefaultPixelValue(0)
+            registered_image = resample.Execute(moving_sitk)
+            registered_image.SetSpacing(self.spacing)
+            sitk.WriteImage(registered_image, self.preview_path)
+            print(f'Wrote resampled image to: {self.preview_path}')
 
+
+        fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
+        if os.path.exists(fixed_mask_path):
+            fixed_mask = sitk.ReadImage(fixed_mask_path)
+            fixed_mask.SetSpacing(self.spacing)
+            print(f'Loading existing fixed_mask {fixed_mask_path}')
+        else:
+            fixed_mask = create_tissue_mask(fixed_sitk, threshold=12)
+            fixed_mask.SetSpacing(self.spacing)
+            sitk.WriteImage(sitk.Cast(fixed_mask, sitk.sitkUInt8), fixed_mask_path)
+            print(f'Finished creating fixed mask to {fixed_mask_path}')
+            
+        if os.path.exists(registered_mask_path):
+            registered_mask = sitk.ReadImage(registered_mask_path)
+            registered_mask.SetSpacing(self.spacing)
+        else:
+            registered_mask = create_tissue_mask(registered_image, threshold=12)
+            print('Finished creating registered mask')
+            registered_mask.SetSpacing(self.spacing)
+            sitk.WriteImage(sitk.Cast(registered_mask, sitk.sitkUInt8), registered_mask_path)
+
+        print(f'fixed size {fixed_mask.GetSize()} moving: {registered_image.GetSize()}')
+        print(f'fixed spacing {fixed_mask.GetSpacing()} moving: {registered_image.GetSpacing()}')
+
+        metrics = compute_registration_metrics(
+            fixed_mask,
+            registered_mask,
+        )
+
+        print(f"Dice:                  {metrics.dice:.4f}")
+        print(f"Jaccard:               {metrics.jaccard:.4f}")
+        print(f"Hausdorff:             {metrics.hausdorff_distance:.3f} µm")
+        print(f"Hausdorff 95%:         {metrics.hausdorff_distance_95:.3f} µm")
+        print(f"Centroid displacement: {metrics.centroid_distance:.3f} µm")
+
+        print()
+        print(f"Fixed volume:          {metrics.fixed_volume:,.1f} µm³")
+        print(f"Moving volume:         {metrics.moving_volume:,.1f} µm³")
+        print(f"Intersection volume:   {metrics.intersection_volume:,.1f} µm³")        
+
+
+        """
+        intersection = sitk.And(fixed_mask, moving_mask)
+        print(f'intersection size: {intersection.GetSize()} depth: {intersection.GetDepth()} spacing: {intersection.GetSpacing()}')
+
+        fixed_only = fixed_mask & ~moving_mask
+        print(f'fixed only size: {fixed_only.GetSize()} depth: {fixed_only.GetDepth()} spacing: {fixed_only.GetSpacing()}')
+        moving_only = moving_mask & ~fixed_mask        
+        print(f'moving only size: {moving_only.GetSize()} depth: {moving_only.GetDepth()} spacing: {moving_only.GetSpacing()}')
+        """
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -813,9 +900,9 @@ if __name__ == '__main__':
         "zarr2tif": pipeline.create_tifs,
         "create_neuroglancer": pipeline.create_neuroglancer,
         "run_tiles": pipeline.run_tiles,
-        "get_info": pipeline.get_zarr_info,
+        "status": pipeline.status,
         "test_mips": pipeline.test_mips,
-        "register_volume": pipeline.register_volume
+        "register_volume": pipeline.register_volume,
     }
 
     if task in function_mapping:
