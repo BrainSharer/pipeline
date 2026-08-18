@@ -68,9 +68,9 @@ class StackRegistration:
             exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[4] = 4
-        divisors[8] = 4
-        divisors[16] = 2
+        divisors[4] = 16
+        divisors[8] = 8
+        divisors[16] = 4
         divisors[32] = 2
         try:
             divisor = divisors[self.downsample]
@@ -79,7 +79,7 @@ class StackRegistration:
         image_manager = ImageManager(self.moving_tif_path)
         chunk_x = image_manager.width//8
         chunk_y = image_manager.height
-        chunk_z = image_manager.len_files//8
+        chunk_z = image_manager.len_files//divisor
         rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
@@ -185,18 +185,13 @@ class StackRegistration:
         #exp 23, chunks (60, 1047, 930),(30, 523, 465), works 1m19.535s DK50
         #exp 24, chunks (57, 1234, 1164), (28, 617, 582), little in the midsection got lopped off, 1m43.639s, DK62
         #exp 25, chunks (230, 1234, 1164), (115, 617, 582), little in the midsection got lopped off,1m43.639s, DK62
+        #exp 26, chunks (57, 1234, 291), (32,32,32), little chopped, 2m DK62
+        #exp 27, chunks (57, 1234, 291), (32,64,64), big gaps in X 1m53.235s DK62
+        #exp 28, chunks (57, 1234, 291), (32,32,64), big gaps and lopped off 1m53.235s DK62
+        #exp 29, chunks (57, 1234, 291), (28, 617, 145), little in the midsection got lopped off,1m59.325s
         
-        
-        try:
-            padding = paddings[self.downsample]
-        except KeyError:
-            padding = (64,64,64)
-
-        chunk_z, chunk_y, chunk_x = source.chunks
-        #padding = (64,64, chunk_x//2)
-        #y size really affects the lopping
-        #padding = source.chunks
-        padding = (chunk_z//2, chunk_y//8, chunk_x//16)
+        chunkz, chunky, chunkx = source.chunks
+        padding = (chunkz//2, chunky//2, chunkx//2)
         print(f'Using padding of {padding}')
 
 
