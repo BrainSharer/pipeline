@@ -68,8 +68,8 @@ class StackRegistration:
             exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[4] = 16
-        divisors[8] = 8
+        divisors[4] = 8
+        divisors[8] = 4
         divisors[16] = 2
         divisors[32] = 2
         try:
