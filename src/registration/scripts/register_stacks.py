@@ -70,7 +70,7 @@ class StackRegistration:
         divisors[1] = 32
         divisors[4] = 16
         divisors[8] = 8
-        divisors[16] = 16
+        divisors[16] = 2
         divisors[32] = 2
         try:
             divisor = divisors[self.downsample]
@@ -79,7 +79,7 @@ class StackRegistration:
         image_manager = ImageManager(self.moving_tif_path)
         chunk_x = image_manager.width//divisor
         chunk_y = image_manager.height//divisor
-        chunk_z = image_manager.len_files // 8
+        chunk_z = image_manager.len_files//8
         rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
@@ -180,6 +180,8 @@ class StackRegistration:
         #exp 20, chunks (1, 1234, 582), (64,64,64) gaps small lopping
         #exp 21, chunks (57, 154, 291), (64,64,64) gaps, no lopping
         #exp 21, chunks (57, 154, 291), (57, 154, 291), works! 2m25.254s
+        #exp 22, chunks (1, 523, 930), (32, 523, 930), works
+        #exp 23, chunks (60, 523, 930),(30, 261, 465), works 1m45.298s
         
         
         try:
@@ -191,7 +193,7 @@ class StackRegistration:
         #padding = (64,64, chunk_x//2)
         #y size really affects the lopping
         #padding = source.chunks
-        padding = (chunk_z*2, int(chunk_y*2), chunk_x)
+        padding = (chunk_z//2, chunk_y//2, chunk_x//2)
         print(f'Using padding of {padding}')
 
 
@@ -793,7 +795,7 @@ class StackRegistration:
         return image
 
 
-    def register_volume(self):
+    def validate_registration(self):
 
         moving_sitk = self.get_volume(self.moving)
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
@@ -902,7 +904,7 @@ if __name__ == '__main__':
         "run_tiles": pipeline.run_tiles,
         "status": pipeline.status,
         "test_mips": pipeline.test_mips,
-        "register_volume": pipeline.register_volume,
+        "validate": pipeline.validate_registration,
     }
 
     if task in function_mapping:
