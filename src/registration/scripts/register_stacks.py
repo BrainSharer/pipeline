@@ -78,8 +78,8 @@ class StackRegistration:
             divisor = 4
         image_manager = ImageManager(self.moving_tif_path)
         chunk_x = image_manager.width//divisor
-        chunk_y = image_manager.height//divisor
-        chunk_z = image_manager.len_files//8
+        chunk_y = image_manager.height//1
+        chunk_z = image_manager.len_files//divisor
         rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
@@ -181,7 +181,10 @@ class StackRegistration:
         #exp 21, chunks (57, 154, 291), (64,64,64) gaps, no lopping
         #exp 21, chunks (57, 154, 291), (57, 154, 291), works! 2m25.254s
         #exp 22, chunks (1, 523, 930), (32, 523, 930), works
-        #exp 23, chunks (60, 523, 930),(30, 261, 465), works 1m45.298s
+        #exp 23, chunks (60, 523, 930),(30, 261, 465), works 1m45.298s DK50
+        #exp 23, chunks (60, 1047, 930),(30, 523, 465), works 1m19.535s DK50
+        #exp 24, chunks (57, 1234, 1164), (28, 617, 582), little in the midsection got lopped off, DK62
+        #exp 25, chunks (230, 1234, 1164)
         
         
         try:
@@ -228,7 +231,7 @@ class StackRegistration:
         volume = zarr.open(self.registered_zarr_path, mode='r')
         nz = volume.shape[0]
 
-        for z in tqdm(range(nz)):
+        for z in tqdm(range(nz), desc="Creating TIFs"):
             img = volume[z]
             outpath = os.path.join(self.registered_tif_path, f"{z:03d}.tif")
             tifffile.imwrite(outpath, img)
@@ -276,7 +279,7 @@ class StackRegistration:
             print("Transfer task has already been completed")
         else:
             ng.init_precomputed(rechunkme_path, image_manager.volume_size)
-            for i, f in enumerate(image_manager.files):
+            for i, f in enumerate(tqdm(image_manager.files, desc="Processing images")):
                 filepath = os.path.join(self.registered_tif_path, f)
                 ng.process_image(file_key=[i, filepath, progress_dir, False, 0, 0])
 
@@ -493,7 +496,7 @@ class StackRegistration:
     def create_sitk_volume(input_path):
         files = sorted(glob.glob(os.path.join(input_path, "*.tif")))
         slices = []
-        for f in tqdm(files):
+        for f in tqdm(files, desc="Creating sitk volume"):
             img = tifffile.imread(f)
             slices.append(img.astype(np.float32))
         arr = np.stack(slices, axis=0)
@@ -505,7 +508,7 @@ class StackRegistration:
         nz = volume.shape[0]
         slices = []
 
-        for z in tqdm(range(nz)):
+        for z in tqdm(range(nz), desc="Saving TIFs"):
             img = volume[z].compute()
             outpath = os.path.join(directory, f"{z:03d}.tif")
             tifffile.imwrite(outpath, img)
