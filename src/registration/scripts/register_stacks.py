@@ -34,7 +34,7 @@ from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 from library.utilities.dask_utilities import closest_divisors_to_target
-from registration.scripts.sitk_helpers import compute_registration_metrics, create_tissue_mask
+from registration.scripts.sitk_helpers import compute_affine_padding, compute_chunk_source_region, compute_registration_metrics, create_tissue_mask
 
 
 class StackRegistration:
@@ -77,9 +77,9 @@ class StackRegistration:
         except KeyError:
             divisor = 4
         image_manager = ImageManager(self.moving_tif_path)
-        chunk_x = image_manager.width//divisor
-        chunk_y = image_manager.height//1
-        chunk_z = image_manager.len_files//divisor
+        chunk_x = image_manager.width//8
+        chunk_y = image_manager.height
+        chunk_z = image_manager.len_files//8
         rechunks_zyx = (chunk_z, chunk_y, chunk_x)
         if os.path.exists(self.moving_zarr_path):
             print(f"Output path {self.moving_zarr_path} already exists")
@@ -881,6 +881,33 @@ class StackRegistration:
         print(f'moving only size: {moving_only.GetSize()} depth: {moving_only.GetDepth()} spacing: {moving_only.GetSpacing()}')
         """
 
+    def test_padding(self):
+        transform = sitk.ReadTransform(self.transform_path)
+        matrix = np.array(transform.GetMatrix()).reshape(3, 3)
+        print(matrix)
+        translation = transform.GetTranslation()
+        print(translation)
+
+        chunk_shape = (57, 154, 582)
+        padding = compute_affine_padding(
+            matrix=matrix,
+            translation=translation,
+            chunk_shape=chunk_shape,
+            spacing=self.spacing[::-1],
+        )
+
+        print(padding)
+        region = compute_chunk_source_region(
+            chunk_index=(0, 0, 0),
+            chunk_shape=chunk_shape,
+            source_shape=(460, 1234, 2328),
+            padding=padding,
+        )
+
+        print("source start:", region.start)
+        print("source stop: ", region.stop)
+        print("source shape:", region.shape)                
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
     parser.add_argument('--moving', help='Enter the animal (moving)', required=True, type=str)
@@ -908,6 +935,7 @@ if __name__ == '__main__':
         "status": pipeline.status,
         "test_mips": pipeline.test_mips,
         "validate": pipeline.validate_registration,
+        "test_padding": pipeline.test_padding
     }
 
     if task in function_mapping:

@@ -1,7 +1,9 @@
+##### Padding helper
 from __future__ import annotations
 
+
 from dataclasses import dataclass, asdict
-from typing import Optional
+from typing import Optional, Tuple
 import json
 import math
 
@@ -579,4 +581,299 @@ def compute_registration_metrics(
         ),
 
         number_of_dimensions=fixed.GetDimension(),
+    )
+
+
+
+@dataclass(frozen=True)
+class AffinePadding:
+    """
+    Conservative source-region expansion caused by an affine transform.
+
+    Values are in VOXELS in (z, y, x) order.
+    """
+    lower: Tuple[int, int, int]
+    upper: Tuple[int, int, int]
+
+    @property
+    def z(self) -> Tuple[int, int]:
+        return self.lower[0], self.upper[0]
+
+    @property
+    def y(self) -> Tuple[int, int]:
+        return self.lower[1], self.upper[1]
+
+    @property
+    def x(self) -> Tuple[int, int]:
+        return self.lower[2], self.upper[2]
+
+
+@dataclass(frozen=True)
+class SourceRegion:
+    """
+    Source region required to generate one output chunk.
+
+    All coordinates are half-open:
+        [start, stop)
+
+    Coordinates are (z, y, x).
+    """
+    start: Tuple[int, int, int]
+    stop: Tuple[int, int, int]
+
+    @property
+    def shape(self) -> Tuple[int, int, int]:
+        return tuple(
+            stop - start
+            for start, stop in zip(self.start, self.stop)
+        )
+
+
+def compute_affine_padding(
+    matrix: np.ndarray,
+    translation: np.ndarray,
+    chunk_shape: Tuple[int, int, int],
+    spacing: Tuple[float, float, float] | None = None,
+) -> AffinePadding:
+    """
+    Compute a conservative maximum padding required by an affine transform.
+
+    Parameters
+    ----------
+    matrix:
+        3x3 affine matrix.
+
+        Coordinates must use the same axis ordering as `chunk_shape`.
+        For a Zarr array with shape (z, y, x), this means:
+            [z, y, x]
+
+    translation:
+        Translation vector with the same coordinate ordering.
+
+    chunk_shape:
+        Output chunk dimensions in voxels:
+            (z, y, x)
+
+    spacing:
+        Optional physical voxel spacing:
+            (z, y, x)
+
+        If supplied, the affine matrix and translation are assumed to
+        operate in physical units. The resulting padding is converted
+        back to voxels.
+
+    Returns
+    -------
+    AffinePadding
+        Conservative lower/upper padding in voxels.
+
+    Notes
+    -----
+    The calculation transforms the eight corners of a chunk and determines
+    the largest displacement from the corresponding untransformed chunk.
+
+    The returned padding is deliberately conservative so that every chunk
+    can use the same padding without recomputing affine geometry.
+    """
+    matrix = np.asarray(matrix, dtype=np.float64)
+    translation = np.asarray(translation, dtype=np.float64)
+
+    if matrix.shape != (3, 3):
+        raise ValueError("matrix must have shape (3, 3)")
+
+    if translation.shape != (3,):
+        raise ValueError("translation must have shape (3,)")
+
+    if len(chunk_shape) != 3:
+        raise ValueError("chunk_shape must contain (z, y, x)")
+
+    if any(v <= 0 for v in chunk_shape):
+        raise ValueError("chunk dimensions must be positive")
+
+    if spacing is not None:
+        spacing = np.asarray(spacing, dtype=np.float64)
+
+        if spacing.shape != (3,):
+            raise ValueError("spacing must have shape (3,)")
+
+        if np.any(spacing <= 0):
+            raise ValueError("spacing must be positive")
+
+    # ------------------------------------------------------------
+    # Use the inverse transform because output -> input sampling
+    # is what determines the required source region.
+    # ------------------------------------------------------------
+    try:
+        inverse_matrix = np.linalg.inv(matrix)
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("Affine matrix is singular") from exc
+
+    inverse_translation = -inverse_matrix @ translation
+
+    # Eight corners of one chunk.
+    #
+    # Coordinates are expressed as voxel coordinates.
+    # Use [0, size] rather than [0, size-1] because we want a
+    # conservative bounding box.
+    z, y, x = chunk_shape
+
+    corners = np.array(
+        [
+            [cz, cy, cx]
+            for cz in (0.0, float(z))
+            for cy in (0.0, float(y))
+            for cx in (0.0, float(x))
+        ],
+        dtype=np.float64,
+    )
+
+    # ------------------------------------------------------------
+    # Convert voxel coordinates to physical coordinates if needed.
+    # ------------------------------------------------------------
+    if spacing is not None:
+        physical_corners = corners * spacing
+
+        transformed = (
+            physical_corners @ inverse_matrix.T
+            + inverse_translation
+        )
+
+        # Back to voxel coordinates.
+        transformed /= spacing
+    else:
+        transformed = (
+            corners @ inverse_matrix.T
+            + inverse_translation
+        )
+
+    # ------------------------------------------------------------
+    # Determine transformed bounding box.
+    # ------------------------------------------------------------
+    transformed_min = transformed.min(axis=0)
+    transformed_max = transformed.max(axis=0)
+
+    original_min = np.zeros(3, dtype=np.float64)
+    original_max = np.asarray(chunk_shape, dtype=np.float64)
+
+    # How far the transformed region extends below/above the original
+    # chunk.
+    lower = original_min - transformed_min
+    upper = transformed_max - original_max
+
+    # Translation can move the entire chunk. The source bounding box
+    # therefore needs to include that displacement too.
+    lower = np.maximum(lower, 0.0)
+    upper = np.maximum(upper, 0.0)
+
+    return AffinePadding(
+        lower=tuple(np.ceil(lower).astype(int)),
+        upper=tuple(np.ceil(upper).astype(int)),
+    )
+
+
+def affine_source_region(
+    output_start: Tuple[int, int, int],
+    output_stop: Tuple[int, int, int],
+    padding: AffinePadding,
+    source_shape: Tuple[int, int, int],
+) -> SourceRegion:
+    """
+    Construct an efficient source read region for one output chunk.
+
+    Parameters
+    ----------
+    output_start:
+        Output chunk start as (z, y, x).
+
+    output_stop:
+        Output chunk stop as (z, y, x), exclusive.
+
+    padding:
+        Precomputed affine padding.
+
+    source_shape:
+        Full source volume shape as (z, y, x).
+
+    Returns
+    -------
+    SourceRegion
+        Clipped source region required for this output chunk.
+    """
+    output_start = np.asarray(output_start, dtype=np.int64)
+    output_stop = np.asarray(output_stop, dtype=np.int64)
+    source_shape = np.asarray(source_shape, dtype=np.int64)
+
+    if np.any(output_start < 0):
+        raise ValueError("output_start cannot be negative")
+
+    if np.any(output_stop <= output_start):
+        raise ValueError("output_stop must be greater than output_start")
+
+    if np.any(output_stop > source_shape):
+        raise ValueError(
+            f"Output region {output_start}-{output_stop} "
+            f"exceeds source shape {source_shape}"
+        )
+
+    lower = np.asarray(padding.lower, dtype=np.int64)
+    upper = np.asarray(padding.upper, dtype=np.int64)
+
+    source_start = np.maximum(
+        output_start - lower,
+        0,
+    )
+
+    source_stop = np.minimum(
+        output_stop + upper,
+        source_shape,
+    )
+
+    return SourceRegion(
+        start=tuple(source_start),
+        stop=tuple(source_stop),
+    )
+
+
+def compute_chunk_source_region(
+    chunk_index: Tuple[int, int, int],
+    chunk_shape: Tuple[int, int, int],
+    source_shape: Tuple[int, int, int],
+    padding: AffinePadding,
+) -> SourceRegion:
+    """
+    Convenience function for Zarr chunk indices.
+
+    Parameters
+    ----------
+    chunk_index:
+        Chunk index (cz, cy, cx).
+
+    chunk_shape:
+        Chunk size (z, y, x).
+
+    source_shape:
+        Full source volume shape (z, y, x).
+
+    padding:
+        Precomputed affine padding.
+
+    Returns
+    -------
+    SourceRegion
+    """
+    chunk_index = np.asarray(chunk_index, dtype=np.int64)
+    chunk_shape = np.asarray(chunk_shape, dtype=np.int64)
+    source_shape = np.asarray(source_shape, dtype=np.int64)
+
+    output_start = chunk_index * chunk_shape
+    output_stop = np.minimum(
+        output_start + chunk_shape,
+        source_shape,
+    )
+
+    return affine_source_region(
+        tuple(output_start),
+        tuple(output_stop),
+        padding,
+        tuple(source_shape),
     )
