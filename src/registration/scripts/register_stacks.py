@@ -68,7 +68,7 @@ class StackRegistration:
             exit(1)
         divisors = {}
         divisors[1] = 32
-        divisors[4] = 8
+        divisors[4] = 4
         divisors[8] = 4
         divisors[16] = 2
         divisors[32] = 2
@@ -183,8 +183,8 @@ class StackRegistration:
         #exp 22, chunks (1, 523, 930), (32, 523, 930), works
         #exp 23, chunks (60, 523, 930),(30, 261, 465), works 1m45.298s DK50
         #exp 23, chunks (60, 1047, 930),(30, 523, 465), works 1m19.535s DK50
-        #exp 24, chunks (57, 1234, 1164), (28, 617, 582), little in the midsection got lopped off, DK62
-        #exp 25, chunks (230, 1234, 1164)
+        #exp 24, chunks (57, 1234, 1164), (28, 617, 582), little in the midsection got lopped off, 1m43.639s, DK62
+        #exp 25, chunks (230, 1234, 1164), (115, 617, 582), little in the midsection got lopped off,1m43.639s, DK62
         
         
         try:
