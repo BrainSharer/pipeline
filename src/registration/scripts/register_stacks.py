@@ -33,8 +33,8 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
-from library.utilities.dask_utilities import closest_divisors_to_target
 from registration.scripts.sitk_helpers import compute_affine_padding, compute_chunk_source_region, compute_registration_metrics, create_tissue_mask
+from library.controller.sql_controller import SqlController
 
 
 class StackRegistration:
@@ -53,11 +53,27 @@ class StackRegistration:
         self.moving_zarr_path = os.path.join(self.scratch_dir, self.moving, f'source_aligned.{self.downsample}.zarr')
         self.fixed_zarr_path = os.path.join(self.scratch_dir, self.fixed, f'source_aligned.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(self.scratch_dir, self.moving, f'registered.{self.downsample}')
-        self.xy_resolution = 0.325
-        self.z_resolution = 20.0
+
+        moving_brain_controller = SqlController(self.moving)
+        self.moving_xy_resolution = moving_brain_controller.scan_run.resolution
+        self.moving_z_resolution = moving_brain_controller.scan_run.zresolution
+
+        fixed_brain_controller = SqlController(self.fixed)
+        self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
+        self.fixed_z_resolution = fixed_brain_controller.scan_run.zresolution
+
         self.fixed_size = ( 60000//self.downsample, 34000//self.downsample, 485)
 
-        self.spacing = [ round(self.xy_resolution*self.downsample,2), round(self.xy_resolution*self.downsample,2), self.z_resolution ]               
+        if self.moving == 'Allen':
+            self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
+        else:
+            self.moving_spacing = [ round(self.moving_xy_resolution*self.downsample,2), round(self.moving_xy_resolution*self.downsample,2), self.moving_z_resolution ]
+
+        if self.fixed == 'Allen':     
+            self.fixed_spacing = [ round(self.fixed_xy_resolution,2), round(self.fixed_xy_resolution,2), self.fixed_z_resolution ]
+        else:
+            self.fixed_spacing = [ round(self.fixed_xy_resolution*self.downsample,2), round(self.fixed_xy_resolution*self.downsample,2), self.fixed_z_resolution ]
+
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
         self.debug = debug
 
@@ -77,7 +93,7 @@ class StackRegistration:
         except KeyError:
             divisor = 4
         image_manager = ImageManager(self.moving_tif_path)
-        chunk_x = image_manager.width//8
+        chunk_x = image_manager.width//divisor
         chunk_y = image_manager.height
         chunk_z = image_manager.len_files//divisor
         rechunks_zyx = (chunk_z, chunk_y, chunk_x)
@@ -125,8 +141,8 @@ class StackRegistration:
             return
         fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
         moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
-        moving_sitk.SetSpacing(self.spacing)
-        fixed_sitk.SetSpacing(self.spacing)
+        moving_sitk.SetSpacing(self.moving_spacing)
+        fixed_sitk.SetSpacing(self.fixed_spacing)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
         affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
@@ -189,11 +205,12 @@ class StackRegistration:
         #exp 27, chunks (57, 1234, 291), (32,64,64), big gaps in X 1m53.235s DK62
         #exp 28, chunks (57, 1234, 291), (32,32,64), big gaps and lopped off 1m53.235s DK62
         #exp 29, chunks (57, 1234, 291), (28, 617, 145), little in the midsection got lopped off,1m59.325s
-        
+        #exp 30, chunks (32,32,32), (32,32,32) useless
+        #exp 31, chunks (len_files/divisor, height, width/divisor) (chunks/2), works well 3m50.423s DK62
+
         chunkz, chunky, chunkx = source.chunks
         padding = (chunkz//2, chunky//2, chunkx//2)
         print(f'Using padding of {padding}')
-
 
         target = zarr.open(
             self.registered_zarr_path,
@@ -207,7 +224,7 @@ class StackRegistration:
             target,
             transform,
             padding_zyx=padding,
-            spacing_zyx=self.spacing[::-1],
+            spacing_zyx=self.fixed_spacing[::-1],
         )
         
         registered_volume = zarr.open(self.registered_zarr_path, mode='r')
@@ -250,10 +267,7 @@ class StackRegistration:
         # chunk 
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
 
-        x = self.xy_resolution * self.downsample
-        y = self.xy_resolution * self.downsample
-        z = self.z_resolution
-        scales = (x,y,z)
+        scales = self.moving_spacing
         scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
         print(f'scales={scales} downsample={self.downsample}')
         num_channels = image_manager.num_channels
@@ -282,7 +296,7 @@ class StackRegistration:
 
         base_chunks = [64, 64, 16]
 
-        scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((x,y,z), base_chunks)
+        scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((self.moving_spacing), base_chunks)
         mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
         registered_outpath = os.path.join(neuroglancer_path, f'registered.{self.downsample}')
         outpath = f"file://{registered_outpath}"
@@ -325,10 +339,7 @@ class StackRegistration:
         print("Finished running tiles, tifs and neuroglancer")
 
     def test_mips(self):
-        x = self.xy_resolution * self.downsample
-        y = self.xy_resolution * self.downsample
-        z = self.z_resolution
-        scales = (x,y,z)
+        scales = self.moving_spacing
         scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
         print(f'Before computing scales={scales} downsample={self.downsample}')
         base_chunks = [64,64,16]
@@ -736,39 +747,9 @@ class StackRegistration:
         return z_slice, y_slice, x_slice
 
 
-    def create_spacing(self, brain):
-        # 1. Load your original medical image to grab original metadata
-        size_info = {}
-        size_info['DK52'] = (65500,35500,486)
-        size_info['DK55'] = (60000,34000,485)
-        size_info['DK62'] = (74500,39500,460)
-
-        if brain not in size_info:
-            print(f'No size info for {brain}')
-            exit(0)
-
-
-        moving_original_spacing_xyz = (self.xy_resolution, self.xy_resolution, self.z_resolution)
-
-        # 2. Load the resized image generated by ImageMagick
-        source_path = os.path.join(self.scratch_dir, brain, f'source_aligned.{self.downsample}.zarr')
-        if not os.path.exists(source_path):
-            print(f'zarr does not exist: {source_path}')
-            exit(0)
-        source = zarr.open(source_path, mode='r')
-        resized_img = sitk.GetImageFromArray(source)
-        new_size = (resized_img.GetSize())
-
-        # 3. Calculate new physical spacing
-        new_spacing = [
-            moving_original_spacing_xyz[i] * (size_info[brain][i] / new_size[i]) 
-            for i in range(len(moving_original_spacing_xyz))
-        ]
-
-
-        return new_spacing        
-
     def status(self):
+        print(f'Moving spacing: {self.moving_spacing}')
+        print(f'Fixed spacing: {self.fixed_spacing}')
         brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.registered_zarr_path]
         for brain_path in brain_paths:
             if os.path.exists(brain_path):
