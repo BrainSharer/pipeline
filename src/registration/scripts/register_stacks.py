@@ -33,13 +33,16 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
-from registration.scripts.sitk_helpers import compute_affine_padding, compute_chunk_source_region, compute_registration_metrics, create_tissue_mask
+from registration.scripts.sitk_helpers import _channel_count, _resample_rgb_block, _resample_scalar_block, _spatial_chunks, _spatial_shape, compute_affine_padding, compute_chunk_source_region, compute_registration_metrics, create_tissue_mask, make_registration_image, normalize_tiff_array
 from library.controller.sql_controller import SqlController
 
 
 class StackRegistration:
 
-    def __init__(self, moving, fixed, downsample=1, debug=False):
+    RGB_CHANNELS = 3
+
+
+    def __init__(self, moving, fixed, downsample=1, registration_channel="luminance", debug=False):
         self.moving = moving
         self.fixed = fixed
         self.downsample = downsample
@@ -62,8 +65,6 @@ class StackRegistration:
         self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
         self.fixed_z_resolution = fixed_brain_controller.scan_run.zresolution
 
-        self.fixed_size = ( 60000//self.downsample, 34000//self.downsample, 485)
-
         if self.moving == 'Allen':
             self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
         else:
@@ -75,48 +76,85 @@ class StackRegistration:
             self.fixed_spacing = [ round(self.fixed_xy_resolution*self.downsample,2), round(self.fixed_xy_resolution*self.downsample,2), self.fixed_z_resolution ]
 
         self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
+        if registration_channel not in {
+            "luminance",
+            "red",
+            "green",
+            "blue",
+        }:
+            raise ValueError("registration_channel must be one of: 'luminance', 'red', 'green', 'blue'")
+
+        self.registration_channel = registration_channel
+        self.image_manager = ImageManager(self.moving_tif_path)
+
+
         self.debug = debug
 
 
     def create_zarr(self):
+        """
+        Convert the TIFF stack into Zarr while preserving the channel
+        dimension for RGB images.
+        """
+
         if not os.path.exists(self.moving_tif_path):
-            print(f"Input path {self.moving_tif_path} does not exist for brain {self.moving}")
-            exit(1)
-        divisors = {}
-        divisors[1] = 32
-        divisors[4] = 16
-        divisors[8] = 8
-        divisors[16] = 4
-        divisors[32] = 2
-        try:
-            divisor = divisors[self.downsample]
-        except KeyError:
-            divisor = 4
-        image_manager = ImageManager(self.moving_tif_path)
-        chunk_x = image_manager.width//divisor
-        chunk_y = image_manager.height
-        chunk_z = image_manager.len_files//divisor
-        rechunks_zyx = (chunk_z, chunk_y, chunk_x)
-        if os.path.exists(self.moving_zarr_path):
-            print(f"Output path {self.moving_zarr_path} already exists")
-            print(f"\tfor brain {self.moving_zarr_path}, skipping zarr creation")
-            return
+            raise FileNotFoundError(
+                f"Input path does not exist: "
+                f"{self.moving_tif_path}"
+            )
 
-        print(f'{self.moving} input {self.moving_tif_path}')
-        print(f'{self.moving} output {self.moving_zarr_path}')
+        divisors = {
+            1: 32,
+            4: 16,
+            8: 8,
+            16: 4,
+            32: 2,
+        }
 
+        divisor = divisors.get(self.downsample,4,)
+        chunk_x = max(1, self.image_manager.width // divisor)
+        chunk_y = self.image_manager.height
+        chunk_z = max(1, self.image_manager.len_files // divisor)
 
-        dask_imgs = StackRegistration.build_dask_array_from_folder(self.moving_tif_path)
-        print(f'Using chunks={rechunks_zyx}')
-        dask_imgs = dask_imgs.rechunk(rechunks_zyx)
-        print(f'Dask array shape: {dask_imgs.shape} chunk size = {dask_imgs.chunksize}')
+        dask_imgs = (StackRegistration.build_dask_array_from_folder(self.moving_tif_path))
+
+        if dask_imgs.ndim == 3:
+            # Grayscale
+            rechunks = (chunk_z,chunk_y,chunk_x)
+
+        elif dask_imgs.ndim == 4:
+            # RGB/RGBA
+            rechunks = (chunk_z, chunk_y, chunk_x,dask_imgs.shape[-1],)
+
+        else:
+            raise ValueError(f"Unsupported Dask volume shape: {dask_imgs.shape}")
+
+        print(f"Input volume shape={dask_imgs.shape}")
+        print(f"Using chunks={rechunks}")
+
+        dask_imgs = dask_imgs.rechunk(rechunks)
+
+        print(f"Dask shape={dask_imgs.shape}")
+        print(f"Dask chunks={dask_imgs.chunksize}")
+
+        os.makedirs(os.path.dirname(self.moving_zarr_path),exist_ok=True,)
+
         with ProgressBar():
-            dask_imgs.to_zarr(self.moving_zarr_path, overwrite=True)
+            dask_imgs.to_zarr(
+                self.moving_zarr_path,
+                overwrite=True,
+            )
+
         del dask_imgs
-        print(f"✅ Source zarr saved to {self.moving_zarr_path}")
-        volume = zarr.open(self.moving_zarr_path, mode='r')
-        print(volume.info)
-        del volume
+
+        source = zarr.open(
+            self.moving_zarr_path,
+            mode="r",
+        )
+
+        print(source.info)
+        print(f"Created source Zarr with {_channel_count(source)} channel(s)")
+
 
 
     def create_transform(self):
@@ -139,12 +177,12 @@ class StackRegistration:
             print(f'Using moving data from {self.moving_tif_path}')
             print(f'Using fixed data from {self.fixed_tif_path}')
             return
-        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path)
-        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path)
+        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path, self.registration_channel)
+        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path, self.registration_channel)
         moving_sitk.SetSpacing(self.moving_spacing)
         fixed_sitk.SetSpacing(self.fixed_spacing)
-        print(f'\nMoving sitk info size={moving_sitk.GetSize()=} spacing={moving_sitk.GetSpacing()=}')
-        print(f'Fixed sitk info size={fixed_sitk.GetSize()=} spacing={fixed_sitk.GetSpacing()}')
+        print(f'\nMoving sitk info size={moving_sitk.GetSize()} spacing={moving_sitk.GetSpacing()} dimension={moving_sitk.GetNumberOfComponentsPerPixel()}')
+        print(f'Fixed sitk info size={fixed_sitk.GetSize()} spacing={fixed_sitk.GetSpacing()} channels={fixed_sitk.GetNumberOfComponentsPerPixel()}')
         affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
         sitk.WriteTransform(affine_transform, self.transform_path)
 
@@ -208,8 +246,10 @@ class StackRegistration:
         #exp 30, chunks (32,32,32), (32,32,32) useless
         #exp 31, chunks (len_files/divisor, height, width/divisor) (chunks/2), works well 3m50.423s DK62
 
-        chunkz, chunky, chunkx = source.chunks
-        padding = (chunkz//2, chunky//2, chunkx//2)
+        chunk_z = source.chunks[0]
+        chunk_y = source.chunks[1]
+        chunk_x = source.chunks[2]
+        padding = (chunk_z//2, chunk_y//2, chunk_x//2)
         print(f'Using padding of {padding}')
 
         target = zarr.open(
@@ -225,6 +265,7 @@ class StackRegistration:
             transform,
             padding_zyx=padding,
             spacing_zyx=self.fixed_spacing[::-1],
+            background_color=self.image_manager.get_bgcolor()
         )
         
         registered_volume = zarr.open(self.registered_zarr_path, mode='r')
@@ -233,21 +274,34 @@ class StackRegistration:
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"create registered tiles took {total_elapsed_time} seconds")
 
+
     def create_tifs(self):
+        """
+        Convert registered Zarr back to individual TIFF files.
+
+        RGB remains RGB.
+        Grayscale remains grayscale.
+        """
+
         if os.path.exists(self.registered_tif_path):
             shutil.rmtree(self.registered_tif_path)
-        os.makedirs(self.registered_tif_path, exist_ok=True)
-        if not os.path.exists(self.registered_zarr_path):
-            print(f'No zarr at {self.registered_zarr_path}')
-            return
-        volume = zarr.open(self.registered_zarr_path, mode='r')
-        nz = volume.shape[0]
 
-        for z in tqdm(range(nz), desc="Creating TIFs"):
-            img = volume[z]
-            outpath = os.path.join(self.registered_tif_path, f"{z:03d}.tif")
-            tifffile.imwrite(outpath, img)
-        print(f'Finished writing tifs to {self.registered_tif_path}')
+        os.makedirs(self.registered_tif_path, exist_ok=True)
+
+        if not os.path.exists(self.registered_zarr_path):
+            raise FileNotFoundError(self.registered_zarr_path)
+
+        volume = zarr.open(self.registered_zarr_path,mode="r",)
+        channels = (_channel_count(volume))
+        nz = volume.shape[0]
+        print(f"Writing {nz} TIFFs with {channels} channel(s)")
+
+        for z in tqdm(range(nz), desc="Creating TIFFs"):
+            image = np.asarray(volume[z])
+            output_path = os.path.join(self.registered_tif_path,f"{z:03d}.tif",)
+            tifffile.imwrite(output_path,image,)
+
+        print(f"Finished writing TIFFs to {self.registered_tif_path}")
 
 
     def create_neuroglancer(self):
@@ -359,11 +413,92 @@ class StackRegistration:
         def _read(p):
             arr = tifffile.imread(p)
             # ensure shape is (Z=1?, Y, X, C) or (Y, X, C)
-            return arr
+            return normalize_tiff_array(arr)
         return _read(path)
 
     @staticmethod
-    def build_dask_array_from_folder(folder: str, pattern: str = "*.tif", sample_index: int = 0):
+    def build_dask_array_from_folder(
+        folder: str,
+        pattern: str = "*.tif",
+        sample_index: int = 0,
+    ):
+        """
+        Build a Dask array from a directory containing one TIFF per section.
+
+        Returns:
+
+            grayscale:
+                (Z,Y,X)
+
+            RGB:
+                (Z,Y,X,3)
+        """
+
+        files = sorted(
+            glob.glob(
+                os.path.join(folder, pattern)
+            )
+        )
+
+        if not files:
+            raise FileNotFoundError(
+                f"No TIFF files found in {folder} "
+                f"matching {pattern}"
+            )
+
+        sample = tifffile.imread(files[sample_index])
+        sample = normalize_tiff_array(sample)
+
+        if sample.ndim == 2:
+            height, width = sample.shape
+            channels = 1
+        else:
+            height, width, channels = sample.shape
+
+        dtype = sample.dtype
+
+        print(
+            f"TIFF stack: {len(files)} sections, "
+            f"shape={sample.shape}, dtype={dtype}, "
+            f"channels={channels}"
+        )
+
+        delayed_reads = [
+            StackRegistration.read_tiff_delayed(path)
+            for path in files
+        ]
+
+        slices = []
+
+        for delayed_image in delayed_reads:
+
+            if channels == 1:
+                shape = (height, width)
+            else:
+                shape = (
+                    height,
+                    width,
+                    channels,
+                )
+
+            image = da.from_delayed(
+                delayed_image,
+                shape=shape,
+                dtype=dtype,
+            )
+
+            slices.append(image)
+
+        volume = da.stack(
+            slices,
+            axis=0,
+        )
+
+        return volume
+    
+
+    @staticmethod
+    def build_dask_array_from_folderV0(folder: str, pattern: str = "*.tif", sample_index: int = 0):
         """
         Read a folder of single-plane TIFFs (450 files typical), create a Dask array
         with shape (Z, Y, X, C) or (Z, Y, X) depending on images.
@@ -441,6 +576,10 @@ class StackRegistration:
             print(f"Metric Value: {method.GetMetricValue()}")
             print("-" * 20)
 
+        if fixed.GetNumberOfComponentsPerPixel() == 3:
+            fixed = sitk.VectorIndexSelectionCast(fixed, 1)
+        if moving.GetNumberOfComponentsPerPixel() == 3:
+            moving = sitk.VectorIndexSelectionCast(moving, 1)
         fixed = sitk.Cast(fixed, sitk.sitkFloat32)
         moving = sitk.Cast(moving, sitk.sitkFloat32)
         fixed.SetOrigin((0.0, 0.0, 0.0))
@@ -499,11 +638,15 @@ class StackRegistration:
         )
 
     @staticmethod
-    def create_sitk_volume(input_path):
+    def create_sitk_volume(input_path: str, registration_channel: str = "luminance"):
         files = sorted(glob.glob(os.path.join(input_path, "*.tif")))
+        if not files or len(files) == 0:
+            print(f'No tifs in {input_path}')
+            exit(0)
         slices = []
         for f in tqdm(files, desc="Creating sitk volume"):
-            img = tifffile.imread(f)
+            #img = tifffile.imread(f)
+            img = make_registration_image( img, registration_channel, )
             slices.append(img.astype(np.float32))
         arr = np.stack(slices, axis=0)
         return sitk.GetImageFromArray(arr)
@@ -534,7 +677,8 @@ class StackRegistration:
         zarr_dst,
         transform,
         padding_zyx,
-        spacing_zyx
+        spacing_zyx,
+        background_color
     ):
         """
         Process an entire Zarr volume one chunk at a time.
@@ -575,7 +719,8 @@ class StackRegistration:
                 block_index=block_index,
                 transform=transform,
                 padding_zyx=padding_zyx,
-                spacing_zyx=spacing_zyx
+                spacing_zyx=spacing_zyx,
+                background_color=background_color
             )
 
     @staticmethod
@@ -628,123 +773,190 @@ class StackRegistration:
         block_index: Sequence[int],
         transform: sitk.Transform,
         padding_zyx: Sequence[int],
-        spacing_zyx: Sequence[float]
-    ) -> tuple[slice, slice, slice]:
+        spacing_zyx: Sequence[float],
+        background_color: int
+    ):
         """
-        Read one padded block from `zarr_src`, resample it with SimpleITK, and write
-        the de-padded result into `zarr_dst`.
+        Resample one spatial Z,Y,X block.
 
-        Parameters
-        ----------
-        zarr_src : zarr.Array
-            Source Zarr array in (z, y, x) order.
-        zarr_dst : zarr.Array
-            Destination Zarr array in (z, y, x) order. Must have the same shape as `zarr_src`.
-        block_index : (int, int, int)
-            Block index in chunk coordinates, in (z_block, y_block, x_block) order.
-        transform : sitk.Transform
-            Transform to use for resampling. By default, SimpleITK expects the transform
-            to map output physical points to input physical points.
-        padding_zyx : tuple[int, int, int]
-            Extra padding around the block, in voxels, in (z, y, x) order.
-        spacing_zyx : tuple[float, float, float]
-            Voxel spacing in (z, y, x) order.
+        Supports:
 
-        Returns
-        -------
-        tuple[slice, slice, slice]
-            The z, y, x slices written into `zarr_dst`.
+            grayscale:
+                source.shape == (Z,Y,X)
+
+            RGB:
+                source.shape == (Z,Y,X,3)
+
+            RGBA:
+                source.shape == (Z,Y,X,4)
+
+        The channel dimension is never included in spatial padding.
         """
+
         if zarr_src.shape != zarr_dst.shape:
-            raise ValueError("zarr_src and zarr_dst must have the same shape")
+            raise ValueError(
+                "Source and destination shapes must match."
+            )
 
-        if len(zarr_src.shape) != 3:
-            raise ValueError("This function expects a 3D Zarr array in (z, y, x) order")
+        if len(zarr_src.shape) not in (3, 4):
+            raise ValueError(
+                f"Expected 3-D or 4-D Zarr, "
+                f"got {zarr_src.shape}"
+            )
 
-        shape_zyx = zarr_src.shape
-        chunks_zyx = zarr_src.chunks if zarr_src.chunks is not None else zarr_dst.chunks
-        if chunks_zyx is None:
-            raise ValueError("Zarr chunks are required on at least one of zarr_src or zarr_dst")
+        channels = (
+            1
+            if len(zarr_src.shape) == 3
+            else zarr_src.shape[-1]
+        )
 
-        core_start, core_stop, pad_start, pad_stop = StackRegistration._compute_block_bounds(
+        shape_zyx = _spatial_shape(
+            zarr_src
+        )
+
+        chunks_zyx = _spatial_chunks(
+            zarr_src
+        )
+
+        (
+            core_start,
+            core_stop,
+            pad_start,
+            pad_stop,
+        ) = StackRegistration._compute_block_bounds(
             block_index=block_index,
             shape_zyx=shape_zyx,
             chunks_zyx=chunks_zyx,
             padding_zyx=padding_zyx,
         )
 
-        # Read padded moving/source block in numpy order (z, y, x)
-        src_pad = zarr_src[
-            pad_start[0]:pad_stop[0],
-            pad_start[1]:pad_stop[1],
-            pad_start[2]:pad_stop[2],
-        ]
-
-        # Core output block size (z, y, x)
-        core_size_zyx = (
-            core_stop[0] - core_start[0],
-            core_stop[1] - core_start[1],
-            core_stop[2] - core_start[2],
-        )
-        #print(f'padding 0,1,2 {pad_start[0]}:{pad_stop[0]},{pad_start[1]}:{pad_stop[1]},{pad_start[2]}:{pad_stop[2]}')
-
-        if any(s <= 0 for s in core_size_zyx):
-            raise ValueError(f"Invalid core block size: {core_size_zyx}")
-
-        # Convert spacing/origin from z,y,x to x,y,z for SimpleITK
-        spacing_xyz = StackRegistration._zyx_to_xyz(spacing_zyx)
-        origin_xyz = (0,0,0)
-
-        # Build the moving image from the padded source block
-        moving = sitk.GetImageFromArray(src_pad)
-        moving = sitk.Cast(moving, sitk.sitkFloat32)
-        moving.SetSpacing(spacing_xyz)
-        moving.SetOrigin(
-            (
-                origin_xyz[0] + pad_start[2] * spacing_xyz[0],
-                origin_xyz[1] + pad_start[1] * spacing_xyz[1],
-                origin_xyz[2] + pad_start[0] * spacing_xyz[2],
-            )
+        core_size_zyx = tuple(
+            core_stop[i] - core_start[i]
+            for i in range(3)
         )
 
-        moving.SetDirection(np.eye(3).flatten())
+        if any(
+            size <= 0
+            for size in core_size_zyx
+        ):
+            raise ValueError(
+                f"Invalid block size: "
+                f"{core_size_zyx}")
 
-        # Build a reference image for the core block
+        # --------------------------------------------------------------
+        # READ SOURCE BLOCK
+        # --------------------------------------------------------------
+
+        if channels == 1:
+
+            src = zarr_src[
+                pad_start[0]:pad_stop[0],
+                pad_start[1]:pad_stop[1],
+                pad_start[2]:pad_stop[2],
+            ]
+
+        else:
+
+            src = zarr_src[
+                pad_start[0]:pad_stop[0],
+                pad_start[1]:pad_stop[1],
+                pad_start[2]:pad_stop[2],
+                :,
+            ]
+
+        src = np.asarray(src)
+
+        # --------------------------------------------------------------
+        # REFERENCE GEOMETRY
+        # --------------------------------------------------------------
+
+        spacing_xyz = (
+            StackRegistration
+            ._zyx_to_xyz(spacing_zyx))
+
+        origin_xyz = (0.0,0.0,0.0)
+
+        source_origin_xyz = (
+            origin_xyz[0] + pad_start[2] * spacing_xyz[0],
+            origin_xyz[1] + pad_start[1] * spacing_xyz[1],
+            origin_xyz[2] + pad_start[0] * spacing_xyz[2],
+        )
+
+        core_origin_xyz = (
+            origin_xyz[0] + core_start[2] * spacing_xyz[0],
+            origin_xyz[1] + core_start[1] * spacing_xyz[1],
+            origin_xyz[2] + core_start[0] * spacing_xyz[2])
+
         reference = sitk.Image(
-            int(core_size_zyx[2]),  # x
-            int(core_size_zyx[1]),  # y
-            int(core_size_zyx[0]),  # z
+            int(core_size_zyx[2]),
+            int(core_size_zyx[1]),
+            int(core_size_zyx[0]),
             sitk.sitkFloat32,
         )
+
         reference.SetSpacing(spacing_xyz)
-        reference.SetOrigin(
-            (
-                origin_xyz[0] + core_start[2] * spacing_xyz[0],
-                origin_xyz[1] + core_start[1] * spacing_xyz[1],
-                origin_xyz[2] + core_start[0] * spacing_xyz[2],
-            )
-        )
+        reference.SetOrigin(core_origin_xyz)
         reference.SetDirection(np.eye(3).flatten())
-        # Resample padded moving image into the core reference geometry
-        resampled = sitk.Resample(
-            moving,
-            reference,
-            transform,
-            sitk.sitkLinear,
-            0,
-            sitk.sitkFloat32,
-        )
 
-        # Write the core block back to the destination Zarr
-        out_core = sitk.GetArrayFromImage(resampled)
-        out_core = np.asarray(out_core, dtype=zarr_dst.dtype)
+        # --------------------------------------------------------------
+        # RESAMPLE
+        # --------------------------------------------------------------
 
-        z_slice = slice(core_start[0], core_stop[0])
-        y_slice = slice(core_start[1], core_stop[1])
-        x_slice = slice(core_start[2], core_stop[2])
+        if channels == 1:
 
-        zarr_dst[z_slice, y_slice, x_slice] = out_core
-        return z_slice, y_slice, x_slice
+            out_core = (
+                _resample_scalar_block(
+                    src_zyx=src,
+                    src_origin_xyz=source_origin_xyz,
+                    reference=reference,
+                    transform=transform,
+                    background_color=background_color
+                )
+            )
+
+            out_core = out_core.astype(zarr_dst.dtype,copy=False)
+
+        else:
+
+            out_core = (
+                _resample_rgb_block(
+                    src_zyxc=src,
+                    src_origin_xyz=source_origin_xyz,
+                    reference=reference,
+                    transform=transform,
+                    output_dtype=zarr_dst.dtype,
+                    background_color=background_color
+                )
+            )
+
+        # --------------------------------------------------------------
+        # WRITE
+        # --------------------------------------------------------------
+
+        z_slice = slice(core_start[0],core_stop[0])
+        y_slice = slice(core_start[1],core_stop[1])
+        x_slice = slice(core_start[2],core_stop[2])
+
+        if channels == 1:
+
+            zarr_dst[
+                z_slice,
+                y_slice,
+                x_slice,
+            ] = out_core
+
+        else:
+
+            zarr_dst[
+                z_slice,
+                y_slice,
+                x_slice,
+                :,
+            ] = out_core
+
+        return (z_slice, y_slice, x_slice)
+
+
 
 
     def status(self):
@@ -756,6 +968,9 @@ class StackRegistration:
                 zarr_data = zarr.open(brain_path, mode='r')
                 print(brain_path)
                 print(zarr_data.info)
+                channels = (_channel_count(zarr_data))
+                print(f"Channels: {channels}")
+
             else:
                 print(f'Missing: {brain_path}')
         if os.path.exists(self.transform_path):
@@ -770,31 +985,41 @@ class StackRegistration:
             exit(1)
 
         image = StackRegistration.create_sitk_volume(tif_path)
-        image.SetSpacing(self.spacing)
         return image
 
 
     def validate_registration(self):
 
-        moving_sitk = self.get_volume(self.moving)
+        #moving
+        moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
+        if os.path.exists(moving_path):
+            moving_sitk = sitk.ReadImage(moving_path)
+            print(f'Loading existing fixed_sitk {moving_path}')
+        else:
+            moving_sitk = self.get_volume(self.moving)
+            moving_sitk.SetSpacing(self.moving_spacing)
+            sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt16), moving_path)
+            print(f'Wrote moving image to: {moving_path}')
+
+        # fixed    
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
         if os.path.exists(fixed_path):
             fixed_sitk = sitk.ReadImage(fixed_path)
             print(f'Loading existing fixed_sitk {fixed_path}')
         else:
             fixed_sitk = self.get_volume(self.fixed)
-            sitk.WriteImage(fixed_sitk, fixed_path)
+            fixed_sitk.SetSpacing(self.fixed_spacing)
+            sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt16), fixed_path)
             print(f'Wrote fixed image to: {fixed_path}')
         registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
         if os.path.exists(self.preview_path):
             registered_image = sitk.ReadImage(self.preview_path)
-            registered_image.SetSpacing(self.spacing)
             print(f'Loading existing registered image {self.preview_path}')
         else:            
-            transform = sitk.ReadTransform(self.transform_path)
             if not os.path.exists(self.transform_path):
                 print(f"Missing: {self.transform_path}")
                 exit(1)
+            transform = sitk.ReadTransform(self.transform_path)
 
             resample = sitk.ResampleImageFilter()
             resample.SetTransform(transform)
@@ -802,33 +1027,33 @@ class StackRegistration:
             resample.SetReferenceImage(fixed_sitk)
             resample.SetDefaultPixelValue(0)
             registered_image = resample.Execute(moving_sitk)
-            registered_image.SetSpacing(self.spacing)
-            sitk.WriteImage(registered_image, self.preview_path)
+            registered_image.SetSpacing(self.fixed_spacing)
+            sitk.WriteImage(sitk.Cast(registered_image, sitk.sitkUInt16), self.preview_path)
             print(f'Wrote resampled image to: {self.preview_path}')
 
 
         fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
         if os.path.exists(fixed_mask_path):
             fixed_mask = sitk.ReadImage(fixed_mask_path)
-            fixed_mask.SetSpacing(self.spacing)
+            fixed_mask.SetSpacing(self.fixed_spacing)
             print(f'Loading existing fixed_mask {fixed_mask_path}')
         else:
-            fixed_mask = create_tissue_mask(fixed_sitk, threshold=12)
-            fixed_mask.SetSpacing(self.spacing)
+            fixed_mask = create_tissue_mask(fixed_sitk, threshold=20)
+            fixed_mask.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(fixed_mask, sitk.sitkUInt8), fixed_mask_path)
             print(f'Finished creating fixed mask to {fixed_mask_path}')
             
         if os.path.exists(registered_mask_path):
             registered_mask = sitk.ReadImage(registered_mask_path)
-            registered_mask.SetSpacing(self.spacing)
+            registered_mask.SetSpacing(self.fixed_spacing)
         else:
-            registered_mask = create_tissue_mask(registered_image, threshold=12)
+            registered_mask = create_tissue_mask(registered_image, threshold=20)
             print('Finished creating registered mask')
-            registered_mask.SetSpacing(self.spacing)
+            registered_mask.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(registered_mask, sitk.sitkUInt8), registered_mask_path)
 
-        print(f'fixed size {fixed_mask.GetSize()} moving: {registered_image.GetSize()}')
-        print(f'fixed spacing {fixed_mask.GetSpacing()} moving: {registered_image.GetSpacing()}')
+        print(f'Size in voxels, fixed: {fixed_mask.GetSize()} moving: {registered_image.GetSize()}')
+        print(f'Resolution in micrometers fixed: {fixed_mask.GetSpacing()} moving: {registered_image.GetSpacing()}')
 
         metrics = compute_registration_metrics(
             fixed_mask,
@@ -837,8 +1062,6 @@ class StackRegistration:
 
         print(f"Dice:                  {metrics.dice:.4f}")
         print(f"Jaccard:               {metrics.jaccard:.4f}")
-        print(f"Hausdorff:             {metrics.hausdorff_distance:.3f} µm")
-        print(f"Hausdorff 95%:         {metrics.hausdorff_distance_95:.3f} µm")
         print(f"Centroid displacement: {metrics.centroid_distance:.3f} µm")
 
         print()
@@ -890,6 +1113,18 @@ if __name__ == '__main__':
     parser.add_argument('--fixed', help='Enter the animal (fixed)', required=True, type=str)
     parser.add_argument("--task", help="Enter the task you want to perform", required=True, default="status", type=str)
     parser.add_argument("--downsample", help="Enter the downsample", required=False, default=1, type=int)
+    parser.add_argument(
+        "--registration-channel",
+        default="luminance",
+        choices=[
+            "luminance",
+            "red",
+            "green",
+            "blue",
+        ],
+        required=False,
+        help=("Channel used to calculate the registration transform for RGB images. Default: luminance."),)
+
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
 
     args = parser.parse_args()
@@ -897,8 +1132,9 @@ if __name__ == '__main__':
     fixed_brain = args.fixed
     task = str(args.task).strip().lower()
     downsample = args.downsample
+    registration_channel = args.registration_channel
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    pipeline = StackRegistration(moving_brain, fixed_brain, downsample, debug)
+    pipeline = StackRegistration(moving_brain, fixed_brain, downsample, registration_channel, debug)
 
 
     function_mapping = {

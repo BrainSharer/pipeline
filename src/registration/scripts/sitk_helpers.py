@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 from dataclasses import dataclass, asdict
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 import json
 import math
 
@@ -65,6 +65,13 @@ def create_tissue_mask(image, threshold=10):
         insideValue=255,
         outsideValue=0
     )
+
+    radius = [18, 18, 18]  # Use [2, 2, 2] for 3D images
+    mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
+    mask = sitk.BinaryMorphologicalOpening(mask, radius)
+
+
+
     return sitk.Cast(mask, sitk.sitkUInt8)
     eroder = sitk.GrayscaleErodeImageFilter()
     eroder.SetKernelType(sitk.sitkBall)
@@ -876,4 +883,313 @@ def compute_chunk_source_region(
         tuple(output_stop),
         padding,
         tuple(source_shape),
+    )
+
+##### Helpers for RGB data
+
+# ------------------------------------------------------------------
+# IMAGE / CHANNEL HELPERS
+# ------------------------------------------------------------------
+
+def detect_channels(array: np.ndarray) -> int:
+    """
+    Determine whether a TIFF is grayscale or RGB.
+
+    Supported input:
+
+        (Y, X)       -> 1 channel
+        (Y, X, 1)    -> 1 channel
+        (Y, X, 3)    -> 3 channels
+        (Y, X, 4)    -> 4 channels
+
+    Four-channel input is preserved, although RGB registration
+    uses only the first three channels.
+    """
+
+    array = np.asarray(array)
+
+    if array.ndim == 2:
+        return 1
+
+    if array.ndim == 3:
+        if array.shape[-1] in (1, 3, 4):
+            return int(array.shape[-1])
+
+    raise ValueError(
+        f"Unsupported TIFF dimensions: {array.shape}. "
+        "Expected (Y,X), (Y,X,1), (Y,X,3), or (Y,X,4)."
+    )
+
+def normalize_tiff_array(
+    array: np.ndarray,
+) -> np.ndarray:
+    """
+    Normalize a TIFF plane to either:
+
+        (Y,X)
+
+    or:
+
+        (Y,X,C)
+
+    without changing its dtype.
+    """
+
+    array = np.asarray(array)
+
+    if array.ndim == 2:
+        return array
+
+    if array.ndim == 3 and array.shape[-1] in (1, 3, 4):
+        if array.shape[-1] == 1:
+            return array[..., 0]
+
+        return array
+
+    raise ValueError(
+        f"Unsupported TIFF shape {array.shape}. "
+        "Expected (Y,X) or (Y,X,C)."
+    )
+
+def rgb_to_luminance(
+    array: np.ndarray,
+) -> np.ndarray:
+    """
+    Convert an RGB array to a scalar floating-point image.
+
+    Input:
+        (Y,X,3)
+
+    Output:
+        (Y,X), float32
+    """
+
+    array = np.asarray(array)
+
+    if array.ndim != 3 or array.shape[-1] < 3:
+        raise ValueError(
+            f"Expected RGB image with shape (Y,X,3+), "
+            f"got {array.shape}"
+        )
+
+    rgb = array[..., :3].astype(np.float32)
+
+    return (
+        0.2126 * rgb[..., 0]
+        + 0.7152 * rgb[..., 1]
+        + 0.0722 * rgb[..., 2]
+    ).astype(np.float32)
+
+
+def rgb_channel(
+    array: np.ndarray,
+    channel: str,
+) -> np.ndarray:
+    """
+    Extract a scalar registration image from RGB data.
+    """
+
+    if array.ndim != 3 or array.shape[-1] < 3:
+        raise ValueError(
+            f"Expected RGB array, got {array.shape}"
+        )
+
+    if channel == "luminance":
+        return rgb_to_luminance(array)
+
+    index = {
+        "red": 0,
+        "green": 1,
+        "blue": 2,
+    }[channel]
+
+    return array[..., index].astype(np.float32)
+
+def make_registration_image(
+    array: np.ndarray,
+    registration_channel: str = "luminance",
+) -> np.ndarray:
+    """
+    Convert either grayscale or RGB data into a scalar image
+    suitable for SimpleITK registration.
+    """
+
+    array = normalize_tiff_array(array)
+
+    if array.ndim == 2:
+        return array.astype(np.float32)
+
+    return rgb_channel(
+        array,
+        registration_channel,
+    )
+
+
+# ------------------------------------------------------------------
+# RGB / GRAYSCALE BLOCK RESAMPLING
+# ------------------------------------------------------------------
+
+def _resample_scalar_block(
+    src_zyx: np.ndarray,
+    src_origin_xyz: Sequence[float],
+    reference: sitk.Image,
+    transform: sitk.Transform,
+    background_color: int
+) -> np.ndarray:
+    """
+    Resample a scalar ZYX block.
+    """
+
+    moving = sitk.GetImageFromArray(
+        src_zyx
+    )
+
+    moving = sitk.Cast(
+        moving,
+        sitk.sitkFloat32,
+    )
+
+    moving.SetSpacing(
+        reference.GetSpacing()
+    )
+
+    moving.SetOrigin(
+        src_origin_xyz
+    )
+
+    moving.SetDirection(
+        np.eye(3).flatten()
+    )
+
+    result = sitk.Resample(
+        moving,
+        reference,
+        transform,
+        sitk.sitkLinear,
+        background_color,
+        sitk.sitkFloat32,
+    )
+
+    return sitk.GetArrayFromImage(
+        result
+    )
+
+def _resample_rgb_block(
+    src_zyxc: np.ndarray,
+    src_origin_xyz: Sequence[float],
+    reference: sitk.Image,
+    transform: sitk.Transform,
+    output_dtype,
+    background_color
+) -> np.ndarray:
+    """
+    Resample an RGB/RGBA block channel-by-channel.
+
+    This avoids attempting to use SimpleITK's vector image
+    interpolation for the large block path and gives explicit
+    control over dtype preservation.
+    """
+
+    channels = src_zyxc.shape[-1]
+
+    output = np.empty(
+        (
+            reference.GetSize()[2],
+            reference.GetSize()[1],
+            reference.GetSize()[0],
+            channels,
+        ),
+        dtype=np.float32,
+    )
+
+    for channel in range(channels):
+
+        result = _resample_scalar_block(
+            src_zyx=src_zyxc[..., channel],
+            src_origin_xyz=src_origin_xyz,
+            reference=reference,
+            transform=transform,
+            background_color=background_color
+        )
+
+        output[..., channel] = result
+
+    # Round before integer conversion to reduce interpolation
+    # bias for integer-valued microscopy data.
+    if np.issubdtype(
+        output_dtype,
+        np.integer,
+    ):
+        info = np.iinfo(output_dtype)
+
+        output = np.rint(
+            output
+        )
+
+        output = np.clip(
+            output,
+            info.min,
+            info.max,
+        )
+
+    return output.astype(
+        output_dtype,
+        copy=False,
+    )
+
+# ------------------------------------------------------------------
+# CHANNEL-AWARE ZARR HELPERS
+# ------------------------------------------------------------------
+
+def _channel_count(zarr_array) -> int:
+    """
+    Return number of channels in a Zarr volume.
+    """
+
+    if len(zarr_array.shape) == 3:
+        return 1
+
+    if len(zarr_array.shape) == 4:
+        channels = zarr_array.shape[-1]
+
+        if channels not in (1, 3, 4):
+            raise ValueError(
+                f"Unsupported channel count: {channels}"
+            )
+
+        return int(channels)
+
+    raise ValueError(
+        f"Expected 3-D or 4-D Zarr array, "
+        f"got shape={zarr_array.shape}"
+    )
+
+def _spatial_shape(zarr_array):
+    """
+    Return spatial shape as (Z,Y,X).
+    """
+
+    return tuple(
+        int(x)
+        for x in zarr_array.shape[:3]
+    )
+
+def _spatial_chunks(zarr_array):
+    """
+    Return spatial chunks as (Z,Y,X).
+    """
+
+    return tuple(
+        int(x)
+        for x in zarr_array.chunks[:3]
+    )
+
+def _make_spatial_slice(
+    start: Sequence[int],
+    stop: Sequence[int],
+):
+    return (
+        slice(start[0], stop[0]),
+        slice(start[1], stop[1]),
+        slice(start[2], stop[2]),
     )
