@@ -645,8 +645,8 @@ class StackRegistration:
             exit(0)
         slices = []
         for f in tqdm(files, desc="Creating sitk volume"):
-            #img = tifffile.imread(f)
-            img = make_registration_image( img, registration_channel, )
+            img = tifffile.imread(f)
+            img = make_registration_image(img, registration_channel, )
             slices.append(img.astype(np.float32))
         arr = np.stack(slices, axis=0)
         return sitk.GetImageFromArray(arr)
