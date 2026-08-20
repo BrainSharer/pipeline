@@ -51,6 +51,8 @@ class AnnotationSessionController:
     def get_annotation_session(self, prep_id: str, label_ids: list, annotator_id: int, debug: bool = False) -> AnnotationSession:
         if isinstance(label_ids, int):
             label_ids = [label_ids]
+        if isinstance(label_ids, AnnotationLabel):
+            label_ids = [label_ids.id]
             
         query = (
             self.session.query(AnnotationSession)

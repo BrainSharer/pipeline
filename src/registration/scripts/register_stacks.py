@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import os
 import glob
 import shutil
@@ -25,11 +26,11 @@ import igneous.task_creation as tc
 from timeit import default_timer as timer
 
 
-
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 
+from library.utilities.utilities_process import M_UM_SCALE
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
@@ -105,8 +106,8 @@ class StackRegistration:
 
         divisors = {
             1: 32,
-            4: 16,
-            8: 8,
+            4: 8,
+            8: 4,
             16: 4,
             32: 2,
         }
@@ -140,17 +141,9 @@ class StackRegistration:
         os.makedirs(os.path.dirname(self.moving_zarr_path),exist_ok=True,)
 
         with ProgressBar():
-            dask_imgs.to_zarr(
-                self.moving_zarr_path,
-                overwrite=True,
-            )
+            dask_imgs.to_zarr(self.moving_zarr_path,overwrite=True)
 
-        del dask_imgs
-
-        source = zarr.open(
-            self.moving_zarr_path,
-            mode="r",
-        )
+        source = zarr.open(self.moving_zarr_path,mode="r",)
 
         print(source.info)
         print(f"Created source Zarr with {_channel_count(source)} channel(s)")
@@ -1105,7 +1098,77 @@ class StackRegistration:
 
         print("source start:", region.start)
         print("source stop: ", region.stop)
-        print("source shape:", region.shape)                
+        print("source shape:", region.shape)   
+
+    def convert_points(self):
+        sqlController = SqlController(self.moving)
+        transform = sitk.ReadTransform(self.transform_path)
+        registered_polygons = defaultdict(list)
+        #
+        """
+        label = "6N_L"
+        label_ids = sqlController.get_annotation_label(label)
+        if label_ids is None:
+            print(f'No label found for {label}')
+            return
+        annotator_id = 1
+        annotation_session = sqlController.get_annotation_session(self.moving, label_ids, annotator_id, self.debug)
+        """
+        session_id = 7936
+        annotation_session = sqlController.get_annotation_by_id(session_id=session_id)
+        if annotation_session is None:
+            print(f'No annotations found for {session_id=}')
+            return
+
+        
+        annotation = annotation_session.annotation
+        # first test data to make sure it has the right keys
+        try:
+            data = annotation["childJsons"]
+        except KeyError as ke:
+            print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
+            return
+
+        print(f'Annotations found for {annotation_session.id=}, {self.moving=}')
+
+        for row in data:
+            if 'childJsons' not in row:
+                return
+            for child in row['childJsons']:
+                xm0,ym0,zm0 = child['pointA']
+
+                xm0 *= M_UM_SCALE # in µm
+                ym0 *= M_UM_SCALE # in µm
+                zm0 *= M_UM_SCALE # in µm
+                
+                xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
+                xt /= self.fixed_xy_resolution
+                yt /= self.fixed_xy_resolution
+                zt /= self.fixed_z_resolution
+
+                section = int(np.round(zt))
+                registered_polygons[section].append((xt,yt))
+
+
+        xyz_list = []
+        for section, points in registered_polygons.items():
+            section_points = [(section, x,y) for x,y in points]
+            for section_point in section_points:
+                xyz_list.append(section_point)
+
+
+        num_points = len(xyz_list)
+        print('len of volume', num_points)
+        com1 = tuple(sum(axis) / num_points for axis in zip(*xyz_list))
+        print(com1)
+
+        center_of_mass = np.mean(xyz_list, axis=0)
+
+        print(tuple(center_of_mass))  # Output: (3.0, 4.0)
+
+
+
+                     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -1147,7 +1210,8 @@ if __name__ == '__main__':
         "status": pipeline.status,
         "test_mips": pipeline.test_mips,
         "validate": pipeline.validate_registration,
-        "test_padding": pipeline.test_padding
+        "test_padding": pipeline.test_padding,
+        "convert_points": pipeline.convert_points
     }
 
     if task in function_mapping:
