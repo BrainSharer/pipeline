@@ -1196,18 +1196,19 @@ class StackRegistration:
 
             return mask
 
-        mask_path = os.path.join(self.base_path, self.moving,  'preps', 'C1', 'masks')
-        if os.path.exists(mask_path):
-            shutil.rmtree(mask_path)
-        os.makedirs(mask_path, exist_ok=True)
+        masked_path = os.path.join(self.base_path, self.moving,  'preps', 'C1', 'masked')
+        if os.path.exists(masked_path):
+            shutil.rmtree(masked_path)
+        os.makedirs(masked_path, exist_ok=True)
         files = sorted(os.listdir(self.moving_tif_path))
         for f in tqdm(files, desc="creating 2D masks", disable=self.debug):
             tif_path = os.path.join(self.moving_tif_path, f)
             image = sitk.ReadImage(tif_path, sitk.sitkUInt8)
             #image = sitk.VectorIndexSelectionCast(image, 1)
             mask = create_mask(image)
-            mask_file_path = os.path.join(mask_path, f)
-            sitk.WriteImage(mask, mask_file_path)
+            masked_image = sitk.Mask(image, mask)
+            masked_file_path = os.path.join(masked_path, f)
+            sitk.WriteImage(masked_image, masked_file_path)
 
                      
 
