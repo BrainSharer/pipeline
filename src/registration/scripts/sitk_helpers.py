@@ -1,7 +1,7 @@
 ##### Padding helper
 from __future__ import annotations
 
-
+import os
 from dataclasses import dataclass, asdict
 from typing import Optional, Tuple, Sequence
 import json
@@ -58,6 +58,7 @@ def create_tissue_mask(image, threshold=10):
     Create a mask to exclude empty regions.
     Assumes background is near zero.
     """
+    ndim = mask.GetDimension()
     mask = sitk.BinaryThreshold(
         image,
         lowerThreshold=threshold,
@@ -66,13 +67,14 @@ def create_tissue_mask(image, threshold=10):
         outsideValue=0
     )
 
-    radius = [18, 18, 18]  # Use [2, 2, 2] for 3D images
+    radius = [18] * ndim
+
     mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
     mask = sitk.BinaryMorphologicalOpening(mask, radius)
+    mask = sitk.Cast(mask, sitk.sitkUInt8)
 
+    return mask
 
-
-    return sitk.Cast(mask, sitk.sitkUInt8)
     eroder = sitk.GrayscaleErodeImageFilter()
     eroder.SetKernelType(sitk.sitkBall)
     eroder.SetKernelRadius(10)

@@ -1024,7 +1024,18 @@ class StackRegistration:
             sitk.WriteImage(sitk.Cast(registered_image, sitk.sitkUInt16), self.preview_path)
             print(f'Wrote resampled image to: {self.preview_path}')
 
-
+        ##### moving mask
+        moving_mask_path = os.path.join(self.reg_path, self.moving, f'mask.{self.downsample}.nii')
+        if os.path.exists(moving_mask_path):
+            moving_mask = sitk.ReadImage(moving_mask_path)
+            moving_mask.SetSpacing(self.moving_spacing)
+            print(f'Loading existing moving_mask {moving_mask_path}')
+        else:
+            moving_mask = create_tissue_mask(moving_sitk, threshold=20)
+            moving_mask.SetSpacing(self.moving_spacing)
+            sitk.WriteImage(sitk.Cast(moving_mask, sitk.sitkUInt8), moving_mask_path)
+            print(f'Finished creating moving mask to {moving_mask_path}')
+        ##### fixed mask
         fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
         if os.path.exists(fixed_mask_path):
             fixed_mask = sitk.ReadImage(fixed_mask_path)
@@ -1167,6 +1178,36 @@ class StackRegistration:
         print(tuple(center_of_mass))  # Output: (3.0, 4.0)
 
 
+    def create_masks(self):
+        def create_mask(image):
+            mask = sitk.BinaryThreshold(
+                image,
+                lowerThreshold=222,
+                upperThreshold=255,
+                insideValue=0,
+                outsideValue=255
+            )
+
+            radius = [48,48]
+
+            mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
+            mask = sitk.BinaryMorphologicalOpening(mask, radius)
+            mask = sitk.Cast(mask, sitk.sitkUInt8)
+
+            return mask
+
+        mask_path = os.path.join(self.base_path, self.moving,  'preps', 'C1', 'masks')
+        if os.path.exists(mask_path):
+            shutil.rmtree(mask_path)
+        os.makedirs(mask_path, exist_ok=True)
+        files = sorted(os.listdir(self.moving_tif_path))
+        for f in tqdm(files, desc="creating 2D masks", disable=self.debug):
+            tif_path = os.path.join(self.moving_tif_path, f)
+            image = sitk.ReadImage(tif_path, sitk.sitkUInt8)
+            #image = sitk.VectorIndexSelectionCast(image, 1)
+            mask = create_mask(image)
+            mask_file_path = os.path.join(mask_path, f)
+            sitk.WriteImage(mask, mask_file_path)
 
                      
 
@@ -1211,7 +1252,8 @@ if __name__ == '__main__':
         "test_mips": pipeline.test_mips,
         "validate": pipeline.validate_registration,
         "test_padding": pipeline.test_padding,
-        "convert_points": pipeline.convert_points
+        "convert_points": pipeline.convert_points,
+        "create_masks": pipeline.create_masks
     }
 
     if task in function_mapping:
