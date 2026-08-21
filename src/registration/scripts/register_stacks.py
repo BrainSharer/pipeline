@@ -987,18 +987,23 @@ class StackRegistration:
         moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
         if os.path.exists(moving_path):
             moving_sitk = sitk.ReadImage(moving_path)
-            print(f'Loading existing fixed_sitk {moving_path}')
+            print(f'Loading existing moving sitk {moving_path}')
         else:
             moving_sitk = self.get_volume(self.moving)
             moving_sitk.SetSpacing(self.moving_spacing)
             sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt16), moving_path)
             print(f'Wrote moving image to: {moving_path}')
 
+        if self.debug:
+            print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
+            print(f'\tsize: {moving_sitk.GetSize()}')
+            return
+
         # fixed    
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
         if os.path.exists(fixed_path):
             fixed_sitk = sitk.ReadImage(fixed_path)
-            print(f'Loading existing fixed_sitk {fixed_path}')
+            print(f'Loading existing fixed sitk {fixed_path}')
         else:
             fixed_sitk = self.get_volume(self.fixed)
             fixed_sitk.SetSpacing(self.fixed_spacing)

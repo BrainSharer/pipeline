@@ -58,7 +58,6 @@ def create_tissue_mask(image, threshold=10):
     Create a mask to exclude empty regions.
     Assumes background is near zero.
     """
-    ndim = mask.GetDimension()
     mask = sitk.BinaryThreshold(
         image,
         lowerThreshold=threshold,
@@ -67,7 +66,7 @@ def create_tissue_mask(image, threshold=10):
         outsideValue=0
     )
 
-    radius = [18] * ndim
+    radius = [18,18,18]
 
     mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
     mask = sitk.BinaryMorphologicalOpening(mask, radius)
