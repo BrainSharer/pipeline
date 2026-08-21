@@ -1117,70 +1117,69 @@ class StackRegistration:
         print("source shape:", region.shape)   
 
     def convert_points(self):
-        sqlController = SqlController(self.moving)
-        transform = sitk.ReadTransform(self.transform_path)
-        registered_polygons = defaultdict(list)
+        """ Session IDs for volumes in the DB
+        --  DK55 IDs, 5N_L=8464, 5N_R=8465, 6N_L=8527, 6N_R=8526
+        -- MD585 IDs, 5N_L=7934, 5N_R=7935, 6N_L=7936, 6N_R=7937
+        """
         #
-        """
-        label = "6N_L"
-        label_ids = sqlController.get_annotation_label(label)
-        if label_ids is None:
-            print(f'No label found for {label}')
-            return
-        annotator_id = 1
-        annotation_session = sqlController.get_annotation_session(self.moving, label_ids, annotator_id, self.debug)
-        """
-        session_id = 7936
-        annotation_session = sqlController.get_annotation_by_id(session_id=session_id)
-        if annotation_session is None:
-            print(f'No annotations found for {session_id=}')
-            return
-
-        
-        annotation = annotation_session.annotation
-        # first test data to make sure it has the right keys
-        try:
-            data = annotation["childJsons"]
-        except KeyError as ke:
-            print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
-            return
-
-        print(f'Annotations found for {annotation_session.id=}, {self.moving=}')
-
-        for row in data:
-            if 'childJsons' not in row:
+        def create_com_from_db(session_id, transform):
+            sqlController = SqlController(self.moving)
+            registered_polygons = defaultdict(list)
+            annotation_session = sqlController.get_annotation_by_id(session_id=session_id)
+            if annotation_session is None:
+                print(f'No annotations found for {session_id=}')
                 return
-            for child in row['childJsons']:
-                xm0,ym0,zm0 = child['pointA']
 
-                xm0 *= M_UM_SCALE # in µm
-                ym0 *= M_UM_SCALE # in µm
-                zm0 *= M_UM_SCALE # in µm
-                
-                xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
-                xt /= self.fixed_xy_resolution
-                yt /= self.fixed_xy_resolution
-                zt /= self.fixed_z_resolution
-
-                section = int(np.round(zt))
-                registered_polygons[section].append((xt,yt))
+            annotation = annotation_session.annotation
+            # first test data to make sure it has the right keys
+            try:
+                data = annotation["childJsons"]
+            except KeyError as ke:
+                print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
+                return
 
 
-        xyz_list = []
-        for section, points in registered_polygons.items():
-            section_points = [(section, x,y) for x,y in points]
-            for section_point in section_points:
-                xyz_list.append(section_point)
+            for row in data:
+                if 'childJsons' not in row:
+                    return
+                for child in row['childJsons']:
+                    xm0,ym0,zm0 = child['pointA']
 
+                    xm0 *= M_UM_SCALE # in µm
+                    ym0 *= M_UM_SCALE # in µm
+                    zm0 *= M_UM_SCALE # in µm
 
-        num_points = len(xyz_list)
-        print('len of volume', num_points)
-        com1 = tuple(sum(axis) / num_points for axis in zip(*xyz_list))
-        print(com1)
+                    if transform is None:
+                        xt, yt, zt = (xm0, ym0, zm0) # transformed data to fixed space in µm
+                    else:
+                        xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
 
-        center_of_mass = np.mean(xyz_list, axis=0)
+                    xt /= self.fixed_xy_resolution
+                    yt /= self.fixed_xy_resolution
+                    zt /= self.fixed_z_resolution
 
-        print(tuple(center_of_mass))  # Output: (3.0, 4.0)
+                    section = int(np.round(zt))
+                    registered_polygons[section].append((yt, xt))
+
+            zyx_list = []
+            for section, points in registered_polygons.items():
+                section_points = [(section, x,y) for x,y in points]
+                for section_point in section_points:
+                    zyx_list.append(section_point)
+
+            return np.mean(zyx_list, axis=0)
+
+        fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
+        moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
+        transform = sitk.ReadTransform(self.transform_path)
+        for structure, session_id in moving_sessions.items():
+            x,y,z = create_com_from_db(session_id=session_id, transform=transform)        
+            print(f'{self.moving} {structure} x={round(x)}, y={round(y)}, z={int(round(z))}')  # Output: (3.0, 4.0)
+
+        for structure, session_id in fixed_sessions.items():
+            x,y,z = create_com_from_db(session_id=session_id, transform=None)        
+            print(f'{self.fixed} {structure} x={round(x)}, y={round(y)}, z={int(round(z))}')  # Output: (3.0, 4.0)
+
 
 
     def create_masks(self):
