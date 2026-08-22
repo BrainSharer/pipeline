@@ -23,6 +23,7 @@ from pathlib import Path
 from cloudvolume import CloudVolume
 from taskqueue.taskqueue import LocalTaskQueue
 import igneous.task_creation as tc
+import pandas as pd
 from timeit import default_timer as timer
 
 
@@ -563,7 +564,7 @@ class StackRegistration:
 
 
     @staticmethod
-    def affine_registration(fixed, moving):
+    def affine_registration(fixed, moving, fixed_landmarks=None, moving_landmarks=None):
         def command_iteration(method):
             print(f"Iteration: {method.GetOptimizerIteration()} ")
             print(f"Metric Value: {method.GetMetricValue()}")
@@ -597,12 +598,29 @@ class StackRegistration:
             convergenceMinimumValue=1e-6,
             convergenceWindowSize=10,
         )
-        initial_transform = sitk.CenteredTransformInitializer(
-            fixed,
-            moving,
-            sitk.AffineTransform(fixed.GetDimension()), 
-            sitk.CenteredTransformInitializerFilter.GEOMETRY,
-        )
+        # ------------------------------------------------------------
+        # Initial transform
+        # ------------------------------------------------------------
+
+        if fixed_landmarks is not None and moving_landmarks is not None:
+            print(f"Using {len(fixed_landmarks)} corresponding landmarks for affine initialization")
+            initial_transform = (
+                StackRegistration.landmark_affine_initialization(
+                    fixed,
+                    moving,
+                    fixed_landmarks,
+                    moving_landmarks)
+            )
+        elif fixed_landmarks is not None or moving_landmarks is not None:
+            raise ValueError("Both fixed_landmarks and moving_landmarks must be supplied.")
+        else:
+            print("No landmarks supplied; using geometry initialization.")
+            initial_transform = sitk.CenteredTransformInitializer(
+                fixed,
+                moving,
+                sitk.AffineTransform(fixed.GetDimension()),
+                sitk.CenteredTransformInitializerFilter.GEOMETRY,
+            )        
         #registration.SetInitialTransform(initial_transform)
         #registration.SetOptimizerScalesFromPhysicalShift()
 
@@ -1163,7 +1181,7 @@ class StackRegistration:
 
             zyx_list = []
             for section, points in registered_polygons.items():
-                section_points = [(section, x,y) for x,y in points]
+                section_points = [(section, y,x) for y,x in points]
                 for section_point in section_points:
                     zyx_list.append(section_point)
 
@@ -1172,15 +1190,41 @@ class StackRegistration:
         fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
         moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
         transform = sitk.ReadTransform(self.transform_path)
-        for structure, session_id in moving_sessions.items():
-            x,y,z = create_com_from_db(session_id=session_id, transform=transform)        
-            print(f'{self.moving} {structure} x={round(x)}, y={round(y)}, z={int(round(z))}')  # Output: (3.0, 4.0)
+        data = []
 
-        for structure, session_id in fixed_sessions.items():
-            x,y,z = create_com_from_db(session_id=session_id, transform=None)        
-            print(f'{self.fixed} {structure} x={round(x)}, y={round(y)}, z={int(round(z))}')  # Output: (3.0, 4.0)
-
-
+        for (moving_structure, moving_session_id), (fixed_structure, fixed_session_id) in zip(moving_sessions.items(), fixed_sessions.items()):
+             mz,my,mx = create_com_from_db(session_id=moving_session_id, transform=transform)        
+             fz,fy,fx = create_com_from_db(session_id=fixed_session_id, transform=None)
+             distance = math.dist((mx*self.fixed_xy_resolution, my*self.fixed_xy_resolution, mz*self.fixed_z_resolution),
+                                  (fx*self.fixed_xy_resolution, fy*self.fixed_xy_resolution, fz*self.fixed_z_resolution))        
+             row_dict = {
+                     "Moving": self.moving,
+                     "Structure": moving_structure,
+                     "mx": mx,
+                     "my": my,
+                     "mz": mz,
+                     "Fixed": self.fixed,
+                     "Structure": fixed_structure,
+                     "fx": fx,
+                     "fy": fy,
+                     "fz": fz,
+                     "change x": abs(mx - fx),
+                     "change y": abs(my - fy),
+                     "change z": abs(mz - fz),
+                     "Distance": distance
+                 }
+             
+             data.append(row_dict)
+ 
+        df = pd.DataFrame(data=data)
+        df = df.round(0)
+        df['mx'] = df['mx'].astype(int)
+        df['my'] = df['my'].astype(int)
+        df['mz'] = df['mz'].astype(int)
+        df['fx'] = df['fx'].astype(int)
+        df['fy'] = df['fy'].astype(int)
+        df['fz'] = df['fz'].astype(int)
+        print(df.head(20))
 
     def create_masks(self):
         def create_mask(image):
