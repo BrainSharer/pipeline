@@ -27,10 +27,12 @@ import pandas as pd
 from timeit import default_timer as timer
 
 
+
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 
+from library.utilities.utilities_registration import create_affine_parameters
 from library.utilities.utilities_process import M_UM_SCALE
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
@@ -1107,32 +1109,64 @@ class StackRegistration:
         print(f'moving only size: {moving_only.GetSize()} depth: {moving_only.GetDepth()} spacing: {moving_only.GetSpacing()}')
         """
 
-    def test_padding(self):
+    def testing(self):
         transform = sitk.ReadTransform(self.transform_path)
-        matrix = np.array(transform.GetMatrix()).reshape(3, 3)
-        print(matrix)
-        translation = transform.GetTranslation()
-        print(translation)
+        print(f'Transform: {self.transform_path}')
 
-        chunk_shape = (57, 154, 582)
-        padding = compute_affine_padding(
-            matrix=matrix,
-            translation=translation,
-            chunk_shape=chunk_shape,
-            spacing=self.spacing[::-1],
-        )
+        #DK52_6N_L_points_m = (0.0131708,0.0063383599999999995,0.0044)
+        #mxum, myum, mzum = (p * M_UM_SCALE for p in DK52_6N_L_points_m)
+        #DK52_6N_L_voxels = (mxum/self.moving_xy_resolution, myum/self.moving_xy_resolution, mzum/self.moving_z_resolution)
+        #print('DK52 6NL voxels', DK52_6N_L_voxels)
+        DK52_voxels = (32449,12798,80)
+        print('DK52 voxels', DK52_voxels)
+        mx, my,mz = DK52_voxels 
+        mxum = mx * self.moving_xy_resolution
+        myum = my * self.moving_xy_resolution
+        mzum = mz * self.moving_z_resolution
+        xt, yt, zt = transform.GetInverse().TransformPoint((mxum, myum, mzum)) # transformed data to fixed space in µm
+        #print('reg points um', xt, yt, zt)
+        registered_voxels = xt / self.fixed_xy_resolution, yt / self.fixed_xy_resolution, zt / self.fixed_z_resolution
+        print('reg voxels',registered_voxels)
 
-        print(padding)
-        region = compute_chunk_source_region(
-            chunk_index=(0, 0, 0),
-            chunk_shape=chunk_shape,
-            source_shape=(460, 1234, 2328),
-            padding=padding,
-        )
+        DK55_voxels = (27251,11924,112)
+        print('DK55 voxels', DK55_voxels)
+        return
+        fx,fy,fz = DK55_voxels
+        fxum = fx * 0.325
+        fyum = fy * 0.325
+        fzum = fz * 20
 
-        print("source start:", region.start)
-        print("source stop: ", region.stop)
-        print("source shape:", region.shape)   
+        xt, yt, zt = transform.GetInverse().TransformPoint((fxum, fyum, fzum)) # transformed data to fixed space in µm
+        #print('reg points um', xt, yt, zt)
+        registered_voxels = xt / self.fixed_xy_resolution, yt / self.fixed_xy_resolution, zt / self.fixed_z_resolution
+        print('Inv voxels',registered_voxels)
+        return
+
+        
+        
+        xx = abs(xt - fxum)
+        yy = abs(yt - fyum)
+        zz = abs(zt - fzum)
+        print('diff', xx, yy, zz)
+        distance = math.dist((xt, yt, zt),
+                    (fxum, fyum, fzum))
+        print('distance', distance)
+        return
+        
+        
+        xt, yt, zt = transform.GetInverse().TransformPoint(DK52_6N_L_points_um) # transformed data to fixed space in µm
+        print('inv points um', xt, yt, zt)
+        xx = abs(xt - fx)
+        yy = abs(yt - fy)
+        zz = abs(zt - fz)
+        print('diff', xx, yy, zz)
+        distance = math.dist((xt, yt, zt),
+                    (fx, fy, fz))
+        print('inv distance', distance)        
+
+
+
+
 
     def convert_points(self):
         """ Session IDs for volumes in the DB
@@ -1162,19 +1196,39 @@ class StackRegistration:
                     return
                 for child in row['childJsons']:
                     xm0,ym0,zm0 = child['pointA']
+                    #convert to um from meters
+                    xm0 = xm0 * M_UM_SCALE   # in µm
+                    ym0 = ym0 * M_UM_SCALE      # in µm
+                    zm0 = zm0 * M_UM_SCALE      # in µm
+                    # need to convert these to the same physical space as the transform = 1/32
+                    #xm0 = xm0 / self.fixed_xy_resolution
+                    #ym0 = ym0 / self.fixed_xy_resolution
+                    #zm0 = zm0 / self.fixed_z_resolution
 
-                    xm0 *= M_UM_SCALE # in µm
-                    ym0 *= M_UM_SCALE # in µm
-                    zm0 *= M_UM_SCALE # in µm
 
                     if transform is None:
                         xt, yt, zt = (xm0, ym0, zm0) # transformed data to fixed space in µm
                     else:
                         xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
-
-                    xt /= self.fixed_xy_resolution
-                    yt /= self.fixed_xy_resolution
-                    zt /= self.fixed_z_resolution
+                        """
+                        points_hr = np.array([
+                            [xm0,ym0, zm0],
+                        ])
+                        
+                        registered_points = self.transform_points_between_spacings(
+                            points_hr,
+                            transform,
+                            source_spacing=(0.325, 0.325, 20.0),
+                            target_spacing=(0.325, 0.325, 20.0),)
+                        xt = registered_points[0,0]
+                        yt = registered_points[0,1]
+                        zt = registered_points[0,2]
+                        
+                        #xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
+                        """
+                    #xt /= self.fixed_xy_resolution
+                    #yt /= self.fixed_xy_resolution
+                    #zt /= self.fixed_z_resolution
 
                     section = int(np.round(zt))
                     registered_polygons[section].append((yt, xt))
@@ -1187,34 +1241,56 @@ class StackRegistration:
 
             return np.mean(zyx_list, axis=0)
 
-        fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
-        moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
+        #fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
+        #moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
+        moving_sessions = {'SC':7432, '6N_L':7411}
+        fixed_sessions = {'SC':7706, '6N_L':611}
         transform = sitk.ReadTransform(self.transform_path)
+        points_hr = np.array([
+            [34332,12924,233],
+            [32087,19040,84],
+        ])
+
+        points_registration = self.transform_points_between_spacings(
+            points_hr,
+            transform.GetInverse(),
+            source_spacing=(0.325, 0.325, 20.0),
+            target_spacing=(0.325, 0.325, 20.0),
+        )
+        print(points_registration)
+        print()
+        print('want DK55 center',35705,12798,230)
+        print('want DK55 right',29575,15397,74)
+
         data = []
 
         for (moving_structure, moving_session_id), (fixed_structure, fixed_session_id) in zip(moving_sessions.items(), fixed_sessions.items()):
-             mz,my,mx = create_com_from_db(session_id=moving_session_id, transform=transform)        
-             fz,fy,fx = create_com_from_db(session_id=fixed_session_id, transform=None)
-             distance = math.dist((mx*self.fixed_xy_resolution, my*self.fixed_xy_resolution, mz*self.fixed_z_resolution),
-                                  (fx*self.fixed_xy_resolution, fy*self.fixed_xy_resolution, fz*self.fixed_z_resolution))        
-             row_dict = {
-                     "Moving": self.moving,
-                     "Structure": moving_structure,
-                     "mx": mx,
-                     "my": my,
-                     "mz": mz,
-                     "Fixed": self.fixed,
-                     "Structure": fixed_structure,
-                     "fx": fx,
-                     "fy": fy,
-                     "fz": fz,
-                     "change x": abs(mx - fx),
-                     "change y": abs(my - fy),
-                     "change z": abs(mz - fz),
-                     "Distance": distance
-                 }
+            try:
+                mz,my,mx = create_com_from_db(session_id=moving_session_id, transform=transform)
+            except:
+                print(f'Error getting com for {moving_session_id}')    
              
-             data.append(row_dict)
+            fz,fy,fx = create_com_from_db(session_id=fixed_session_id, transform=None)
+            distance = math.dist((mx, my, mz),
+                                (fx, fy, fz))        
+            row_dict = {
+                    "Moving": self.moving,
+                    "Structure": moving_structure,
+                    "mx": mx,
+                    "my": my,
+                    "mz": mz,
+                    "Fixed": self.fixed,
+                    "Structure": fixed_structure,
+                    "fx": fx,
+                    "fy": fy,
+                    "fz": fz,
+                    "change x": abs(mx - fx),
+                    "change y": abs(my - fy),
+                    "change z": abs(mz - fz),
+                    "Distance um": distance
+                }
+            
+            data.append(row_dict)
  
         df = pd.DataFrame(data=data)
         df = df.round(0)
@@ -1258,7 +1334,147 @@ class StackRegistration:
             masked_file_path = os.path.join(masked_path, f)
             sitk.WriteImage(masked_image, masked_file_path)
 
-                     
+
+    @staticmethod
+    def transform_points_between_spacings(
+        points,
+        transform,
+        source_spacing,
+        target_spacing,
+        source_origin=(0.0, 0.0, 0.0),
+        target_origin=(0.0, 0.0, 0.0),
+    ):
+        """
+        Transform voxel-index coordinates from one image space to another.
+
+        Parameters
+        ----------
+        points : (N, 3) ndarray
+            Points in (x, y, z) voxel-index coordinates.
+
+        transform : sitk.Transform
+            SimpleITK transform operating in physical coordinates.
+
+        source_spacing : tuple
+            (sx, sy, sz) physical spacing of the source points.
+
+        target_spacing : tuple
+            (sx, sy, sz) physical spacing of the target image.
+
+        source_origin : tuple
+            Physical origin of source image.
+
+        target_origin : tuple
+            Physical origin of target image.
+
+        Returns
+        -------
+        target_points : (N, 3) ndarray
+            Transformed points in target voxel-index coordinates.
+        """
+
+        points = np.asarray(points, dtype=np.float64)
+        source_spacing = np.asarray(source_spacing, dtype=np.float64)
+        target_spacing = np.asarray(target_spacing, dtype=np.float64)
+
+        source_origin = np.asarray(source_origin, dtype=np.float64)
+        target_origin = np.asarray(target_origin, dtype=np.float64)
+
+        # Voxel index -> physical coordinates
+        physical_points = (
+            points * source_spacing
+            + source_origin
+        )
+
+        # Apply SimpleITK transform in physical space
+        transformed_physical = np.asarray([
+            transform.TransformPoint(tuple(p))
+            for p in physical_points
+        ])
+
+        # Physical coordinates -> target voxel indices
+        target_points = (
+            transformed_physical - target_origin
+        ) / target_spacing
+
+        return target_points
+
+
+    def test_itk(self):
+        import itk
+
+        #moving
+        moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
+        if os.path.exists(moving_path):
+            moving_sitk = sitk.ReadImage(moving_path)
+            print(f'Loading existing moving sitk {moving_path}')
+        else:
+            moving_sitk = self.get_volume(self.moving)
+            moving_sitk.SetSpacing(self.moving_spacing)
+            sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt16), moving_path)
+            print(f'Wrote moving image to: {moving_path}')
+        print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
+        print(f'\tsize: {moving_sitk.GetSize()}')
+
+        # fixed    
+        fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
+        if os.path.exists(fixed_path):
+            fixed_sitk = sitk.ReadImage(fixed_path)
+            print(f'Loading existing fixed sitk {fixed_path}')
+        else:
+            fixed_sitk = self.get_volume(self.fixed)
+            fixed_sitk.SetSpacing(self.fixed_spacing)
+            sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt16), fixed_path)
+            print(f'Wrote fixed image to: {fixed_path}')
+
+        elastixImageFilter = sitk.ElastixImageFilter()
+        elastixImageFilter.SetFixedImage(fixed_sitk)
+        elastixImageFilter.SetMovingImage(moving_sitk)
+
+        genericMap = create_affine_parameters(elastixImageFilter=elastixImageFilter)
+        elastixImageFilter.SetParameterMap(genericMap)
+        elastixImageFilter.SetParameter("MaximumNumberOfIterations", "300")
+        elastixImageFilter.SetParameter("ResultImageFormat", "nii")
+        elastixImageFilter.SetParameter("NumberOfResolutions", "6") #### Very important, less than 6 gives lousy results.
+        elastixImageFilter.SetParameter("DefaultPixelValue", "0")
+        #elastixImageFilter.SetParameter("ComputeZYX", "true")
+        
+        elastixImageFilter.PrintParameterMap
+        elastixImageFilter.SetLogToFile(True)
+        elastixImageFilter.LogToConsoleOff()
+
+        elastixImageFilter.SetLogFileName('elastix.log')
+        output_directory = "./elastixoutput"
+        os.makedirs(output_directory, exist_ok=True)
+        elastixImageFilter.SetOutputDirectory(output_directory)
+        elastixImageFilter.PrintParameterMap()
+        resultImage = elastixImageFilter.Execute()
+                
+        resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
+
+        sitk.WriteImage(resultImage, "reg.volume.nii")
+        parameterMap = elastixImageFilter.GetTransformParameterMap()[0]
+        TransformParameters = parameterMap['TransformParameters']
+        center = parameterMap['CenterOfRotationPoint']
+        print(f'TransformParameters: {TransformParameters}')
+        print(f'Center of rotation point: {center}')
+        R = [float(x) for x in TransformParameters[:9]]
+        t = [float(x) for x in TransformParameters[9:]]
+        c = [float(x) for x in center]
+
+        affine_transform = sitk.AffineTransform(3)
+        affine_transform.SetMatrix(R)
+        affine_transform.SetTranslation(t)
+        affine_transform.SetCenter(c)
+
+        sitk.WriteTransform(affine_transform, self.transform_path)
+
+        
+
+
+
+
+                  
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -1300,9 +1516,10 @@ if __name__ == '__main__':
         "status": pipeline.status,
         "test_mips": pipeline.test_mips,
         "validate": pipeline.validate_registration,
-        "test_padding": pipeline.test_padding,
+        "testing": pipeline.testing,
         "convert_points": pipeline.convert_points,
-        "create_masks": pipeline.create_masks
+        "create_masks": pipeline.create_masks,
+        "test_itk": pipeline.test_itk
     }
 
     if task in function_mapping:
