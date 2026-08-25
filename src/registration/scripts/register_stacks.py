@@ -621,6 +621,66 @@ class StackRegistration:
     def open_zarr(path):
         return da.from_zarr(path)
 
+    @staticmethod
+    def landmark_affine_initialization(
+        fixed,
+        moving,
+        fixed_landmarks,
+        moving_landmarks,
+    ):
+        """
+        Create an affine transform from corresponding physical landmarks.
+
+        Parameters
+        ----------
+        fixed : sitk.Image
+            Fixed/reference image.
+
+        moving : sitk.Image
+            Moving image.
+
+        fixed_landmarks : sequence
+            Corresponding points in fixed physical coordinates.
+            [(x1,y1,z1), (x2,y2,z2), ...]
+
+        moving_landmarks : sequence
+            Corresponding points in moving physical coordinates.
+
+        Returns
+        -------
+        sitk.AffineTransform
+            Landmark-initialized affine transform.
+        """
+
+        fixed_landmarks = np.asarray(fixed_landmarks, dtype=np.float64)
+        moving_landmarks = np.asarray(moving_landmarks, dtype=np.float64)
+
+        if fixed_landmarks.shape != moving_landmarks.shape:
+            raise ValueError(
+                "Fixed and moving landmarks must have identical shapes. "
+                f"Got {fixed_landmarks.shape} and {moving_landmarks.shape}"
+            )
+
+        if fixed_landmarks.ndim != 2 or fixed_landmarks.shape[1] != 3:
+            raise ValueError(
+                "Landmarks must have shape (N, 3)."
+            )
+
+        if len(fixed_landmarks) < 4:
+            raise ValueError(
+                "At least 4 corresponding 3D landmarks are required "
+                "for a stable affine initialization."
+            )
+
+        transform = sitk.AffineTransform(3)
+
+        transform = sitk.LandmarkBasedTransformInitializer(
+            transform,
+            fixed_landmarks.flatten().tolist(),
+            moving_landmarks.flatten().tolist(),
+        )
+
+        return transform
 
     @staticmethod
     def affine_registration(fixed, moving, fixed_landmarks=None, moving_landmarks=None):
