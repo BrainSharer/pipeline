@@ -177,11 +177,68 @@ class StackRegistration:
         moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path, self.registration_channel)
         moving_sitk.SetSpacing(self.moving_spacing)
         fixed_sitk.SetSpacing(self.fixed_spacing)
+        moving_points = self.get_points_from_db(self.moving)
+        fixed_points = self.get_points_from_db(self.fixed)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()} spacing={moving_sitk.GetSpacing()} dimension={moving_sitk.GetNumberOfComponentsPerPixel()}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()} spacing={fixed_sitk.GetSpacing()} channels={fixed_sitk.GetNumberOfComponentsPerPixel()}')
-        affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
+        affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk, fixed_points, moving_points)
         sitk.WriteTransform(affine_transform, self.transform_path)
 
+    def get_points_from_db(self, brain):
+        points = {}
+        points['MD585'] = [
+            [0.013953426233794197, 0.005983398409168919, 0.004514850459482039],
+            [0.013912231044199516, 0.00587667296259302, 0.004994991750687443],
+            [0.010316675919632297, 0.004565379106554093, 0.005053235069885642],
+            [0.010229780198797628, 0.004591973307192101, 0.005283702359346643],
+            [0.010645997385917916, 0.004575319550817625, 0.004934697554697554],
+            [0.0105896270302566, 0.0046109504822593106, 0.005430269662921348],
+            [0.011249664145238389, 0.005594378255743184, 0.003731213397316619],
+            [0.011399400908132013, 0.005490763213847054, 0.006449849692970397],
+            [0.011970730882949332, 0.005583081898770125, 0.00461111735769501],
+            [0.01197703295006206, 0.005566141666052378, 0.005313953488372093],
+            [0.012019832940339115, 0.006695419642352017, 0.0039904568049567695],
+            [0.012250718389703262, 0.0064394844261743325, 0.006205794031031602],
+            [0.011667528423428991, 0.005971317043107613, 0.003957394113845973],
+        ]
+
+        points['DK55'] = [
+            [0.01445113, 0.00665242, 0.00582],
+            [0.014330899999999999, 0.0059365600000000004, 0.00524],
+            [0.0112075, 0.005005760000000001, 0.00462],
+            [0.0111728, 0.00496067, 0.0049],
+            [0.011525200000000001, 0.00504396, 0.00446],
+            [0.011474, 0.00498683, 0.00494],
+            [0.0121846, 0.00624508, 0.0034],
+            [0.0121989, 0.00601109, 0.00632],
+            [0.0127477, 0.00621566, 0.0045],
+            [0.012691899999999999, 0.00617466, 0.00524],
+            [0.0130807, 0.0073236, 0.00366],
+            [0.0129273, 0.007183800000000001, 0.0063],
+            [0.012650950000000001, 0.0061815, 0.00402],
+        ]
+        db_points = None
+
+        xy_resolution = {}
+        if brain == 'MD585':
+            xy_resolution = 0.452 * self.downsample
+        else:
+            xy_resolution = 0.325 * self.downsample
+
+        try:
+            db_points = points[brain]
+        except KeyError:
+            return None
+
+        data = []
+        for (x,y,z) in db_points:
+            # Perform operation on the 3 numbers
+            x *= (M_UM_SCALE / xy_resolution)
+            y *= (M_UM_SCALE / xy_resolution)
+            z *= (M_UM_SCALE / self.fixed_z_resolution)
+            data.append((x,y,z))
+
+        return data
 
     def create_registered_tiles(self):
         start_time = timer()
