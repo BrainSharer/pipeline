@@ -1517,8 +1517,7 @@ class StackRegistration:
         return target_points
 
 
-    def test_itk(self):
-        import itk
+    def test_elastix(self):
 
         #moving
         moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
@@ -1636,7 +1635,7 @@ if __name__ == '__main__':
         "testing": pipeline.testing,
         "convert_points": pipeline.convert_points,
         "create_masks": pipeline.create_masks,
-        "test_itk": pipeline.test_itk
+        "test_itk": pipeline.test_elastix
     }
 
     if task in function_mapping:
