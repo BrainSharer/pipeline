@@ -1128,10 +1128,6 @@ class StackRegistration:
             sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt16), moving_path)
             print(f'Wrote moving image to: {moving_path}')
 
-        if self.debug:
-            print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
-            print(f'\tsize: {moving_sitk.GetSize()}')
-            return
 
         # fixed    
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
@@ -1143,7 +1139,13 @@ class StackRegistration:
             fixed_sitk.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt16), fixed_path)
             print(f'Wrote fixed image to: {fixed_path}')
-        exit(0)
+
+        if self.debug:
+            print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
+            print(f'\tsize: {moving_sitk.GetSize()}')
+            return
+
+
         registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
         if os.path.exists(self.preview_path):
             registered_image = sitk.ReadImage(self.preview_path)
