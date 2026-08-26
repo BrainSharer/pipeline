@@ -5,6 +5,8 @@ from pathlib import Path
 import ants
 import numpy as np
 import pandas as pd
+import shutil
+import glob
 
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -45,10 +47,11 @@ class AntsRegistration:
         self.debug = debug
 
     def register_downsampled(self):
+        transforms = glob.glob(os.path.join(self.reg_path, f'{self.moving}_{self.fixed}_{self.transformation}_{self.downsample}_*'))
+        transforms = sorted(transforms)
         # 1. Load the 3D brain volumes
-        if os.path.exists(self.transform_path):
-            #transform = ants.read_transform(self.transform_path)
-            print(f"Loaded transform from: {self.transform_path}")
+        if len(transforms) > 0:
+            print(f"Loaded transforms \n: {transforms}")
         else:
             if not os.path.exists(self.fixed_image_path):
                 print(f'Missing: {self.fixed_image_path}')
@@ -72,11 +75,19 @@ class AntsRegistration:
                 verbose=self.debug
             )
             print(f'Finished registering')
+            transform_list = reg['fwdtransforms']
 
-            # Save the first transform path from the list
-            transform_file = reg["fwdtransforms"][0]
-            transform = ants.read_transform(transform_file)
-            ants.write_transform(transform, self.transform_path)
+            # Read the transform object and write it to your desired destination
+            # For linear transforms (Rigid/Affine), there is one matrix file (.mat)
+            # For SyN, you will have both a .mat and warp field(s) (.nii.gz)
+            for i, path in enumerate(transform_list):
+                print('path is', path)
+                filename = os.path.basename(path)
+                suffix = Path(filename).suffix
+                newfilename = os.path.join(self.reg_path, f'{self.moving}_{self.fixed}_{self.transformation}_{self.downsample}_{i}{suffix}')
+                shutil.move(path, newfilename)
+                print('newfilename', newfilename)
+                transforms.append(newfilename)            
 
         # 3. Define physical points in the moving brain space
         # Example: 3 coordinates in physical (RAS/LPS) space
@@ -95,7 +106,7 @@ class AntsRegistration:
         fixed_pts_df = ants.apply_transforms_to_points(
             dim=3,
             points=moving_pts_df,
-            transformlist=[self.transform_path],
+            transformlist=transforms,
             whichtoinvert=[True])
 
         # Convert back to a numpy array
