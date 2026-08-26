@@ -133,7 +133,7 @@ if __name__ == '__main__':
     task = str(args.task).strip().lower()
     transformation = str(args.transformation).strip()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    transformations = ['Affine', 'Rigid', 'SyN','ElasticSyN','SyNCC']
+    transformations = ['Affine', 'Rigid', 'SyN','ElasticSyN','SyNCC','Elastic']
     if transformation not in transformations:
         print(f'{transformation} is not in {transformations}')
         exit(0)
