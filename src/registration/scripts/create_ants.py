@@ -5,24 +5,13 @@ from pathlib import Path
 import ants
 import numpy as np
 import pandas as pd
-from registration.scripts.ants_classes import command_apply_other_resolution, command_register, configure_logging
 
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
 
-from library.utilities.utilities_process import M_UM_SCALE
-from library.image_manipulation.image_manager import ImageManager
-from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
-from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 from library.controller.sql_controller import SqlController
-
-
-
-
-
-
 
 
 class AntsRegistration:
