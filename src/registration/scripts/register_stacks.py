@@ -704,11 +704,10 @@ class StackRegistration:
 
 
         registration = sitk.ImageRegistrationMethod()
-        #registration.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
         # Correlation works much better than MattesMutual!!!
         registration.SetMetricAsCorrelation()
         registration.SetMetricSamplingStrategy(registration.RANDOM)
-        registration.SetMetricSamplingPercentage(0.25)
+        registration.SetMetricSamplingPercentage(0.01)
         registration.SetInterpolator(sitk.sitkLinear)
 
         registration.SetOptimizerAsGradientDescent(
@@ -740,22 +739,20 @@ class StackRegistration:
                 sitk.AffineTransform(fixed.GetDimension()),
                 sitk.CenteredTransformInitializerFilter.GEOMETRY,
             )        
-        #registration.SetInitialTransform(initial_transform)
-        #registration.SetOptimizerScalesFromPhysicalShift()
 
         registration.SetOptimizerScalesFromPhysicalShift()
         registration.SetShrinkFactorsPerLevel([4, 2, 1])
         registration.SetSmoothingSigmasPerLevel([2, 1, 0])
-        registration.SetInitialTransform(initial_transform, inPlace=True)
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+        registration.SetInitialTransform(initial_transform, inPlace=True)
 
         registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
-        affine_transform = registration.Execute(fixed, moving)
+        final_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
         print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
 
-        return affine_transform
+        return final_transform
 
 
 
@@ -1146,6 +1143,7 @@ class StackRegistration:
             fixed_sitk.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt16), fixed_path)
             print(f'Wrote fixed image to: {fixed_path}')
+        exit(0)
         registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
         if os.path.exists(self.preview_path):
             registered_image = sitk.ReadImage(self.preview_path)
@@ -1635,7 +1633,7 @@ if __name__ == '__main__':
         "testing": pipeline.testing,
         "convert_points": pipeline.convert_points,
         "create_masks": pipeline.create_masks,
-        "test_itk": pipeline.test_elastix
+        "test_elastix": pipeline.test_elastix
     }
 
     if task in function_mapping:

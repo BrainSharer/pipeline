@@ -2,13 +2,22 @@ import sys
 import argparse
 import os
 from pathlib import Path
-import zarr
+import ants
+import numpy as np
+import pandas as pd
+from registration.scripts.ants_classes import command_apply_other_resolution, command_register, configure_logging
 
 
 PIPELINE_ROOT = Path('./src').absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
-from registration.scripts.ants_classes import command_apply_other_resolution, command_register, configure_logging
+
+from library.utilities.utilities_process import M_UM_SCALE
+from library.image_manipulation.image_manager import ImageManager
+from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
+from library.controller.sql_controller import SqlController
+
 
 
 
@@ -33,45 +42,84 @@ class AntsRegistration:
         self.moving_zarr_path = os.path.join(scratch_dir, self.moving, f'source.{self.downsample}.zarr')
         self.fixed_zarr_path = os.path.join(scratch_dir, self.fixed, f'source.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(scratch_dir, self.moving, f'registered.{self.downsample}')
-        self.xy_resolution = 0.325
-        self.z_resolution = 20.0                
-        self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}.tfm")
+        moving_brain_controller = SqlController(self.moving)
+        self.moving_xy_resolution = moving_brain_controller.scan_run.resolution
+        self.moving_z_resolution = moving_brain_controller.scan_run.zresolution
+
+        fixed_brain_controller = SqlController(self.fixed)
+        self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
+        self.fixed_z_resolution = fixed_brain_controller.scan_run.zresolution
+
+        if self.moving == 'Allen':
+            self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
+        else:
+            self.moving_spacing = [ round(self.moving_xy_resolution*self.downsample,2), round(self.moving_xy_resolution*self.downsample,2), self.moving_z_resolution ]
+
+        if self.fixed == 'Allen':     
+            self.fixed_spacing = [ round(self.fixed_xy_resolution,2), round(self.fixed_xy_resolution,2), self.fixed_z_resolution ]
+        else:
+            self.fixed_spacing = [ round(self.fixed_xy_resolution*self.downsample,2), round(self.fixed_xy_resolution*self.downsample,2), self.fixed_z_resolution ]
+
+       
         self.transformation = transformation
+        self.transform_path = os.path.join(self.reg_path, f"{self.moving}_{self.fixed}_{self.downsample}_{self.transformation}.mat")
         self.debug = debug
 
-    def status(self):
-        brain_paths = [self.moving_zarr_path, self.fixed_zarr_path, self.registered_zarr_path]
-        for brain_path in brain_paths:
-            if os.path.exists(brain_path):
-                zarr_data = zarr.open(brain_path, mode='r')
-                print(brain_path)
-                print(zarr_data.info)
-            else:
-                print(f'Missing: {brain_path}')
     def register_downsampled(self):
-        #parser = build_parser()
-        configure_logging()
-        #args.func(args)
-        command_register(self.moving, self.fixed, self.downsample, self.transformation, self.debug)
+        # 1. Load the 3D brain volumes
+        if os.path.exists(self.transform_path):
+            #transform = ants.read_transform(self.transform_path)
+            print(f"Loaded transform from: {self.transform_path}")
+        else:
+            fixed_image_path = os.path.join(self.reg_path, 'DK55', f'source.{self.downsample}.nii')
+            moving_image_path = os.path.join(self.reg_path, 'MD585', f'source.{self.downsample}.nii')        
 
-    def register_other_resolution(self):
-        configure_logging()
-        command_apply_other_resolution(self.moving, self.fixed, self.downsample)
+            fixed_img = ants.image_read(fixed_image_path)
+            moving_img = ants.image_read(moving_image_path)
+            print('Loaded fixed and moving images')
 
-    def get_info(self):
-        scratch_dir = "/data/pipeline_tmp"
-        output_zarr_path = os.path.join(scratch_dir, moving, f'{moving}_{fixed}_registered.{downsample}.zarr')
-        moving_zarr_path = os.path.join(scratch_dir, moving, f'source.{downsample}.zarr')
+            # 2. Run the Affine Registration
+            # 'Affine' performs translation, rotation, scale, and shear
+            reg = ants.registration(
+                fixed=fixed_img,
+                moving=moving_img,
+                type_of_transform=self.transformation,
+                
+            )
+            print(f'Finished registering')
 
-        for p in [output_zarr_path, moving_zarr_path]:
-            if os.path.exists(p):
-                print(p)
-                volume = zarr.open(p, mode='r')
-                print(volume.info)
-            else:
-                print(f'Missing: {p}')
+            # Save the first transform path from the list
+            transform_file = reg["fwdtransforms"][0]
+            transform = ants.read_transform(transform_file)
+            ants.write_transform(transform, self.transform_path)
 
+        # 3. Define physical points in the moving brain space
+        # Example: 3 coordinates in physical (RAS/LPS) space
 
+        moving_points = np.array([
+            [10317.416354106319, 3197.2081350069293, 5344.143279334614],
+            [11970.730882949332, 5583.081898770125, 4611.1173576950105],
+            [11977.032950062061, 5566.141666052378, 5313.9534883720935]
+        ])
+
+        # ANTsPy requires a pandas DataFrame with specific column names (x, y, z)
+        moving_pts_df = pd.DataFrame(moving_points, columns=['x', 'y', 'z'])
+
+        # 4. Transform points to the fixed brain space
+        # Note: ANTs registration outputs moving-to-fixed transforms ('fwdtransforms')
+        fixed_pts_df = ants.apply_transforms_to_points(
+            dim=3,
+            points=moving_pts_df,
+            transformlist=[self.transform_path],
+            whichtoinvert=[True])
+
+        # Convert back to a numpy array
+        fixed_points = fixed_pts_df.to_numpy()
+        fixed_spacing = np.array(self.fixed_spacing)
+        fixed_points = fixed_points / fixed_spacing
+
+        print('Structures SC 6N_L 6N_R')
+        print("Transformed points in fixed brain space:\n", fixed_points)        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
@@ -89,14 +137,16 @@ if __name__ == '__main__':
     task = str(args.task).strip().lower()
     transformation = str(args.transformation).strip()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
+    transformations = ['Affine', 'Rigid', 'SyN']
+    if transformation not in transformations:
+        print(f'{transformation} is not in {transformations}')
+        exit(0)
 
     pipeline = AntsRegistration(moving, fixed, downsample, transformation, debug=debug)
 
 
     function_mapping = {
-        "register_downsampled": pipeline.register_downsampled,
-        "register_other": pipeline.register_other_resolution,
-        "get_info": pipeline.get_info
+        "register": pipeline.register_downsampled,
     }
 
     if task in function_mapping:
