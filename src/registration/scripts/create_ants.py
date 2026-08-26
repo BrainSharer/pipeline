@@ -22,32 +22,22 @@ class AntsRegistration:
         self.moving = moving
         self.fixed = fixed
         self.downsample = downsample
-        scratch_dir = "/data/pipeline_tmp"
         self.base_path = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data"
         self.reg_path = "/net/birdstore/Active_Atlas_Data/data_root/brains_info/registration"
-        self.moving_tif_path = os.path.join(self.base_path, self.moving, 'preps', 'C1', f'source_aligned.{self.downsample}')
-        self.fixed_tif_path = os.path.join(self.base_path, self.fixed, 'preps', 'C1', f'source_aligned.{self.downsample}')
-        self.registered_zarr_path = os.path.join(scratch_dir, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.zarr')
-        self.moving_zarr_path = os.path.join(scratch_dir, self.moving, f'source.{self.downsample}.zarr')
-        self.fixed_zarr_path = os.path.join(scratch_dir, self.fixed, f'source.{self.downsample}.zarr')
-        self.registered_tif_path = os.path.join(scratch_dir, self.moving, f'registered.{self.downsample}')
+
         moving_brain_controller = SqlController(self.moving)
         self.moving_xy_resolution = moving_brain_controller.scan_run.resolution
         self.moving_z_resolution = moving_brain_controller.scan_run.zresolution
+
+        self.fixed_image_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
+        self.moving_image_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
 
         fixed_brain_controller = SqlController(self.fixed)
         self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
         self.fixed_z_resolution = fixed_brain_controller.scan_run.zresolution
 
-        if self.moving == 'Allen':
-            self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
-        else:
-            self.moving_spacing = [ round(self.moving_xy_resolution*self.downsample,2), round(self.moving_xy_resolution*self.downsample,2), self.moving_z_resolution ]
-
-        if self.fixed == 'Allen':     
-            self.fixed_spacing = [ round(self.fixed_xy_resolution,2), round(self.fixed_xy_resolution,2), self.fixed_z_resolution ]
-        else:
-            self.fixed_spacing = [ round(self.fixed_xy_resolution*self.downsample,2), round(self.fixed_xy_resolution*self.downsample,2), self.fixed_z_resolution ]
+        self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
+        self.fixed_spacing = [ round(self.fixed_xy_resolution,2), round(self.fixed_xy_resolution,2), self.fixed_z_resolution ]
 
        
         self.transformation = transformation
@@ -60,12 +50,18 @@ class AntsRegistration:
             #transform = ants.read_transform(self.transform_path)
             print(f"Loaded transform from: {self.transform_path}")
         else:
-            fixed_image_path = os.path.join(self.reg_path, 'DK55', f'source.{self.downsample}.nii')
-            moving_image_path = os.path.join(self.reg_path, 'MD585', f'source.{self.downsample}.nii')        
+            if not os.path.exists(self.fixed_image_path):
+                print(f'Missing: {self.fixed_image_path}')
+                exit(0)
+            if not os.path.exists(self.moving_image_path):
+                print(f'Missing: {self.moving_image_path}')
+                exit(0)
 
-            fixed_img = ants.image_read(fixed_image_path)
-            moving_img = ants.image_read(moving_image_path)
-            print('Loaded fixed and moving images')
+            fixed_img = ants.image_read(self.fixed_image_path)
+            moving_img = ants.image_read(self.moving_image_path)
+            print('Loaded fixed image', fixed_img)
+            print('Loaded moving image', moving_img)
+            print('Registering with', self.transformation)
 
             # 2. Run the Affine Registration
             # 'Affine' performs translation, rotation, scale, and shear
@@ -73,7 +69,7 @@ class AntsRegistration:
                 fixed=fixed_img,
                 moving=moving_img,
                 type_of_transform=self.transformation,
-                
+                verbose=self.debug
             )
             print(f'Finished registering')
 
@@ -126,7 +122,7 @@ if __name__ == '__main__':
     task = str(args.task).strip().lower()
     transformation = str(args.transformation).strip()
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
-    transformations = ['Affine', 'Rigid', 'SyN']
+    transformations = ['Affine', 'Rigid', 'SyN','ElasticSyN','SyNCC']
     if transformation not in transformations:
         print(f'{transformation} is not in {transformations}')
         exit(0)
