@@ -9,6 +9,15 @@ import math
 
 import SimpleITK as sitk
 import numpy as np
+from pathlib import Path
+import sys
+
+PIPELINE_ROOT = Path("./src").absolute()
+sys.path.append(PIPELINE_ROOT.as_posix())
+
+
+from library.utilities.utilities_process import M_UM_SCALE
+
 
 def dice_coefficient(fixed_mask, moving_mask):
     """
@@ -1194,3 +1203,298 @@ def _make_spatial_slice(
         slice(start[1], stop[1]),
         slice(start[2], stop[2]),
     )
+
+def _validate_landmarks(
+    fixed_landmarks,
+    moving_landmarks,
+    min_landmarks=4,
+):
+    """
+    Validate corresponding 3-D physical-space landmarks.
+
+    Returns
+    -------
+    fixed : np.ndarray, shape (N, 3)
+    moving : np.ndarray, shape (N, 3)
+    """
+    if fixed_landmarks is None or moving_landmarks is None:
+        raise ValueError(
+            "Both fixed_landmarks and moving_landmarks are required."
+        )
+
+    fixed = np.asarray(fixed_landmarks, dtype=np.float64)
+    moving = np.asarray(moving_landmarks, dtype=np.float64)
+
+    if fixed.ndim != 2 or fixed.shape[1] != 3:
+        raise ValueError(
+            f"fixed_landmarks must have shape (N, 3), got {fixed.shape}"
+        )
+    if moving.ndim != 2 or moving.shape[1] != 3:
+        raise ValueError(
+            f"moving_landmarks must have shape (N, 3), got {moving.shape}"
+        )
+    if fixed.shape != moving.shape:
+        raise ValueError(
+            "fixed_landmarks and moving_landmarks must have identical shapes: "
+            f"{fixed.shape} != {moving.shape}"
+        )
+    if fixed.shape[0] < min_landmarks:
+        raise ValueError(
+            f"At least {min_landmarks} corresponding 3-D landmarks are required; "
+            f"got {fixed.shape[0]}"
+        )
+    if not np.isfinite(fixed).all() or not np.isfinite(moving).all():
+        raise ValueError("Landmarks must contain only finite values.")
+
+    # Reject duplicate/near-duplicate points because they make an affine
+    # initialization poorly conditioned.
+    if fixed.shape[0] > 1:
+        fixed_dist = np.linalg.norm(
+            fixed[:, None, :] - fixed[None, :, :], axis=2
+        )
+        moving_dist = np.linalg.norm(
+            moving[:, None, :] - moving[None, :, :], axis=2
+        )
+        fixed_nonzero = fixed_dist[np.triu_indices(fixed.shape[0], k=1)]
+        moving_nonzero = moving_dist[np.triu_indices(moving.shape[0], k=1)]
+
+        if np.any(fixed_nonzero <= 1e-6):
+            raise ValueError("Fixed landmarks contain duplicate/near-duplicate points.")
+        if np.any(moving_nonzero <= 1e-6):
+            raise ValueError("Moving landmarks contain duplicate/near-duplicate points.")
+
+    return fixed, moving
+
+
+def _landmark_affine(
+    fixed_landmarks,
+    moving_landmarks,
+):
+    """
+    Create a SimpleITK affine transform initialized from corresponding
+    physical-space landmarks.
+
+    The resulting transform follows the same convention used by
+    sitk.Resample: it maps fixed/output physical coordinates to
+    moving/input coordinates.
+    """
+    fixed, moving = _validate_landmarks(
+        fixed_landmarks,
+        moving_landmarks,
+    )
+
+    transform = sitk.AffineTransform(3)
+
+    transform = sitk.LandmarkBasedTransformInitializer(
+        transform,
+        fixed.flatten().tolist(),
+        moving.flatten().tolist(),
+    )
+
+    return transform
+
+
+def _landmark_residuals(
+    transform,
+    fixed_landmarks,
+    moving_landmarks,
+):
+    """
+    Calculate landmark residuals for a transform.
+
+    Because SimpleITK's resampling convention is output/fixed -> input/moving,
+    fixed landmarks are transformed and compared with moving landmarks.
+    """
+    fixed, moving = _validate_landmarks(
+        fixed_landmarks,
+        moving_landmarks,
+    )
+
+    #predicted = np.asarray([transform.TransformPoint(tuple(p)) for p in fixed],dtype=np.float64,)
+    #residual_vectors = predicted - moving
+    predicted = np.asarray([transform.GetInverse().TransformPoint(tuple(p)) for p in moving],dtype=np.float64,)
+    residual_vectors = predicted - fixed
+    residuals = np.linalg.norm(residual_vectors, axis=1)
+
+    return residuals, residual_vectors
+
+
+def _landmark_report(
+    transform,
+    fixed_landmarks,
+    moving_landmarks,
+    names=None,
+    report_title="put something here"
+):
+    """
+    Print and return landmark residual statistics.
+    """
+    fixed, moving = _validate_landmarks(
+        fixed_landmarks,
+        moving_landmarks,
+    )
+
+    residuals, residual_vectors = _landmark_residuals(
+        transform,
+        fixed,
+        moving,
+    )
+
+    #distances = np.linalg.norm(fixed-predicted)
+    #print(distances)
+
+    if names is None:
+        names = [f"landmark_{i:02d}" for i in range(len(residuals))]
+    if len(names) != len(residuals):
+        raise ValueError("Landmark names must have the same length as landmarks.")
+
+    rms = float(np.sqrt(np.mean(residuals ** 2)))
+    mean = float(np.mean(residuals))
+    median = float(np.median(residuals))
+    maximum = float(np.max(residuals))
+
+    print(f"\nLandmark residuals {report_title}:")
+    for name, residual in zip(names, residuals):
+        print(f"  {name:24s}: {residual:10.3f} µm")
+
+    print(
+        f"Landmark RMS={rms:.3f} µm, "
+        f"mean={mean:.3f} µm, "
+        f"median={median:.3f} µm, "
+        f"max={maximum:.3f} µm"
+    )
+
+    return {
+        "rms": rms,
+        "mean": mean,
+        "median": median,
+        "max": maximum,
+        "residuals": residuals.tolist(),
+        "residual_vectors": residual_vectors.tolist(),
+        "names": list(names),
+    }
+
+
+def _load_landmarks(data):
+
+
+    if isinstance(data, dict):
+        entries = data.get("landmarks")
+    elif isinstance(data, list):
+        entries = data
+    else:
+        raise ValueError(
+            "Landmark JSON must be either an object containing "
+            "'landmarks' or a list of landmark objects."
+        )
+
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("No landmarks were found in the landmark JSON.")
+
+    fixed = []
+    moving = []
+    names = []
+
+    for i, item in enumerate(entries):
+        if not isinstance(item, dict):
+            raise ValueError(f"Landmark {i} must be an object.")
+
+        if "fixed" not in item or "moving" not in item:
+            raise ValueError(
+                f"Landmark {i} must contain both 'fixed' and 'moving'."
+            )
+
+        name = str(item.get("name", f"landmark_{i:02d}"))
+        fixed_point = item["fixed"]
+        moving_point = item["moving"]
+
+        if len(fixed_point) != 3 or len(moving_point) != 3:
+            raise ValueError(
+                f"Landmark '{name}' must contain 3-D fixed and moving coordinates."
+            )
+
+        fixed.append(fixed_point)
+        moving.append(moving_point)
+        names.append(name)
+
+    fixed, moving = _validate_landmarks(
+        fixed,
+        moving,
+    )
+
+    return {
+        "fixed": fixed,
+        "moving": moving,
+        "names": names,
+    }
+
+def get_points_from_db(brain):
+    '''
+    {
+      "landmarks": [
+        {
+          "name": "anterior_brain",
+          "fixed": [1200.0, 1800.0, 100.0],
+          "moving": [1350.0, 1700.0, 105.0]
+        },
+        {
+          "name": "posterior_brain",
+          "fixed": [4200.0, 3000.0, 220.0],
+          "moving": [4300.0, 2900.0, 225.0]
+        }
+      ]
+    }
+    '''
+    
+    points = {}
+    points['MD585'] = [
+        [0.013953426233794197, 0.005983398409168919, 0.004514850459482039],
+        [0.013912231044199516, 0.00587667296259302, 0.004994991750687443],
+        [0.010316675919632297, 0.004565379106554093, 0.005053235069885642],
+        [0.010229780198797628, 0.004591973307192101, 0.005283702359346643],
+        [0.010645997385917916, 0.004575319550817625, 0.004934697554697554],
+        [0.0105896270302566, 0.0046109504822593106, 0.005430269662921348],
+        [0.011249664145238389, 0.005594378255743184, 0.003731213397316619],
+        [0.011399400908132013, 0.005490763213847054, 0.006449849692970397],
+        [0.011970730882949332, 0.005583081898770125, 0.00461111735769501],
+        [0.01197703295006206, 0.005566141666052378, 0.005313953488372093],
+        [0.012019832940339115, 0.006695419642352017, 0.0039904568049567695],
+        [0.012250718389703262, 0.0064394844261743325, 0.006205794031031602],
+        [0.011667528423428991, 0.005971317043107613, 0.003957394113845973],
+        [0.010317416354106318, 0.0031972081350069292, 0.005344143279334614]
+    ]
+
+    points['DK55'] = [
+        [0.01445113, 0.00665242, 0.00582],
+        [0.014330899999999999, 0.0059365600000000004, 0.00524],
+        [0.0112075, 0.005005760000000001, 0.00462],
+        [0.0111728, 0.00496067, 0.0049],
+        [0.011525200000000001, 0.00504396, 0.00446],
+        [0.011474, 0.00498683, 0.00494],
+        [0.0121846, 0.00624508, 0.0034],
+        [0.0121989, 0.00601109, 0.00632],
+        [0.0127477, 0.00621566, 0.0045],
+        [0.012691899999999999, 0.00617466, 0.00524],
+        [0.0130807, 0.0073236, 0.00366],
+        [0.0129273, 0.007183800000000001, 0.0063],
+        [0.012650950000000001, 0.0061815, 0.00402],
+        [0.01119, 0.00308, 0.00464]
+    ]
+    db_points = None
+
+
+    try:
+        db_points = points[brain]
+    except KeyError:
+        return None
+
+    data = []
+    for (x,y,z) in db_points:
+        # Perform operation on the 3 numbers
+        x *= (M_UM_SCALE)
+        y *= (M_UM_SCALE)
+        z *= (M_UM_SCALE)
+        data.append((x,y,z))
+
+    return np.array(data)
+
