@@ -23,7 +23,7 @@ import zarr
 from shapely.geometry import Point, Polygon
 import math
 
-from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, numpy2sitk_dtype, register_volume, resample_image
+from library.atlas.atlas_utilities import affine_transform_point, fetch_coms, list_coms, load_transformation, register_volume, resample_image
 from library.controller.sql_controller import SqlController
 from library.controller.annotation_session_controller import AnnotationSessionController
 from library.database_model.annotation_points import AnnotationSession
@@ -34,7 +34,7 @@ from library.utilities.utilities_process import SCALING_FACTOR, get_scratch_dir,
 from library.atlas.brain_structure_manager import BrainStructureManager
 from library.atlas.brain_merger import BrainMerger
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_registration import create_affine_parameters, make_isotropic, read_and_downsample
+from library.utilities.utilities_registration import create_affine_parameters
 
 # constants
 MOVING_CROP = 50

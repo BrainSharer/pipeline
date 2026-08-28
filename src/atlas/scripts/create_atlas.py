@@ -205,19 +205,6 @@ class AtlasManager():
         brainManager.create_cloud_volume()
 
 
-    def create_sagittal_slices(self):
-        # Instantiate with 10um resolution
-        resolution = int(self.um)
-        mcc = MouseConnectivityCache(resolution=resolution)
-        annotation_volume, meta = mcc.get_annotation_volume()
-        print(annotation_volume.shape, annotation_volume.dtype)
-        print(meta)
-        return
-
-        # To slice sagittally, change your array index axis:
-        # The native array orientation is typically (Saggital/AP, Superior/DV, Left-Right/ML)
-        # depending on your CCF version, allowing direct index slicing:
-        sagittal_slice = annotation_volume[:, :, midline_index]
 
 
 

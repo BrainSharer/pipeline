@@ -729,8 +729,6 @@ class StackRegistration:
                     fixed_landmarks,
                     moving_landmarks)
             )
-        elif fixed_landmarks is not None or moving_landmarks is not None:
-            raise ValueError("Both fixed_landmarks and moving_landmarks must be supplied.")
         else:
             print("No landmarks supplied; using geometry initialization.")
             initial_transform = sitk.CenteredTransformInitializer(

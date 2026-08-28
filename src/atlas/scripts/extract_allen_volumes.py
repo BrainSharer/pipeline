@@ -25,7 +25,6 @@ import math
 from tqdm import tqdm
 from scipy.ndimage import center_of_mass
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
-from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 
 
 
