@@ -25,6 +25,8 @@ import math
 from tqdm import tqdm
 from scipy.ndimage import center_of_mass
 from allensdk.core.reference_space_cache import ReferenceSpaceCache
+from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
+
 
 
 PIPELINE_ROOT = Path('./src').absolute()
@@ -299,6 +301,8 @@ def create_neuroglancer(um, ids=None, atlas_volume=None):
     neuroglancer.add_downsampled_volumes()
     neuroglancer.add_segmentation_mesh()
     print(f"Neuroglancer data created at {structure_path}")
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract Allen CCF structure to NIfTI (preserving spacing/direction/origin).")
