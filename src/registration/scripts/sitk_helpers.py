@@ -67,27 +67,29 @@ def create_tissue_mask(image, threshold=10):
     Create a mask to exclude empty regions.
     Assumes background is near zero.
     """
+
+
     mask = sitk.BinaryThreshold(
         image,
         lowerThreshold=threshold,
-        upperThreshold=1e9,
+        upperThreshold=255,
         insideValue=255,
         outsideValue=0
     )
 
-    radius = [18,18,18]
+    radius = [2,2,2]
 
     mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
     mask = sitk.BinaryMorphologicalOpening(mask, radius)
     mask = sitk.Cast(mask, sitk.sitkUInt8)
 
-    return mask
 
     eroder = sitk.GrayscaleErodeImageFilter()
     eroder.SetKernelType(sitk.sitkBall)
     eroder.SetKernelRadius(10)
     eroded_img = eroder.Execute(mask)
 
+    return eroded_img
 
 
 

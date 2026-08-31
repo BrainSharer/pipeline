@@ -4,7 +4,6 @@ the brain area by using masks.
 import os
 import inspect
 import shutil
-import sys
 from PIL import Image
 from cloudvolume import CloudVolume
 from pathlib import Path
@@ -18,9 +17,8 @@ import cv2
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, get_image_box, mask_with_contours, place_image, rotate_image
-from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image, delete_in_background
-
+from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, place_image, rotate_image
+from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 
 class ImageCleaner:
     """Methods for cleaning images [and rotation, if necessary].  'Cleaning' means 
@@ -272,69 +270,45 @@ class ImageCleaner:
         ##### first mesh task, create meshing tasks
         ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
 
-    def mask_aligned_imageNOTUSED(self, img, file):
-        #from scipy.ndimage import binary_fill_holes
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray[gray > 0] = 255
-        #return gray
-        # If the pixel value is smaller than or 
-        # equal to the threshold, it is set to 0, otherwise it is set to a maximum value        
-        
-        #thresh = cv2.threshold(gray, threshold, maxval, cv2.THRESH_BINARY)[1]
-        #ret, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY )
-        #return thresh
-        # blur threshold image
-        #new_img = new_img.astype(np.uint8)
-        #new_img[(new_img > 200)] = 0
-        #lowerbound = 0
-        #upperbound = 255
-        # all pixels value above lowerbound will  be set to upperbound
-        #_, thresh = cv2.threshold(new_img.copy(), lowerbound, upperbound, cv2.THRESH_BINARY_INV)
-        #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (50, 50))
-        #thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-        #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (8, 8))
-        #smoothed = cv2.morphologyEx(thresh, cv2.MORPH_ERODE, kernel)
-        #inverted_thresh = cv2.bitwise_not(smoothed)
-        #filled_thresh = binary_fill_holes(thresh).astype(np.uint8)
-        #return thresh
-        #return cv2.bitwise_and(img, img, mask=filled_thresh)
+    @staticmethod
+    def create_hollow_shell(image_path):
 
+        # 1. Load the sagittal histology TIF image
+        # Read as grayscale since we only need the structure for segmentation
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
+        # 2. Threshold the image to create a binary mask of the brain
+        # Adjust the threshold value (127) depending on your image's lighting/contrast
+        blurred = cv2.GaussianBlur(img, (11, 11), 0)
+        _, binary = cv2.threshold(blurred, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        #blur = cv2.GaussianBlur(thresh, (0,0), sigmaX=3, sigmaY=3, borderType = cv2.BORDER_DEFAULT)
-        #return blur.astype(np.uint8)
-        # stretch so that 255 -> 255 and 127.5 -> 0
-        # threshold again
-        #thresh2 = cv2.threshold(thresh, 0, 255, cv2.THRESH_BINARY)[1]
-        #ret, thresh = cv2.threshold(gray, 1, 255, 0)
-        # get external contour
-        #contours, xxx = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        #contours = np.array(xxx)
-        #im = np.copy(img)
-        #cv2.drawContours(thresh, contours, -1, 255, 8)
-        #cv2.fillPoly(thresh, pts = [contours.astype(np.int32)], color = 0)
+        # Optional: Clean up noise (holes inside or specks outside) using morphology
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)  # Fills small holes
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)   # Removes small specks
 
-        #points = contours.astype(np.int32)
-        #print(f'points shape={points.shape} type={points.dtype}')
-        #cv2.fillPoly(thresh, pts = [points], color = 255)
-        res = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours = res[-2] # for cv2 v3 and v4+ compatibility
-        gray = np.zeros_like(gray)
-        for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
-            area = cv2.contourArea(contour)
-            if area > 3000:
-                cv2.putText(gray, str(int(area)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1)
-                #print(f'file={file} filling area={area} type {type(area)}')
-                cv2.polylines(gray, [contour], isClosed=True, color=255, thickness=10)            
-                cv2.fillPoly(gray, pts=[contour], color=255)   
+        # 3. Find the contours of the brain section
+        # RETR_EXTERNAL ensures we only get the outermost boundary
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
+        contours = sorted_contours[:3]        
 
+        # 4. Create a completely black background of the same size
+        output_mask = np.zeros_like(img)
 
-        return gray.astype(np.uint8)
+        # 5. Draw the white border
+        # -1 draws all found contours (or you can select the largest one if there's noise)
+        # thickness=2 sets the line width of the white border; adjust as needed
+        cv2.drawContours(output_mask, contours, -1, (255), thickness=5)
+
+        # 6. Save the final image
+        return output_mask
+
 
     def create_shell(self):
-        WHITE = 255
+
+        
         WRITE_MASKS = False
         iteration = self.get_alignment_status()
         if iteration is None:
@@ -342,42 +316,38 @@ class ImageCleaner:
             return
         input = self.fileLocationManager.get_directory(channel=self.channel, downsample=True, inpath=ALIGNED_DIR)
           
-
         if WRITE_MASKS:
             output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
             os.makedirs(output, exist_ok=True)
         print('with input =', input)
         files = sorted(os.listdir(input))
         file_list = []
-        for file in tqdm(files, disable=False):
+        for file in tqdm(files, disable=WRITE_MASKS):
             filepath = os.path.join(input, file)
+            border = ImageCleaner.create_hollow_shell(filepath)
             if WRITE_MASKS:
-                outpath = os.path.join(self.output, file)
-                if os.path.exists(outpath):
-                    continue
-            img = read_image(filepath)
-            if img.ndim == 3:
-                img = mask_with_contours(img)
-                img = self.mask_aligned_image(img, file)
-                if WRITE_MASKS:
-                    write_image(outpath, img)
-            else:
-                img[img > 0] = WHITE
-            file_list.append(img)
+                outpath = os.path.join(output, file)
+                write_image(outpath, border)
+            file_list.append(border)
         volume = np.stack(file_list, axis = 0)
         volume = np.swapaxes(volume, 0, 2) # put it in x,y,z format
-        volume = gaussian(volume, 1)  # this is a float array
-        volume[volume > 0] = WHITE
+        #volume = gaussian(volume, 1)  # this is a float array
+        #volume[volume > 0] = WHITE
         volume = volume.astype(np.uint8)
-        ids = list(np.unique(volume, return_counts=False))
+        #ids = list(np.unique(volume, return_counts=False))
         data_type = volume.dtype
-        xy = self.sqlController.scan_run.resolution * 1000 * 1000 / self.scaling_factor
-        z = self.sqlController.scan_run.zresolution * 1000
-        scales = (int(xy), int(xy), int(z))
+
+        if self.debug:
+            # hard coding to DK55
+            xy = (10.4 * self.scaling_factor) * 1000
+            z = 20 * 1000
+        else: 
+            xy = (self.sqlController.scan_run.resolution * self.scaling_factor) * 1000
+            z = self.sqlController.scan_run.zresolution * 1000
+        scales = xy, xy, int(z)
         chunks = [64, 64, 64]
-        
-        print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales with {scales}nm')
-        
+        scales = (int(round(xy)), int(round(xy)), int(z))        
+        print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales after rounding with {scales}nm')
         
         ng = NumpyToNeuroglancer(self.animal, volume, scales, layer_type='segmentation', 
             data_type=data_type, chunk_size=chunks)
@@ -396,7 +366,7 @@ class ImageCleaner:
         ##### add segment properties
         print('Adding segment properties')
         cv2 = CloudVolume(cloudpath2, 0)
-        segment_properties = {str(id): str(id) for id in ids}
+        segment_properties = {'255':'shell'}
         ng.add_segment_properties(cv2, segment_properties)
 
         ##### first mesh task, create meshing tasks

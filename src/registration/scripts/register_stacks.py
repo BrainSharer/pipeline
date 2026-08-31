@@ -1115,29 +1115,52 @@ class StackRegistration:
 
     def validate_registration(self):
 
+        ########## Sources
         #moving
-        moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
-        if os.path.exists(moving_path):
-            moving_sitk = sitk.ReadImage(moving_path)
-            print(f'Loading existing moving sitk {moving_path}')
+        moving_source_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
+        if os.path.exists(moving_source_path):
+            moving_sitk = sitk.ReadImage(moving_source_path)
+            print(f'Loading existing moving sitk {moving_source_path}')
         else:
             moving_sitk = self.get_volume(self.moving)
             moving_sitk.SetSpacing(self.moving_spacing)
-            sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt16), moving_path)
-            print(f'Wrote moving image to: {moving_path}')
-
+            sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt8), moving_source_path)
+            print(f'Wrote moving image to: {moving_source_path}')
 
         # fixed    
-        fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
-        if os.path.exists(fixed_path):
-            fixed_sitk = sitk.ReadImage(fixed_path)
-            print(f'Loading existing fixed sitk {fixed_path}')
+        fixed_source_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
+        if os.path.exists(fixed_source_path):
+            fixed_sitk = sitk.ReadImage(fixed_source_path)
+            print(f'Loading existing fixed sitk {fixed_source_path}')
         else:
             fixed_sitk = self.get_volume(self.fixed)
             fixed_sitk.SetSpacing(self.fixed_spacing)
-            sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt16), fixed_path)
-            print(f'Wrote fixed image to: {fixed_path}')
+            sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt8), fixed_source_path)
+            print(f'Wrote fixed image to: {fixed_source_path}')
 
+        ########## Masks
+        ##### moving mask
+        moving_mask_path = os.path.join(self.reg_path, self.moving, f'mask.{self.downsample}.nii')
+        if os.path.exists(moving_mask_path):
+            moving_mask = sitk.ReadImage(moving_mask_path)
+            moving_mask.SetSpacing(self.moving_spacing)
+            print(f'Loading existing moving_mask {moving_mask_path}')
+        else:
+            moving_mask = create_tissue_mask(moving_sitk, threshold=2)
+            moving_mask.SetSpacing(self.moving_spacing)
+            sitk.WriteImage(sitk.Cast(moving_mask, sitk.sitkUInt8), moving_mask_path)
+            print(f'Finished creating moving mask to {moving_mask_path}')
+        ##### fixed mask
+        fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
+        if os.path.exists(fixed_mask_path):
+            fixed_mask = sitk.ReadImage(fixed_mask_path)
+            fixed_mask.SetSpacing(self.fixed_spacing)
+            print(f'Loading existing fixed_mask {fixed_mask_path}')
+        else:
+            fixed_mask = create_tissue_mask(fixed_sitk, threshold=20)
+            fixed_mask.SetSpacing(self.fixed_spacing)
+            sitk.WriteImage(sitk.Cast(fixed_mask, sitk.sitkUInt8), fixed_mask_path)
+            print(f'Finished creating fixed mask to {fixed_mask_path}')
 
 
         registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
@@ -1165,28 +1188,6 @@ class StackRegistration:
             print(f'\tsize: {moving_sitk.GetSize()}')
             return
 
-        ##### moving mask
-        moving_mask_path = os.path.join(self.reg_path, self.moving, f'mask.{self.downsample}.nii')
-        if os.path.exists(moving_mask_path):
-            moving_mask = sitk.ReadImage(moving_mask_path)
-            moving_mask.SetSpacing(self.moving_spacing)
-            print(f'Loading existing moving_mask {moving_mask_path}')
-        else:
-            moving_mask = create_tissue_mask(moving_sitk, threshold=20)
-            moving_mask.SetSpacing(self.moving_spacing)
-            sitk.WriteImage(sitk.Cast(moving_mask, sitk.sitkUInt8), moving_mask_path)
-            print(f'Finished creating moving mask to {moving_mask_path}')
-        ##### fixed mask
-        fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
-        if os.path.exists(fixed_mask_path):
-            fixed_mask = sitk.ReadImage(fixed_mask_path)
-            fixed_mask.SetSpacing(self.fixed_spacing)
-            print(f'Loading existing fixed_mask {fixed_mask_path}')
-        else:
-            fixed_mask = create_tissue_mask(fixed_sitk, threshold=20)
-            fixed_mask.SetSpacing(self.fixed_spacing)
-            sitk.WriteImage(sitk.Cast(fixed_mask, sitk.sitkUInt8), fixed_mask_path)
-            print(f'Finished creating fixed mask to {fixed_mask_path}')
             
         if os.path.exists(registered_mask_path):
             registered_mask = sitk.ReadImage(registered_mask_path)
@@ -1450,6 +1451,37 @@ class StackRegistration:
             masked_file_path = os.path.join(masked_path, f)
             sitk.WriteImage(masked_image, masked_file_path)
 
+    def nii2stack(self):
+        if os.path.exists(self.preview_path):
+            registered_image = sitk.ReadImage(self.preview_path)
+            print(f'Loading existing registered image {self.preview_path}')
+        else: 
+            print(f'Missing: {self.preview_path}')
+
+        volume = sitk.ReadImage(self.preview_path)
+
+        num_slices = volume.GetSize()[2]
+        output_dir = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'registered')
+        os.makedirs(output_dir, exist_ok=True)
+
+
+        # 3. Loop through each slice and save it
+        for i in tqdm(range(num_slices), desc="Creating TIFs from NII"):
+            # Extract the 2D slice along the Z-axis
+            slice_2d = volume[:, :, i]
+            
+            # Optional: Cast to 8-bit unsigned integer if saving to standard formats like PNG/JPG
+            slice_2d = sitk.Cast(sitk.RescaleIntensity(slice_2d), sitk.sitkUInt8)
+            
+            # Generate a sequential file name
+            output_filename = os.path.join(output_dir, f"{i:03d}.tif")
+            
+            # Write the slice to disk
+            sitk.WriteImage(slice_2d, output_filename)
+
+        print(f"Finished writing TIFFs to {output_dir}")
+
+    
 
     @staticmethod
     def transform_points_between_spacings(
@@ -1634,7 +1666,8 @@ if __name__ == '__main__':
         "testing": pipeline.testing,
         "convert_points": pipeline.convert_points,
         "create_masks": pipeline.create_masks,
-        "test_elastix": pipeline.test_elastix
+        "test_elastix": pipeline.test_elastix,
+        "nii2stack": pipeline.nii2stack
     }
 
     if task in function_mapping:
