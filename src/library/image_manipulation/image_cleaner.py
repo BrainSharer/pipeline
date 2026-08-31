@@ -280,8 +280,8 @@ class ImageCleaner:
 
         # 2. Threshold the image to create a binary mask of the brain
         # Adjust the threshold value (127) depending on your image's lighting/contrast
-        blurred = cv2.GaussianBlur(img, (11, 11), 0)
-        _, binary = cv2.threshold(blurred, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        #blurred = cv2.GaussianBlur(img, (11, 11), 0)
+        _, binary = cv2.threshold(img, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
         # Optional: Clean up noise (holes inside or specks outside) using morphology
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
@@ -292,7 +292,7 @@ class ImageCleaner:
         # RETR_EXTERNAL ensures we only get the outermost boundary
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        contours = sorted_contours[:3]        
+        contours = sorted_contours[:10]        
 
         # 4. Create a completely black background of the same size
         output_mask = np.zeros_like(img)
@@ -329,6 +329,8 @@ class ImageCleaner:
                 outpath = os.path.join(output, file)
                 write_image(outpath, border)
             file_list.append(border)
+        if WRITE_MASKS:
+            return
         volume = np.stack(file_list, axis = 0)
         volume = np.swapaxes(volume, 0, 2) # put it in x,y,z format
         #volume = gaussian(volume, 1)  # this is a float array

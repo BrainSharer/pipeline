@@ -1452,16 +1452,18 @@ class StackRegistration:
             sitk.WriteImage(masked_image, masked_file_path)
 
     def nii2stack(self):
-        if os.path.exists(self.preview_path):
-            registered_image = sitk.ReadImage(self.preview_path)
-            print(f'Loading existing registered image {self.preview_path}')
+        #input_path = self.preview_path
+        input_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
+        if os.path.exists(input_path):
+            volume = sitk.ReadImage(input_path)
+            print(f'Loading existing registered image {input_path}')
         else: 
-            print(f'Missing: {self.preview_path}')
+            print(f'Missing: {input_path}')
+            return
 
-        volume = sitk.ReadImage(self.preview_path)
 
         num_slices = volume.GetSize()[2]
-        output_dir = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'registered')
+        output_dir = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'unpacked')
         os.makedirs(output_dir, exist_ok=True)
 
 
@@ -1474,7 +1476,7 @@ class StackRegistration:
             slice_2d = sitk.Cast(sitk.RescaleIntensity(slice_2d), sitk.sitkUInt8)
             
             # Generate a sequential file name
-            output_filename = os.path.join(output_dir, f"{i:03d}.tif")
+            output_filename = os.path.join(output_dir, f"{i:04d}.tif")
             
             # Write the slice to disk
             sitk.WriteImage(slice_2d, output_filename)
