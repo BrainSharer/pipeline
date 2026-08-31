@@ -339,7 +339,7 @@ class ImageCleaner:
 
         if self.debug:
             # hard coding to DK55
-            xy = (10.4 * self.scaling_factor) * 1000
+            xy = 10.4 * 1000
             z = 20 * 1000
         else: 
             xy = (self.sqlController.scan_run.resolution * self.scaling_factor) * 1000
