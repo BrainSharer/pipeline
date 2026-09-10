@@ -346,8 +346,6 @@ class Pipeline(
         print(f'Output: {self.output}')
         print(f'Progress: {self.progress_dir}')
         print(f'Rechunkme: {self.rechunkme_path}')
-        progress_file_count = len(os.listdir(self.progress_dir))
-        full_file_count = len(os.listdir(self.input))
         if os.path.exists(self.rechunkme_path):
             print(f'Rechunkme path already exists: {self.rechunkme_path}')
 

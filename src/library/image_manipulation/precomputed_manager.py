@@ -1,5 +1,8 @@
+import numbers
 import os
 import sys
+from cv2 import threshold
+from cv2 import threshold
 from packaging.version import Version
 import cloudvolume
 from cloudvolume import CloudVolume
@@ -110,16 +113,25 @@ class NgPrecomputedMaker:
         """
 
         image_manager = ImageManager(self.input)
+        resolutions = self.get_scales()
 
         if image_manager.len_files < Z_CHUNK:
             z_chunk = image_manager.len_files
         else:
             z_chunk = Z_CHUNK
-            
-        base_chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
-        scales, resolutions, chunks = self.compute_mipmaps(self.get_scales(), base_chunks)
-        mips = len(scales) - 1  # number of downsampled levels to create (excluding the original)
+        if NgPrecomputedMaker.is_isomorphic(resolutions):
+            base_chunks = [XY_CHUNK, XY_CHUNK, XY_CHUNK]
+        else:                
+            base_chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
+
+        factors, resolutions, chunks = self.compute_mipmaps(self.get_scales(), base_chunks)
+        if self.debug:
+            np.set_printoptions(legacy="1.25")
+            print(f"factors={factors}")
+            print(f"resolutions={resolutions}")
+            print(f"chunks={chunks}")
+        mips = len(factors) - 1  # number of downsampled levels to create (excluding the original)
         outpath = f"file://{self.output}"
         if not os.path.exists(self.rechunkme_path):
             print(f"DIR {self.rechunkme_path} does not exist, exiting.")
@@ -152,10 +164,14 @@ class NgPrecomputedMaker:
         print('Finished transfer task')
 
         for mip in range(0, mips):
-            factor = scales[mip]
+            factor = factors[mip]
             resolution = resolutions[mip]
             chunk_mip = chunks[mip]
-            cv = CloudVolume(outpath, mip)
+            try:
+                cv = CloudVolume(outpath, mip)
+            except Exception as e:
+                print(f"Error opening CloudVolume at mip {mip}: {e}")
+                continue
             print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded={sharded}')
 
             if sharded:
@@ -166,12 +182,107 @@ class NgPrecomputedMaker:
             tq.insert(task)            
             tq.execute()
 
+
+
     @staticmethod
-    def compute_mipmaps(base_resolution, base_chunk_size):        
+    def compute_mipmapsAI(base_resolution, base_chunk):
+
+        """
+        Compute multiscale pyramid for Neuroglancer with:
+        - Continuous anisotropy correction
+        - Adaptive chunk sizing
+        - Max voxel size constraint
+        """
+        n_mips=100
+        base_resolution = np.array(base_resolution, dtype=float)
+        max_voxel_size=512.0
+        anisotropy_alpha=0.5
+
+        rx, ry, rz = base_resolution
+
+        resolutions = []
+        scales = []
+        chunks = []
+
+        current_res = np.array([rx, ry, rz], dtype=float)
+        current_scale = np.array([1.0, 1.0, 1.0])
+
+        for mip in range(n_mips):
+            # Stop if resolution too large
+            if np.max(current_res) > max_voxel_size:
+                break
+
+            resolutions.append(tuple(current_res))
+            scales.append(tuple(current_scale))
+
+            # --- Chunk size scaling ---
+            # Keep chunks ~constant physical size (~64–128 voxels)
+            scale_factor = current_res / np.array(base_resolution)
+            chunk = np.array(base_chunk) / scale_factor
+
+            # Clamp chunk sizes for efficiency
+            chunk = np.clip(chunk, 16, 128)
+            chunk = np.round(chunk).astype(int)
+
+            chunks.append(tuple(chunk))
+
+            # --- Compute next mip scale ---
+            rxy = (current_res[0] + current_res[1]) / 2.0
+            anisotropy = current_res[2] / rxy
+
+            # Smooth Z scaling
+            sz = np.clip(anisotropy ** anisotropy_alpha, 1.0, 2.0)
+
+            # Always downsample XY by 2
+            scale_step = np.array([2.0, 2.0, sz])
+
+            # Update
+            current_res = current_res * scale_step
+            current_scale = current_scale * scale_step
+
+        return resolutions, scales, chunks
+
+    @staticmethod
+    def is_isomorphic(resolution, tolerance=0.05):
+        """
+        Determines if the x, y, and z resolutions are close to isomorphic.
+        
+        Parameters:
+        -----------
+        resolution : tuple or list
+            The spatial resolution or voxel size as (x, y, z), e.g., (10, 10, 10) in microns.
+        tolerance : float, optional
+            The maximum allowed percentage difference between the dimensions (default is 0.05 or 5%).
+            
+        Returns:
+        --------
+        bool
+            True if the resolutions are within the allowed tolerance of each other, False otherwise.
+        """
+        if len(resolution) != 3:
+            raise ValueError("Resolution must contain exactly three dimensions (x, y, z).")
+            
+        # Find the maximum and minimum spacing among the three dimensions
+        max_res = max(resolution)
+        min_res = min(resolution)
+        
+        # Calculate the relative difference based on the largest dimension
+        relative_diff = (max_res - min_res) / max_res
+        
+        return relative_diff <= tolerance
+
+    @staticmethod
+    def compute_mipmaps(base_resolution, base_chunk_size):
+        
         num_mips=100
         base_resolution = np.array(base_resolution, dtype=float)
         max_voxel_size=512.0
-        scales = [(2,2,1)]
+        isomorphic = NgPrecomputedMaker.is_isomorphic(base_resolution)
+        if isomorphic:
+            factors = [(2,2,2)]
+        else:
+            factors = [(2,2,1)]
+
         chunks = []
 
         current_res = base_resolution.copy()
@@ -179,6 +290,8 @@ class NgPrecomputedMaker:
         for mip in range(1, num_mips):
             # --- Continuous anisotropy correction ---
             # Normalize by smallest voxel dimension
+            if np.max(current_res) > max_voxel_size:
+                break            
             min_res = np.min(current_res)
             ratios = current_res / min_res
 
@@ -187,17 +300,17 @@ class NgPrecomputedMaker:
             inv_ratios = 1.0 / ratios
 
             # Normalize to [1, 2] range
-            scale = 1.0 + inv_ratios
-            scale = np.clip(scale, 1.0, 2.0)
+            factor = 1.0 + inv_ratios
+            factor = np.clip(factor, 1.0, 2.0)
 
             # Round to nearest integer (Neuroglancer prefers ints)
-            scale = np.round(scale).astype(int)
+            factor = np.round(factor).astype(int)
 
             # Ensure at least 1x scaling
-            scale = np.maximum(scale, 1)
+            factor = np.maximum(factor, 1)
 
             # --- Apply scaling ---
-            new_res = current_res * scale
+            new_res = current_res * factor
 
             # --- Stop if exceeding max voxel size ---
             if np.any(new_res > max_voxel_size):
@@ -213,23 +326,23 @@ class NgPrecomputedMaker:
             chunks.append(base_chunk_size)
 
             # Store results
-            scales.append(scale)
+            factors.append(factor)
             current_res = new_res
-        scales = [tuple(int(x) for x in s) for s in scales]
+        factors = [tuple(int(x) for x in s) for s in factors]
         resolutions = []
         x,y,z = base_resolution
-        for mip, scale in enumerate(zip(scales)):
+        for mip, factor in enumerate(zip(factors)):
             if mip == 0:
-                x = x * scales[mip][0]
-                y = y * scales[mip][1]
-                z = z * scales[mip][2]
+                x = x * factors[mip][0]
+                y = y * factors[mip][1]
+                z = z * factors[mip][2]
                 resolution = [x, y, z]
             else:
-                x = resolutions[mip-1][0] * scales[mip][0]
-                y = resolutions[mip-1][1] * scales[mip][1]
-                z = resolutions[mip-1][2] * scales[mip][2]
+                x = resolutions[mip-1][0] * factors[mip][0]
+                y = resolutions[mip-1][1] * factors[mip][1]
+                z = resolutions[mip-1][2] * factors[mip][2]
 
             resolution = [float(x), float(y), float(z)]
             resolutions.append(resolution)
 
-        return scales, resolutions, chunks
+        return factors, resolutions, chunks

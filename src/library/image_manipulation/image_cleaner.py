@@ -8,6 +8,9 @@ from PIL import Image
 from cloudvolume import CloudVolume
 from pathlib import Path
 
+import torch
+import torchvision
+
 Image.MAX_IMAGE_PIXELS = None
 import numpy as np
 from tqdm import tqdm
@@ -17,7 +20,7 @@ import cv2
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.filelocation_manager import ALIGNED_DIR, CLEANED_DIR
 from library.image_manipulation.image_manager import ImageManager
-from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, place_image, rotate_image
+from library.utilities.utilities_mask import clean_and_rotate_image, compare_directories, merge_mask, place_image, rotate_image
 from library.utilities.utilities_process import SCALING_FACTOR, read_image, test_dir, write_image
 
 class ImageCleaner:
@@ -270,71 +273,178 @@ class ImageCleaner:
         ##### first mesh task, create meshing tasks
         ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
 
+    def create_hollow_shell(self, image_path):
+        transform = torchvision.transforms.ToTensor()
 
-    @staticmethod
-    def create_hollow_shell(image_path):
+        threshold = 0.975
+        arr = read_image(image_path)
+        if arr.dtype == np.uint8:
+            # 8-bit max value is 255
+            img_float = arr.astype(np.float32) / 255.0
+        elif arr.dtype in [np.uint16, np.int16]:
+            # 16-bit max value is 65535
+            img_float = arr.astype(np.float32) / 65535.0
+            arr = arr.astype(np.uint8)  # Convert to 8-bit for OpenCV operations
+        else:
+            # If already float or another type, handle accordingly
+            img_float = arr.astype(np.float32)
+            
+        img = Image.fromarray(img_float)
+        
+        torch_input = transform(img)
+        torch_input = torch_input.unsqueeze(0)
+        self.loaded_model.eval()
+        with torch.no_grad():
+            pred = self.loaded_model(torch_input)
 
-        # 1. Load the sagittal histology TIF image
-        # Read as grayscale since we only need the structure for segmentation
-        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        raw_masks = pred[0]["masks"]  # Shape is usually (N, 1, H, W)
 
-        # 2. Threshold the image to create a binary mask of the brain
-        # Adjust the threshold value (127) depending on your image's lighting/contrast
-        #blurred = cv2.GaussianBlur(img, (11, 11), 0)
-        _, binary = cv2.threshold(img, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        if raw_masks.shape[0] == 0:
+            print(f'No masks detected for {image_path}. using alterate method.')
+            _, mask = cv2.threshold(arr, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        else:
+            # Squeeze only the channel dimension (dim 1), keeping the object count
+            # Then take the first detected object [0]
+            binary_masks = (raw_masks > threshold).squeeze(1) # Shape: (N, H, W)
+            mask = binary_masks[0].detach().cpu().numpy()     # Shape: (H, W)
 
-        # Optional: Clean up noise (holes inside or specks outside) using morphology
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)  # Fills small holes
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)   # Removes small specks
+        binary = mask.astype(np.uint8)
+        binary[binary > 0] = 255
+        if self.debug:
+            print(f'Binary mask shape={binary.shape} dtype={binary.dtype} unique values={np.unique(binary)}')
+            return binary
+        # 1. Define a structuring element (kernel)
+        # A larger size (e.g., 5x5 or 7x7) increases the effect
+        kernel_size = 5
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
 
-        # 3. Find the contours of the brain section
-        # RETR_EXTERNAL ensures we only get the outermost boundary
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        contours = sorted_contours[:10]        
+        # 2. Erode the mask (shrinks the white shape, removes small noise)
+        # Increase iterations to erode more aggressively
+        eroded_mask = cv2.erode(binary, kernel, iterations=2)
 
-        # 4. Create a completely black background of the same size
-        output_mask = np.zeros_like(img)
+        # 3. Smooth the main mask
+        # Using MORPH_CLOSE fills in small holes/gaps inside the main shape
+        # Using MORPH_OPEN removes ragged edges on the outside
+        binary = cv2.morphologyEx(eroded_mask, cv2.MORPH_CLOSE, kernel)
+        min_area = 100
+        ratio_threshold = 0.1
 
-        # 5. Draw the white border
+        all_contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        sorted_contours = sorted(all_contours, key=cv2.contourArea, reverse=True)
+        top_contours = sorted_contours[:4]
+        valid_contours = [c for c in top_contours if cv2.contourArea(c) >= min_area]
+        largest_area = cv2.contourArea(top_contours[0])
+        filtered_contours = []
+        
+        for c in valid_contours:
+            current_area = cv2.contourArea(c)
+            # Compare current contour size to the largest contour size
+            if (current_area / largest_area) >= ratio_threshold:
+                filtered_contours.append(c)
+            else:
+                # Since they are sorted, if one fails the ratio check, the remaining smaller ones will too
+                break
+            
+        # Create a completely black background of the same size
+        output_mask = np.zeros_like(binary)
+        # Draw the white border
         # -1 draws all found contours (or you can select the largest one if there's noise)
         # thickness=2 sets the line width of the white border; adjust as needed
-        cv2.drawContours(output_mask, contours, -1, (255), thickness=5)
-
-        # 6. Save the final image
+        cv2.drawContours(output_mask, filtered_contours, -1, (255), thickness=8)
         return output_mask
 
 
-    def create_shell(self):
+    def create_hollow_shellXXX(self, image_path):
 
+
+        # 1. Load the sagittal histology TIF image
+        # Read as grayscale since we only need the structure for segmentation
+        # This does not work with the MD brains.
+        min_area = 100
+        ratio_threshold = 0.1
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        binary = img.astype(np.uint8)
+        _, binary = cv2.threshold(binary, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
-        WRITE_MASKS = False
+        big_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, big_kernel)  # Fills small holes
+        all_contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        sorted_contours = sorted(all_contours, key=cv2.contourArea, reverse=True)
+        top_contours = sorted_contours[:4]
+        valid_contours = [c for c in top_contours if cv2.contourArea(c) >= min_area]
+        largest_area = cv2.contourArea(top_contours[0])
+        filtered_contours = []
+        
+        for c in valid_contours:
+            current_area = cv2.contourArea(c)
+            # Compare current contour size to the largest contour size
+            if (current_area / largest_area) >= ratio_threshold:
+                filtered_contours.append(c)
+            else:
+                # Since they are sorted, if one fails the ratio check, the remaining smaller ones will too
+                break
+            
+        # Create a completely black background of the same size
+        output_mask = np.zeros_like(img)
+        # Draw the white border
+        # -1 draws all found contours (or you can select the largest one if there's noise)
+        # thickness=2 sets the line width of the white border; adjust as needed
+        cv2.drawContours(output_mask, filtered_contours, -1, (255), thickness=8)
+        blur_size = 7  # Must be an odd number. Higher = smoother/more rounded
+        blurred = cv2.GaussianBlur(output_mask, (blur_size,blur_size), sigmaX=blur_size, sigmaY=blur_size)
+
+        # 2. Threshold again to snap the soft blur back into a sharp, solid white line
+        _, smoothed_blur = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)        
+
+        # 6. Save the final image
+        return smoothed_blur
+    
+
+
+    def create_aligned_masks(self):
+
         iteration = self.get_alignment_status()
         if iteration is None:
             print('No alignment iterations found.  Please run the alignment steps first.')
             return
-        input = self.fileLocationManager.get_directory(channel=self.channel, downsample=True, inpath=ALIGNED_DIR)
+        input_dir = self.fileLocationManager.get_directory(channel=self.channel, downsample=True, inpath=ALIGNED_DIR)
           
-        if WRITE_MASKS:
-            output = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
-            os.makedirs(output, exist_ok=True)
-        print('with input =', input)
-        files = sorted(os.listdir(input))
-        file_list = []
-        for file in tqdm(files, disable=WRITE_MASKS):
-            filepath = os.path.join(input, file)
-            border = ImageCleaner.create_hollow_shell(filepath)
-            if WRITE_MASKS:
-                outpath = os.path.join(output, file)
-                write_image(outpath, border)
-            file_list.append(border)
-        if WRITE_MASKS:
+        output_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
+        os.makedirs(output_dir, exist_ok=True)
+        print('with input =', input_dir)
+        print('with output =', output_dir)
+        files = sorted(os.listdir(input_dir))
+        ### setup model
+        self.load_machine_learning_model()
+
+        ### done with model setup
+        for file in tqdm(files, disable=self.debug):
+            input_filename = os.path.join(input_dir, file)
+            output_filename = os.path.join(output_dir, file)
+            if os.path.exists(output_filename):
+                continue
+            border = self.create_hollow_shell(input_filename)
+            if border is not None:
+                write_image(output_filename, border)
+
+
+    def create_shell(self):
+
+        self.create_aligned_masks()
+        input_dir = self.fileLocationManager.get_directory(self.channel, self.downsample, inpath='masked_aligned')
+        if not os.path.exists(input_dir):
+            print(f'Missing: {input_dir}')
             return
+          
+        files = sorted(os.listdir(input_dir))
+        file_list = []
+        for file in tqdm(files, disable=self.debug):
+            filepath = os.path.join(input_dir, file)
+            border = read_image(filepath)
+            file_list.append(border)
+
         volume = np.stack(file_list, axis = 0)
         volume = np.swapaxes(volume, 0, 2) # put it in x,y,z format
-        #volume = gaussian(volume, 1)  # this is a float array
-        #volume[volume > 0] = WHITE
         volume = volume.astype(np.uint8)
         #ids = list(np.unique(volume, return_counts=False))
         data_type = volume.dtype
@@ -375,3 +485,4 @@ class ImageCleaner:
         print(f'Creating meshing tasks on volume from {cloudpath2}')
         ##### first mesh task, create meshing tasks
         ng.add_segmentation_mesh(cv2.layer_cloudpath, mip=0)
+
