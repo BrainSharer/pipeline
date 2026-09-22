@@ -140,6 +140,8 @@ class AnnotationSessionController:
         if not annotation_session:
             print("No annotation session for this animal was found.")
             return fiducials
+        else:
+            print(f'Using annotations with ID={annotation_session.id}')
 
         xy_resolution = self.scan_run.resolution
         z_resolution = self.scan_run.zresolution

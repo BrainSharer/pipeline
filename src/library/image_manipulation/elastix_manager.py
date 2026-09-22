@@ -6,10 +6,8 @@ The libraries are contained within the SimpleITK-SimpleElastix library
 
 import os
 import inspect
-import glob
 import shutil
 import sys
-from matplotlib import transforms
 import numpy as np
 from collections import OrderedDict
 from PIL import Image
@@ -24,11 +22,7 @@ from library.image_manipulation.filelocation_manager import ALIGNED, CLEANED_DIR
 from library.utilities.utilities_process import read_image, test_dir, use_scratch_dir, write_image
 from library.utilities.utilities_registration import (
     align_image_to_affine,
-    create_affine_parameters,
-    create_initial_translation,
     create_rigid_parameters,
-    estimate_translation,
-    get_elastix_translation_rigid,
     parameters_to_rigid_transform,
     rescale_transformations,
     tif_to_png,
@@ -50,7 +44,7 @@ class ElastixManager():
 
         self.fileLogger.logevent(f"Input FOLDER (COUNT): {self.input} ({nfiles=})")
 
-        for i in tqdm(range(1, nfiles), desc="Creating within stack transformations"):
+        for i in range(1, nfiles):
             fixed_index = os.path.splitext(files[i - 1])[0]
             moving_index = os.path.splitext(files[i])[0]
             if not self.sqlController.check_elastix_row(self.animal, moving_index, self.iteration):
@@ -59,10 +53,10 @@ class ElastixManager():
 
     def cleanup_fiducials(self):
         self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
+        print(f'Removing points from {self.registration_output}')
         for f in Path(self.registration_output).glob('*_points.txt'):
             try:
                 f.unlink()
-                print(f'Removing {f}')
             except OSError as e:
                 print("Error: %s : %s" % (f, e.strerror))
         self.sqlController.delete_elastix_iteration(self.animal, iteration=REALIGNED)
@@ -116,56 +110,94 @@ class ElastixManager():
 
     def align_images_sitk(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         # Load fixed and moving images
-
+        def load_coordinates(filename):
+            """Open a file containing x,y coordinates, skipping lines that don't have exactly two values."""
+            coordinates = []
+            with open(filename, 'r') as file:
+                for line in file:
+                    # Strip whitespace and split by comma
+                    parts = line.strip().split(' ')
+                    
+                    # Skip empty lines or lines that don't have exactly an x and y value
+                    if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+                        continue
+                        
+                    try:
+                        # Convert coordinate values to float and add to the list
+                        x, y = float(parts[0]), float(parts[1])
+                        coordinates.extend((x, y))
+                    except ValueError:
+                        # Skips line if the values cannot be converted to numbers
+                        continue
+                        
+            return coordinates        
+        
         fixed_file = os.path.join(self.input, f"{fixed_index}.tif")
         fixed = sitk.ReadImage(fixed_file, sitk.sitkFloat32)
 
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, sitk.sitkFloat32)
 
-        # Initial alignment of the centers of the two volumes
-        initial_transform = sitk.CenteredTransformInitializer(
-            fixed, 
-            moving, 
-            sitk.Euler2DTransform(),
-            sitk.CenteredTransformInitializerFilter.GEOMETRY
-        )
+        fixed_point_file = os.path.join(self.registration_output, f'{fixed_index}_points.txt')
+        moving_point_file = os.path.join(self.registration_output, f'{moving_index}_points.txt')
+        num_points = 0
+        if os.path.exists(fixed_point_file) and os.path.exists(moving_point_file):
+            #print(f'Found fixed point file: {os.path.basename(os.path.normpath(fixed_point_file))}', end=" ")
+            #print(f'and moving point file: {os.path.basename(os.path.normpath(moving_point_file))}', end=" ")
+            fixed_landmarks = load_coordinates(filename=fixed_point_file)
+            moving_landmarks = load_coordinates(filename=moving_point_file)
+            #print(f'number of fixed landmarks {len(fixed_landmarks)} number of moving landmarks {len(moving_landmarks)}')
+            num_points = len(moving_landmarks) // 2
+            initial_transform = sitk.Euler2DTransform()
+            initial_transform = sitk.LandmarkBasedTransformInitializer(
+                initial_transform,
+                fixed_landmarks,
+                moving_landmarks,
+            )
+            print(f'initial transform params {initial_transform.GetParameters()}')
+            #new_transform = remove_center_from_transfrom(initial_transform)
+            rotation, xshift, yshift = initial_transform.GetParameters()
+            return float(rotation), float(xshift), float(yshift), float(0)
+        else:
+            # Initial alignment of the centers of the two volumes
+            initial_transform = sitk.CenteredTransformInitializer(
+                fixed, 
+                moving, 
+                sitk.Euler2DTransform(),
+                sitk.CenteredTransformInitializerFilter.GEOMETRY
+            )
+
         # Set up the registration method
-        R = sitk.ImageRegistrationMethod()
-        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-        R.SetMetricSamplingStrategy(R.RANDOM)
-        ##### Masking doesn't seem to help
-        fixed_mask = self.create_tissue_mask(fixed, index=fixed_index)
-        moving_mask = self.create_tissue_mask(moving)
-        R.SetMetricFixedMask(fixed_mask)
-        R.SetMetricMovingMask(moving_mask)        
-        """
-        Use all pixels for registration, this really helps with most images except those that are missing lots of tissue.
-        Using a low percentage also does not help.
-        between sections. 
-        """
-        R.SetMetricSamplingPercentage(0.1)
-        # Interpolator
-        R.SetInterpolator(sitk.sitkLinear)
-        # Optimizer
-        R.SetOptimizerAsRegularStepGradientDescent(
-            learningRate=2,
-            minStep=1e-4,
-            numberOfIterations=1500,
-            gradientMagnitudeTolerance=1e-8
-        )
-        R.SetOptimizerScalesFromPhysicalShift()
-
-        # Initial transform
-        R.SetInitialTransform(initial_transform, inPlace=False)
-        R.SetShrinkFactorsPerLevel([10, 8, 6, 4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([2, 2, 2, 2, 1, 0])
-        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-
+        registration = sitk.ImageRegistrationMethod()
+        registration.SetInitialTransform(initial_transform, inPlace=False)
+        # initial preview image
+        
+        #registration.SetMetricAsCorrelation()
+        #registration.SetMetricAsJointHistogramMutualInformation()
+        registration.SetMetricAsMattesMutualInformation()
+        registration.SetMetricSamplingStrategy(registration.RANDOM)
+        registration.SetMetricSamplingPercentage(0.1)
+        # Optimizer settings.
+        registration.SetOptimizerAsGradientDescent(
+            learningRate=1,
+            numberOfIterations=300,
+            convergenceMinimumValue=1e-6,
+            convergenceWindowSize=10
+        )    
+        # --- Setup Metric, Optimizer, & Interpolator ---
+        registration.SetOptimizerScalesFromPhysicalShift()
+        registration.SetInterpolator(sitk.sitkLinear)    
+        # --- Multi-Resolution ---
+        registration.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+        registration.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
         # Execute registration
-        final_transform = R.Execute(fixed, moving)
-        metric_value = R.GetMetricValue()
-        rotation, xshift, yshift = final_transform.GetParameters()
+        final_transform = registration.Execute(fixed, moving)
+        metric_value = registration.GetMetricValue()
+        print(f'Moving index={moving_index} with {num_points} points', end=" ")
+        print(f"Optimizer's stopping condition, {registration.GetOptimizerStopConditionDescription()}", end=" ")     
+        print(f"Metric: {registration.GetMetricValue():.6f}")
+        new_transform = remove_center_from_transfrom(final_transform)
+        rotation, xshift, yshift = new_transform.GetParameters()
         return float(rotation), float(xshift), float(yshift), float(metric_value)
 
     def align_images_elastix(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
@@ -189,6 +221,8 @@ class ElastixManager():
 
         moving_file = os.path.join(self.input, f"{moving_index}.tif")
         moving = sitk.ReadImage(moving_file, sitk.sitkFloat32)
+        moving.SetSpacing((1.0, 1.0))
+        fixed.SetSpacing((1.0,1.0))
 
         # Set the images in the filter
         elastixImageFilter.SetFixedImage(fixed)
@@ -214,19 +248,13 @@ class ElastixManager():
 
                 elastixImageFilter.SetParameter("Registration", ["MultiMetricMultiResolutionRegistration"])
                 elastixImageFilter.SetParameter("Metric",  ["AdvancedMattesMutualInformation", "CorrespondingPointsEuclideanDistanceMetric"])
-                elastixImageFilter.SetParameter("Metric0Weight", ["0.95"]) # the weight of 1st metric for each resolution
-                elastixImageFilter.SetParameter("Metric1Weight",  ["0.05"]) # the weight of 2nd metric
+                elastixImageFilter.SetParameter("Metric0Weight", ["0.5"]) # the weight of 1st metric for each resolution
+                elastixImageFilter.SetParameter("Metric1Weight",  ["0.5"]) # the weight of 2nd metric
                 elastixImageFilter.SetFixedPointSetFileName(fixed_point_file)
                 elastixImageFilter.SetMovingPointSetFileName(moving_point_file)
             else:
                 return 0.0, 0.0, 0.0, 0.0
 
-        #total_voxels = np.prod(fixed.GetSize())
-        #n_samples = int(max(1000, min(int(total_voxels * 0.2), 2_000_000)))
-        # Set number of spatial samples and sampler type
-        # param_map["NumberOfSpatialSamples"] = [str(n_samples)]
-        #elastixImageFilter.SetParameter("NumberOfSpatialSamples", ["50000"])
-        # param_map["ImageSampler"] = ["RandomCoordinate"]  # random sampling is more robust when tissue missing
 
         if self.debug:
             elastixImageFilter.SetParameter("MaximumNumberOfIterations",  ["500"])
@@ -245,7 +273,21 @@ class ElastixManager():
             elastixImageFilter.PrintParameterMap()
 
         # Execute the registration on GPU
-        elastixImageFilter.Execute()
+        try:
+            elastixImageFilter.Execute()
+        except Exception as e:
+            print(f'Failed registation with {moving_index=}, {fixed_index=}')
+            print(e)
+            exit(0)
+        # Retrieve the resulting transform parameter map(s)
+        if self.debug:
+            transform_maps = elastixImageFilter.GetTransformParameterMap()
+            # Loop through resolutions/maps to inspect properties
+            for i, transform_map in enumerate(transform_maps):
+                print(f"--- Transform Map {i} ---")
+                # You can print the dictionary-like structure to search for metric/stopping status strings
+                for key, value in transform_map.items():
+                    print(f"{key}: {value}")        
 
         metric = self.get_metric(self.logpath)
         R, x, y = elastixImageFilter.GetTransformParameterMap()[0]["TransformParameters"][0:3]
@@ -290,7 +332,7 @@ class ElastixManager():
         image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR))
         center = image_manager.center
         midpoint = image_manager.midpoint 
-        print(f'Using get_transformations iteration={iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
+        #print(f'Using get_transformations iteration={iteration} midfile={os.path.basename(image_manager.midfile)} with center at {center}')
         len_files = len(image_manager.files)
         for i in range(1, len_files):                
             rotation, xshift, yshift = self.sqlController.get_elastix_row(self.animal, i, iteration)
@@ -331,6 +373,7 @@ class ElastixManager():
         transformations0 = self.get_transformations(iteration=ALIGNED)
         transformations1 = self.get_transformations(iteration=REALIGNED)
         transformations = {k: np.dot(transformations0[k], transformations1[k]) for k in transformations0}
+        #transformations = transformations1
 
         if self.downsample:
             transformations = rescale_transformations(transformations, 1)
@@ -454,11 +497,11 @@ class ElastixManager():
     @staticmethod
     def get_metric(logpath):
         metric_value = None
-        filepath = os.path.join(logpath, 'IterationInfo.0.R4.txt')
+        filepath = os.path.join(logpath, 'IterationInfo.0.R5.txt')
         if os.path.exists(filepath):
             with open(filepath) as infile:
                 last_line = infile.readlines()[-1]
-                metric_value = last_line.split('\t')[1]
+                metric_value = last_line.split('\t')[2]
         if metric_value is None:
             metric_value = 0
         return metric_value
@@ -514,3 +557,61 @@ class ElastixManager():
             mask_path = os.path.join(mask_dir, str(index).zfill(3) + ".tif")
             write_image(mask_path, mask_arr)
         return mask
+
+
+def rigid_composite_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
+    """
+    Converts a SimpleITK 2D composite transform (composed of rigid/Euler transforms) 
+    into a single 3x3 homogeneous transformation matrix.
+    """
+    # Initialize as an identity matrix
+    final_matrix = np.eye(3)
+    
+    # Check if it's a composite transform
+    if isinstance(transform, sitk.CompositeTransform):
+        num_transforms = transform.GetNumberOfTransforms()
+        print(f'num transforms {num_transforms}')
+        
+        # SimpleITK evaluates composite transforms from back to front.
+        # To accumulate the matrices correctly (M_final = M_n * ... * M_2 * M_1),
+        # we iterate in reverse order of application (front to back in the stack).
+        for i in range(num_transforms):
+            sub_tx = transform.GetNthTransform(i)
+            sub_matrix = _euler2d_to_matrix3x3(sub_tx)
+            final_matrix = np.dot(sub_matrix, final_matrix)
+    else:
+        # Fallback if a single Euler2DTransform is passed directly
+        final_matrix = _euler2d_to_matrix3x3(transform)
+        
+    return final_matrix
+
+def remove_center_from_transfrom(transform: sitk.Transform) -> np.ndarray:
+    
+    # SimpleITK evaluates composite transforms from back to front.
+    # To accumulate the matrices correctly (M_final = M_n * ... * M_2 * M_1),
+    # we iterate in reverse order of application (front to back in the stack).
+    if isinstance(transform, sitk.CompositeTransform):
+        sub_tx = transform.GetNthTransform(0)
+    else:
+        sub_tx = transform
+
+    sub_tx.SetCenter((0,0))
+        
+    return sub_tx
+
+def _euler2d_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
+    """Helper to convert a single 2D rigid transform to a 3x3 matrix."""
+    # Ensure it's treated as an Euler2DTransform to access specific properties if needed,
+    # or use generic matrix/translation/center accessors.
+    rotation_matrix = np.array(transform.GetMatrix()).reshape(2, 2)
+    translation = np.array(transform.GetTranslation())
+    center = np.array(transform.GetCenter())
+    
+    # Calculate offset: T_total = translation + center - R * center
+    total_translation = translation + center - np.dot(rotation_matrix, center)
+    
+    matrix_3x3 = np.eye(3)
+    matrix_3x3[0:2, 0:2] = rotation_matrix
+    matrix_3x3[0:2, 2] = total_translation
+    
+    return matrix_3x3

@@ -114,19 +114,25 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
     rigid_params["NumberOfResolutions"] = ["6"]
-    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    #rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    #rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    rigid_params["Registration"] = ["MultiResolutionRegistration"]
+    rigid_params["Metric"] = ["AdvancedMeanSquares"]
     rigid_params["Transform"] = ["EulerTransform"]
+
     rigid_params["AutomaticScalesEstimation"] = ["true"]
     # the AdvancedMattesMutualInformation metric really helps with the alignment
-    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     
     rigid_params["UseRandomSampleRegion"] = ["true"]
-    rigid_params["SampleRegionSize"] = ["500"]
+    #rigid_params["SampleRegionSize"] = ["50"]
     rigid_params["ResultImageFormat"] = ["tif"]
-    rigid_params["Interpolator"] = ["NearestNeighborInterpolator"]
-    rigid_params["ResampleInterpolator"] = ["FinalNearestNeighborInterpolator"]
+    rigid_params["Interpolator"] = ["LinearInterpolator"]
+    rigid_params["ResampleInterpolator"] = ["FinalBSplineInterpolator"]
     rigid_params["ImageSampler"] = ["Random"]
+    rigid_params["NumberOfSpatialSamples"] = ["10000"]
+    rigid_params["NewSamplesEveryIteration"] = ["true"]
 
     return rigid_params
 
@@ -409,7 +415,7 @@ def compute_rigid_transformations(input_path):
 
 
     # Initialize the StackReg object for rigid transformation
-    sr = StackReg(StackReg.RIGID_BODY)
+    #sr = StackReg(StackReg.RIGID_BODY)
 
     # Reference image
     reference_image = image_stack[reference_index]
@@ -442,9 +448,9 @@ def compute_rigid_transformations(input_path):
         else:
             reference_image = image_stack[i-1]
             # Compute the transformation matrix
-            transformation_matrix = sr.register(reference_image, moving_image)
+            #transformation_matrix = sr.register(reference_image, moving_image)
             #transformations.append(transformation_matrix)
-            transformations[key] = transformation_matrix
+            #transformations[key] = transformation_matrix
 
     return transformations
 
