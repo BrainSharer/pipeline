@@ -567,12 +567,10 @@ class VolumeRegistration:
     def create_volume(self):
         xy_resolution = self.sqlController.scan_run.resolution
         z_resolution = self.sqlController.scan_run.zresolution
-        #INPUT_DIR = self.fileLocationManager.get_full_aligned()
         INPUT_DIR = self.fileLocationManager.get_thumbnail_aligned()
         image_manager = ImageManager(INPUT_DIR)
         print(f'Using images from {INPUT_DIR} to create volume')
         files = image_manager.files
-
 
         if len(files) == 0:
             print(f"No TIF files found in: {INPUT_DIR}")
@@ -582,14 +580,10 @@ class VolumeRegistration:
 
         slices = []
 
-
         for ffile in tqdm(files, desc='Creating volume'):
             fpath = os.path.join(INPUT_DIR, ffile)
-            #ds = read_and_downsample(fpath, xy_resolution, self.xy_um)
             ds = read_image(fpath)
             slices.append(ds.astype(np.float32))
-
-
 
         volume = np.stack(slices, axis=0)
         img3d = sitk.GetImageFromArray(volume)
@@ -600,8 +594,6 @@ class VolumeRegistration:
                 z_resolution,
             )
         )
-
-        #sitk_image = make_isotropic(img3d, TARGET_SPACING=self.xy_um)
 
         if os.path.exists(self.moving_nii_path):
             print(f'{self.moving_nii_path} exists, removing')

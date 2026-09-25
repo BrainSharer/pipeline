@@ -134,6 +134,7 @@ if __name__ == "__main__":
         "histogram": pipeline.histogram,
         "align": pipeline.align,
         "realign": pipeline.realign,
+        "affine_align":pipeline.affine_align,
         "extra_channel": pipeline.extra_channel,
         "neuroglancer": pipeline.neuroglancer,
         "omezarr": pipeline.omezarr,

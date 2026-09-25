@@ -33,7 +33,7 @@ sys.path.append(PIPELINE_ROOT.as_posix())
 
 
 from library.utilities.utilities_registration import create_affine_parameters
-from library.utilities.utilities_process import M_UM_SCALE
+from library.utilities.utilities_process import M_UM_SCALE, SCALING_FACTOR
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer
 from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
@@ -68,14 +68,15 @@ class StackRegistration:
         fixed_brain_controller = SqlController(self.fixed)
         self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
         self.fixed_z_resolution = fixed_brain_controller.scan_run.zresolution
+        allen_downsample = self.downsample // SCALING_FACTOR
 
         if self.moving == 'Allen':
-            self.moving_spacing = [ round(self.moving_xy_resolution,2), round(self.moving_xy_resolution,2), self.moving_z_resolution ]
+            self.moving_spacing = [ round(self.moving_xy_resolution*allen_downsample,2), round(self.moving_xy_resolution*allen_downsample,2), self.moving_z_resolution ]
         else:
             self.moving_spacing = [ round(self.moving_xy_resolution*self.downsample,2), round(self.moving_xy_resolution*self.downsample,2), self.moving_z_resolution ]
 
         if self.fixed == 'Allen':     
-            self.fixed_spacing = [ round(self.fixed_xy_resolution,2), round(self.fixed_xy_resolution,2), self.fixed_z_resolution ]
+            self.fixed_spacing = [ round(self.fixed_xy_resolution*allen_downsample,2), round(self.fixed_xy_resolution*allen_downsample,2), self.fixed_z_resolution ]
         else:
             self.fixed_spacing = [ round(self.fixed_xy_resolution*self.downsample,2), round(self.fixed_xy_resolution*self.downsample,2), self.fixed_z_resolution ]
 
@@ -177,11 +178,11 @@ class StackRegistration:
         moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path, self.registration_channel)
         moving_sitk.SetSpacing(self.moving_spacing)
         fixed_sitk.SetSpacing(self.fixed_spacing)
-        moving_points = self.get_points_from_db(self.moving)
-        fixed_points = self.get_points_from_db(self.fixed)
+        #moving_points = self.get_points_from_db(self.moving)
+        #fixed_points = self.get_points_from_db(self.fixed)
         print(f'\nMoving sitk info size={moving_sitk.GetSize()} spacing={moving_sitk.GetSpacing()} dimension={moving_sitk.GetNumberOfComponentsPerPixel()}')
         print(f'Fixed sitk info size={fixed_sitk.GetSize()} spacing={fixed_sitk.GetSpacing()} channels={fixed_sitk.GetNumberOfComponentsPerPixel()}')
-        affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk, fixed_points, moving_points)
+        affine_transform = StackRegistration.affine_registration(fixed_sitk, moving_sitk)
         sitk.WriteTransform(affine_transform, self.transform_path)
 
     def get_points_from_db(self, brain):
@@ -744,7 +745,7 @@ class StackRegistration:
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
         registration.SetInitialTransform(initial_transform, inPlace=True)
 
-        registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         final_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
@@ -764,18 +765,22 @@ class StackRegistration:
 
     @staticmethod
     def create_sitk_volume(input_path: str, registration_channel: str = "luminance"):
-        files = sorted(glob.glob(os.path.join(input_path, "*.tif")))
-        if not files or len(files) == 0:
-            print(f'No tifs in {input_path}')
-            exit(0)
-        slices = []
-        for f in tqdm(files, desc="Creating sitk volume"):
-            img = tifffile.imread(f)
-            img = make_registration_image(img, registration_channel, )
-            slices.append(img.astype(np.float32))
-        arr = np.stack(slices, axis=0)
-        return sitk.GetImageFromArray(arr)
+        file_pattern = os.path.join(input_path, "*.tif")  # or '*.tiff'
+        # 2. Get and sort the file names to ensure correct Z-order sequence
+        file_names = sorted(glob.glob(file_pattern))
+        if not file_names:
+            raise FileNotFoundError(f"No TIFF images found matching pattern: {file_pattern}")
 
+        # 3. Initialize the series reader and load the images
+        reader = sitk.ImageSeriesReader()
+        reader.SetFileNames(file_names)
+        # Optional but recommended: Force the TIFF IO backend
+        reader.SetImageIO("TIFFImageIO") 
+
+        # 4. Generate the 3D volume
+        volume = reader.Execute()
+        return volume
+    
     @staticmethod
     def save_tiffs(volume, directory):
         os.makedirs(directory, exist_ok=True)
@@ -1139,17 +1144,6 @@ class StackRegistration:
             print(f'Wrote fixed image to: {fixed_source_path}')
 
         ########## Masks
-        ##### moving mask
-        moving_mask_path = os.path.join(self.reg_path, self.moving, f'mask.{self.downsample}.nii')
-        if os.path.exists(moving_mask_path):
-            moving_mask = sitk.ReadImage(moving_mask_path)
-            moving_mask.SetSpacing(self.moving_spacing)
-            print(f'Loading existing moving_mask {moving_mask_path}')
-        else:
-            moving_mask = create_tissue_mask(moving_sitk, threshold=2)
-            moving_mask.SetSpacing(self.moving_spacing)
-            sitk.WriteImage(sitk.Cast(moving_mask, sitk.sitkUInt8), moving_mask_path)
-            print(f'Finished creating moving mask to {moving_mask_path}')
         ##### fixed mask
         fixed_mask_path = os.path.join(self.reg_path, self.fixed, f'mask.{self.downsample}.nii')
         if os.path.exists(fixed_mask_path):
@@ -1171,7 +1165,9 @@ class StackRegistration:
             if not os.path.exists(self.transform_path):
                 print(f"Missing: {self.transform_path}")
                 exit(1)
-            transform = sitk.ReadTransform(self.transform_path)
+            else:
+                print(f'Loading transform {self.transform_path}')
+                transform = sitk.ReadTransform(self.transform_path)
 
             resample = sitk.ResampleImageFilter()
             resample.SetTransform(transform)
@@ -1182,22 +1178,26 @@ class StackRegistration:
             registered_image.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(registered_image, sitk.sitkUInt16), self.preview_path)
             print(f'Wrote resampled image to: {self.preview_path}')
-
-        if self.debug:
-            print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
-            print(f'\tsize: {moving_sitk.GetSize()}')
-            return
-
             
         if os.path.exists(registered_mask_path):
             registered_mask = sitk.ReadImage(registered_mask_path)
             registered_mask.SetSpacing(self.fixed_spacing)
         else:
-            registered_mask = create_tissue_mask(registered_image, threshold=20)
+            registered_mask = create_tissue_mask(registered_image, threshold=10)
             print('Finished creating registered mask')
             registered_mask.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(registered_mask, sitk.sitkUInt8), registered_mask_path)
 
+        if self.debug:
+            print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
+            print(f'\tsize: {moving_sitk.GetSize()}')
+            print(f'Fixed spacing: {fixed_sitk.GetSpacing()}, ndim: {fixed_sitk.GetDimension()}, channels: {fixed_sitk.GetNumberOfComponentsPerPixel()}')
+            print(f'\tsize: {fixed_sitk.GetSize()}')
+            print(f'Registered spacing: {registered_image.GetSpacing()}, ndim: {registered_image.GetDimension()}, channels: {registered_image.GetNumberOfComponentsPerPixel()}')
+            print(f'\tsize: {registered_image.GetSize()}')
+            return
+
+        
         print(f'Size in voxels, fixed: {fixed_mask.GetSize()} moving: {registered_image.GetSize()}')
         print(f'Resolution in micrometers fixed: {fixed_mask.GetSpacing()} moving: {registered_image.GetSpacing()}')
 

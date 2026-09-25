@@ -68,6 +68,8 @@ def create_tissue_mask(image, threshold=10):
     Assumes background is near zero.
     """
 
+    print('Casting image to int8')
+    image = sitk.Cast(image, sitk.sitkUInt8)
 
     mask = sitk.BinaryThreshold(
         image,
@@ -1017,10 +1019,7 @@ def rgb_channel(
 
     return array[..., index].astype(np.float32)
 
-def make_registration_image(
-    array: np.ndarray,
-    registration_channel: str = "luminance",
-) -> np.ndarray:
+def make_registration_image(array: np.ndarray, registration_channel: str = "luminance",) -> np.ndarray:
     """
     Convert either grayscale or RGB data into a scalar image
     suitable for SimpleITK registration.
@@ -1031,10 +1030,7 @@ def make_registration_image(
     if array.ndim == 2:
         return array.astype(np.float32)
 
-    return rgb_channel(
-        array,
-        registration_channel,
-    )
+    return rgb_channel(array, registration_channel)
 
 
 # ------------------------------------------------------------------
@@ -1052,26 +1048,13 @@ def _resample_scalar_block(
     Resample a scalar ZYX block.
     """
 
-    moving = sitk.GetImageFromArray(
-        src_zyx
-    )
+    moving = sitk.GetImageFromArray(src_zyx)
+    moving = sitk.Cast(moving, sitk.sitkFloat32,)
+    moving.SetSpacing(reference.GetSpacing())
 
-    moving = sitk.Cast(
-        moving,
-        sitk.sitkFloat32,
-    )
+    moving.SetOrigin(src_origin_xyz)
 
-    moving.SetSpacing(
-        reference.GetSpacing()
-    )
-
-    moving.SetOrigin(
-        src_origin_xyz
-    )
-
-    moving.SetDirection(
-        np.eye(3).flatten()
-    )
+    moving.SetDirection(np.eye(3).flatten())
 
     result = sitk.Resample(
         moving,
@@ -1082,9 +1065,7 @@ def _resample_scalar_block(
         sitk.sitkFloat32,
     )
 
-    return sitk.GetArrayFromImage(
-        result
-    )
+    return sitk.GetArrayFromImage(result)
 
 def _resample_rgb_block(
     src_zyxc: np.ndarray,
@@ -1500,3 +1481,46 @@ def get_points_from_db(brain):
 
     return np.array(data)
 
+
+##### padding experiments
+#paddings = {}
+#paddings[32] = (32,32,32)
+#paddings[16] = (32, 0, 256)
+#paddings[8] = (32, 0, 512)
+#paddings[4] = (256, 0, 256)
+#paddings[1] = (32, 0, 1024)
+#chunks = 1,height,width/4
+#exp 1 divisor 4, 32,32,32 big gaps in the X
+#exp 2 divisor 4, 32,32,64 still gaps create registered tiles took 274.49 seconds
+#exp 3 divisor 4, 32,32,128 almost no gaps create registered tiles took 295.76 seconds
+#exp 4,divisor 8, 32,32,128, no good, the spinal cord gets lopped off
+#exp 5,divisor 4, 1,4 horrible
+#exp 6,chunks 16,height/4,width/4 padding=32,32,32 gaps in x,y,z create registered tiles took 35.48 seconds
+#exp 7,chunks 16,height/4,width/4 padding=(4, 38, 72) too many gaps everywhere, create registered tiles took 16.05 seconds
+#exp 8, chunks 64,64,64 padding=32,16,16, horrible, took 1m37.794s
+#exp 9, chunks 64,64,64 padding=16,32,32, horrible, took 1m44.388s
+#exp 10, chunks (1, 1234, 1164), padding 4,32,32, horrible
+#exp 11, chunks (1, 1234, 1164), padding 4,32,291
+#exp 12, chunks (1, 1234, 1164), padding 32,32,291, end lopped off
+#exp 13, chunks (1, 1234, 582), (32, 32, 145), end lopped off
+#exp 13, chunks (1, 1234, 582), (32, 32, 291), end lopped off
+#exp 14, chunks (1, 1234, 582), (64,64,291), end almost all there took 12m27.673s
+#exp 15, chunks (1, 1234, 582), (64,64,64),gaps in X but on lopping, took 9m20.104s
+#exp 16, chunks (1, 1234, 582), (64,4,291) no gaps very small part of spinal cord missing, took 12m53.123s
+#exp 17, chunks (1, 1234, 582), (32,4,291) no gaps, lots of spinal cord missing, took 6m57.830
+#exp 18, chunks (1, 1234, 582), (64,4,64) gaps no lopping 9m46.253s
+#exp 19, chunks (1, 1234, 582), (64,32,64) gaps no lopping 9m31.962s
+#exp 20, chunks (1, 1234, 582), (64,64,64) gaps small lopping
+#exp 21, chunks (57, 154, 291), (64,64,64) gaps, no lopping
+#exp 21, chunks (57, 154, 291), (57, 154, 291), works! 2m25.254s
+#exp 22, chunks (1, 523, 930), (32, 523, 930), works
+#exp 23, chunks (60, 523, 930),(30, 261, 465), works 1m45.298s DK50
+#exp 23, chunks (60, 1047, 930),(30, 523, 465), works 1m19.535s DK50
+#exp 24, chunks (57, 1234, 1164), (28, 617, 582), little in the midsection got lopped off, 1m43.639s, DK62
+#exp 25, chunks (230, 1234, 1164), (115, 617, 582), little in the midsection got lopped off,1m43.639s, DK62
+#exp 26, chunks (57, 1234, 291), (32,32,32), little chopped, 2m DK62
+#exp 27, chunks (57, 1234, 291), (32,64,64), big gaps in X 1m53.235s DK62
+#exp 28, chunks (57, 1234, 291), (32,32,64), big gaps and lopped off 1m53.235s DK62
+#exp 29, chunks (57, 1234, 291), (28, 617, 145), little in the midsection got lopped off,1m59.325s
+#exp 30, chunks (32,32,32), (32,32,32) useless
+#exp 31, chunks (len_files/divisor, height, width/divisor) (chunks/2), works well 3m50.423s DK62

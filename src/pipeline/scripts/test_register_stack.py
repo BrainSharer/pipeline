@@ -1,307 +1,254 @@
-import argparse
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Tuple
 import os
 import numpy as np
-import tifffile as tiff
 import SimpleITK as sitk
-import glob
-from tqdm import tqdm
+from tqdm.contrib import tzip
 
-
-def preprocess(img):
-    # Normalize intensities
-    img = sitk.Normalize(img)
-    
-    # Optional smoothing (helps with damaged tissue)
-    img = sitk.DiscreteGaussian(img, variance=1.0)
-    
-    return img
-
-def detect_image_type(img: np.ndarray):
+def read_tif_stack(directory: str) -> List[sitk.Image]:
     """
-    Detect grayscale vs RGB and bit depth.
-    """
-    if img.ndim == 2:
-        color = "grayscale"
-    elif img.ndim == 3 and img.shape[-1] in [3, 4]:
-        color = "rgb"
-    else:
-        raise ValueError(f"Unsupported image shape: {img.shape}")
-
-    if img.dtype == np.uint8:
-        bit_depth = "8-bit"
-    elif img.dtype == np.uint16:
-        bit_depth = "16-bit"
-    else:
-        raise ValueError(f"Unsupported dtype: {img.dtype}")
-
-    return color, bit_depth
-
-
-def register_slice(fixed_sitk, moving_sitk):
-    """
-    Register moving image to fixed image using SimpleITK.
-    """
-    registration_method = sitk.ImageRegistrationMethod()
-
-    # Metric
-    registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)
-    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
-    registration_method.SetMetricSamplingPercentage(0.2)
-
-    # Interpolator
-    registration_method.SetInterpolator(sitk.sitkLinear)
-
-    # Optimizer
-    registration_method.SetOptimizerAsGradientDescent(
-        learningRate=1.0,
-        numberOfIterations=500,
-        convergenceMinimumValue=1e-6,
-        convergenceWindowSize=10,
-    )
-    registration_method.SetOptimizerScalesFromPhysicalShift()
-
-    # Transform
-    initial_transform = sitk.CenteredTransformInitializer(
-        fixed_sitk,
-        moving_sitk,
-        sitk.Euler2DTransform(),
-        sitk.CenteredTransformInitializerFilter.GEOMETRY,
-    )
-
-    registration_method.SetInitialTransform(initial_transform, inPlace=False)
-
-    # Multi-resolution
-    registration_method.SetShrinkFactorsPerLevel([4, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel([2, 1, 0])
-    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-
-    final_transform = registration_method.Execute(fixed_sitk, moving_sitk)
-
-    # Resample
-    resampled = sitk.Resample(
-        moving_sitk,
-        fixed_sitk,
-        final_transform,
-        sitk.sitkLinear,
-        0.0,
-        moving_sitk.GetPixelID(),
-    )
-
-    return resampled
-
-
-def register_tiff_stack(input_paths, output_dir):
-    """
-    Register a stack of TIFF images to the middle slice.
-
-    Parameters:
-        input_paths (list): List of TIFF file paths
-        output_dir (str): Directory to save registered images
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Load all images
-    #images = [tiff.imread(p) for p in input_paths]
-
-    # Detect type from first image
-    #color, bit_depth = detect_image_type(images[0])
-    #print(f"Detected: {color}, {bit_depth}")
-
-    # Convert all to SITK
-    #sitk_images = [to_sitk(img) for img in images]
-
-    # Choose middle slice as fixed
-    mid_idx = len(input_paths) // 2
-    fixed_path = input_paths[mid_idx]
-    print(f"Using middle slice as fixed image: {fixed_path}")
-    exit(0)
-    fixed = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
-
-    registered_images = []
-
-    for i, moving_path_ in enumerate(tqdm(input_paths)):
-        #print(f"Registering slice {i} → {mid_idx} from path: {moving_path_}")
-        moving = sitk.ReadImage(moving_path_, sitk.sitkFloat32)
-
-        if i == mid_idx:
-            registered = moving
-        else:
-            registered = register_slice(fixed, moving)
-
-        registered_np = sitk.GetArrayFromImage(registered)
-        out_path = os.path.join(output_dir, str(i).zfill(3) + ".tif")
-        tiff.imwrite(out_path, registered_np.astype(np.uint16))
-
-    print(f"Saved {len(registered_images)} registered images to {output_dir}")
-
-
-
-def register_sagittal_slices(
-    tiff_dir,
-    output_dir,
-    reference_index=None):
-    """
-    Register sagittal TIFF slices into a coherent 3D volume.
-
-    Parameters
-    ----------
-    tiff_dir : str
-        Directory containing TIFF slices.
-    output_dir : str
-        Directory to save registered images.
-    reference_index : int or None
-        If None, uses sequential registration. Otherwise registers all slices to this reference.
+    Read TIFF slices in sorted filename order.
 
     Returns
     -------
-    volume_sitk : sitk.Image
-        Registered 3D volume.
-    volume_np : np.ndarray
-        Registered volume as NumPy array (z, y, x).
+    list[sitk.Image]
+        One 2D SimpleITK image per sagittal section.
+    """
+    directory = Path(directory)
+
+    files = sorted(list(directory.glob("*.tif")))
+
+    if not files:
+        raise FileNotFoundError(f"No TIFF files found in {directory}")
+
+    images = []
+
+    for filename in files:
+        image = sitk.ReadImage(str(filename))
+        # Convert RGB/vector images to grayscale.
+        if image.GetNumberOfComponentsPerPixel() > 1:
+            image = sitk.VectorIndexSelectionCast(image, 0)
+
+        image = sitk.Cast(image, sitk.sitkFloat32)
+        images.append(image)
+
+    return images
+
+
+def register_adjacent(fixed: sitk.Image, moving: sitk.Image) -> sitk.Transform:
+    """
+    Register moving to fixed using a rigid 2D transformation.
     """
 
-    # Load sorted TIFF files
-    files = sorted(glob.glob(os.path.join(tiff_dir, "*.tif")))
-    if len(files) == 0:
-        raise ValueError("No TIFF files found.")
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
 
-    print(f"Loaded {len(files)} slices")
+    initial_transform = sitk.Euler2DTransform()
+    initial_transform = sitk.CenteredTransformInitializer(
+        fixed,
+        moving,
+        initial_transform,
+        sitk.CenteredTransformInitializerFilter.GEOMETRY,
+    )
 
-    # Read images
-    images = [sitk.ReadImage(f, sitk.sitkFloat32) for f in files]
+    registration = sitk.ImageRegistrationMethod()
+    # Mutual information is generally robust for microscopy intensity
+    registration.SetMetricAsMattesMutualInformation()
+    registration.SetMetricSamplingStrategy(registration.RANDOM)
+    registration.SetMetricSamplingPercentage(0.1)
+    registration.SetInterpolator(sitk.sitkLinear)
+    # Optimizer settings.
+    registration.SetOptimizerAsGradientDescent(
+        learningRate=1,
+        numberOfIterations=250,
+        convergenceMinimumValue=1e-6,
+        convergenceWindowSize=10)
+    registration.SetOptimizerScalesFromPhysicalShift()
+    registration.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+    registration.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+    registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    registration.SetInitialTransform(initial_transform, inPlace=False)
 
-    # Initialize registration method
-    def create_registration_method():
-        R = sitk.ImageRegistrationMethod()
+    final_transform = registration.Execute(fixed,moving)
 
-        R.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-        R.SetMetricSamplingStrategy(R.RANDOM)
-        R.SetMetricSamplingPercentage(0.5)
+    print(f"Stopping condition, {registration.GetOptimizerStopConditionDescription()}", end=" ")
+    print(f"metric={registration.GetMetricValue():.6f}, iterations={registration.GetOptimizerIteration()}")
 
-        R.SetInterpolator(sitk.sitkLinear)
+    return final_transform
 
-        # from elastix_manager
-        R.SetOptimizerAsRegularStepGradientDescent(
-            learningRate=2,
-            minStep=1e-4,
-            numberOfIterations=250,
-            gradientMagnitudeTolerance=1e-8
+
+def compose_transforms(transforms: List[sitk.Transform]) -> sitk.CompositeTransform:
+    """
+    Compose a sequence of transforms.
+
+    The transforms are applied in sequence:
+
+        T0 -> T1 -> T2 -> ...
+
+    """
+    composite = sitk.CompositeTransform(2)
+
+    for transform in transforms:
+        composite.AddTransform(transform)
+
+    return composite
+
+
+def register_serial_stack(
+    images: List[sitk.Image],
+    reference_index: int = 0,
+) -> Tuple[
+    List[sitk.Transform],
+    List[sitk.CompositeTransform],
+]:
+    """
+    Register every serial section to its adjacent section and construct
+    accumulated transforms to the reference section.
+
+    Parameters
+    ----------
+    images
+        Ordered sagittal sections.
+
+    reference_index
+        Index of the reference section.
+
+    Returns
+    -------
+    adjacent_transforms
+        Pairwise transforms.
+
+    accumulated_transforms
+        Transform for every section mapping it to the reference
+        coordinate system.
+    """
+
+    n = len(images)
+
+    if n == 0:
+        raise ValueError("No images supplied.")
+
+    if not (0 <= reference_index < n):
+        raise ValueError("Invalid reference index.")
+
+    adjacent_transforms = [None] * n
+    accumulated_transforms = [None] * n
+    # Reference section has identity transform.
+    identity = sitk.Euler2DTransform()
+    identity.SetIdentity()
+    accumulated_transforms[reference_index] = (sitk.CompositeTransform(identity))
+
+    # ------------------------------------------------------------
+    # Register sections BEFORE the reference.
+    #
+    # Example:
+    #
+    #   3 -> 2 -> 1 -> 0
+    #
+    # ------------------------------------------------------------
+
+    accumulated = sitk.CompositeTransform(2)
+
+    for i in range(reference_index - 1, -1, -1):
+        fixed = images[i + 1]
+        moving = images[i]
+        print(f"Registering slice {i} -> slice {i + 1}", end=" ")
+        transform = register_adjacent(fixed=fixed, moving=moving,)
+        adjacent_transforms[i] = transform
+        # transform maps i -> i+1.
+        accumulated.AddTransform(transform)
+        accumulated_transforms[i] = sitk.CompositeTransform(accumulated)
+
+    # ------------------------------------------------------------
+    # Register sections AFTER the reference.
+    #
+    # Example:
+    #
+    #   0 -> 1 -> 2 -> 3
+    #
+    # ------------------------------------------------------------
+
+    accumulated = sitk.CompositeTransform(2)
+
+    for i in range(reference_index + 1, n):
+        fixed = images[i - 1]
+        moving = images[i]
+        print(f"Registering slice {i} -> slice {i - 1}", end=" ")
+        transform = register_adjacent(fixed=fixed, moving=moving,)
+        adjacent_transforms[i] = transform
+        accumulated.AddTransform(transform)
+        accumulated_transforms[i] = sitk.CompositeTransform(accumulated)
+
+    return adjacent_transforms, accumulated_transforms
+
+
+def resample_stack(images: List[sitk.Image], transforms: List[sitk.Transform],reference_image: sitk.Image) -> List[sitk.Image]:
+    """
+    Resample all sections into the reference coordinate system.
+    """
+
+    registered = []
+
+    print(f"Resampling slices")
+    for (image, transform) in tzip(images, transforms):
+        result = sitk.Resample(
+            image,
+            reference_image,
+            transform,
+            sitk.sitkLinear,
+            0.0,
+            sitk.sitkFloat32,
         )
-        R.SetOptimizerScalesFromPhysicalShift()
+        registered.append(result)
 
-        # Interpolator
-        R.SetInterpolator(sitk.sitkLinear)
-
-        # Initial transform
-        R.SetInitialTransform(initial_transform, inPlace=False)
-        R.SetShrinkFactorsPerLevel([4, 2, 1])
-        R.SetSmoothingSigmasPerLevel([2, 1, 0])
-        R.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    return registered
 
 
-        return R
+def save_stack(images: List[sitk.Image],output_directory: str):
+    """
+    Save registered sections as TIFF files.
+    """
 
-    registered_images = []
+    output_directory = Path(output_directory)
+    output_directory.mkdir(parents=True, exist_ok=True)
 
-    # Reference slice
-    if reference_index is not None:
-        fixed_image = images[reference_index]
-        registered_images = [None] * len(images)
-
-        for i, moving_image in enumerate(images):
-            print(f"Registering slice {i} to reference {reference_index}")
-
-            initial_transform = sitk.CenteredTransformInitializer(
-                fixed_image,
-                moving_image,
-                sitk.Euler2DTransform(2),
-                sitk.CenteredTransformInitializerFilter.GEOMETRY,
-            )
-
-            R = create_registration_method()
-            R.SetInitialTransform(initial_transform, inPlace=False)
-
-            final_transform = R.Execute(fixed_image, moving_image)
-
-            resampled = sitk.Resample(
-                moving_image,
-                fixed_image,
-                final_transform,
-                sitk.sitkLinear,
-                0.0,
-                moving_image.GetPixelID(),
-            )
-
-            registered_images[i] = resampled
-
-    else:
-        # Sequential registration
-        registered_images.append(images[0])  # first slice unchanged
-
-        for i in tqdm(range(1, len(images))):
-            fixed_image = registered_images[i - 1]
-            moving_image = images[i]
-            #fixed_image = preprocess(fixed_image)
-            #moving_image = preprocess(moving_image)
-            matcher = sitk.HistogramMatchingImageFilter()
-            matcher.SetNumberOfHistogramLevels(256)
-            matcher.SetNumberOfMatchPoints(10)
-            matcher.ThresholdAtMeanIntensityOn()
-            moving_image = matcher.Execute(moving_image, fixed_image)
-            #print(f"Registering slice {i} to slice {i-1}")
-
-            initial_transform = sitk.CenteredTransformInitializer(
-                fixed_image,
-                moving_image,
-                sitk.Euler2DTransform(),
-                sitk.CenteredTransformInitializerFilter.GEOMETRY,
-            )
-
-            R = create_registration_method()
-            R.SetInitialTransform(initial_transform, inPlace=False)
-
-            final_transform = R.Execute(fixed_image, moving_image)
-
-            resampled = sitk.Resample(
-                moving_image,
-                fixed_image,
-                final_transform,
-                sitk.sitkLinear,
-                0.0,
-                moving_image.GetPixelID(),
-            )
-
-            registered_images.append(resampled)
-            registered_np = sitk.GetArrayFromImage(resampled)
-            out_path = os.path.join(output_dir, str(i-1).zfill(3) + ".tif")
-            #print(f"Saving registered slice {i-1} to {out_path}")
-            #print(f"Registered slice {i-1} shape: {registered_np.shape}, dtype: {registered_np.dtype}")
-            tiff.imwrite(out_path, registered_np.astype(np.uint16))
+    for i, image in enumerate(images):
+        filename = output_directory / f"{i:03d}.tif"
+        image = sitk.Cast(image, sitk.sitkUInt16)
+        sitk.WriteImage(image, str(filename))
 
 
-    # Stack into 3D volume
-    volume = sitk.JoinSeries(registered_images)
+def register_tif_directory(input_directory: str, output_directory: str, reference_index: int | None = None):
+    """
+    Complete serial-section registration pipeline.
+    """
 
-    # Convert to numpy (z, y, x)
-    volume_np = sitk.GetArrayFromImage(volume)
+    images = read_tif_stack(input_directory)
 
-    return volume, volume_np
+    if reference_index is None:
+        reference_index = len(images) // 2
 
+    print(f"Loaded {len(images)} sections")
+    print(f"Reference section: {reference_index}")
+
+    adjacent, accumulated = register_serial_stack(images, reference_index=reference_index)
+    reference = images[reference_index]
+    registered = resample_stack(images, accumulated,reference)
+    save_stack(registered, output_directory,)
+
+    return adjacent, accumulated, registered
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Work on Animal")
-    parser.add_argument("--animal", help="Enter the animal", required=True, type=str)
 
-    args = parser.parse_args()
-    animal = args.animal
-    prep_path = f"/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/{animal}/preps"
-    image_path = os.path.join(prep_path, "C1")
-    input_directory = os.path.join(image_path, "thumbnail_cleaned")
-    if not os.path.exists(input_directory):
-        raise ValueError(f"Input directory does not exist: {input_directory}")
-    output_directory = os.path.join(image_path, "registered_to_mid")
-    os.makedirs(output_directory, exist_ok=True)
-    input_files = sorted(glob.glob(os.path.join(input_directory, "*.tif")))
-    volume_sitk, volume_np = register_sagittal_slices(input_directory, output_directory,reference_index=None)
+    input_directory = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK37/preps/C1/thumbnail_cleaned"
+    output_directory = "/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK37/preps/C1/thumbnail_aligned"
+    files = sorted(os.listdir(input_directory))
+    reference_index = len(files) // 2
 
-    print(volume_np.shape)
+    adjacent, accumulated, registered = register_tif_directory(
+        input_directory=input_directory,
+        output_directory=output_directory,
+        reference_index=reference_index,
+    )

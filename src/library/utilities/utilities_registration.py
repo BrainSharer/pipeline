@@ -114,14 +114,14 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
     rigid_params["NumberOfResolutions"] = ["6"]
-    #rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-    #rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
-    rigid_params["Registration"] = ["MultiResolutionRegistration"]
-    rigid_params["Metric"] = ["AdvancedMeanSquares"]
+    # the multi registration and metric really helps with the alignment
+    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    #rigid_params["Registration"] = ["MultiResolutionRegistration"]
+    #rigid_params["Metric"] = ["AdvancedMeanSquares"]
     rigid_params["Transform"] = ["EulerTransform"]
 
     rigid_params["AutomaticScalesEstimation"] = ["true"]
-    # the AdvancedMattesMutualInformation metric really helps with the alignment
 
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
     

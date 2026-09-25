@@ -108,6 +108,110 @@ class ElastixManager():
                     f.write(f'{x} {y}')
                     f.write('\n')
 
+    def affine_align_stack(self):
+        def get_transform_parameters(transform):
+            if isinstance(transform, sitk.CompositeTransform):
+                sub_tx = transform.GetNthTransform(0)
+                # Convert to Euler2DTransform to access rotation angle
+                euler_2d = sitk.Euler2DTransform(sub_tx)
+                # Get the rotation angle in radians
+                rotation = euler_2d.GetAngle()
+                xshift, yshift = euler_2d.GetTranslation()
+            else:
+                rotation = transform.GetAngle()
+                xshift, yshift = transform.GetTranslation()
+            return rotation, xshift, yshift
+
+        
+        #self.transform_method = sitk.AffineTransform(2)
+        transformations = {}
+        self.transform_method = sitk.Euler2DTransform()
+        files, nfiles, *_ = test_dir(self.animal, self.input, self.section_count, True, same_size=True)
+
+        for i in range(1, nfiles):
+            fixed_index = os.path.splitext(files[i - 1])[0]
+            moving_index = os.path.splitext(files[i])[0]
+            transform = self.align_images_sitk(fixed_index, moving_index)
+            transformations[i] = transform
+
+        midpoint = nfiles // 2
+        reference_file = os.path.join(self.input, f"{str(midpoint).zfill(3)}.tif")
+        reference_image = sitk.ReadImage(reference_file, sitk.sitkFloat32)
+
+        transformation_to_previous_sec = {}
+        image_manager = ImageManager(self.fileLocationManager.get_directory(channel=1, downsample=True, inpath=CLEANED_DIR))
+        center = image_manager.center
+        for i in range(1, nfiles):                
+            rotation, xshift, yshift = get_transform_parameters(transformations[i])
+            T = parameters_to_rigid_transform(rotation, xshift, yshift, center)
+            transformation_to_previous_sec[i] = T
+
+        for moving_index in range(nfiles):
+            if moving_index == midpoint:
+                T_composed = np.eye(3)
+            elif moving_index < midpoint:
+                T_composed = np.eye(3)
+                for i in range(midpoint, moving_index, -1):
+                    T_composed = np.dot(np.linalg.inv(transformation_to_previous_sec[i]), T_composed)
+            else:
+                T_composed = np.eye(3)
+                for i in range(midpoint + 1, moving_index + 1):
+                    T_composed = np.dot(transformation_to_previous_sec[i], T_composed)
+
+            moving_file = os.path.join(self.input, f"{str(moving_index).zfill(3)}.tif")
+            moving_image = sitk.ReadImage(moving_file, sitk.sitkFloat32)
+            final_transform = matrix3x3_to_sitk_rigid2d(T_composed)
+            moving_resampled = sitk.Resample(
+                moving_image,
+                reference_image,
+                final_transform,
+                sitk.sitkLinear,
+                0.0,
+                moving_image.GetPixelID(),
+            )
+            file_outpath = os.path.join(self.output, str(moving_index).zfill(3) + ".tif")
+            sitk.WriteImage(sitk.Cast(moving_resampled, sitk.sitkUInt16), file_outpath)
+
+
+        """
+        for moving_index in range(nfiles):
+            if moving_index == midpoint:
+                T_composed = np.eye(3)
+            elif moving_index < midpoint:
+                T_composed = np.eye(3)
+                for i in range(midpoint, moving_index, -1):
+                    matrix_transformation = rigid_composite_to_matrix3x3(transformation_to_previous_sec[i])
+                    T_composed = np.dot(np.linalg.inv(matrix_transformation), T_composed)
+            else:
+                T_composed = np.eye(3)
+                for i in range(midpoint + 1, moving_index + 1):
+                    matrix_transformation = rigid_composite_to_matrix3x3(transformation_to_previous_sec[i])
+                    T_composed = np.dot(matrix_transformation, T_composed)
+
+            final_transform = matrix3x3_to_sitk_rigid2d(T_composed)
+        """
+
+
+
+        """
+        for moving_index in tqdm(range(nfiles)):
+            if moving_index == midpoint:
+                T_composed = self.transform_method
+            elif moving_index < midpoint:
+                T_composed = self.transform_method
+                for i in range(midpoint, moving_index, -1):
+                    transform = transformation_to_previous_sec[i]
+                    T_composed = sitk.CompositeTransform([transform.GetInverse(), T_composed])
+            else:
+                T_composed = self.transform_method
+                for i in range(midpoint + 1, moving_index + 1):
+                    T_composed = sitk.CompositeTransform([transformation_to_previous_sec[i], T_composed])
+        """
+
+
+
+
+
     def align_images_sitk(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         # Load fixed and moving images
         def load_coordinates(filename):
@@ -148,7 +252,7 @@ class ElastixManager():
             moving_landmarks = load_coordinates(filename=moving_point_file)
             #print(f'number of fixed landmarks {len(fixed_landmarks)} number of moving landmarks {len(moving_landmarks)}')
             num_points = len(moving_landmarks) // 2
-            initial_transform = sitk.Euler2DTransform()
+            initial_transform = self.transform_method
             initial_transform = sitk.LandmarkBasedTransformInitializer(
                 initial_transform,
                 fixed_landmarks,
@@ -163,42 +267,35 @@ class ElastixManager():
             initial_transform = sitk.CenteredTransformInitializer(
                 fixed, 
                 moving, 
-                sitk.Euler2DTransform(),
+                self.transform_method,
                 sitk.CenteredTransformInitializerFilter.GEOMETRY
             )
-
+        if self.debug:
+            return initial_transform
         # Set up the registration method
         registration = sitk.ImageRegistrationMethod()
-        registration.SetInitialTransform(initial_transform, inPlace=False)
-        # initial preview image
-        
-        #registration.SetMetricAsCorrelation()
-        #registration.SetMetricAsJointHistogramMutualInformation()
         registration.SetMetricAsMattesMutualInformation()
         registration.SetMetricSamplingStrategy(registration.RANDOM)
         registration.SetMetricSamplingPercentage(0.1)
+        registration.SetInterpolator(sitk.sitkLinear)    
         # Optimizer settings.
         registration.SetOptimizerAsGradientDescent(
             learningRate=1,
-            numberOfIterations=300,
+            numberOfIterations=150,
             convergenceMinimumValue=1e-6,
-            convergenceWindowSize=10
-        )    
+            convergenceWindowSize=10)
         # --- Setup Metric, Optimizer, & Interpolator ---
         registration.SetOptimizerScalesFromPhysicalShift()
-        registration.SetInterpolator(sitk.sitkLinear)    
-        # --- Multi-Resolution ---
         registration.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
         registration.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+        registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+        registration.SetInitialTransform(initial_transform, inPlace=False)
         # Execute registration
         final_transform = registration.Execute(fixed, moving)
-        metric_value = registration.GetMetricValue()
         print(f'Moving index={moving_index} with {num_points} points', end=" ")
         print(f"Optimizer's stopping condition, {registration.GetOptimizerStopConditionDescription()}", end=" ")     
         print(f"Metric: {registration.GetMetricValue():.6f}")
-        new_transform = remove_center_from_transfrom(final_transform)
-        rotation, xshift, yshift = new_transform.GetParameters()
-        return float(rotation), float(xshift), float(yshift), float(metric_value)
+        return final_transform
 
     def align_images_elastix(self, fixed_index: str, moving_index: str) -> tuple[float, float, float, float]:
         """
@@ -570,7 +667,6 @@ def rigid_composite_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
     # Check if it's a composite transform
     if isinstance(transform, sitk.CompositeTransform):
         num_transforms = transform.GetNumberOfTransforms()
-        print(f'num transforms {num_transforms}')
         
         # SimpleITK evaluates composite transforms from back to front.
         # To accumulate the matrices correctly (M_final = M_n * ... * M_2 * M_1),
@@ -585,19 +681,6 @@ def rigid_composite_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
         
     return final_matrix
 
-def remove_center_from_transfrom(transform: sitk.Transform) -> np.ndarray:
-    
-    # SimpleITK evaluates composite transforms from back to front.
-    # To accumulate the matrices correctly (M_final = M_n * ... * M_2 * M_1),
-    # we iterate in reverse order of application (front to back in the stack).
-    if isinstance(transform, sitk.CompositeTransform):
-        sub_tx = transform.GetNthTransform(0)
-    else:
-        sub_tx = transform
-
-    sub_tx.SetCenter((0,0))
-        
-    return sub_tx
 
 def _euler2d_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
     """Helper to convert a single 2D rigid transform to a 3x3 matrix."""
@@ -615,3 +698,43 @@ def _euler2d_to_matrix3x3(transform: sitk.Transform) -> np.ndarray:
     matrix_3x3[0:2, 2] = total_translation
     
     return matrix_3x3
+
+def matrix3x3_to_sitk_rigid2d(matrix_3x3):
+    """
+    Converts a 3x3 augmented linear transformation matrix (2D rotation + translation)
+    into a SimpleITK Euler2DTransform.
+    
+    Parameters:
+    -----------
+    matrix_3x3 : array-like or np.ndarray
+        A 3x3 homogeneous transformation matrix.
+        
+    Returns:
+    --------
+    sitk.Euler2DTransform
+        The initialized SimpleITK 2D rigid transform.
+    """
+    matrix_np = np.array(matrix_3x3, dtype=float)
+    
+    if matrix_np.shape != (3, 3):
+        raise ValueError("The homogeneous matrix must be exactly 3x3 for a 2D transform.")
+        
+    # 1. Extract the 2x2 rotation matrix (top-left block)
+    rotation_matrix = matrix_np[0:2, 0:2]
+    
+    # 2. Extract the translation vector (first two rows of the last column)
+    translation = matrix_np[0:2, 2]
+    
+    # Optional validation: Check if the 2x2 matrix is orthogonal (pure rotation)
+    if not np.allclose(np.dot(rotation_matrix.T, rotation_matrix), np.eye(2), atol=1e-5):
+        print("Warning: The extracted 2x2 matrix is not perfectly orthogonal. "
+              "SimpleITK will force-orthogonalize the rotation component.")
+        
+    # 4. Initialize the SimpleITK Euler2DTransform
+    rigid_transform = sitk.Euler2DTransform()
+    
+    # 5. Load parameters into the transform
+    rigid_transform.SetMatrix(rotation_matrix.ravel(), 1e-4)
+    rigid_transform.SetTranslation(tuple(translation))
+    
+    return rigid_transform

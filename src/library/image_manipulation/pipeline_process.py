@@ -290,6 +290,19 @@ class Pipeline(
 
         print(f'Finished {self.TASK_ALIGN}.')
 
+    def affine_align(self):
+        """Perform the section to section alignment (registration)
+        """
+
+        print("Affine align")
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=CLEANED_DIR)
+        self.output = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath=ALIGNED_DIR)
+        self.registration_output = os.path.join(self.fileLocationManager.prep, 'registration')
+
+        self.affine_align_stack()
+
+        print(f'Finished Affine align.')
+
     def realign(self): 
         """Perform the improvement of the section to section alignment. It will use fiducial points to improve the already
         aligned image stack from thumnbail_aligned. This only needs to be run on downsampled channel 1 images. With the full

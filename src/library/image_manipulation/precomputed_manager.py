@@ -126,11 +126,14 @@ class NgPrecomputedMaker:
             base_chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
         factors, resolutions, chunks = self.compute_mipmaps(self.get_scales(), base_chunks)
-        if self.debug:
+        if self.debug or len(chunks) == 0:
             np.set_printoptions(legacy="1.25")
+            print(f'original scales: {self.get_scales()}')
+            print(f'base chunks {base_chunks} ')
             print(f"factors={factors}")
             print(f"resolutions={resolutions}")
             print(f"chunks={chunks}")
+            return
         mips = len(factors) - 1  # number of downsampled levels to create (excluding the original)
         outpath = f"file://{self.output}"
         if not os.path.exists(self.rechunkme_path):
