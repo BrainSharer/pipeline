@@ -81,7 +81,7 @@ def create_tissue_mask(image, threshold=10):
 
     radius = [2,2,2]
 
-    mask = sitk.BinaryMorphologicalClosing(mask, kernelRadius=radius)
+    mask = sitk.BinaryMorphologicalClosing(mask, radius)
     mask = sitk.BinaryMorphologicalOpening(mask, radius)
     mask = sitk.Cast(mask, sitk.sitkUInt8)
 
