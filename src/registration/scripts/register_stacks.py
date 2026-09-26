@@ -61,9 +61,9 @@ class StackRegistration:
         self.fixed_zarr_path = os.path.join(self.scratch_dir, self.fixed, f'source_aligned.{self.downsample}.zarr')
         self.registered_tif_path = os.path.join(self.scratch_dir, self.moving, f'registered.{self.downsample}')
 
-        moving_brain_controller = SqlController(self.moving)
-        self.moving_xy_resolution = moving_brain_controller.scan_run.resolution
-        self.moving_z_resolution = moving_brain_controller.scan_run.zresolution
+        self.moving_brain_controller = SqlController(self.moving)
+        self.moving_xy_resolution = self.moving_brain_controller.scan_run.resolution
+        self.moving_z_resolution = self.moving_brain_controller.scan_run.zresolution
 
         fixed_brain_controller = SqlController(self.fixed)
         self.fixed_xy_resolution = fixed_brain_controller.scan_run.resolution
@@ -368,7 +368,7 @@ class StackRegistration:
         # chunk 
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
 
-        scales = self.moving_spacing
+        scales = self.fixed_spacing
         scales = tuple(int(s*1000) for s in scales) # convert from microns to nanometers for neuroglancer
         print(f'scales={scales} downsample={self.downsample}')
         num_channels = image_manager.num_channels
@@ -1446,7 +1446,7 @@ class StackRegistration:
 
     def nii2stack(self):
         #input_path = self.preview_path
-        input_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
+        input_path = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.nii')
         if os.path.exists(input_path):
             volume = sitk.ReadImage(input_path)
             print(f'Loading existing registered image {input_path}')
@@ -1466,7 +1466,7 @@ class StackRegistration:
             slice_2d = volume[:, :, i]
             
             # Optional: Cast to 8-bit unsigned integer if saving to standard formats like PNG/JPG
-            slice_2d = sitk.Cast(sitk.RescaleIntensity(slice_2d), sitk.sitkUInt8)
+            slice_2d = sitk.Cast(sitk.RescaleIntensity(slice_2d), sitk.sitkUInt16)
             
             # Generate a sequential file name
             output_filename = os.path.join(output_dir, f"{i:04d}.tif")
@@ -1613,7 +1613,17 @@ class StackRegistration:
 
         
 
-
+    def transform_brain_regions(self):
+        print(f'Transform path: {self.transform_path}')
+        transform = sitk.ReadTransform(self.transform_path)
+        print(transform.GetInverse().GetMatrix())
+        print(transform.GetInverse().GetTranslation())
+        session_ids = [8531, 8532, 8527, 8526, 8533, 8534, 8536, 8535]
+        structures = ['5N_L', '5N_R','6N_L', '6N_R','7N_L','7N_R', 'LC_L','LC_R']
+        for session_id, structure in zip(session_ids, structures):
+            print(structure, session_id, end=" ")
+            volume = self.moving_brain_controller.get_annotation_volume(session_id=session_id)
+            print(type(volume), len(volume))
 
 
                   
@@ -1662,7 +1672,8 @@ if __name__ == '__main__':
         "convert_points": pipeline.convert_points,
         "create_masks": pipeline.create_masks,
         "test_elastix": pipeline.test_elastix,
-        "nii2stack": pipeline.nii2stack
+        "nii2stack": pipeline.nii2stack,
+        "transform_brain_regions": pipeline.transform_brain_regions
     }
 
     if task in function_mapping:
