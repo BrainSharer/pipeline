@@ -278,6 +278,13 @@ class ImageCleaner:
 
         threshold = 0.975
         arr = read_image(image_path)
+        ids = np.unique(arr, return_counts=False)
+        # test for junk images
+        if len(ids) < 25:
+            return np.zeros_like(arr)
+        if self.debug:
+            print('len ids', len(ids), end=" ")
+            print(f': {image_path}')
         if arr.dtype == np.uint8:
             # 8-bit max value is 255
             img_float = arr.astype(np.float32) / 255.0
@@ -310,9 +317,6 @@ class ImageCleaner:
 
         binary = mask.astype(np.uint8)
         binary[binary > 0] = 255
-        if self.debug:
-            print(f'Binary mask shape={binary.shape} dtype={binary.dtype} unique values={np.unique(binary)}')
-            return binary
         # 1. Define a structuring element (kernel)
         # A larger size (e.g., 5x5 or 7x7) increases the effect
         kernel_size = 5
@@ -351,54 +355,7 @@ class ImageCleaner:
         # -1 draws all found contours (or you can select the largest one if there's noise)
         # thickness=2 sets the line width of the white border; adjust as needed
         cv2.drawContours(output_mask, filtered_contours, -1, (255), thickness=8)
-        return output_mask
-
-
-    def create_hollow_shellXXX(self, image_path):
-
-
-        # 1. Load the sagittal histology TIF image
-        # Read as grayscale since we only need the structure for segmentation
-        # This does not work with the MD brains.
-        min_area = 100
-        ratio_threshold = 0.1
-        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        binary = img.astype(np.uint8)
-        _, binary = cv2.threshold(binary, 1, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        big_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, big_kernel)  # Fills small holes
-        all_contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        sorted_contours = sorted(all_contours, key=cv2.contourArea, reverse=True)
-        top_contours = sorted_contours[:4]
-        valid_contours = [c for c in top_contours if cv2.contourArea(c) >= min_area]
-        largest_area = cv2.contourArea(top_contours[0])
-        filtered_contours = []
-        
-        for c in valid_contours:
-            current_area = cv2.contourArea(c)
-            # Compare current contour size to the largest contour size
-            if (current_area / largest_area) >= ratio_threshold:
-                filtered_contours.append(c)
-            else:
-                # Since they are sorted, if one fails the ratio check, the remaining smaller ones will too
-                break
-            
-        # Create a completely black background of the same size
-        output_mask = np.zeros_like(img)
-        # Draw the white border
-        # -1 draws all found contours (or you can select the largest one if there's noise)
-        # thickness=2 sets the line width of the white border; adjust as needed
-        cv2.drawContours(output_mask, filtered_contours, -1, (255), thickness=8)
-        blur_size = 7  # Must be an odd number. Higher = smoother/more rounded
-        blurred = cv2.GaussianBlur(output_mask, (blur_size,blur_size), sigmaX=blur_size, sigmaY=blur_size)
-
-        # 2. Threshold again to snap the soft blur back into a sharp, solid white line
-        _, smoothed_blur = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)        
-
-        # 6. Save the final image
-        return smoothed_blur
-    
+        return output_mask    
 
 
     def create_aligned_masks(self):
@@ -451,8 +408,8 @@ class ImageCleaner:
 
         if self.debug:
             # hard coding to DK55
-            xy = 10.4 * 1000
-            z = 20 * 1000
+            xy = 10 * 1000
+            z = 10 * 1000
         else: 
             xy = (self.sqlController.scan_run.resolution * self.scaling_factor) * 1000
             z = self.sqlController.scan_run.zresolution * 1000

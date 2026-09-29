@@ -11,6 +11,9 @@ import SimpleITK as sitk
 import numpy as np
 from pathlib import Path
 import sys
+from cloudvolume import CloudVolume
+from taskqueue import LocalTaskQueue
+import igneous.task_creation as tc
 
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())

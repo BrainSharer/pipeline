@@ -264,8 +264,6 @@ class AnnotationSessionController:
             print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
             return polygons
         
-        animal = annotation_session.FK_prep_id
-
         if scaling_factor is None:
             um = 1
 
