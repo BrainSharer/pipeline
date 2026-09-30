@@ -115,12 +115,12 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
     rigid_params["NumberOfResolutions"] = ["6"]
     # the multi registration and metric really helps with the alignment
-    #rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
-    #rigid_params["Metric"] = ["AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
-    rigid_params["Registration"] = ["MultiResolutionRegistration"]
-    rigid_params["Metric"] = ["AdvancedMeanSquares"]
+    rigid_params["Registration"] = ["MultiMetricMultiResolutionRegistration"]
+    rigid_params["Metric"] = ["NormalizedMutualInformation", "AdvancedNormalizedCorrelation", "AdvancedMattesMutualInformation"]
+    #rigid_params["Registration"] = ["MultiResolutionRegistration"]
+    #rigid_params["Metric"] = ["AdvancedMeanSquares"]
     rigid_params["Transform"] = ["EulerTransform"]
-
+    rigid_params["NumberOfHistogramBins"] = ["64"]
     rigid_params["AutomaticScalesEstimation"] = ["true"]
 
     rigid_params["Optimizer"] = ["AdaptiveStochasticGradientDescent"]
@@ -131,7 +131,7 @@ def create_rigid_parameters(elastixImageFilter, defaultPixelValue="0.0"):
     rigid_params["Interpolator"] = ["LinearInterpolator"]
     rigid_params["ResampleInterpolator"] = ["FinalBSplineInterpolator"]
     rigid_params["ImageSampler"] = ["Random"]
-    rigid_params["NumberOfSpatialSamples"] = ["20000"]
+    rigid_params["NumberOfSpatialSamples"] = ["10000"]
     rigid_params["NewSamplesEveryIteration"] = ["true"]
 
     return rigid_params
