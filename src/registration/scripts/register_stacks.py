@@ -162,18 +162,8 @@ class StackRegistration:
         else:
             print(f'Creating affine registration in {self.transform_path}')
 
-        if not os.path.exists(self.moving_tif_path):
-            print(f'Exiting, missing: {self.moving_tif_path}')
-            return
-        if not os.path.exists(self.fixed_tif_path):
-            print(f'Exiting, missing: {self.fixed_tif_path}')
-            return
-        if self.debug:
-            print(f'Using moving data from {self.moving_tif_path}')
-            print(f'Using fixed data from {self.fixed_tif_path}')
-            return
-        fixed_sitk = StackRegistration.create_sitk_volume(self.fixed_tif_path, self.registration_channel)
-        moving_sitk = StackRegistration.create_sitk_volume(self.moving_tif_path, self.registration_channel)
+        moving_sitk, fixed_sitk = self.get_moving_fixed()
+
         moving_sitk.SetSpacing(self.moving_spacing)
         fixed_sitk.SetSpacing(self.fixed_spacing)
         moving_points = self.get_points_from_db(self.moving)
@@ -1112,8 +1102,7 @@ class StackRegistration:
         image = StackRegistration.create_sitk_volume(tif_path)
         return image
 
-    def validate_registration(self):
-
+    def get_moving_fixed(self):
         ########## Sources
         # moving
         moving_source_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
@@ -1136,6 +1125,14 @@ class StackRegistration:
             fixed_sitk.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(fixed_sitk, sitk.sitkUInt8), fixed_source_path)
             print(f'Wrote fixed image to: {fixed_source_path}')
+
+        return moving_sitk, fixed_sitk
+
+    def validate_registration(self):
+
+        ########## Sources
+        # moving
+        moving_sitk, fixed_sitk = self.get_moving_fixed()
 
         ########## Masks
         ##### fixed mask
