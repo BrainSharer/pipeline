@@ -225,9 +225,9 @@ class StackRegistration:
         data = []
         for (x,y,z) in db_points:
             # Perform operation on the 3 numbers
-            x *= (M_UM_SCALE / xy_resolution)
-            y *= (M_UM_SCALE / xy_resolution)
-            z *= (M_UM_SCALE / self.fixed_z_resolution)
+            x *= (M_UM_SCALE)
+            y *= (M_UM_SCALE)
+            z *= (M_UM_SCALE)
             data.append((x,y,z))
 
         return data
