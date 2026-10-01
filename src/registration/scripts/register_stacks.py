@@ -29,7 +29,6 @@ import pandas as pd
 from timeit import default_timer as timer
 
 
-
 PIPELINE_ROOT = Path("./src").absolute()
 sys.path.append(PIPELINE_ROOT.as_posix())
 
@@ -47,7 +46,6 @@ from library.image_manipulation.filelocation_manager import FileLocationManager
 class StackRegistration:
 
     RGB_CHANNELS = 3
-
 
     def __init__(self, moving, fixed, downsample=1, registration_channel="luminance", debug=False):
         self.moving = moving
@@ -96,9 +94,7 @@ class StackRegistration:
         self.registration_channel = registration_channel
         self.image_manager = ImageManager(self.moving_tif_path)
 
-
         self.debug = debug
-
 
     def create_zarr(self):
         """
@@ -156,8 +152,6 @@ class StackRegistration:
         print(source.info)
         print(f"Created source Zarr with {_channel_count(source)} channel(s)")
 
-
-
     def create_transform(self):
         if self.downsample < 32:
             print(f'Downsample is too high: {self.downsample}')
@@ -195,13 +189,13 @@ class StackRegistration:
         points['DK55'] = [
             [0.012119069695472717, 0.006376158911734819, 0.0035099999513477087],
             [0.012223436497151852, 0.006139863282442093, 0.0063299997709691525],
-            [0.01276596449315548, 0.006230868399143219, 0.004530000034719706],
-            [0.012741747312247753, 0.006207763217389584, 0.005271818023175001],
+            [0.012750492431223392, 0.006222760304808617, 0.004530000034719706],
+            [0.012743841856718063, 0.006213141139596701, 0.005270000081509352],
             [0.012955991551280022, 0.007423400413244963, 0.0037899999879300594],
             [0.013092001900076866, 0.007213350851088762, 0.0062699997797608376],
             [0.01262159738689661, 0.005424220114946365, 0.003930000122636557],
-            [0.012653084471821785, 0.005337724927812815, 0.005710000172257423]        
-        ]
+            [0.012653084471821785, 0.005337724927812815, 0.005710000172257423]   
+            ]
         points['Allen'] = [
             [0.01019303, 0.00528655, 0.00409163],
             [0.01019342, 0.00528553, 0.00729279],
@@ -288,19 +282,16 @@ class StackRegistration:
 
         print(f"Finished writing TIFFs to {self.registered_tif_path}")
 
-
-
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"create registered tiles took {total_elapsed_time} seconds")
-
 
     def create_registered_tiles(self):
         start_time = timer()
         if os.path.exists(self.registered_zarr_path):
             print(f'Remove zarr output exists: {self.registered_zarr_path}')
             shutil.rmtree(self.registered_zarr_path)
-            
+
         if not os.path.exists(self.transform_path):
             print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
             exit(0)
@@ -340,13 +331,12 @@ class StackRegistration:
             spacing_zyx=self.fixed_spacing[::-1],
             background_color=self.image_manager.get_bgcolor()
         )
-        
+
         registered_volume = zarr.open(self.registered_zarr_path, mode='r')
         print(registered_volume.info)
         end_time = timer()
         total_elapsed_time = round((end_time - start_time), 2)
         print(f"create registered tiles took {total_elapsed_time} seconds")
-
 
     def create_tifs(self):
         """
@@ -376,9 +366,8 @@ class StackRegistration:
 
         print(f"Finished writing TIFFs to {self.registered_tif_path}")
 
-
     def create_neuroglancer(self):
-            
+
         neuroglancer_path = os.path.join(self.base_path, self.moving, 'www', 'neuroglancer_data') 
         rechunkme_path = os.path.join(neuroglancer_path, 'registered_rechunkme')
         progress_dir = os.path.join(neuroglancer_path, 'registered_progress')
@@ -391,7 +380,7 @@ class StackRegistration:
             print(f'No registered TIFs to work with: {lfiles}')
             exit(0)
 
-        # chunk 
+        # chunk
         chunks = [image_manager.height//4, image_manager.width//4, 1] # 1796x984
 
         scales = self.fixed_spacing
@@ -430,13 +419,13 @@ class StackRegistration:
         if not os.path.exists(rechunkme_path):
             print(f"DIR {rechunkme_path} does not exist, exiting.")
             sys.exit()
-        
+
         cloudpath = f"file://{rechunkme_path}"
         workers = 4
         tq = LocalTaskQueue(parallel=workers)
 
         print(f'Writing transfer task with {workers} workers')
-        # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
+        # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.
 
         task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks[0], mip=0, skip_downsamples=True)
 
@@ -454,7 +443,7 @@ class StackRegistration:
             print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution}')
 
             task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
-            
+
             tq.insert(task)            
             tq.execute()
         print('Finished creating precomputed data')        
@@ -474,8 +463,6 @@ class StackRegistration:
         scales, resolutions, chunks = NgPrecomputedMaker.compute_mipmaps((x,y,z), base_chunks)
         for s,r,c in zip(scales, resolutions, chunks):
             print(f'scale={s}, resolution={r}, chunk={c}')
-
-
 
     @staticmethod
     def read_tiff_delayed(path: str):
@@ -568,7 +555,6 @@ class StackRegistration:
         )
 
         return volume
-    
 
     @staticmethod
     def build_dask_array_from_folderV0(folder: str, pattern: str = "*.tif", sample_index: int = 0):
@@ -722,7 +708,6 @@ class StackRegistration:
         print(f"Affine registration with fixed image size {fixed.GetSize()} and moving image size {moving.GetSize()}")
         print(f"Fixed image spacing: {fixed.GetSpacing()}, Moving image spacing: {moving.GetSpacing()}")
 
-
         registration = sitk.ImageRegistrationMethod()
         # Correlation works much better than MattesMutual!!!
         registration.SetMetricAsCorrelation()
@@ -764,15 +749,13 @@ class StackRegistration:
         registration.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
         registration.SetInitialTransform(initial_transform, inPlace=True)
 
-        #registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
+        # registration.AddCommand(sitk.sitkIterationEvent, lambda: command_iteration(registration))
         final_transform = registration.Execute(fixed, moving)
 
         print("Affine done. Final metric:", registration.GetMetricValue())
         print("Optimizer's stopping condition: ", registration.GetOptimizerStopConditionDescription())
 
         return final_transform
-
-
 
     @staticmethod
     def sitk_to_dask(image):
@@ -799,7 +782,7 @@ class StackRegistration:
         # 4. Generate the 3D volume
         volume = reader.Execute()
         return volume
-    
+
     @staticmethod
     def save_tiffs(volume, directory):
         os.makedirs(directory, exist_ok=True)
@@ -816,9 +799,6 @@ class StackRegistration:
         stack_path = os.path.join(directory, "stack.tif")
         tifffile.imwrite(stack_path, arr)
         print(f"Saved registered volume as individual tiffs in {directory} and as stack in {stack_path}")
-
-
-
 
     @staticmethod
     def process_volume(
@@ -853,7 +833,6 @@ class StackRegistration:
         )
 
         iterator = product(range(nblocks[0]),range(nblocks[1]),range(nblocks[2]))
-
 
         iterator = tqdm(
             iterator,
@@ -1105,9 +1084,6 @@ class StackRegistration:
 
         return (z_slice, y_slice, x_slice)
 
-
-
-
     def status(self):
         print(f'Moving spacing: {self.moving_spacing}')
         print(f'Fixed spacing: {self.fixed_spacing}')
@@ -1136,11 +1112,10 @@ class StackRegistration:
         image = StackRegistration.create_sitk_volume(tif_path)
         return image
 
-
     def validate_registration(self):
 
         ########## Sources
-        #moving
+        # moving
         moving_source_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
         if os.path.exists(moving_source_path):
             moving_sitk = sitk.ReadImage(moving_source_path)
@@ -1151,7 +1126,7 @@ class StackRegistration:
             sitk.WriteImage(sitk.Cast(moving_sitk, sitk.sitkUInt8), moving_source_path)
             print(f'Wrote moving image to: {moving_source_path}')
 
-        # fixed    
+        # fixed
         fixed_source_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
         if os.path.exists(fixed_source_path):
             fixed_sitk = sitk.ReadImage(fixed_source_path)
@@ -1175,7 +1150,6 @@ class StackRegistration:
             sitk.WriteImage(sitk.Cast(fixed_mask, sitk.sitkUInt8), fixed_mask_path)
             print(f'Finished creating fixed mask to {fixed_mask_path}')
 
-
         if os.path.exists(self.preview_path):
             registered_image = sitk.ReadImage(self.preview_path)
             print(f'Loading existing registered image {self.preview_path}')
@@ -1196,7 +1170,7 @@ class StackRegistration:
             registered_image.SetSpacing(self.fixed_spacing)
             sitk.WriteImage(sitk.Cast(registered_image, sitk.sitkUInt16), self.preview_path)
             print(f'Wrote resampled image to: {self.preview_path}')
-            
+
         registered_mask_path = os.path.join(self.reg_path, self.moving, f'registered_mask.{self.downsample}.nii')
         if os.path.exists(registered_mask_path):
             registered_mask = sitk.ReadImage(registered_mask_path)
@@ -1216,7 +1190,6 @@ class StackRegistration:
             print(f'\tsize: {registered_image.GetSize()}')
             return
 
-        
         print(f'Size in voxels, fixed: {fixed_mask.GetSize()} moving: {registered_image.GetSize()}')
         print(f'Resolution in micrometers fixed: {fixed_mask.GetSpacing()} moving: {registered_image.GetSpacing()}')
 
@@ -1234,7 +1207,6 @@ class StackRegistration:
         print(f"Moving volume:         {metrics.moving_volume:,.1f} µm³")
         print(f"Intersection volume:   {metrics.intersection_volume:,.1f} µm³")        
 
-
         """
         intersection = sitk.And(fixed_mask, moving_mask)
         print(f'intersection size: {intersection.GetSize()} depth: {intersection.GetDepth()} spacing: {intersection.GetSpacing()}')
@@ -1244,7 +1216,6 @@ class StackRegistration:
         moving_only = moving_mask & ~fixed_mask        
         print(f'moving only size: {moving_only.GetSize()} depth: {moving_only.GetDepth()} spacing: {moving_only.GetSpacing()}')
         """
-
 
     def convert_points(self):
         """ Session IDs for volumes in the DB
@@ -1268,21 +1239,19 @@ class StackRegistration:
                 print(f'No data for {annotation_session.FK_prep_id} was found. {ke}')
                 return
 
-
             for row in data:
                 if 'childJsons' not in row:
                     return
                 for child in row['childJsons']:
                     xm0,ym0,zm0 = child['pointA']
-                    #convert to um from meters
+                    # convert to um from meters
                     xm0 = xm0 * M_UM_SCALE   # in µm
                     ym0 = ym0 * M_UM_SCALE      # in µm
                     zm0 = zm0 * M_UM_SCALE      # in µm
                     # need to convert these to the same physical space as the transform = 1/32
-                    #xm0 = xm0 / self.fixed_xy_resolution
-                    #ym0 = ym0 / self.fixed_xy_resolution
-                    #zm0 = zm0 / self.fixed_z_resolution
-
+                    # xm0 = xm0 / self.fixed_xy_resolution
+                    # ym0 = ym0 / self.fixed_xy_resolution
+                    # zm0 = zm0 / self.fixed_z_resolution
 
                     if transform is None:
                         xt, yt, zt = (xm0, ym0, zm0) # transformed data to fixed space in µm
@@ -1304,9 +1273,9 @@ class StackRegistration:
                         
                         #xt, yt, zt = transform.GetInverse().TransformPoint((xm0, ym0, zm0)) # transformed data to fixed space in µm
                         """
-                    #xt /= self.fixed_xy_resolution
-                    #yt /= self.fixed_xy_resolution
-                    #zt /= self.fixed_z_resolution
+                    # xt /= self.fixed_xy_resolution
+                    # yt /= self.fixed_xy_resolution
+                    # zt /= self.fixed_z_resolution
 
                     section = int(np.round(zt))
                     registered_polygons[section].append((yt, xt))
@@ -1319,8 +1288,8 @@ class StackRegistration:
 
             return np.mean(zyx_list, axis=0)
 
-        #fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
-        #moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
+        # fixed_sessions = {'5N_L':8464, '5N_R':8465, '6N_L':8527, '6N_R':8526}
+        # moving_sessions = {'5N_L':7934, '5N_R':7935, '6N_L':7936, '6N_R':7937}
         moving_sessions = {'SC':7432, '6N_L':7411}
         fixed_sessions = {'SC':7706, '6N_L':611}
         transform = sitk.ReadTransform(self.transform_path)
@@ -1347,7 +1316,7 @@ class StackRegistration:
                 mz,my,mx = create_com_from_db(session_id=moving_session_id, transform=transform)
             except:
                 print(f'Error getting com for {moving_session_id}')    
-             
+
             fz,fy,fx = create_com_from_db(session_id=fixed_session_id, transform=None)
             distance = math.dist((mx, my, mz),
                                 (fx, fy, fz))        
@@ -1367,9 +1336,9 @@ class StackRegistration:
                     "change z": abs(mz - fz),
                     "Distance um": distance
                 }
-            
+
             data.append(row_dict)
- 
+
         df = pd.DataFrame(data=data)
         df = df.round(0)
         df['mx'] = df['mx'].astype(int)
@@ -1406,14 +1375,14 @@ class StackRegistration:
         for f in tqdm(files[200:250], desc="creating 2D masks", disable=self.debug):
             tif_path = os.path.join(self.registered_tif_path, f)
             image = sitk.ReadImage(tif_path, sitk.sitkUInt8)
-            #image = sitk.VectorIndexSelectionCast(image, 1)
+            # image = sitk.VectorIndexSelectionCast(image, 1)
             mask = create_mask(image)
             masked_image = sitk.Mask(image, mask)
             masked_file_path = os.path.join(masked_path, f)
             sitk.WriteImage(masked_image, masked_file_path)
 
     def nii2stack(self):
-        #input_path = self.preview_path
+        # input_path = self.preview_path
         input_path = os.path.join(self.reg_path, self.moving, f'{self.moving}_{self.fixed}_registered.{self.downsample}.nii')
         if os.path.exists(input_path):
             volume = sitk.ReadImage(input_path)
@@ -1422,29 +1391,25 @@ class StackRegistration:
             print(f'Missing: {input_path}')
             return
 
-
         num_slices = volume.GetSize()[2]
         output_dir = os.path.join(self.base_path, self.moving, 'preps', 'C1', 'unpacked')
         os.makedirs(output_dir, exist_ok=True)
-
 
         # 3. Loop through each slice and save it
         for i in tqdm(range(num_slices), desc="Creating TIFs from NII"):
             # Extract the 2D slice along the Z-axis
             slice_2d = volume[:, :, i]
-            
+
             # Optional: Cast to 8-bit unsigned integer if saving to standard formats like PNG/JPG
             slice_2d = sitk.Cast(sitk.RescaleIntensity(slice_2d), sitk.sitkUInt16)
-            
+
             # Generate a sequential file name
             output_filename = os.path.join(output_dir, f"{i:04d}.tif")
-            
+
             # Write the slice to disk
             sitk.WriteImage(slice_2d, output_filename)
 
         print(f"Finished writing TIFFs to {output_dir}")
-
-    
 
     @staticmethod
     def transform_points_between_spacings(
@@ -1510,10 +1475,9 @@ class StackRegistration:
 
         return target_points
 
-
     def test_elastix(self):
 
-        #moving
+        # moving
         moving_path = os.path.join(self.reg_path, self.moving, f'source.{self.downsample}.nii')
         if os.path.exists(moving_path):
             moving_sitk = sitk.ReadImage(moving_path)
@@ -1526,7 +1490,7 @@ class StackRegistration:
         print(f'Moving spacing: {moving_sitk.GetSpacing()}, ndim: {moving_sitk.GetDimension()}, channels: {moving_sitk.GetNumberOfComponentsPerPixel()}')
         print(f'\tsize: {moving_sitk.GetSize()}')
 
-        # fixed    
+        # fixed
         fixed_path = os.path.join(self.reg_path, self.fixed, f'source.{self.downsample}.nii')
         if os.path.exists(fixed_path):
             fixed_sitk = sitk.ReadImage(fixed_path)
@@ -1547,8 +1511,8 @@ class StackRegistration:
         elastixImageFilter.SetParameter("ResultImageFormat", "nii")
         elastixImageFilter.SetParameter("NumberOfResolutions", "6") #### Very important, less than 6 gives lousy results.
         elastixImageFilter.SetParameter("DefaultPixelValue", "0")
-        #elastixImageFilter.SetParameter("ComputeZYX", "true")
-        
+        # elastixImageFilter.SetParameter("ComputeZYX", "true")
+
         elastixImageFilter.PrintParameterMap
         elastixImageFilter.SetLogToFile(True)
         elastixImageFilter.LogToConsoleOff()
@@ -1559,7 +1523,7 @@ class StackRegistration:
         elastixImageFilter.SetOutputDirectory(output_directory)
         elastixImageFilter.PrintParameterMap()
         resultImage = elastixImageFilter.Execute()
-                
+
         resultImage = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt16)
 
         sitk.WriteImage(resultImage, "reg.volume.nii")
@@ -1592,11 +1556,10 @@ class StackRegistration:
         xy_resolution = self.moving_brain_controller.scan_run.resolution
         z_resolution = self.moving_brain_controller.scan_run.zresolution
 
-
         volume = np.zeros((z_length, h, w), dtype=np.int32)  # Initialize the volume with zeros
         print(f'Transform path: {self.transform_path}')
-        session_ids = [8531, 8532, 8527, 8526, 8533, 8534, 8536, 8535]
-        structures = ['5N_L', '5N_R','6N_L', '6N_R','7N_L','7N_R', 'LC_L','LC_R']
+        session_ids = [8531, 8532, 8540, 8541, 8533, 8534, 8536, 8535]
+        structures = ["5N_L", "5N_R", "6N_L", "6N_R", "7N_L", "7N_R", "LC_L", "LC_R"]
         color_ids = [621,621,653,653,661,661,147,147]
 
         for z in tqdm(range(volume.shape[0]), desc="Drawing brain regions"):
@@ -1608,14 +1571,13 @@ class StackRegistration:
                     if int(z) == int(section):
                         vertices = np.array(points)
                         vertices = vertices / xy_resolution / self.downsample
-                        #print(np.min(vertices), np.max(vertices))
+                        # print(np.min(vertices), np.max(vertices))
                         points = (vertices).astype(np.int32)
-                        #cv2.polylines(volume_slice, [points], isClosed=True, color=color_id, thickness=2)
+                        # cv2.polylines(volume_slice, [points], isClosed=True, color=color_id, thickness=2)
                         cv2.fillPoly(volume_slice, [points], color=color_id)
             volume[z,:,:] = volume_slice
 
         return volume
-
 
     def transform_brain_regions(self):
         print(f'Transform path: {self.transform_path}')
@@ -1641,7 +1603,7 @@ class StackRegistration:
         resample.SetReferenceImage(fixed_sitk)
         resample.SetDefaultPixelValue(moving_sitk.GetPixelID())
         registered_image = resample.Execute(moving_sitk)
-        #registered_image.SetSpacing(self.fixed_spacing)
+        # registered_image.SetSpacing(self.fixed_spacing)
         print(f'Reg image spacing: {registered_image.GetSpacing()}')
         volume = sitk.Cast(registered_image, sitk.sitkInt32)
         volume = sitk.GetArrayFromImage(registered_image)
@@ -1699,17 +1661,11 @@ class StackRegistration:
         tq.insert(tasks)
         tq.execute()
 
-
         print('Creating meshing manifest tasks')
         tasks = tc.create_mesh_manifest_tasks(vol.layerpath) # The second phase of creating mesh
         tq.insert(tasks)
         tq.execute()
 
-
-
-
-
-                  
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Work on Animal')
