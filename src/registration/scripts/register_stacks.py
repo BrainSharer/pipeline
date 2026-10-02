@@ -174,6 +174,12 @@ class StackRegistration:
         sitk.WriteTransform(affine_transform, self.transform_path)
 
     def get_points_from_db(self, brain):
+        """
+        Data from neuroglancer is stored as JSON and the centroids are in meters.
+        We use the M_UM_SCALE constant to convert to micrometers which is what
+        SimpleITK wants.
+        """
+
         points = {}
 
         points['DK55'] = [
@@ -196,28 +202,15 @@ class StackRegistration:
             [0.01070959, 0.00427799, 0.004731979999999999],
             [0.0107099, 0.00427852, 0.00665216]
         ]
-        db_points = None
-        z_resolution = 20.0
-        xy_resolution = {}
-        if brain == 'MD585':
-            xy_resolution = 0.452 * self.downsample
-        elif brain == 'Allen':
-            xy_resolution = 10.0
-            z_resolution = 10.0
-        else:
-            xy_resolution = 0.325 * self.downsample
 
-        try:
-            db_points = points[brain]
-        except KeyError:
-            return None
-
+        db_points = points.get(brain, None)
+        
         data = []
         for (x,y,z) in db_points:
-            # Perform operation on the 3 numbers
-            x *= (M_UM_SCALE)
-            y *= (M_UM_SCALE)
-            z *= (M_UM_SCALE)
+            # Convert to um
+            x *= M_UM_SCALE
+            y *= M_UM_SCALE
+            z *= M_UM_SCALE
             data.append((x,y,z))
 
         return data
@@ -232,25 +225,15 @@ class StackRegistration:
             print(f"Transform file {self.transform_path} does not exist, cannot create registered volume")
             exit(0)
         transform = sitk.ReadTransform(self.transform_path)
-        if not os.path.exists(self.moving_zarr_path):
-            print(f'Missing moving: {self.moving_zarr_path}')
-            exit(0)
-        if not os.path.exists(self.fixed_zarr_path):
-            print(f'Missing fixed: {self.fixed_zarr_path}')
-            exit(0)
         if os.path.exists(self.registered_tif_path):
             print(f'Removing: {self.registered_tif_path}')
             shutil.rmtree(self.registered_tif_path)
         os.makedirs(self.registered_tif_path, exist_ok=True)
         # open zarrs
-        moving_zarr = zarr.open(self.moving_zarr_path, mode='r')
-        print(moving_zarr.info)
-        fixed_zarr = zarr.open(self.fixed_zarr_path, mode='r')
-        print(fixed_zarr.info)
-        moving_sitk = sitk.GetImageFromArray(moving_zarr[:])
-        moving_sitk.SetSpacing(self.moving_spacing)
-        fixed_sitk = sitk.GetImageFromArray(fixed_zarr[:])
-        fixed_sitk.SetSpacing(self.fixed_spacing)
+        moving_sitk, fixed_sitk = self.get_moving_fixed()
+        print(f'Moving spacing {moving_sitk.GetSpacing()}')
+        print(f'Fixed spacing {fixed_sitk.GetSpacing()}')
+        
         # register
         resample = sitk.ResampleImageFilter()
         resample.SetTransform(transform)
@@ -722,8 +705,7 @@ class StackRegistration:
                     fixed,
                     moving,
                     fixed_landmarks,
-                    moving_landmarks)
-            )
+                    moving_landmarks))
         else:
             print("No landmarks supplied; using geometry initialization.")
             initial_transform = sitk.CenteredTransformInitializer(

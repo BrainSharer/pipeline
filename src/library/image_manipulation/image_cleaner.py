@@ -414,7 +414,7 @@ class ImageCleaner:
             xy = (self.sqlController.scan_run.resolution * self.scaling_factor) * 1000
             z = self.sqlController.scan_run.zresolution * 1000
         scales = xy, xy, int(z)
-        chunks = [64, 64, 64]
+        chunks = [32, 32, 32]
         scales = (int(round(xy)), int(round(xy)), int(z))        
         print(f'Volume shape={volume.shape} dtype={volume.dtype} chunks at {chunks} and scales after rounding with {scales}nm')
         

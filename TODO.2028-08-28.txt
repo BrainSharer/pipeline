@@ -2,7 +2,7 @@ Get a shell of a brain, and place structures within
 that. 5N, 6N, LC, a couple others within DK55, section shots with
 different angles.
 5N=V=621
-6N=VI=653
+6N=VI=653 final
 7N=VII=661
 7n=VIIn=798
 LC=LC=147
