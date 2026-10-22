@@ -1,0 +1,2 @@
+use URL id=1184, section 12,14, get region area and data 
+split region into 2,3,4,5 subregions and get histograms from that
