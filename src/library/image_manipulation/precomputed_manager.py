@@ -133,26 +133,17 @@ class NgPrecomputedMaker:
 
         tq = LocalTaskQueue(parallel=workers)
 
-        if image_manager.num_channels > 2:
-            print(f'Creating non-sharded transfer tasks with chunks={chunks}')
-            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
-        else:
-            print(f'Creating sharded transfer task with chunks={chunks} to layer {outpath}')
-            task = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks)
+        print(f'Creating non-sharded transfer tasks with chunks={chunks}')
+        task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks, mip=0, skip_downsamples=True)
 
         tq.insert(task)
         tq.execute()
         print('Finished transfer task')
 
         for mip in range(0, mips):
-            cv = CloudVolume(outpath, mip)
-            
-            if image_manager.num_channels > 2:
-                print(f'Creating downsample task at mip={mip}')
-                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True)
-            else:
-                print(f'Creating sharded downsample task at mip={mip} with chunks={chunks} ')
-                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunks)
+            cv = CloudVolume(outpath, mip)            
+            print(f'Creating downsample task at mip={mip}')
+            task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, chunk_size=chunks)
             
             tq.insert(task)
             tq.execute()
