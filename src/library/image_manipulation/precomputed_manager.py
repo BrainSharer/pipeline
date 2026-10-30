@@ -126,6 +126,12 @@ class NgPrecomputedMaker:
             base_chunks = [XY_CHUNK, XY_CHUNK, z_chunk]
 
         factors, resolutions, chunks = self.compute_mipmaps(self.get_scales(), base_chunks)
+        mips = len(factors) - 1  # number of downsampled levels to create (excluding the original)
+        outpath = f"file://{self.output}"
+        if not os.path.exists(self.rechunkme_path):
+            print(f"DIR {self.rechunkme_path} does not exist, exiting.")
+            sys.exit()
+
         if self.debug or len(chunks) == 0:
             np.set_printoptions(legacy="1.25")
             print(f'original scales: {self.get_scales()}')
@@ -133,19 +139,8 @@ class NgPrecomputedMaker:
             print(f"factors={factors}")
             print(f"resolutions={resolutions}")
             print(f"chunks={chunks}")
+            print(f'Number of channels {image_manager.num_channels}')
             return
-        mips = len(factors) - 1  # number of downsampled levels to create (excluding the original)
-        outpath = f"file://{self.output}"
-        if not os.path.exists(self.rechunkme_path):
-            print(f"DIR {self.rechunkme_path} does not exist, exiting.")
-            sys.exit()
-        cloud_volume_version = cloudvolume.__version__
-        # hard coding to sharded = false
-        if image_manager.num_channels > 2 or Version(cloud_volume_version) >= Version('9.0.0'):
-            sharded = False
-        else:
-            sharded = True
-        
         cloudpath = f"file://{self.rechunkme_path}"
         self.fileLogger.logevent(f"Input DIR: {self.rechunkme_path}")
         self.fileLogger.logevent(f"Output DIR: {self.output}")
@@ -155,12 +150,9 @@ class NgPrecomputedMaker:
         print(f'Writing transfer task with {workers} workers')
         # I have been having trouble with newer versions of cloud volume and the sharded transfer tasks.  
 
-        if sharded:
-            task = tc.create_image_shard_transfer_tasks(cloudpath, outpath, mip=0, chunk_size=chunks[0])
-        else:
-            task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks[0], mip=0, skip_downsamples=True)
+        task = tc.create_transfer_tasks(cloudpath, dest_layer_path=outpath, max_mips=mips, chunk_size=chunks[0], mip=0, skip_downsamples=True)
 
-        print(f'Creating transfer task with chunks={chunks[0]} to layer {outpath} sharded={sharded}')
+        print(f'Creating transfer task with chunks={chunks[0]} to layer {outpath} sharded=false')
 
         tq.insert(task)
         tq.execute()
@@ -173,14 +165,9 @@ class NgPrecomputedMaker:
             try:
                 cv = CloudVolume(outpath, mip)
             except Exception as e:
-                print(f"Error opening CloudVolume at mip {mip}: {e}")
                 continue
-            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded={sharded}')
-
-            if sharded:
-                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, chunk_size=chunk_mip, factor=factor)
-            else:
-                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
+            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded=false')
+            task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
             
             tq.insert(task)            
             tq.execute()
