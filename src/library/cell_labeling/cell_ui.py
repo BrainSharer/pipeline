@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 import inspect
-from library.utilities.utilities_process import test_dir, M_UM_SCALE, SCALING_FACTOR, get_scratch_dir, use_scratch_dir, read_image, get_hostname, delete_in_background
+from library.utilities.utilities_process import test_dir, get_scratch_dir, use_scratch_dir, delete_in_background
 from library.image_manipulation.image_manager import ImageManager
 from library.image_manipulation.histogram_maker import make_single_histogram_full, make_combined_histogram_full
 from library.image_manipulation.neuroglancer_manager import NumpyToNeuroglancer

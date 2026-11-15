@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, Date, Boolean, Enum, Integer, ForeignKey
 from library.database_model.atlas_model import AtlasModel, Base
 from library.database_model.lab import Lab
 
-class NeoroglancerState(Base, AtlasModel):
+class NeuroglancerState(Base, AtlasModel):
     """This class provides access to neuroglancer_state table
     """
     

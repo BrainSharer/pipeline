@@ -96,10 +96,12 @@ if __name__ == "__main__":
     parser.add_argument("--scaling_factor", help="Enter scaling_factor", required=False, default=32.0, type=float)
     parser.add_argument("--debug", help="Enter true or false", required=False, default="false", type=str)
     parser.add_argument("--uuid", help="Force prev. uuid; used for debug", required=False, default=None, type=str)
+    parser.add_argument("--state_id", help="Enter URL ID with polygons", required=False, default=0, type=int)
+    parser.add_argument("--layer_name", help="layer name of URL ", required=False, default=None, type=str)
     parser.add_argument(
         "--task",
         help="Enter the task you want to perform: \
-                        extract|mask|clean|histogram|align|extra_channel|neuroglancer|status",
+                        extract|mask|clean|histogram|align|extra_channel|neuroglancer|status|cell_labeling",
         required=False,
         default="status",
         type=str,
@@ -114,6 +116,8 @@ if __name__ == "__main__":
     scaling_factor = args.scaling_factor
     debug = bool({"true": True, "false": False}[str(args.debug).lower()])
     arg_uuid = args.uuid
+    layer_name = args.layer_name
+    state_id = args.state_id
     task = str(args.task).strip().lower()
 
     pipeline = Pipeline(
@@ -124,6 +128,8 @@ if __name__ == "__main__":
         scaling_factor=scaling_factor,
         task=task,
         arg_uuid=arg_uuid,
+        state_id=state_id,
+        layer_name=layer_name,
         debug=debug
     )
 
@@ -144,6 +150,7 @@ if __name__ == "__main__":
         "align_masks": pipeline.align_masks,
         "status": pipeline.check_status,
         "ng_preview": pipeline.ng_preview,
+        "cell_labeling": pipeline.cell_labeling,
     }
 
     if task in function_mapping:

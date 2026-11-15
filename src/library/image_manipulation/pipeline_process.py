@@ -34,8 +34,7 @@ from library.image_manipulation.tiff_extractor_manager import TiffExtractor
 from library.utilities.utilities_mask import compare_directories
 from library.utilities.utilities_process import get_hostname, SCALING_FACTOR, get_scratch_dir, use_scratch_dir
 from library.database_model.scan_run import IMAGE_MASK
-from library.cell_labeling.cell_ui import Cell_UI
-from library.utilities.utilities_registration import align_image_to_affine
+from library.cell_labeling.cell_manager import CellManager
 
 
 try:
@@ -59,7 +58,7 @@ class Pipeline(
     ParallelManager,
     PrepCreater,
     TiffExtractor,
-    Cell_UI
+    CellManager,
 ):
     """
     This is the main class that handles the preprocessing pipeline responsible for converting Zeiss microscopy images (.czi) into neuroglancer
@@ -87,6 +86,8 @@ class Pipeline(
         scaling_factor=SCALING_FACTOR,
         task="status",
         arg_uuid: str = None,
+        state_id: int = 0,
+        layer_name: str = None,
         debug: bool = False,
         use_mask: bool = False,
     ):
@@ -134,6 +135,8 @@ class Pipeline(
         self.zarrlevel = zarrlevel
         self.scaling_factor = scaling_factor
         self.bgcolor = 0
+        self.state_id = state_id
+        self.layer_name = layer_name
         self.checksum = os.path.join(self.fileLocationManager.www, "checksums")
         self.use_scratch = True  # set to True to use scratch space (defined in - utilities.utilities_process::get_scratch_dir)
         self.available_memory = self.get_available_ram_gb()
@@ -246,6 +249,19 @@ class Pipeline(
         if self.channel == 1:
             self.create_mask()
         print(f'Finished {self.TASK_MASK}.')
+
+    def cell_labeling(self):
+        print(self.TASK_CELL_LABELS)
+        if self.state_id == 0:
+            print("No state_id provided for cell labeling. Please provide a valid state_id.")
+            return
+
+        polygons = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
+
+        self.create_roi(polygons_by_section=polygons)
+        self.add_empty_images()
+        #self.create_roi_neuroglancer()
+        print(f'Finished {self.TASK_CELL_LABELS}.')
 
     def clean(self):
         """I am taking out the set width and height as we might need to manually adjust this

@@ -26,7 +26,7 @@ from library.utilities.cell_utilities import (
     features_using_center_connected_components,
     find_available_backup_filename
 )
-from library.cell_labeling.cell_manager import CellSegmenter
+from library.cell_labeling.cell_segmenter import CellSegmenter
 from library.cell_labeling.cell_annotations import CellAnnotations
 from library.cell_labeling.cell_ui import Cell_UI
 from library.controller.sql_controller import SqlController

@@ -3,7 +3,7 @@ import pickle as pkl
 import cv2
 import os
 
-from library.cell_labeling.cell_manager import CellMaker
+from library.cell_labeling.cell_segmenter import CellMaker
 
 class FeatureFinder(CellMaker):
     """class to calculate feature vector for each extracted image pair (CH1, CH3)

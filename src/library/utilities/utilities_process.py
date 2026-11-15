@@ -3,18 +3,16 @@ from datetime import datetime
 import shutil
 import socket
 import concurrent
-from skimage import io
 from PIL import Image
 import cv2
 import numpy as np
 import gc
 from skimage.transform import rescale
 import math
-from tifffile import imread, imwrite
 from concurrent.futures import Future
 import random
 import string
-from tifffile import TiffFileError
+import tifffile
 
 #TODO: CONSOLIDATE ANY HARD-CODED VARIABLES IN SINGLE FILE?
 SCALING_FACTOR = 32.0
@@ -274,7 +272,7 @@ def create_downsample(file_key):
 
     infile, outpath = file_key
     try:
-        img = io.imread(infile)
+        img = read_image(infile)
         img = rescale(img, SCALING_FACTOR, anti_aliasing=True)
         img = convert(img, 0, 2**16 - 1, np.uint16)
     except IOError as e:
@@ -310,16 +308,11 @@ def write_image(file_path:str, data, message: str = "Error") -> None:
     """
     
     try:
-        imwrite(file_path, data, compression='LZW', bigtiff=True)
+        tifffile.imwrite(file_path, data, compression='LZW', bigtiff=True)
     except Exception as e:
         print(message, e)
         print("Unexpected error:", sys.exc_info()[0])
-        try:
-            cv2.imwrite(file_path, data)
-        except Exception as e:
-            print(message, e)
-            print("Unexpected error:", sys.exc_info()[0])
-            sys.exit()
+        exit(1)
 
 
 def read_image(file_path: str):
@@ -327,25 +320,13 @@ def read_image(file_path: str):
     """
     img = None
     try:
-        img = io.imread(file_path)
-    except TiffFileError as e:
+        img = tifffile.imread(file_path)
+    except tifffile.TiffFileError as e:
         print(f"ERROR: Corrupted TIFF file detected: {file_path}")
         print(f"Error details: {e}")
-        # Return None to skip processing this file
-        return None
     except Exception as e:
         print(f"ERROR: Unexpected error reading {file_path}: {e}")
-        return None
 
-
-    # except (OSError, ValueError) as e:
-    #     errno, strerror = e.args
-    #     print(f'\tCould not open {file_path} {errno} {strerror}')
-    # except:
-    #     print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
-
-    if img is None or img.shape[0] == 0 or img.shape[1] == 0:
-        img = imread(file_path)
 
     if img is None:
         print(f"\tExiting, cannot read {file_path}, unexpected error: {sys.exc_info()[0]}")
