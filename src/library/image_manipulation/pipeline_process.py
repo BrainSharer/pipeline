@@ -259,7 +259,7 @@ class Pipeline(
         polygons = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
 
         self.create_roi(polygons_by_section=polygons)
-        self.add_empty_images()
+        self.add_empty_images(polygons_by_section=polygons)
         #self.create_roi_neuroglancer()
         print(f'Finished {self.TASK_CELL_LABELS}.')
 

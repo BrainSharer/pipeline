@@ -66,7 +66,7 @@ class CellManager:
                 write_image(image_outpath, masked_image, message=f'Error writing {image_outpath}')
                 print(f'{threshold=}, Wrote: {cropped_outpath}')
 
-    def add_empty_images(self):
+    def add_empty_images(self, polygons_by_section: dict):
         """
         Add empty images for sections that do not have any polygons.
         """
@@ -78,7 +78,7 @@ class CellManager:
         # Get the list of all section numbers from the input directory
         all_sections = {int(os.path.splitext(f)[0]) for f in os.listdir(input_dir) if f.endswith('.tif')}
         # Get the list of section numbers that have polygons
-        polygon_sections = set(self.polygons_by_section.keys())
+        polygon_sections = set(polygons_by_section.keys())
         # Find the missing sections
         missing_sections = sorted(all_sections - polygon_sections)
 
