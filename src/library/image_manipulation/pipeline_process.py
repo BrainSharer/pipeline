@@ -260,7 +260,10 @@ class Pipeline(
 
         self.create_roi(polygons_by_section=polygons)
         self.add_empty_images(polygons_by_section=polygons)
-        #self.create_roi_neuroglancer()
+        self.setup_roi_neuroglancer()
+        self.create_neuroglancer()
+        self.create_downsamples()
+
         print(f'Finished {self.TASK_CELL_LABELS}.')
 
     def clean(self):

@@ -39,8 +39,8 @@ class CellManager:
             if os.path.exists(filename):
                 image_outpath = os.path.join(self.output, tifname)
                 cropped_outpath = os.path.join(cropped_path, tifname)
-                if os.path.exists(image_outpath) and os.path.exists(cropped_outpath):
-                    print(f'Skipping {tifname} in cropped and ROI, already exists.')
+                if os.path.exists(image_outpath):
+                    print(f'Skipping {tifname} ROI as it already exists.')
                     continue
                 polygon = polygon.astype(np.int32)
                 image_inpath = os.path.join(self.input, tifname)
@@ -92,15 +92,29 @@ class CellManager:
                 image = read_image(input_path)
                 empty_image = np.zeros_like(image)
                 write_image(output_path, empty_image, message=f'Error writing {output_path}')
-                print(f'Added empty image for missing section: {tifname}')
 
-    def create_roi_neuroglancer(self):
+    def setup_roi_neuroglancer(self):
         """
         Create a region of interest (ROI) for Neuroglancer visualization.
         """
         # Implementation for creating ROI for Neuroglancer
         print("Creating ROI for Neuroglancer.")
-        pass
+
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
+        self.output = os.path.join(self.fileLocationManager.neuroglancer_data, 'axons')
+        self.rechunkme_path = os.path.join(self.fileLocationManager.neuroglancer_data, 'axons_rechunkme')
+        self.progress_dir = os.path.join(self.fileLocationManager.neuroglancer_progress, 'axons')
+
+        os.makedirs(self.progress_dir, exist_ok=True)
+        os.makedirs(self.output, exist_ok=True)
+
+
+        print(f'Input: {self.input}')
+        print(f'Output: {self.output}')
+        print(f'Progress: {self.progress_dir}')
+        print(f'Rechunkme: {self.rechunkme_path}')
+        if os.path.exists(self.rechunkme_path):
+            print(f'Rechunkme path already exists: {self.rechunkme_path}')
 
     @staticmethod
     def remove_white_objects(img_16bit, thresh_value, min_size=10):
