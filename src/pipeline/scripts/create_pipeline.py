@@ -5,8 +5,8 @@ them again for the remaining channels and then for the full resolution version:
 
 - ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --task status``
 - ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task extract``
-- Do the QC in the database portal. If any tifs need to be inactivated, do that first and and use the 'Save and continue editing' button. \
-    Then make sure the scene ordering is in the correct order. They need to increment correctly.
+- Do the QC in the database portal. If any tifs need to be inactivated, do that first and and use the 'Save and continue editing' button.
+  Then make sure the scene ordering is in the correct order. They need to increment correctly.
 - ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task mask``
 - Do the QC of the colored masks
 - ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample true --channel 1 --task clean``
@@ -17,44 +17,44 @@ them again for the remaining channels and then for the full resolution version:
 
 Explanation for the tasks:
 
-- extract - Metadata from the CZI files is extracted and inserted into the database. \
-    The TIFF files are first extracted from the CZI files at the standard downsampling factor, and then \
-    later, the full resolution images are extracted. Web friendly PNG files are created from the TIFF files \
-    for viewing in the portal. After this step, a user can verify the \
-    database data and make any ordering, replacement or reproduction corrections.
-- mask - Masks and normalized images are then created for the cleaning process. \
-    A segmentation algorithmn is used to create initial masks for each image. These masks are used \
-    to clean each channel of any unwanted slide debris. The user can peform QC on the masks \
-    and makes sure they remove the debris and not the desired tissue.
-- clean - After the masks are verified to be accurate, the final masks are created and then \
-    the images are cleaned from the masks.
-- histogram - Histograms showing the distribution of the image intensity levels are created \
-    for all cleaned channel 1 sections.
+- extract - Metadata from the CZI files is extracted and inserted into the database.
+  The TIFF files are first extracted from the CZI files at the standard downsampling factor, and then
+  later, the full resolution images are extracted. Web friendly PNG files are created from the TIFF files
+  for viewing in the portal. After this step, a user can verify the
+  database data and make any ordering, replacement or reproduction corrections.
+- mask - Masks and normalized images are then created for the cleaning process.
+  A segmentation algorithmn is used to create initial masks for each image. These masks are used
+  to clean each channel of any unwanted slide debris. The user can peform QC on the masks
+  and makes sure they remove the debris and not the desired tissue.
+- clean - After the masks are verified to be accurate, the final masks are created and then
+  the images are cleaned from the masks.
+- histogram - Histograms showing the distribution of the image intensity levels are created
+  for all cleaned channel 1 sections.
 - align - Section to section alignment with Elastix is then run on the cleaned and placed images using a rigid transformation. 
 - realign - If the alignment needs improvement, the user can run the realign task to realign the images.
 - neuroglancer - The final step is creating the Neuroglancer precomputed data from the aligned and cleaned images.
 - omezarr - The final step is creating the OME-Zarr data from the aligned and cleaned images. You can run this instead of neuroglancer.
-- ng_preview - This will create a preview of the brain images as Neuroglancer state and insert into database. \
-It also creates symbolic links to image stacks on imageserv.dk.ucsd.edu
+- ng_preview - This will create a preview of the brain images as Neuroglancer state and insert into database.
+  It also creates symbolic links to image stacks on imageserv.dk.ucsd.edu
 
 **Timing results**
 
-- The processes that take the longest and need the most monitoring are, cleaning, aligning \
-and creating the neuroglancer images. The number of workers must be set correctly \
-otherwise the workstations will crash if the number of workers is too high. If the number \
-of workers is too low, the processes take too long.
+- The processes that take the longest and need the most monitoring are, cleaning, aligning
+  and creating the neuroglancer images. The number of workers must be set correctly
+  otherwise the workstations will crash if the number of workers is too high. If the number
+  of workers is too low, the processes take too long.
 - Cleaning full resolution of 480 images on channel 1 on ratto took 5.5 hours
 - Aligning full resolution of 480 images on channel 1 on ratto took 6.8 hours
 - Running entire neuroglancer process on 480 images on channel 1 on ratto took 11.3 hours
 
 **Human intervention is required at several points in the process**
 
-- After creating the meta data, the user needs to check the database and verify the images \
-are in the correct order and the images look good.
-- After the first create mask method - the user needs to check the colored masks \
-and possible dilate or crop them.
-- After the alignment process - the user needs to verify the alignment looks good. \
-Creating fiducials and then running the realign task will improve the alignment.
+- After creating the meta data, the user needs to check the database and verify the images
+  are in the correct order and the images look good.
+- After the first create mask method, the user needs to check the colored masks
+  and possible dilate or crop them.
+- After the alignment process - the user needs to verify the alignment looks good.
+  Creating fiducials and then running the realign task will improve the alignment.
 
 **Switching projection in Neuroglancer** 
 
@@ -63,11 +63,6 @@ Creating fiducials and then running the realign task will improve the alignment.
 - if you use omezarr, you will need to switch the projection in the viewer.
     crossSectionOrientation: [0, 0, 0, -1],
  
-**New Feature**
-After ch1 processed, chain remaining channels (and process in pairs) with channel=all
-For example:
-    python src/pipeline/scripts/create_pipeline.py --animal DKXX --downsample False --channel all --task extract
-    [this will extract all remaining channels at full resolution]
 """
 import argparse
 from pathlib import Path

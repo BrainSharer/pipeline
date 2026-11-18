@@ -102,7 +102,7 @@ class NeuroglancerStateController():
                 section_number = int(section_value - 0.5)
                 polygons_by_section[section_number] = polygon_xy
 
-        return polygons_by_section
+        return polygons_by_section, description
         
 
     def insert_ng_state(self, combined_json: str, fk_prep_id: str, created='', updated='', fk_lab_id=2, comments: str = "", description=None, fk_user_id=None, readonly=False, public=False, active=True):

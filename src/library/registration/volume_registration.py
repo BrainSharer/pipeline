@@ -1611,23 +1611,17 @@ class VolumeRegistration:
 
 
     def points_within_polygons(self):
-        """Get data from DB which is in meters
-        convert to micros
+        """
+        Get data from DB which is in meters and convert to micros
         We know the fixed Allen space is at 10um
         Apply the inverse transform to get points in fixed space
         convert back to meters
         Save back to DB
         1. Load existing annotation session from DB
-        2. For each point in the annotation session, apply the inverse transform
-           to get the point in fixed space
+        2. For each point in the annotation session, apply the inverse transform to get the point in fixed space
         3. Save the new points back to the DB as a new annotation session
         4. If an annotation session with the same description exists, update it instead of creating a new one
         5. Use hard coded annotator_id = 1 (Edward)
-        Annotation IDs
-            8379 works well
-            8389 appears a bit below the structure
-            8390 looks good
-            8382 is off a lot
         """
         
         transform = load_transformation(self.moving, self.z_um, self.xy_um)

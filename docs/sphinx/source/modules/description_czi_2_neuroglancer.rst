@@ -14,9 +14,9 @@ Extracting TIFFs from CZIs
     checked for variables so it is vital for the correct information to
     be placed in these tables:
 
-    1. `animal <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/slideczitotif/>`__
-    2. `scan_run <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/scanrun/>`__
-    3. `histology <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/histology/>`__
+    1. `animal <https://brainsharer.org/brainsharer/admin/brain/slideczitotif/>`__
+    2. `scan_run <https://brainsharer.org/brainsharer/admin/brain/scanrun/>`__
+    3. `histology <https://brainsharer.org/brainsharer/admin/brain/histology/>`__
 
 2.  CZI files are placed on a network file system (NFS) which is named
     birdstore and is mounted at /net/birdstore on our 3 workstations:
@@ -38,16 +38,16 @@ Extracting TIFFs from CZIs
 6.  The *showinf* tool takes the metadata and stores it into the
     following tables in the database:
 
-    1. `slide <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/slide/>`__
-    2. `slide_czi_to_tif <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/slideczitotif/>`__
-    3. `scan_run <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/scanrun/>`__
+    1. `slide <https://brainsharer.org/brainsharer/admin/brain/slide/>`__
+    2. `slide_czi_to_tif <https://brainsharer.org/brainsharer/admin/brain/slideczitotif/>`__
+    3. `scan_run <https://brainsharer.org/brainsharer/admin/brain/scanrun/>`__
        
 Manual quality control of sections
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 1.  Once the TIF files are placed in the tif directory, the user can
     perform quality control on the
-    `slides <https://activebrainatlas.ucsd.edu/activebrainatlas/admin/brain/slide/>`__
+    `slides <https://brainsharer.org/brainsharer/admin/brain/slide/>`__
     in the database. There are around 116 to 166 slides (CZI files) per
     mouse with each slide usually containing 4 scenes(pictures). During
     QA on the slides and scenes, the user will replace bad scenes with
@@ -184,7 +184,7 @@ Creating Neuroglancer data
     enters a URL path in the precomputed field, the URL will actually be
     pointing to the data on birdstore. For example, typing this URL in
     Neuroglancer:
-    https://activebrainatlas.ucsd.edu/data/DK39/neuroglancer_data/C1
+    https://imageserv.dk.ucsd.edu/data/DK39/neuroglancer_data/C1
     will be pointing to
     \*/net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK39/neuroglancer_data/C1
     on birdstore.

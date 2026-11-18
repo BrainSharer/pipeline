@@ -1,12 +1,16 @@
+from datetime import datetime
 import os
 
 import cv2
 import numpy as np
+from scipy import ndimage
 from scipy.stats import gaussian_kde
 from scipy.ndimage import gaussian_filter1d
+from tables import Column
 from tqdm import tqdm
 
-from library.utilities.utilities_process import read_image, write_image
+from library.database_model.brain_region import CellData, RegionOfInterest
+from library.utilities.utilities_process import is_non_empty_dir, read_image, write_image
 
 
 
@@ -18,7 +22,7 @@ class CellManager:
 
 
 
-    def create_roi(self, polygons_by_section):
+    def create_roi(self, polygons_by_section: dict):
         """
         Create a region of interest (ROI) based on the mask created from polygons.
         """
@@ -66,6 +70,46 @@ class CellManager:
                 write_image(image_outpath, masked_image, message=f'Error writing {image_outpath}')
                 print(f'{threshold=}, Wrote: {cropped_outpath}')
 
+    def create_roi_row(self, polygons_by_section: dict, volume_name: str):
+        """
+        Create a row in the database for the region of interest (ROI) based on the given section number and polygon.
+        """
+        # Implementation for creating a database row for ROI
+        xy_resolution = self.sqlController.scan_run.resolution
+
+        sorted_dict = dict(sorted(polygons_by_section.items()))
+        for section_number, polygon in sorted_dict.items():
+            area_px = cv2.contourArea(polygon.astype(np.int32))
+            area_um2 = round(area_px * xy_resolution**2, 2)  # Convert area to square microns
+            roi_row = self.sqlController.row_exists({"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}, RegionOfInterest)
+            if roi_row is not None:
+                self.sqlController.update_row(RegionOfInterest, roi_row.id, {"area": area_um2})
+            else:
+                roi_row = RegionOfInterest(FK_state_id=self.state_id, FK_prep_id=self.animal, 
+                                    layer_name=self.layer_name, volume_name=volume_name, section=section_number, 
+                                    area=area_um2, active=1, created=datetime.now())
+                self.sqlController.add_row(roi_row)
+
+        # now update the COM for each ROI based on the contours
+        input_dir = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
+        infiles = sorted([f for f in os.listdir(input_dir) if f.endswith('.tif')])
+        for infile in tqdm(infiles[0:26], desc="Updating ROI COM", unit="image", disable=self.debug):
+            section_number = int(os.path.splitext(infile)[0])
+            image_path = os.path.join(input_dir, infile)
+            image = read_image(image_path)
+            search_dict = {"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}
+            roi_row = self.sqlController.row_exists(search_dict, RegionOfInterest)
+            if roi_row is None:
+                continue
+            # Calculate the center of mass (COM) for the ROI
+            M = cv2.moments(image)
+            if M["m00"] != 0:
+                com_x = round(M["m10"] / M["m00"] * xy_resolution, 2)
+                com_y = round(M["m01"] / M["m00"] * xy_resolution, 2)
+                # Update the ROI row with the calculated COM
+                self.sqlController.update_row(RegionOfInterest, roi_row.id, {"com_x": com_x, "com_y": com_y})
+
+
     def add_empty_images(self, polygons_by_section: dict):
         """
         Add empty images for sections that do not have any polygons.
@@ -93,12 +137,13 @@ class CellManager:
                 empty_image = np.zeros_like(image)
                 write_image(output_path, empty_image, message=f'Error writing {output_path}')
 
-    def setup_roi_neuroglancer(self):
+    def setup_roi_neuroglancer(self) -> bool:
         """
         Create a region of interest (ROI) for Neuroglancer visualization.
         """
         # Implementation for creating ROI for Neuroglancer
         print("Creating ROI for Neuroglancer.")
+        isFinished = False
 
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
         self.output = os.path.join(self.fileLocationManager.neuroglancer_data, 'axons')
@@ -115,6 +160,100 @@ class CellManager:
         print(f'Rechunkme: {self.rechunkme_path}')
         if os.path.exists(self.rechunkme_path):
             print(f'Rechunkme path already exists: {self.rechunkme_path}')
+
+        if is_non_empty_dir(self.output):
+            print(f'Output path already exists and is not empty: {self.output}')
+            isFinished = True
+
+        return isFinished
+
+    def create_label_density_map(self):
+        """
+        Create a cell density map based on the axon images.
+        """
+        print("Creating cell density map.")
+        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
+        infiles = sorted([f for f in os.listdir(self.input) if f.endswith('.tif')])
+        for infile in tqdm(infiles[20:22], desc="Creating cell density map", unit="image", disable=self.debug):
+            input_path = os.path.join(self.input, infile)
+            print(input_path)
+            section_number = int(os.path.splitext(infile)[0])
+            image = read_image(input_path)
+            # Assuming the axon images are binary (0 and 65535), we can create a density map
+            search_dict = {"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}
+            roi_row = self.sqlController.row_exists(search_dict, RegionOfInterest)
+
+            self.create_contour_density_map(image, roi_row)
+
+
+    def create_contour_density_map(self, img, roi_row: RegionOfInterest):
+        ids = np.unique(img, return_counts=False)
+        try:
+            threshold = ids[1]  # Make sure this is between min and max above!
+        except IndexError:
+            return
+        # Verify your actual pixel range so your threshold isn't too high
+        print(f"Image min: {img.min()}, max: {img.max()} using {threshold=}")
+
+        # 2. Threshold and convert to 8-bit binary
+        _, binary_16 = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
+        binary_8bit = binary_16.astype(np.uint8)
+
+        # 3. Find all contours (OpenCV 4.x returns 2 values)
+        contours, hierarchy = cv2.findContours(
+            binary_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        print(f'Found {len(contours)} contours')
+        pixel_size_um = self.sqlController.scan_run.resolution  # microns per pixel
+        pixel_area_um2 = pixel_size_um**2  # 0.105625 square microns per pixel
+        min_area_px = 10.0
+
+        shape_data = []
+        for i, cnt in enumerate(contours):
+            if cnt is not None and len(cnt) >= 3:
+                area_px = cv2.contourArea(cnt)
+
+                if area_px >= min_area_px:
+                    # Calculate physical area in square microns
+                    area_um2 = area_px * pixel_area_um2
+
+                    # Calculate geometric center of mass (centroid) using image moments
+                    M = cv2.moments(cnt)
+                    if M["m00"] != 0:
+                        cx_px = M["m10"] / M["m00"]
+                        cy_px = M["m01"] / M["m00"]
+
+                        # Convert center of mass coordinates to microns
+                        cx_um = cx_px * pixel_size_um
+                        cy_um = cy_px * pixel_size_um
+
+                        shape_data.append({
+                            "contour": cnt,
+                            "area_px": area_px,
+                            "area_um2": area_um2,
+                            "centroid_px": (cx_px, cy_px),
+                            "centroid_um": (cx_um, cy_um),
+                        })
+
+        # 5. Sort shapes by area from largest to smallest
+        sorted_shapes = sorted(shape_data, key=lambda x: x["area_px"], reverse=True)
+        update_dict = {"contour_count": len(sorted_shapes)}
+        self.sqlController.update_row(RegionOfInterest, roi_row.id, update_dict)
+        self.sqlController.delete_rows_by_foreign_key(CellData, "FK_roi_id", roi_row.id)
+
+        for shape in sorted_shapes:
+            cx_px, cy_px = shape["centroid_px"]
+            cx_um, cy_um = shape["centroid_um"]
+            area_um2 = shape["area_um2"]
+            area_px = shape["area_px"]
+            print(area_px, area_um2)
+
+            FK_roi_id = roi_row.id
+            cell_data = CellData(FK_roi_id=FK_roi_id, com_x=cx_um, com_y=cy_um, area=area_um2)
+            self.sqlController.add_row(cell_data)
+
+
+
 
     @staticmethod
     def remove_white_objects(img_16bit, thresh_value, min_size=10):

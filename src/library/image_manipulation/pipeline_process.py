@@ -196,7 +196,9 @@ class Pipeline(
         """
         Extracts image data and related metadata from source files, processes them, and inserts into the DB.
         This method performs the following steps:
+
         1. If processing the first channel and downsampling is enabled:
+
             - Extracts slide metadata and inserts it into the database.
             - Generates a slide preview image.
             - Corrects for multiple entries if necessary.
@@ -205,9 +207,11 @@ class Pipeline(
         4. Checks for duplicate images.
         5. Reorders scenes as needed.
         6. If processing the first channel and downsampling is enabled:
+
             - Creates web-friendly images and preview images.
             - Generates checksums for the images.
             - Creates symbolic links to extracted thumbnail images if they do not already exist.
+        
         Prints progress and completion messages throughout the process.
         """
         print(self.TASK_EXTRACT)
@@ -256,13 +260,17 @@ class Pipeline(
             print("No state_id provided for cell labeling. Please provide a valid state_id.")
             return
 
-        polygons = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
+        #polygons, volume_name = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
 
-        self.create_roi(polygons_by_section=polygons)
+        #self.create_roi(polygons_by_section=polygons)
+        #self.create_roi_row(polygons, volume_name)
+        self.create_label_density_map()
+        return
         self.add_empty_images(polygons_by_section=polygons)
-        self.setup_roi_neuroglancer()
-        self.create_neuroglancer()
-        self.create_downsamples()
+        isFinished = self.setup_roi_neuroglancer()
+        if not isFinished:
+            self.create_neuroglancer()
+            self.create_downsamples()
 
         print(f'Finished {self.TASK_CELL_LABELS}.')
 

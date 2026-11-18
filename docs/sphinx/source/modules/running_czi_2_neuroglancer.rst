@@ -20,7 +20,7 @@ Running the initial task - extract
     DKXX/czi. You could also link the files from the original origin folder. Copying
     czi files takes a long time.
 *   Add entries in the animal, scan run and histology table in the
-    database using the `admin portal <https://www.brainsharer.org/brainsharer/admin>`__.
+    database using the `admin portal <https://brainsharer.org/brainsharer/admin>`__.
 *   All functionality for running the pipeline is found in
     src/pipeline/scripts/create_pipeline.py
 *   You can run the script with the ‘h’ option to get the arguments:
@@ -154,7 +154,7 @@ Running the neuroglancer task
        used by the create_downsampling method.
     #. View results in neuroglancer. Add the layer to the precompute
        with:
-       https://activebrainatlas.ucsd.edu/data/DKXX/neuroglancer_data/C1T
+       https://imageserv.dk.ucsd.edu/data/DKXX/neuroglancer_data/C1T
 
 Running on other channels and the full resolution images
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -168,6 +168,21 @@ Running on other channels and the full resolution images
     the results, run the process again but with
     ``python src/pipeline/scripts/create_pipeline.py --animal DKXX --channel 1 downsample false``.
     Some of the steps will be skipped automatically.
+
+Creating a ROI from polygons created by an anatomist
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+*   If you want to create a layer for Neuroglancer that is an ROI created by an anatomist drawing polygons,
+    follow this process. Note that you must know the URL ID of the Neuroglancer view and the layer
+    name where the polygons were drawn. This script will takes the polygons from the stored JSON and not the exported
+    annotations. (When you click the 'save' button in the top left part of Neuroglancer, 
+    it saves the entire JSON state to the database including the polygons.)
+    The process will run on any channel but only the full resolution images are used. Running the following script
+    will create a dataset you can import into Neuroglancer.
+    ``python src/pipeline/scripts/create_pipeline.py --animal DK319 --task cell_labeling --state_id 1205 --layer_name 5N --channel 2 --downsample false``
+    This script will create a data set that will be available as a new layer as:
+    https://imageserv.dk.ucsd.edu/data/DK319/neuroglancer_data/axons/
+
 
 Final steps
 ~~~~~~~~~~~

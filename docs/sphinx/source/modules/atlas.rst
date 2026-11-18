@@ -1,11 +1,6 @@
 Atlas creation
 --------------
 
-This python code contains utility methods related to:
-
-- atlas stuff
-
-
 .. toctree::
    :titlesonly:
    :maxdepth: 2

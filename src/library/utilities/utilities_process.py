@@ -336,3 +336,9 @@ def read_image(file_path: str):
 
 def random_string():
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
+
+def is_non_empty_dir(path: str) -> bool:
+    if not os.path.isdir(path):
+        return False
+    with os.scandir(path) as it:
+        return any(it)

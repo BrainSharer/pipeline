@@ -23,11 +23,11 @@ High level description of the preprocessing pipeline
       library that process the aligned images into Neuroglancer data.
    7. To get a full listing of all python libraries, see the
       `requirements.txt
-      file <https://github.com/ActiveBrainAtlas2/preprocessing-pipeline/blob/master/requirements.txt>`__
+      file <https://github.com/BrainSharer/pipeline/blob/master/requirements.txt>`__
 
 3. The entire process is run from one script ``src/pipeline/scripts/create_pipeline.py``
 4. For instructions on running the pipeline see this
-   `HOWTO <https://github.com/ActiveBrainAtlas2/preprocessing-pipeline/blob/master/docs/user/RUNNING.md>`__
+   `HOWTO <https://brainsharer.org/docs/pipeline/modules/running_czi_2_neuroglancer.html>`__
 
 Raw images processing
 ^^^^^^^^^^^^^^^^^^^^^
@@ -126,6 +126,6 @@ Directory          Size  Number of files
 2. All data in */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/* is available to Neuroglancer. When the user opens up Neuroglancer and enters a URL path in the precomputed field, the URL will actually be pointing to the data on birdstore.
 
    For example, typing this URL in Neuroglancer:
-   https://activebrainatlas.ucsd.edu/data/DK39/neuroglancer_data/C1 will be pointing to
+   https://imageserv.dk.ucsd.edu/data/DK39/neuroglancer_data/C1 will be pointing to
    */net/birdstore/Active_Atlas_Data/data_root/pipeline_data/DK39/www/neuroglancer_data/C1*
    on birdstore.

@@ -9,7 +9,7 @@ import sys
 import numpy as np
 from collections import OrderedDict
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, delete
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.pool import NullPool
@@ -144,9 +144,9 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         exec(f'from {model.__module__} import {model.__name__}')
         for key, value in search_dictionary.items():
             query_start = eval(f'query_start.filter({model.__name__}.{key}=="{value}")')
-        return query_start.one()
+        return query_start.one_or_none()
     
-    def row_exists(self,search_dictionary,model):
+    def row_exists(self, search_dictionary:dict, model:object):
         """check if a specific row exist in a table
 
         
@@ -156,25 +156,8 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         :return boolean: whether the row exists
         """
 
-        return self.get_row(search_dictionary,model) is not None
+        return self.get_row(search_dictionary, model)
     
-    def query_row(self, model, search_dictionary):
-        """
-        Queries a single row from the database based on the provided search criteria.
-
-        Args:
-            search_dictionary (dict): A dictionary where the keys are the column names and the values are the values to search for.
-            model (Base): The SQLAlchemy model class to query.
-
-        Returns:
-            model: The first row that matches the search criteria, or None if no match is found.
-        """
-
-        query_start = self.session.query(model)
-        exec(f'from {model.__module__} import {model.__name__}')
-        for key, value in search_dictionary.items():
-            query_start = eval(f'query_start.filter({model.__name__}.{key}=="{value}")')
-        return query_start.first()
     
     def delete_row(self, model, search_dictionary):
         """
@@ -191,6 +174,14 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
         row = self.get_row(search_dictionary, model)
         self.session.delete(row)
         self.session.commit()
+
+
+    def delete_rows_by_foreign_key(self, model, foreign_key_column, foreign_key_value):
+        # Delete all child records matching a single foreign key
+        stmt = delete(model).where(getattr(model, foreign_key_column) == foreign_key_value)
+        self.session.execute(stmt)
+        self.session.commit()
+
 
     def query_one_with_filters_and_sum(self, model, filters: dict, sum_columns: list, group_by_columns: list):
         """
