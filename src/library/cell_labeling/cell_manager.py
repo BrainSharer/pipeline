@@ -174,7 +174,6 @@ class CellManager:
         infiles = sorted([f for f in os.listdir(self.input) if f.endswith('.tif')])
         for infile in tqdm(infiles, desc="Creating cell density map", unit="image", disable=self.debug):
             input_path = os.path.join(self.input, infile)
-            print(input_path)
             section_number = int(os.path.splitext(infile)[0])
             image = read_image(input_path)
             # Assuming the axon images are binary (0 and 65535), we can create a density map
@@ -245,13 +244,9 @@ class CellManager:
             cx_um, cy_um = shape["centroid_um"]
             area_um2 = shape["area_um2"]
             area_px = shape["area_px"]
-            print(area_px, area_um2)
-
             FK_roi_id = roi_row.id
             cell_data = CellData(FK_roi_id=FK_roi_id, com_x=cx_um, com_y=cy_um, area=area_um2)
             self.sqlController.add_row(cell_data)
-
-
 
 
     @staticmethod
