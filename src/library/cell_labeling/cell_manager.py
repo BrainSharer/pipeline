@@ -3,10 +3,8 @@ import os
 
 import cv2
 import numpy as np
-from scipy import ndimage
 from scipy.stats import gaussian_kde
 from scipy.ndimage import gaussian_filter1d
-from tables import Column
 from tqdm import tqdm
 
 from library.database_model.brain_region import CellData, RegionOfInterest
@@ -93,7 +91,7 @@ class CellManager:
         # now update the COM for each ROI based on the contours
         input_dir = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
         infiles = sorted([f for f in os.listdir(input_dir) if f.endswith('.tif')])
-        for infile in tqdm(infiles[0:26], desc="Updating ROI COM", unit="image", disable=self.debug):
+        for infile in tqdm(infiles, desc="Updating ROI COM", unit="image", disable=self.debug):
             section_number = int(os.path.splitext(infile)[0])
             image_path = os.path.join(input_dir, infile)
             image = read_image(image_path)
@@ -174,7 +172,7 @@ class CellManager:
         print("Creating cell density map.")
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
         infiles = sorted([f for f in os.listdir(self.input) if f.endswith('.tif')])
-        for infile in tqdm(infiles[20:22], desc="Creating cell density map", unit="image", disable=self.debug):
+        for infile in tqdm(infiles, desc="Creating cell density map", unit="image", disable=self.debug):
             input_path = os.path.join(self.input, infile)
             print(input_path)
             section_number = int(os.path.splitext(infile)[0])
