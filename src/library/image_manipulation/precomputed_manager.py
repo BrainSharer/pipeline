@@ -166,8 +166,11 @@ class NgPrecomputedMaker:
                 cv = CloudVolume(outpath, mip)
             except Exception as e:
                 continue
-            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded=false')
-            task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
+            if self.shard:
+                task = tc.create_image_shard_downsample_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, factor=factor, chunk_size=chunk_mip)
+            else:
+                task = tc.create_downsampling_tasks(cv.layer_cloudpath, mip=mip, num_mips=1, compress=True, factor=factor, chunk_size=chunk_mip)
+            print(f'Creating downsample task at mip={mip} factor={factor} with chunks={chunk_mip} resolution = {resolution} sharded={self.shard}')
             
             tq.insert(task)            
             tq.execute()

@@ -88,6 +88,7 @@ class Pipeline(
         arg_uuid: str = None,
         state_id: int = 0,
         layer_name: str = None,
+        shard: bool = False,
         debug: bool = False,
         use_mask: bool = False,
     ):
@@ -114,6 +115,7 @@ class Pipeline(
         self.animal = animal
         self.task = task
         self.downsample = downsample
+        self.shard = shard
         self.debug = debug
         self.use_mask = use_mask
         self.fileLocationManager = FileLocationManager(animal, data_path=data_path)
