@@ -43,6 +43,7 @@ class NeuroglancerStateController():
         polygon_ids_by_volume = defaultdict(list)
         lines_by_polygon = defaultdict(list)
         polygons_by_section = {}
+        description = "NA"
         for layer in neuroglancer_state.get("layers", []):
             if layer.get("type") != "annotation":
                 continue
@@ -53,7 +54,6 @@ class NeuroglancerStateController():
 
             layer_name = layer.get("name", "")
             annotations = layer.get("annotations") or []
-            description = "NA"
             for annotation in annotations:
                 annotation_type = annotation.get("type")
 

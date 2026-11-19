@@ -239,7 +239,8 @@ class CellManager:
         sorted_shapes = sorted(shape_data, key=lambda x: x["area_px"], reverse=True)
         update_dict = {"contour_count": len(sorted_shapes)}
         self.sqlController.update_row(RegionOfInterest, roi_row.id, update_dict)
-        self.sqlController.delete_rows_by_foreign_key(CellData, "FK_roi_id", roi_row.id)
+        # should we delete the data below
+        #self.sqlController.delete_rows_by_foreign_key(CellData, "FK_roi_id", roi_row.id)
 
         for shape in sorted_shapes:
             cx_px, cy_px = shape["centroid_px"]

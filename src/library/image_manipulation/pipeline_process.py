@@ -262,13 +262,11 @@ class Pipeline(
         if self.layer_name is None:
             print("No layer name. Please provide a valid layer name from the URL.")
             return
-
-        
         
         polygons, volume_name = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
 
         if self.debug:
-            print(f'Found {len(polygons)} polygons for {self.layer_name} in URL {self.state_id}')
+            print(f'Found {len(polygons)} polygons for {self.layer_name} in URL {self.state_id} with volume: {volume_name}')
             print('We are not running the rest of the task as we are in debug mode.')
         else:
             self.create_roi(polygons_by_section=polygons)
