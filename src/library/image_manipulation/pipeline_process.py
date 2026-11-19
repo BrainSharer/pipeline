@@ -260,12 +260,11 @@ class Pipeline(
             print("No state_id provided for cell labeling. Please provide a valid state_id.")
             return
 
-        #polygons, volume_name = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
+        polygons, volume_name = self.sqlController.fetch_polygons_from_state_id(self.state_id, self.layer_name)
 
-        #self.create_roi(polygons_by_section=polygons)
-        #self.create_roi_row(polygons, volume_name)
+        self.create_roi(polygons_by_section=polygons)
+        self.create_roi_row(polygons, volume_name)
         self.create_label_density_map()
-        return
         self.add_empty_images(polygons_by_section=polygons)
         isFinished = self.setup_roi_neuroglancer()
         if not isFinished:
