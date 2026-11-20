@@ -12,6 +12,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy import create_engine, func, delete
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 import urllib
 
@@ -178,10 +179,13 @@ class SqlController(AnnotationSessionController, AnimalController, ElastixContro
 
     def delete_rows_by_foreign_key(self, model, foreign_key_column, foreign_key_value):
         # Delete all child records matching a single foreign key
-        stmt = delete(model).where(getattr(model, foreign_key_column) == foreign_key_value)
-        self.session.execute(stmt)
-        self.session.commit()
-
+        try:
+            stmt = delete(model).where(getattr(model, foreign_key_column) == foreign_key_value)
+            self.session.execute(stmt)
+            self.session.commit()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            print(f"Delete failed: {e}")
 
     def query_one_with_filters_and_sum(self, model, filters: dict, sum_columns: list, group_by_columns: list):
         """

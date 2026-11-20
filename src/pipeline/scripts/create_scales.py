@@ -1,84 +1,39 @@
 import argparse
+import math
+from pathlib import Path
+import sys
+from typing import List, Tuple
+
 
 import numpy as np
+PIPELINE_ROOT = Path("./src").absolute()
+sys.path.append(PIPELINE_ROOT.as_posix())
 
-def compute_mipmaps(base_resolution, max_voxel_size=512.0):
-    num_mips=100
-    base_resolution = np.array(base_resolution, dtype=float)
-    base_chunk_size=(64, 64, 64)
-    scales = [(2,2,1)]
+from library.image_manipulation.precomputed_manager import NgPrecomputedMaker
 
-    current_res = base_resolution.copy()
-    chunks = []
-
-    for mip in range(1, num_mips):
-        # --- Continuous anisotropy correction ---
-        # Normalize by smallest voxel dimension
-        min_res = np.min(current_res)
-        ratios = current_res / min_res
-
-        # Smooth scaling: more aggressive for finer axes
-        # Use inverse ratio to bias scaling
-        inv_ratios = 1.0 / ratios
-
-        # Normalize to [1, 2] range
-        scale = 1.0 + inv_ratios
-        scale = np.clip(scale, 1.0, 2.0)
-
-        # Round to nearest integer (Neuroglancer prefers ints)
-        scale = np.round(scale).astype(int)
-
-        # Ensure at least 1x scaling
-        scale = np.maximum(scale, 1)
-
-        # --- Apply scaling ---
-        new_res = current_res * scale
-
-        # --- Stop if exceeding max voxel size ---
-        if np.any(new_res > max_voxel_size):
-            print(f"Stopping at mip {mip}: exceeded max voxel size")
+def _compute_chunk_size(res: List[float], size: List[int]) -> Tuple[int, int, int]:
+    """Finds a power-of-two chunk shape balanced in physical space."""
+    chunk = [1, 1, 1]
+    target_chunk_voxels: int = 64
+    while math.prod(chunk) < target_chunk_voxels:
+        # Only expand axes that haven't exceeded the volume's current dimension
+        candidates = [i for i in range(3) if chunk[i] < size[i]]
+        if not candidates:
             break
 
-        # --- Compute chunk size (world-space balanced) ---
-        # Keep chunk size ~constant in microns        
-        world_chunk = np.array(base_chunk_size) * base_resolution
-        chunk = np.round(world_chunk / new_res).astype(int)
-        # Clamp chunk sizes to reasonable bounds
-        chunk = np.clip(chunk, 16, 256)
-        chunks.append(chunk.tolist())
+        # Expand the axis with the smallest physical span (chunk_dim * voxel_res)
+        smallest_phys_axis = min(candidates, key=lambda i: chunk[i] * res[i])
+        chunk[smallest_phys_axis] *= 2
 
-        # Store results
-        scales.append(scale)
-        #resolutions.append(new_res.tolist())
-
-        current_res = new_res
-
-    scales = [tuple(int(x) for x in s) for s in scales]
-    resolutions = []
-    x,y,z = base_resolution
-    for mip, scale in enumerate(zip(scales)):
-        if mip == 0:
-            x = x * scales[mip][0]
-            y = y * scales[mip][1]
-            z = z * scales[mip][2]
-            resolution = [x, y, z]
-        else:
-            x = resolutions[mip-1][0] * scales[mip][0]
-            y = resolutions[mip-1][1] * scales[mip][1]
-            z = resolutions[mip-1][2] * scales[mip][2]
-
-        resolution = [float(x), float(y), float(z)]
-        resolutions.append(resolution)
-
-    return scales, resolutions, chunks
+    return tuple(chunk)
 
 
 
-def print_pyramid(resolutions, scales, chunks):
-    print(f"{'Mip':<4} {'Resolution (µm)':<30} {'Scale':<30} {'Chunk'}")
+def print_pyramid(factors, resolutions, chunks):
+    print(f"{'Mip':<10} {'Factor':<30} {'Resolution (µm)':<30} {'Chunk'}")
     print("-" * 90)
-    for i, (r, s, c) in enumerate(zip(resolutions, scales, chunks)):
-        print(f"{i:<4} {str(r):<30} {str(s):<30} {c}")
+    for i, (r, s, c) in enumerate(zip(factors, resolutions, chunks)):
+        print(f"{i:<10} {str(r):<30} {str(s):<30} {c}")
 
 if __name__ == "__main__":
     # Example usage:
@@ -100,13 +55,13 @@ if __name__ == "__main__":
 
     #for mip, (scale, resolution, chunk) in enumerate(zip(scales, resolutions, chunks)):
     #    print(f'{mip=} Scale factor: {scale} Resolution: {resolution} Chunk: {chunk}')
+    base_chunk_size = (64,64,64)
 
-    resolutions, scales, chunks = compute_neuroglancer_pyramid(
-        resolution,
-        n_mips=8,
-        max_voxel_size=512,
-        base_chunk=(64, 64, 64),
-        anisotropy_alpha=0.5
-    )
+    
+    resolutions, scales, chunks = NgPrecomputedMaker.compute_mipmaps(base_resolution=resolution, base_chunk_size=base_chunk_size)
+
+    while True:
+        chunk_size = _compute_chunk_size(resolution, [60000,35000,450])
+
 
     print_pyramid(resolutions, scales, chunks)
