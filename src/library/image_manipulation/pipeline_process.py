@@ -271,9 +271,6 @@ class Pipeline(
             print(f'Found {len(polygons)} polygons for {self.layer_name} in URL {self.state_id} with volume: {volume_name}')
 
         self.create_roi(polygons_by_section=polygons, volume_name=volume_name)
-        return
-        #self.create_roi_row(polygons, volume_name, threshold)
-        #self.create_label_density_map()
         self.add_empty_images(polygons_by_section=polygons)
         isFinished = self.setup_roi_neuroglancer()
         if not isFinished:

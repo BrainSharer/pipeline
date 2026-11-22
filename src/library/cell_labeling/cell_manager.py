@@ -43,6 +43,9 @@ class CellManager:
                 print(f'Missing {filename}')
                 continue
             image_outpath = os.path.join(self.output, tifname)
+            if os.path.exists(image_outpath):
+                print(f'Already exists: {image_outpath}')
+                continue
             cropped_outpath = os.path.join(cropped_path, tifname)
             polygon = polygon.astype(np.int32)
             image_inpath = os.path.join(self.input, tifname)
