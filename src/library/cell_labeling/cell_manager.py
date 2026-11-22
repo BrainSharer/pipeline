@@ -20,12 +20,13 @@ class CellManager:
 
 
 
-    def create_roi(self, polygons_by_section: dict):
+    def create_roi(self, polygons_by_section: dict, volume_name: str):
         """
         Create a region of interest (ROI) based on the mask created from polygons.
         """
         # Implementation for creating ROI
         print("Creating ROI.")
+        xy_resolution = self.sqlController.scan_run.resolution
         self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='aligned')
         if not os.path.exists(self.input):
             print(f'Input path missing: {self.input}')
@@ -38,74 +39,119 @@ class CellManager:
         for section_number, polygon in sorted_dict.items():
             tifname = f"{section_number:03d}.tif"
             filename = os.path.join(self.input, tifname)
-            if os.path.exists(filename):
-                image_outpath = os.path.join(self.output, tifname)
-                cropped_outpath = os.path.join(cropped_path, tifname)
-                if os.path.exists(image_outpath):
-                    print(f'Skipping {tifname} ROI as it already exists.')
-                    continue
-                polygon = polygon.astype(np.int32)
-                image_inpath = os.path.join(self.input, tifname)
-                image = read_image(image_inpath)
-
-                mask = np.zeros(image.shape, dtype=np.uint16)
-                cv2.fillPoly(mask, [polygon], 65535)
-                # Apply the mask using a bitwise AND operation
-                # Everything outside the ROI becomes 0
-                masked_image = cv2.bitwise_and(image, mask)
-                x, y, w, h = cv2.boundingRect(polygon)
-                cropped_image = masked_image[y:y+h, x:x+w]
-                write_image(cropped_outpath, cropped_image, message=f'Error writing {cropped_outpath}')
-                try:
-                    axon_image, threshold = self.extract_axon_threshold(cropped_image)
-                except Exception as e:
-                    print(f'Could not find threshold for {tifname} ')
-                    print(e)
-                    axon_image = masked_image.copy()
-                    threshold = 0
-                axon_image = self.remove_white_objects(axon_image, threshold, min_size=10)
-                masked_image[y:y+h, x:x+w] = axon_image
-                write_image(image_outpath, masked_image, message=f'Error writing {image_outpath}')
-                print(f'{threshold=}, Wrote: {cropped_outpath}')
-
-    def create_roi_row(self, polygons_by_section: dict, volume_name: str):
-        """
-        Create a row in the database for the region of interest (ROI) based on the given section number and polygon.
-        """
-        # Implementation for creating a database row for ROI
-        xy_resolution = self.sqlController.scan_run.resolution
-
-        sorted_dict = dict(sorted(polygons_by_section.items()))
-        for section_number, polygon in sorted_dict.items():
+            if not os.path.exists(filename):
+                print(f'Missing {filename}')
+                continue
+            image_outpath = os.path.join(self.output, tifname)
+            cropped_outpath = os.path.join(cropped_path, tifname)
+            polygon = polygon.astype(np.int32)
+            image_inpath = os.path.join(self.input, tifname)
+            image = read_image(image_inpath)
+            mask = np.zeros(image.shape, dtype=np.uint16)
+            cv2.fillPoly(mask, [polygon], 65535)
+            # Apply the mask using a bitwise AND operation
+            # Everything outside the ROI becomes 0
+            masked_image = cv2.bitwise_and(image, mask)
+            del image
+            x, y, w, h = cv2.boundingRect(polygon)
+            cropped_image = masked_image[y:y+h, x:x+w]
+            write_image(cropped_outpath, cropped_image, message=f'Error writing {cropped_outpath}')
+            threshold = self.extract_axon_threshold(cropped_image)
+            
+            cropped_image[cropped_image < threshold] = 0
+            cropped_image = self.remove_white_objects(cropped_image, threshold, min_size=10)
+            mask[y:y+h, x:x+w] = cropped_image
+            write_image(image_outpath, mask, message=f'Error writing {image_outpath}')
+            print(f'{threshold=}, Wrote: {image_outpath}')
             area_px = cv2.contourArea(polygon.astype(np.int32))
             area_um2 = round(area_px * xy_resolution**2, 2)  # Convert area to square microns
-            roi_row = self.sqlController.row_exists({"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}, RegionOfInterest)
+            roi_row = self.sqlController.row_exists({"FK_state_id": self.state_id, 
+                                                    "layer_name": self.layer_name, 
+                                                    "section": section_number}, RegionOfInterest)
             if roi_row is not None:
-                self.sqlController.update_row(RegionOfInterest, roi_row.id, {"area": area_um2})
+                self.sqlController.update_row(RegionOfInterest, roi_row.id, {"area": area_um2, "threshold": threshold})
             else:
                 roi_row = RegionOfInterest(FK_state_id=self.state_id, FK_prep_id=self.animal, 
                                     layer_name=self.layer_name, volume_name=volume_name, section=section_number, 
-                                    area=area_um2, active=1, created=datetime.now())
+                                    area=area_um2, threshold=threshold, active=1, created=datetime.now())
                 self.sqlController.add_row(roi_row)
 
-        # now update the COM for each ROI based on the contours
-        input_dir = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
-        infiles = sorted([f for f in os.listdir(input_dir) if f.endswith('.tif')])
-        for infile in tqdm(infiles, desc="Updating ROI COM", unit="image", disable=self.debug):
-            section_number = int(os.path.splitext(infile)[0])
-            image_path = os.path.join(input_dir, infile)
-            image = read_image(image_path)
-            search_dict = {"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}
-            roi_row = self.sqlController.row_exists(search_dict, RegionOfInterest)
-            if roi_row is None:
+            ids = np.unique(masked_image)
+            if len(ids) < 2:
+                print(f'Insufficient data: {tifname}')
                 continue
             # Calculate the center of mass (COM) for the ROI
-            M = cv2.moments(image)
+            M = cv2.moments(masked_image)
             if M["m00"] != 0:
                 com_x = round(M["m10"] / M["m00"] * xy_resolution, 2)
                 com_y = round(M["m01"] / M["m00"] * xy_resolution, 2)
                 # Update the ROI row with the calculated COM
                 self.sqlController.update_row(RegionOfInterest, roi_row.id, {"com_x": com_x, "com_y": com_y})
+                self.create_contour_density_map(masked_image, ids, roi_row)
+
+    def create_contour_density_map(self, img: np.ndarray, ids: list, roi_row: RegionOfInterest):
+        try:
+            threshold = ids[1]  # Make sure this is between min and max above!
+        except IndexError:
+            return
+        # Verify your actual pixel range so your threshold isn't too high
+        print(f"Image min: {img.min()}, max: {img.max()} using {threshold=}")
+
+        # 2. Threshold and convert to 8-bit binary
+        _, binary_16 = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
+        binary_8bit = binary_16.astype(np.uint8)
+
+        # 3. Find all contours (OpenCV 4.x returns 2 values)
+        contours, hierarchy = cv2.findContours(
+            binary_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        print(f'Found {len(contours)} contours')
+        pixel_size_um = self.sqlController.scan_run.resolution  # microns per pixel
+        pixel_area_um2 = pixel_size_um**2  # 0.105625 square microns per pixel
+        min_area_px = 10.0
+
+        shape_data = []
+        for cnt in contours:
+            if cnt is not None and len(cnt) >= 3:
+                area_px = cv2.contourArea(cnt)
+
+                if area_px >= min_area_px:
+                    # Calculate physical area in square microns
+                    area_um2 = area_px * pixel_area_um2
+
+                    # Calculate geometric center of mass (centroid) using image moments
+                    M = cv2.moments(cnt)
+                    if M["m00"] != 0:
+                        cx_px = M["m10"] / M["m00"]
+                        cy_px = M["m01"] / M["m00"]
+
+                        # Convert center of mass coordinates to microns
+                        cx_um = cx_px * pixel_size_um
+                        cy_um = cy_px * pixel_size_um
+
+                        shape_data.append({
+                            "contour": cnt,
+                            "area_px": area_px,
+                            "area_um2": area_um2,
+                            "centroid_px": (cx_px, cy_px),
+                            "centroid_um": (cx_um, cy_um),
+                        })
+
+        # 5. Sort shapes by area from largest to smallest
+        sorted_shapes = sorted(shape_data, key=lambda x: x["area_px"], reverse=True)
+        update_dict = {"contour_count": len(sorted_shapes)}
+        self.sqlController.update_row(RegionOfInterest, roi_row.id, update_dict)
+        # should we delete the data below
+        self.sqlController.delete_rows_by_foreign_key(CellData, "FK_roi_id", roi_row.id)
+
+        for shape in sorted_shapes:
+            cx_px, cy_px = shape["centroid_px"]
+            cx_um, cy_um = shape["centroid_um"]
+            area_um2 = shape["area_um2"]
+            area_px = shape["area_px"]
+            FK_roi_id = roi_row.id
+            cell_data = CellData(FK_roi_id=FK_roi_id, com_x=cx_um, com_y=cy_um, area=area_um2)
+            self.sqlController.add_row(cell_data)
 
 
     def add_empty_images(self, polygons_by_section: dict):
@@ -165,89 +211,6 @@ class CellManager:
 
         return isFinished
 
-    def create_label_density_map(self):
-        """
-        Create a cell density map based on the axon images.
-        """
-        print("Creating cell density map.")
-        self.input = self.fileLocationManager.get_directory(channel=self.channel, downsample=self.downsample, inpath='axons')
-        infiles = sorted([f for f in os.listdir(self.input) if f.endswith('.tif')])
-        for infile in tqdm(infiles, desc="Creating cell density map", unit="image", disable=self.debug):
-            input_path = os.path.join(self.input, infile)
-            section_number = int(os.path.splitext(infile)[0])
-            image = read_image(input_path)
-            # Assuming the axon images are binary (0 and 65535), we can create a density map
-            search_dict = {"FK_state_id": self.state_id, "layer_name": self.layer_name, "section": section_number}
-            roi_row = self.sqlController.row_exists(search_dict, RegionOfInterest)
-
-            self.create_contour_density_map(image, roi_row)
-
-
-    def create_contour_density_map(self, img, roi_row: RegionOfInterest):
-        ids = np.unique(img, return_counts=False)
-        try:
-            threshold = ids[1]  # Make sure this is between min and max above!
-        except IndexError:
-            return
-        # Verify your actual pixel range so your threshold isn't too high
-        print(f"Image min: {img.min()}, max: {img.max()} using {threshold=}")
-
-        # 2. Threshold and convert to 8-bit binary
-        _, binary_16 = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
-        binary_8bit = binary_16.astype(np.uint8)
-
-        # 3. Find all contours (OpenCV 4.x returns 2 values)
-        contours, hierarchy = cv2.findContours(
-            binary_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        print(f'Found {len(contours)} contours')
-        pixel_size_um = self.sqlController.scan_run.resolution  # microns per pixel
-        pixel_area_um2 = pixel_size_um**2  # 0.105625 square microns per pixel
-        min_area_px = 10.0
-
-        shape_data = []
-        for i, cnt in enumerate(contours):
-            if cnt is not None and len(cnt) >= 3:
-                area_px = cv2.contourArea(cnt)
-
-                if area_px >= min_area_px:
-                    # Calculate physical area in square microns
-                    area_um2 = area_px * pixel_area_um2
-
-                    # Calculate geometric center of mass (centroid) using image moments
-                    M = cv2.moments(cnt)
-                    if M["m00"] != 0:
-                        cx_px = M["m10"] / M["m00"]
-                        cy_px = M["m01"] / M["m00"]
-
-                        # Convert center of mass coordinates to microns
-                        cx_um = cx_px * pixel_size_um
-                        cy_um = cy_px * pixel_size_um
-
-                        shape_data.append({
-                            "contour": cnt,
-                            "area_px": area_px,
-                            "area_um2": area_um2,
-                            "centroid_px": (cx_px, cy_px),
-                            "centroid_um": (cx_um, cy_um),
-                        })
-
-        # 5. Sort shapes by area from largest to smallest
-        sorted_shapes = sorted(shape_data, key=lambda x: x["area_px"], reverse=True)
-        update_dict = {"contour_count": len(sorted_shapes)}
-        self.sqlController.update_row(RegionOfInterest, roi_row.id, update_dict)
-        # should we delete the data below
-        self.sqlController.delete_rows_by_foreign_key(CellData, "FK_roi_id", roi_row.id)
-
-        for shape in sorted_shapes:
-            cx_px, cy_px = shape["centroid_px"]
-            cx_um, cy_um = shape["centroid_um"]
-            area_um2 = shape["area_um2"]
-            area_px = shape["area_px"]
-            FK_roi_id = roi_row.id
-            cell_data = CellData(FK_roi_id=FK_roi_id, com_x=cx_um, com_y=cy_um, area=area_um2)
-            self.sqlController.add_row(cell_data)
-
 
     @staticmethod
     def remove_white_objects(img_16bit, thresh_value, min_size=10):
@@ -277,7 +240,7 @@ class CellManager:
 
 
     @staticmethod
-    def extract_axon_threshold(img):
+    def extract_axon_threshold(img: np.ndarray) -> int:
         """
         Extracts the axon separation threshold from a noisy image histogram using the maximum 
         value of the second derivative after the dominant background noise peak.
@@ -295,51 +258,66 @@ class CellManager:
         float
             The calculated intensity threshold value separating axons from background noise.
         """
-        ##### We are hard coding the  threshold to 2400 for now
-        if False:
-            foreground_data = img[img > 0]
-            num_bins = 100
-            bins = np.logspace(np.log10(foreground_data.min()), np.log10(foreground_data.max()), num_bins)
-            counts, bin_edges = np.histogram(foreground_data, bins=bins)
+        foreground_data = img[img > 0]
+        num_bins = 100
+        bins = np.logspace(np.log10(foreground_data.min()), np.log10(foreground_data.max()), num_bins)
+        counts, bin_edges = np.histogram(foreground_data, bins=bins)
 
-            log_bin_centers = 0.5 * (np.log10(bin_edges[:-1]) + np.log10(bin_edges[1:]))
-            bin_centers = 10 ** log_bin_centers
-            log_counts = np.log10(counts + 1)
+        log_bin_centers = 0.5 * (np.log10(bin_edges[:-1]) + np.log10(bin_edges[1:]))
+        bin_centers = 10 ** log_bin_centers
+        log_counts = np.log10(counts + 1)
 
-            # Smooth to get clear, continuous derivative curves
-            smooth_log_counts = gaussian_filter1d(log_counts, sigma=2.0)
-            dy_dx = np.gradient(smooth_log_counts, log_bin_centers)
-            d2y_dx2 = np.gradient(dy_dx, log_bin_centers)
+        # Smooth to get clear, continuous derivative curves
+        smooth_log_counts = gaussian_filter1d(log_counts, sigma=2.0)
+        dy_dx = np.gradient(smooth_log_counts, log_bin_centers)
+        d2y_dx2 = np.gradient(dy_dx, log_bin_centers)
 
-            # =====================================================================
-            # FEATURE 1: Inflection point at the noise peak
-            # =====================================================================
-            # Step A: Locate the absolute maximum peak of the noise (usually at lower intensities)
-            kde_x = np.linspace(foreground_data.min(), np.percentile(foreground_data, 90), 500)
-            kde_y = gaussian_kde(foreground_data)(kde_x)
+        # =====================================================================
+        # FEATURE 1: Inflection point at the noise peak
+        # =====================================================================
+        # Step A: Locate the absolute maximum peak of the noise (usually at lower intensities)
+        kde_x = np.linspace(foreground_data.min(), np.percentile(foreground_data, 90), 500)
+        kde_y = gaussian_kde(foreground_data)(kde_x)
 
-            # The maximum of the density curve is your noise peak
-            noise_floor_limit = kde_x[np.argmax(kde_y)]        
+        # The maximum of the density curve is your noise peak
+        noise_floor_limit = kde_x[np.argmax(kde_y)]        
 
-            noise_indices = np.where(bin_centers < noise_floor_limit)[0]
-            noise_peak_idx = noise_indices[np.argmax(smooth_log_counts[noise_indices])]
-            #noise_peak_x = bin_centers[noise_peak_idx]
+        noise_indices = np.where(bin_centers < noise_floor_limit)[0]
+        noise_peak_idx = noise_indices[np.argmax(smooth_log_counts[noise_indices])]
+        noise_peak_x = bin_centers[noise_peak_idx]
 
-            # Step B: Find the inflection point on the descending slope of this peak (where d2y_dx2 crosses 0)
-            # Look forward from the peak index
-            zero_crossings = np.where(np.diff(np.sign(d2y_dx2)))[0]
-            post_peak_crossings = zero_crossings[zero_crossings > noise_peak_idx]
+        # Step B: Find the inflection point on the descending slope of this peak (where d2y_dx2 crosses 0)
+        # Look forward from the peak index
+        zero_crossings = np.where(np.diff(np.sign(d2y_dx2)))[0]
+        post_peak_crossings = zero_crossings[zero_crossings > noise_peak_idx]
 
-            if len(post_peak_crossings) > 0:
-                noise_inflection_idx = post_peak_crossings[0]  # First zero-crossing right after the peak
-            else:
-                noise_inflection_idx = noise_peak_idx + 5  # Fallback if no clean crossing is found
+        if len(post_peak_crossings) > 0:
+            noise_inflection_idx = post_peak_crossings[0]  # First zero-crossing right after the peak
+        else:
+            noise_inflection_idx = noise_peak_idx + 5  # Fallback if no clean crossing is found
 
-            axon_threshold = bin_centers[noise_inflection_idx]
 
-        axon_threshold = 2400
-        img[img < axon_threshold] = 0
+        limit = 1200
+        range_min = noise_peak_x
+        range_max = noise_peak_x + limit
 
-        return img, float(axon_threshold)
+        # Mask out indices matching your specified range
+        range_mask = (bin_centers >= range_min) & (bin_centers <= range_max)
+        range_indices = np.where(range_mask)[0]
+
+        if len(range_indices) > 0:            
+            # Get the index of the highest positive 2nd derivative inside this window
+            max_d2y_idx = range_indices[np.argmax(d2y_dx2[range_indices])]
+            max_d2y_x = bin_centers[max_d2y_idx]
+            threshold = max_d2y_x
+        else:
+            print("Specified range does not contain valid histogram bins.")
+            threshold = bin_centers[noise_inflection_idx]
+
+
+
+
+
+        return int(threshold)
 
 

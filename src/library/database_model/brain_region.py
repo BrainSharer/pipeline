@@ -23,6 +23,7 @@ class RegionOfInterest(Base, AtlasModel):
     com_x = Column(Double, default=0)
     com_y = Column(Double, default=0)
     area = Column(Double, default=0)
+    threshold = Column(Integer, default=0)
     contour_count = Column(Integer, default=0)
     active =  Column(Integer,default=1)
     created =  Column(DateTime)

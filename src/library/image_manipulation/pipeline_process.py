@@ -269,18 +269,18 @@ class Pipeline(
 
         if self.debug:
             print(f'Found {len(polygons)} polygons for {self.layer_name} in URL {self.state_id} with volume: {volume_name}')
-            print('We are not running the rest of the task as we are in debug mode.')
-        else:
-            self.create_roi(polygons_by_section=polygons)
-            self.create_roi_row(polygons, volume_name)
-            self.create_label_density_map()
-            self.add_empty_images(polygons_by_section=polygons)
-            isFinished = self.setup_roi_neuroglancer()
-            if not isFinished:
-                self.create_neuroglancer()
-                self.create_downsamples()
 
-            print(f'Finished {self.TASK_CELL_LABELS}.')
+        self.create_roi(polygons_by_section=polygons, volume_name=volume_name)
+        return
+        #self.create_roi_row(polygons, volume_name, threshold)
+        #self.create_label_density_map()
+        self.add_empty_images(polygons_by_section=polygons)
+        isFinished = self.setup_roi_neuroglancer()
+        if not isFinished:
+            self.create_neuroglancer()
+            self.create_downsamples()
+
+        print(f'Finished {self.TASK_CELL_LABELS}.')
 
     def clean(self):
         """I am taking out the set width and height as we might need to manually adjust this

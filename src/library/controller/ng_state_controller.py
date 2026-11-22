@@ -48,7 +48,6 @@ class NeuroglancerStateController():
             if layer.get("type") != "annotation":
                 continue
             if layer_name and layer.get("name") != layer_name:
-                print(f'Skipping layer {layer.get("name")} because it does not match the specified layer_name {layer_name}')
                 continue
             print(f"Processing layer: {layer.get('name', 'Unnamed Layer')} with type: {layer.get('type')}")
 
